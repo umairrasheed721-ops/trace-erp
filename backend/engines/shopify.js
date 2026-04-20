@@ -148,8 +148,7 @@ async function fetchShopifyOrders(store, onProgress) {
 async function refreshShopifyUpdates(store, onProgress) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
-
-  const dateMin = getDaysAgo(60);
+  const dateMin = getDaysAgo(180); // Increased to 180 days for historical cost backfilling
   let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
   let updatedOrders = [];
@@ -177,9 +176,24 @@ async function refreshShopifyUpdates(store, onProgress) {
 
   const shopifyMap = {};
   const allVariantIds = [];
+  
+  // Cache existing order statuses from DB to optimize cost fetching
+  const existingOrders = db.prepare('SELECT shopify_order_id, delivery_status FROM orders WHERE store_id = ?').all(storeId);
+  const statusMap = {};
+  existingOrders.forEach(o => { statusMap[String(o.shopify_order_id)] = o.delivery_status; });
+
   updatedOrders.forEach(o => {
-    shopifyMap[String(o.id)] = o;
-    o.line_items.forEach(i => { if (i.variant_id) allVariantIds.push(i.variant_id); });
+    const oId = String(o.id);
+    shopifyMap[oId] = o;
+    
+    // SKIP COST FETCHING for Cancelled or Returned orders (User Request)
+    const currentStatus = statusMap[oId] || 'Pending';
+    const isCancelled = o.cancelled_at !== null;
+    const isReturned = currentStatus === 'Returned' || currentStatus === 'RTO' || currentStatus === 'Returned to Origin';
+    
+    if (!isCancelled && !isReturned) {
+      o.line_items.forEach(i => { if (i.variant_id) allVariantIds.push(i.variant_id); });
+    }
   });
 
   const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(allVariantIds)]);
@@ -204,12 +218,19 @@ async function refreshShopifyUpdates(store, onProgress) {
       const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
       let totalCost = 0, productTitles = [];
 
-      fresh.line_items.forEach(item => {
-        const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-        if (qty === 0) return;
-        totalCost += (costMap[String(item.variant_id)] || 0) * qty;
-        productTitles.push(`${item.name} (x${qty})`);
-      });
+      const isCancelled = fresh.cancelled_at !== null;
+      const dbStatus = (row.delivery_status || '').trim().toLowerCase();
+      const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
+
+      // Only calculate cost if NOT cancelled or returned
+      if (!isCancelled && !isReturned) {
+        fresh.line_items.forEach(item => {
+          const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+          if (qty === 0) return;
+          totalCost += (costMap[String(item.variant_id)] || 0) * qty;
+          productTitles.push(`${item.name} (x${qty})`);
+        });
+      }
 
       const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
       const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
