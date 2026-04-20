@@ -149,7 +149,7 @@ async function refreshShopifyUpdates(store, onProgress) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
 
-  const dateMin = getDaysAgo(7);
+  const dateMin = getDaysAgo(60);
   let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
   let updatedOrders = [];
@@ -243,56 +243,111 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
   const variantToInventoryItem = {};
   const inventoryItemIds = new Set();
 
+  console.log(`[CostSync] Processing ${variantIds.length} unique variants for ${shopDomain}`);
+
   // Step 1: Get inventory_item_id for each variant
   for (let i = 0; i < variantIds.length; i += CHUNK_SIZE) {
     const chunk = variantIds.slice(i, i + CHUNK_SIZE);
-    try {
-      const res = await fetch(
-        `https://${shopDomain}/admin/api/2024-10/variants.json?ids=${chunk.join(',')}`,
-        { headers: { 'X-Shopify-Access-Token': accessToken } }
-      );
-      const data = await res.json();
-      (data.variants || []).forEach(v => {
-        if (v.inventory_item_id) {
-          variantToInventoryItem[String(v.id)] = String(v.inventory_item_id);
-          inventoryItemIds.add(String(v.inventory_item_id));
+    let success = false;
+    let attempts = 0;
+
+    while (!success && attempts < 3) {
+      try {
+        const res = await fetch(
+          `https://${shopDomain}/admin/api/2024-10/variants.json?ids=${chunk.join(',')}`,
+          { headers: { 'X-Shopify-Access-Token': accessToken } }
+        );
+
+        if (res.status === 429) {
+          console.log(`[CostSync] Rate limit hit on variants, sleeping 2s...`);
+          await sleep(2000);
+          attempts++;
+          continue;
         }
-      });
-    } catch (e) {
-      console.error(`Error fetching variants for cost: ${e.message}`);
+
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Shopify API Error (${res.status}): ${err.substring(0, 100)}`);
+        }
+
+        const data = await res.json();
+        const variants = data.variants || [];
+        variants.forEach(v => {
+          if (v.inventory_item_id) {
+            variantToInventoryItem[String(v.id)] = String(v.inventory_item_id);
+            inventoryItemIds.add(String(v.inventory_item_id));
+          }
+        });
+        success = true;
+      } catch (e) {
+        console.error(`[CostSync] Step 1 Error (Attempt ${attempts + 1}): ${e.message}`);
+        attempts++;
+        await sleep(1000);
+      }
     }
-    await sleep(500);
+    await sleep(300);
   }
 
-  if (inventoryItemIds.size === 0) return costMap;
+  if (inventoryItemIds.size === 0) {
+    console.log(`[CostSync] No inventory item IDs found for variants.`);
+    return costMap;
+  }
 
   // Step 2: Get cost for each inventory_item_id
   const inventoryItemIdsArray = Array.from(inventoryItemIds);
   const inventoryItemToCost = {};
 
+  console.log(`[CostSync] Fetching costs for ${inventoryItemIdsArray.length} inventory items`);
+
   for (let i = 0; i < inventoryItemIdsArray.length; i += CHUNK_SIZE) {
     const chunk = inventoryItemIdsArray.slice(i, i + CHUNK_SIZE);
-    try {
-      const res = await fetch(
-        `https://${shopDomain}/admin/api/2024-10/inventory_items.json?ids=${chunk.join(',')}`,
-        { headers: { 'X-Shopify-Access-Token': accessToken } }
-      );
-      const data = await res.json();
-      (data.inventory_items || []).forEach(item => {
-        inventoryItemToCost[String(item.id)] = parseFloat(item.cost || 0);
-      });
-    } catch (e) {
-      console.error(`Error fetching inventory items for cost: ${e.message}`);
+    let success = false;
+    let attempts = 0;
+
+    while (!success && attempts < 3) {
+      try {
+        const res = await fetch(
+          `https://${shopDomain}/admin/api/2024-10/inventory_items.json?ids=${chunk.join(',')}`,
+          { headers: { 'X-Shopify-Access-Token': accessToken } }
+        );
+
+        if (res.status === 429) {
+          console.log(`[CostSync] Rate limit hit on inventory_items, sleeping 2s...`);
+          await sleep(2000);
+          attempts++;
+          continue;
+        }
+
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Shopify API Error (${res.status}): ${err.substring(0, 100)}`);
+        }
+
+        const data = await res.json();
+        const items = data.inventory_items || [];
+        items.forEach(item => {
+          inventoryItemToCost[String(item.id)] = parseFloat(item.cost || 0);
+        });
+        success = true;
+      } catch (e) {
+        console.error(`[CostSync] Step 2 Error (Attempt ${attempts + 1}): ${e.message}`);
+        attempts++;
+        await sleep(1000);
+      }
     }
-    await sleep(500);
+    await sleep(300);
   }
 
   // Step 3: Map variant_id back to cost
+  let mappedCount = 0;
   Object.keys(variantToInventoryItem).forEach(vId => {
     const iiId = variantToInventoryItem[vId];
-    costMap[vId] = inventoryItemToCost[iiId] || 0;
+    const cost = inventoryItemToCost[iiId] || 0;
+    costMap[vId] = cost;
+    if (cost > 0) mappedCount++;
   });
 
+  console.log(`[CostSync] Successfully mapped costs for ${mappedCount}/${variantIds.length} variants`);
   return costMap;
 }
 
