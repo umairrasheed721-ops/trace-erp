@@ -99,15 +99,15 @@ function initDb() {
       UNIQUE(store_id, date_string)
     );
 
-    -- Safe schema migrations (ignore errors if columns already exist)
-    try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
-    try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
-
     CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
     CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(delivery_status);
     CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status_date);
   `);
+
+  // Safe schema migrations (ignore errors if columns already exist)
+  try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
 
   console.log('✅ Database initialized at', DB_PATH);
 }
