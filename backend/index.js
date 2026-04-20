@@ -22,6 +22,26 @@ app.use(cors({
 
 app.use(express.json());
 
+// ─── Security: Basic Auth for Production ───
+app.use((req, res, next) => {
+  // Allow Shopify to send OAuth callbacks
+  if (req.path.startsWith('/api/auth/callback')) return next();
+  // Allow health check for Railway
+  if (req.path === '/health') return next();
+
+  const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+  const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
+  
+  const correctPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+  if (login === 'admin' && password === correctPassword) {
+    return next();
+  }
+
+  res.set('WWW-Authenticate', 'Basic realm="Secure Trace ERP"');
+  res.status(401).send('Authentication required.');
+});
+
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
