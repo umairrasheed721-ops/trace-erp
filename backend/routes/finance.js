@@ -99,221 +99,92 @@ router.post('/bulk-update', async (req, res) => {
     let auditCount = 0;
     let processedCount = 0;
 
-    for (const row of rows) {
-      const inputId = String(row.orderId || '').replace(/\D/g, '');
-      const inputTrack = String(row.trackingNumber || '').toLowerCase().replace(/\s+/g, '');
-      
-      if (!inputId && !inputTrack) continue;
+      // Group by Order to prevent race conditions and multiple Shopify calls for the same order
+      const ordersToProcess = {};
+      for (const row of rows) {
+        const inputId = String(row.orderId || '').replace(/\D/g, '');
+        const inputTrack = String(row.trackingNumber || '').toLowerCase().replace(/\s+/g, '');
+        if (!inputId && !inputTrack) continue;
 
-      const type = String(row.type || '').toUpperCase().trim();
-      const amount = parseFloat(row.codAmount) || 0;
-      const charges = parseFloat(row.charges) || 0;
-      const ref = row.ref || '';
-      const dateStr = formatDate(row.date);
-
-      let order = null;
-      let isGhost = false;
-      let needsAuditNote = false;
-
-      if (masterKey === "Match by Tracking Number") {
-        order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
-        if (!order && inputId) {
+        let order = null;
+        if (masterKey === "Match by Tracking Number") {
+          order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
+          if (!order && inputId) order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
+        } else if (inputId) {
           order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
-          if (order) needsAuditNote = true;
-          else isGhost = true;
-        } else if (!order) {
-          isGhost = true;
         }
-      } else { // Match by Order ID
-        if (inputId) {
-          order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
-          if (!order) isGhost = true;
-        } else {
-          isGhost = true;
-        }
-      }
 
-      if (isGhost) {
-        results.push({ 
-          ...row, 
-          status: '🛑 GHOST: Not in Database', 
-          recommendation: 'Manual Search Required', 
-          netPayout: 0, 
-          orderId: null,
-          courierName: '?',
-          balance: 0,
-          chargesTrick: 'Not Found',
-          taxAddOn: 0,
-          finalCharges: 0
-        });
-        ghostCount++;
-        continue;
-      }
-
-      // Pre-calculate XLOOKUP-style "Charges Trick" and tax columns for the response
-      const chargesTrick = order.courier_fee || 0;
-      const taxAddOn = Math.round((charges * 0.04) * 100) / 100;
-      const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
-
-      if (needsAuditNote) {
-        const noteText = `⚠️ [TRACE PK FINANCE]: Activity of Rs. ${amount || charges} reported in CPR Ref #${ref}. However, Tracking ID [${inputTrack}] was missing or mismatched in the ERP. Record NOT updated. Manual verification required.`;
-        try {
-          await appendShopifyNote(store, order.shopify_order_id, noteText);
-          results.push({ 
-            ...row, 
-            status: '⚠️ CPR Note Added to Shopify', 
-            recommendation: 'Fix Tracking in Main Sheet', 
-            netPayout: 0, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
-        } catch (e) {
-          results.push({ 
-            ...row, 
-            status: '⚠️ Tracking Mismatch', 
-            recommendation: 'API Error: Shopify ID invalid', 
-            netPayout: 0, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
-        }
-        auditCount++;
-        continue;
-      }
-
-      // Standard Processing
-      if (type === 'D') {
-        if (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted') {
-          results.push({ 
-            ...row, 
-            status: '🛑 Skipped', 
-            recommendation: 'Already Paid', 
-            netPayout: 0, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
+        if (!order) {
+          results.push({ ...row, status: '🛑 GHOST: Not in Database', recommendation: 'Manual Search Required', netPayout: 0 });
+          ghostCount++;
           continue;
         }
 
-        try {
-          const financials = await getShopifyFinancials(store, order.shopify_order_id);
-          let balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
-          let roundedAmount = Math.round(amount * 100) / 100;
-
-          if (roundedAmount > balance) {
-            results.push({ 
-              ...row, 
-              status: '🛑 Skipped', 
-              recommendation: `Input (${amount}) > Balance (${balance})`, 
-              netPayout: 0, 
-              orderId: order.shopify_order_id,
-              courierName: order.courier,
-              balance,
-              chargesTrick,
-              taxAddOn,
-              finalCharges
-            });
-          } else {
-            await captureShopifyPayment(store, order.shopify_order_id, amount);
-            const noteText = ` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`;
-            await appendShopifyNote(store, order.shopify_order_id, noteText);
-            
-            db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
-              .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
-              
-            const rec = (roundedAmount < balance) ? "⚠️ Partial Payment" : "✅ Full Payment";
-            results.push({ 
-              ...row, 
-              status: '✅ Done', 
-              recommendation: rec, 
-              netPayout: amount - charges, 
-              orderId: order.shopify_order_id,
-              courierName: order.courier,
-              balance,
-              chargesTrick,
-              taxAddOn,
-              finalCharges
-            });
-            processedCount++;
-          }
-        } catch (e) {
-          results.push({ 
-            ...row, 
-            status: '❌ API Error', 
-            recommendation: e.message, 
-            netPayout: 0, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
+        if (!ordersToProcess[order.id]) {
+          ordersToProcess[order.id] = { order, rows: [], notes: [] };
         }
-      } else if (type === 'R') {
-        try {
-          const noteText = ` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`;
-          await appendShopifyNote(store, order.shopify_order_id, noteText);
-          
-          let delStatus = order.delivery_status;
-          if (delStatus !== 'Return Received') delStatus = 'Returned';
-
-          db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ? WHERE id = ?').run(delStatus, charges, order.id);
-          
-          results.push({ 
-            ...row, 
-            status: '✅ Done', 
-            recommendation: 'Return Fee Recorded', 
-            netPayout: -charges, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
-          processedCount++;
-        } catch (e) {
-          results.push({ 
-            ...row, 
-            status: '❌ API Error', 
-            recommendation: e.message, 
-            netPayout: 0, 
-            orderId: order.shopify_order_id,
-            courierName: order.courier,
-            balance: 0,
-            chargesTrick,
-            taxAddOn,
-            finalCharges
-          });
-        }
-      } else {
-        results.push({ 
-          ...row, 
-          status: '⚠️ Invalid Type', 
-          recommendation: "Use 'D' or 'R'", 
-          netPayout: 0, 
-          orderId: order.shopify_order_id,
-          courierName: order.courier,
-          balance: 0,
-          chargesTrick,
-          taxAddOn,
-          finalCharges
-        });
+        ordersToProcess[order.id].rows.push(row);
       }
-    }
+
+      for (const orderIdKey in ordersToProcess) {
+        const { order, rows: orderRows } = ordersToProcess[orderIdKey];
+        
+        for (const row of orderRows) {
+          const type = String(row.type || '').toUpperCase().trim();
+          const amount = parseFloat(row.codAmount) || 0;
+          const charges = parseFloat(row.charges) || 0;
+          const ref = String(row.ref || '').trim();
+          const dateStr = formatDate(row.date);
+
+          // XLOOKUP Style metrics
+          const chargesTrick = order.courier_fee || 0;
+          const taxAddOn = Math.round((charges * 0.04) * 100) / 100;
+          const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
+
+          if (type === 'D') {
+            if (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted') {
+              results.push({ ...row, status: '🛑 Skipped', recommendation: 'Already Paid', netPayout: 0, courierName: order.courier });
+              continue;
+            }
+
+            try {
+              const financials = await getShopifyFinancials(store, order.shopify_order_id);
+              let balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
+              if (amount > balance) {
+                results.push({ ...row, status: '🛑 Skipped', recommendation: `Amt > Bal`, netPayout: 0, courierName: order.courier, balance });
+              } else {
+                await captureShopifyPayment(store, order.shopify_order_id, amount);
+                const noteText = ` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`;
+                await appendShopifyNote(store, order.shopify_order_id, noteText);
+                
+                db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
+                  .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
+                  
+                results.push({ ...row, status: '✅ Done', recommendation: (amount < balance ? "⚠️ Partial" : "✅ Full"), netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
+                processedCount++;
+              }
+            } catch (e) {
+              results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
+            }
+          } else if (type === 'R') {
+            try {
+              const noteText = ` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`;
+              await appendShopifyNote(store, order.shopify_order_id, noteText);
+              
+              let delStatus = order.delivery_status;
+              if (delStatus !== 'Return Received') delStatus = 'Returned';
+              db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ? WHERE id = ?').run(delStatus, charges, order.id);
+              
+              results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
+              processedCount++;
+            } catch (e) {
+              results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
+            }
+          } else {
+            results.push({ ...row, status: '⚠️ Invalid Type', recommendation: "Use 'D' or 'R'" });
+          }
+        }
+      }
 
     res.json({ success: true, results, summary: { processedCount, ghostCount, auditCount } });
   } catch (err) {

@@ -86,20 +86,23 @@ async function appendShopifyNote(store, orderId, noteText) {
   if (res.ok) {
     const order = (await res.json()).order;
     const currentNote = order.note || '';
+    const cleanNote = currentNote.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     
     // 🛡️ DEDUPLICATION LOGIC:
-    // If the exact note text OR the reference number within the note already exists, skip.
     // Extract reference if possible (e.g. "Ref: CPR123")
     const refMatch = noteText.match(/Ref:\s*([^\s|]+)/);
     const ref = refMatch ? refMatch[1] : null;
 
-    if (currentNote.includes(noteText)) {
-      console.log(`⏭️ Note already exists for order ${orderId}, skipping.`);
-      return;
+    if (ref) {
+      const cleanRef = ref.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      if (cleanNote.includes(cleanRef)) {
+        console.log(`⏭️ Reference ${ref} (Clean: ${cleanRef}) already exists in note, skipping.`);
+        return;
+      }
     }
-    
-    if (ref && currentNote.includes(ref)) {
-      console.log(`⏭️ Reference ${ref} already exists in note for order ${orderId}, skipping.`);
+
+    if (cleanNote.includes(noteText.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())) {
+      console.log(`⏭️ Note content already exists, skipping.`);
       return;
     }
 
