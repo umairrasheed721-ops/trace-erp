@@ -244,21 +244,39 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
   const variantToInventoryItem = {};
   const inventoryItemIds = new Set();
 
-  console.log(`[CostSync] Requesting ${uniqueIds.length} unique variants in chunks of 25`);
+  console.log(`[CostSync] Fetching ${uniqueIds.length} variants via GraphQL`);
 
-  // Step 1: Get inventory_item_id for each variant
-  const SMALL_CHUNK = 25;
-  for (let i = 0; i < uniqueIds.length; i += SMALL_CHUNK) {
-    const chunk = uniqueIds.slice(i, i + SMALL_CHUNK);
+  // Step 1: Get inventory_item_id for each variant via GraphQL
+  const gqlChunkSize = 100;
+  for (let i = 0; i < uniqueIds.length; i += gqlChunkSize) {
+    const chunk = uniqueIds.slice(i, i + gqlChunkSize);
+    const gidList = chunk.map(id => `"gid://shopify/ProductVariant/${id}"`).join(',');
+    
+    const query = `
+      query {
+        nodes(ids: [${gidList}]) {
+          ... on ProductVariant {
+            id
+            inventoryItem {
+              id
+            }
+          }
+        }
+      }
+    `;
+
     let success = false;
     let attempts = 0;
-
     while (!success && attempts < 3) {
       try {
-        const res = await fetch(
-          `https://${shopDomain}/admin/api/2024-10/variants.json?ids=${chunk.join(',')}`,
-          { headers: { 'X-Shopify-Access-Token': accessToken } }
-        );
+        const res = await fetch(`https://${shopDomain}/admin/api/2024-10/graphql.json`, {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ query })
+        });
 
         if (res.status === 429) {
           await sleep(2000);
@@ -266,17 +284,15 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
           continue;
         }
 
-        if (!res.ok) throw new Error(`Shopify API Error (${res.status})`);
-
-        const data = await res.json();
-        const variants = data.variants || [];
+        const result = await res.json();
+        const nodes = result.data?.nodes || [];
         
-        variants.forEach(v => {
-          const vIdStr = String(v.id);
-          // Only map if it was actually in our request chunk (Shopify sometimes returns more)
-          if (chunk.includes(vIdStr) && v.inventory_item_id) {
-            variantToInventoryItem[vIdStr] = String(v.inventory_item_id);
-            inventoryItemIds.add(String(v.inventory_item_id));
+        nodes.forEach(node => {
+          if (node && node.id && node.inventoryItem) {
+            const vId = node.id.split('/').pop();
+            const iiId = node.inventoryItem.id.split('/').pop();
+            variantToInventoryItem[vId] = iiId;
+            inventoryItemIds.add(iiId);
           }
         });
         success = true;
@@ -285,17 +301,17 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
         await sleep(1000);
       }
     }
-    await sleep(200);
   }
 
   if (inventoryItemIds.size === 0) return costMap;
 
-  // Step 2: Get cost for each inventory_item_id
+  // Step 2: Get cost for each inventory_item_id (REST is fine here)
   const inventoryItemIdsArray = Array.from(inventoryItemIds);
   const inventoryItemToCost = {};
+  const REST_CHUNK = 50;
 
-  for (let i = 0; i < inventoryItemIdsArray.length; i += SMALL_CHUNK) {
-    const chunk = inventoryItemIdsArray.slice(i, i + SMALL_CHUNK);
+  for (let i = 0; i < inventoryItemIdsArray.length; i += REST_CHUNK) {
+    const chunk = inventoryItemIdsArray.slice(i, i + REST_CHUNK);
     let success = false;
     let attempts = 0;
 
@@ -312,8 +328,6 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
           continue;
         }
 
-        if (!res.ok) throw new Error(`Shopify API Error (${res.status})`);
-
         const data = await res.json();
         (data.inventory_items || []).forEach(item => {
           inventoryItemToCost[String(item.id)] = parseFloat(item.cost || 0);
@@ -324,10 +338,9 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
         await sleep(1000);
       }
     }
-    await sleep(200);
   }
 
-  // Step 3: Map variant_id back to cost
+  // Step 3: Map back
   uniqueIds.forEach(vId => {
     const iiId = variantToInventoryItem[vId];
     costMap[vId] = iiId ? (inventoryItemToCost[iiId] || 0) : 0;
