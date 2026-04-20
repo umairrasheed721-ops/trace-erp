@@ -204,7 +204,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       return { status: 200, order, newStatus };
     } catch (err) {
       const logStmt = db.prepare("INSERT INTO sync_audit (tracking_number, message) VALUES (?, ?)");
-      logStmt.run(order.tracking_number, `ERR: ${err.message}`);
+      logStmt.run(order.tracking_number, `ERR: ${err.message} | ${err.stack.split('\n')[0]}`);
       return { status: 0, order, newStatus: null };
     }
   };
