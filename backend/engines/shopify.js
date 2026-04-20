@@ -351,4 +351,4 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
   return costMap;
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates };
+module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts };
