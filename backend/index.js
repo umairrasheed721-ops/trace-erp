@@ -60,8 +60,8 @@ app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISO
 const debugRoutes = require('./routes/debug');
 app.use('/api/debug', debugRoutes);
 
-const debugCostRoutes = require('./routes/debug_cost');
-app.use('/api/debug-cost', debugCostRoutes);
+// const debugCostRoutes = require('./routes/debug_cost');
+// app.use('/api/debug-cost', debugCostRoutes);
 
 // FINANCE ROUTES
 const financeRoutes = require('./routes/finance');
