@@ -1,4 +1,4 @@
-const { sleep } = require('../utils/helpers');
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==========================================
 // 🛠️ SHOPIFY API HELPERS FOR FINANCE & RETURNS
