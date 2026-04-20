@@ -1,0 +1,11 @@
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.DS_Store
+frontend/dist/
+backend/public/
