@@ -37,7 +37,7 @@ function detectOrderSource(order) {
   return order.source_name || 'Direct / Web';
 }
 
-async function fetchShopifyOrders(store) {
+async function fetchShopifyOrders(store, onProgress) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return { added: 0 };
 
@@ -63,6 +63,8 @@ async function fetchShopifyOrders(store) {
     const data = await res.json();
     const batch = data.orders || [];
     if (!batch.length) break;
+
+    if (onProgress) onProgress('Fetching Shopify (New Orders)', newOrdersFound.length + batch.length, 0);
 
     for (const order of batch) {
       if (existingIds.has(String(order.id))) { keepFetching = false; break; }
@@ -143,7 +145,7 @@ async function fetchShopifyOrders(store) {
   return { added };
 }
 
-async function refreshShopifyUpdates(store) {
+async function refreshShopifyUpdates(store, onProgress) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
 
@@ -164,6 +166,7 @@ async function refreshShopifyUpdates(store) {
     const batch = data.orders || [];
     if (!batch.length) break;
     updatedOrders = updatedOrders.concat(batch);
+    if (onProgress) onProgress('Refreshing Shopify Updates', updatedOrders.length, 0);
 
     const linkHeader = res.headers.get('Link') || '';
     const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);

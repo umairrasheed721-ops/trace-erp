@@ -170,9 +170,43 @@ function Sidebar() {
 function Topbar() {
   const { activeStore, activeStoreId, addToast } = useApp()
   const [syncing, setSyncing] = useState(false)
+  const [progress, setProgress] = useState(null)
+
+  useEffect(() => {
+    if (!activeStoreId) return;
+    let isComplete = false;
+    
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`);
+        const data = await res.json();
+        if (data && data.status && data.status !== 'idle') {
+          if (data.status === 'Sync Complete') {
+             if (!isComplete) {
+               addToast('✅ Sync complete!', 'success');
+               isComplete = true;
+               setSyncing(false);
+               setProgress(null);
+             }
+          } else {
+            setSyncing(true);
+            setProgress(data);
+            isComplete = false;
+          }
+        } else {
+          setSyncing(false);
+          setProgress(null);
+        }
+      } catch (e) {}
+    };
+    
+    check();
+    const iv = setInterval(check, 2000);
+    return () => clearInterval(iv);
+  }, [activeStoreId, addToast]);
 
   const handleFullSync = async () => {
-    if (!activeStoreId) return
+    if (!activeStoreId || syncing) return
     setSyncing(true)
     addToast('🔄 Full sync started in background...', 'info')
     try {
@@ -181,29 +215,46 @@ function Topbar() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId })
       })
-      addToast('✅ Sync complete!', 'success')
     } catch (e) {
-      addToast('❌ Sync failed', 'error')
+      addToast('❌ Sync failed to start', 'error')
+      setSyncing(false)
     }
-    setSyncing(false)
   }
 
+  const percent = progress?.total ? Math.round((progress.processed / progress.total) * 100) : 0;
+
   return (
-    <header className="topbar">
-      <div>
-        <div className="topbar-title">{activeStore?.store_name || activeStore?.shop_domain || 'No Store Connected'}</div>
-        {activeStore?.last_synced_at && (
-          <div className="sync-indicator" style={{ marginTop: 2 }}>
-            <span className="sync-dot"></span>
-            Last synced: {new Date(activeStore.last_synced_at).toLocaleString()}
+    <header className="topbar" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div className="topbar-title">{activeStore?.store_name || activeStore?.shop_domain || 'No Store Connected'}</div>
+          {activeStore?.last_synced_at && (
+            <div className="sync-indicator" style={{ marginTop: 2 }}>
+              <span className="sync-dot"></span>
+              Last synced: {new Date(activeStore.last_synced_at).toLocaleString()}
+            </div>
+          )}
+        </div>
+        <div className="topbar-actions">
+          <button className="btn btn-secondary btn-sm" onClick={handleFullSync} disabled={syncing || !activeStoreId}>
+            {syncing ? <><span className="loading-spinner"></span> Syncing...</> : '🔄 Sync Now'}
+          </button>
+        </div>
+      </div>
+      {syncing && progress && progress.status !== 'Starting Sync...' && (
+        <div style={{ marginTop: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 6 }}>
+            <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{progress.status}</span>
+            <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+              {progress.total > 0 ? `${progress.processed} / ${progress.total} (${percent}%)` : `${progress.processed} processed`}
+            </span>
           </div>
-        )}
-      </div>
-      <div className="topbar-actions">
-        <button className="btn btn-secondary btn-sm" onClick={handleFullSync} disabled={syncing || !activeStoreId}>
-          {syncing ? <><span className="loading-spinner"></span> Syncing...</> : '🔄 Sync Now'}
-        </button>
-      </div>
+          <div style={{ height: 6, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'var(--primary)', width: `${percent}%`, transition: 'width 0.3s ease' }}></div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
+

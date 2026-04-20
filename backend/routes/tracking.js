@@ -66,6 +66,16 @@ router.post('/refresh-shopify', async (req, res) => {
   }
 });
 
+// Global progress tracker
+global.syncProgress = global.syncProgress || {};
+
+// GET /api/tracking/progress
+router.get('/progress', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  res.json(global.syncProgress[store_id] || { status: 'idle', total: 0, processed: 0 });
+});
+
 // POST /api/tracking/sync-all - Full sync for a store (Shopify fetch + both couriers)
 router.post('/sync-all', async (req, res) => {
   const { store_id } = req.body;
@@ -73,17 +83,40 @@ router.post('/sync-all', async (req, res) => {
   const store = getStore(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
+  // Reset progress state
+  global.syncProgress[store_id] = { status: 'Starting Sync...', processed: 0, total: 0 };
+
+  const updateProgress = (stage, processed, total) => {
+    if (global.syncProgress[store_id]) {
+      global.syncProgress[store_id] = { status: stage, processed, total };
+    }
+  };
+
   res.json({ success: true, message: 'Sync started in background' });
 
   // Run in background (non-blocking)
   (async () => {
     try {
-      await fetchShopifyOrders(store);
-      await refreshShopifyUpdates(store);
-      await syncPostEx(store, 'FULL');
-      await syncInstaworld(store, 'FULL');
+      updateProgress('Fetching Shopify (New Orders)', 0, 100);
+      await fetchShopifyOrders(store, updateProgress);
+      
+      updateProgress('Refreshing Shopify Updates', 0, 100);
+      await refreshShopifyUpdates(store, updateProgress);
+      
+      updateProgress('Syncing PostEx Tracking', 0, 100);
+      await syncPostEx(store, 'FULL', updateProgress);
+      
+      updateProgress('Syncing Instaworld Tracking', 0, 100);
+      await syncInstaworld(store, 'FULL', updateProgress);
+
+      updateProgress('Sync Complete', 100, 100);
+      
+      // Clear progress after 5 seconds so UI resets
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Full sync error for ${store.shop_domain}: ${e.message}`);
+      updateProgress(`Error: ${e.message}`, 0, 0);
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
     }
   })();
 });

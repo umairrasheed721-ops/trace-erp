@@ -19,7 +19,7 @@ function chunks(arr, size) {
 // 🚚 POSTEX ENGINE
 // GET /v1/track-order/{trackingNumber} — individual requests, run concurrently
 // ─────────────────────────────────────────
-async function syncPostEx(store, syncType = 'FULL') {
+async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const { id: storeId, postex_token, postex_track_url } = store;
   if (!postex_token) {
     console.log(`⚠️ PostEx: No token for store ${store.shop_domain}`);
@@ -49,6 +49,7 @@ async function syncPostEx(store, syncType = 'FULL') {
 
   console.log(`🔄 PostEx [${store.shop_domain}]: Syncing ${toProcess.length} orders...`);
   const updatesToApply = [];
+  let processed = 0;
 
   for (const batch of chunks(toProcess, CONCURRENT)) {
     const results = await Promise.allSettled(
@@ -94,6 +95,9 @@ async function syncPostEx(store, syncType = 'FULL') {
         }
       }
     }
+    
+    processed += batch.length;
+    if (onProgress) onProgress('Syncing PostEx Tracking', processed, toProcess.length);
 
     await sleep(SLEEP_MS);
   }
@@ -113,7 +117,7 @@ async function syncPostEx(store, syncType = 'FULL') {
 // 🚚 INSTAWORLD ENGINE
 // POST /logistics/v1/trackShipment — individual per order, concurrent
 // ─────────────────────────────────────────
-async function syncInstaworld(store, syncType = 'FULL') {
+async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const { id: storeId, instaworld_key, instaworld_key_backup, instaworld_track_url } = store;
   if (!instaworld_key) {
     console.log(`⚠️ Instaworld: No key for store ${store.shop_domain}`);
@@ -144,6 +148,7 @@ async function syncInstaworld(store, syncType = 'FULL') {
 
   console.log(`🔄 Instaworld [${store.shop_domain}]: Syncing ${toProcess.length} orders...`);
   const updatesToApply = [];
+  let processed = 0;
 
   const trackOne = async (order, apiKey) => {
     try {
@@ -207,6 +212,9 @@ async function syncInstaworld(store, syncType = 'FULL') {
         }
       }
     }
+
+    processed += batch.length;
+    if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
 
     await sleep(SLEEP_MS);
   }
