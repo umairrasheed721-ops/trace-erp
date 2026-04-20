@@ -303,8 +303,6 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
     }
   }
 
-  if (inventoryItemIds.size === 0) return costMap;
-
   // Step 2: Get cost for each inventory_item_id (REST is fine here)
   const inventoryItemIdsArray = Array.from(inventoryItemIds);
   const inventoryItemToCost = {};
@@ -340,7 +338,7 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
     }
   }
 
-  // Step 3: Map back
+  // Step 3: Map back (always ensure all requested IDs are in the map)
   uniqueIds.forEach(vId => {
     const iiId = variantToInventoryItem[vId];
     costMap[vId] = iiId ? (inventoryItemToCost[iiId] || 0) : 0;
