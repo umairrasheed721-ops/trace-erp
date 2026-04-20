@@ -1,9 +1,19 @@
 // Uses Node.js v22+ built-in sqlite (no npm install needed)
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
+const fs = require('fs');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'trace_erp.db');
+
+// Ensure the parent directory exists (important for Railway volume mounts)
+const DB_DIR = path.dirname(DB_PATH);
+if (!fs.existsSync(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true });
+  console.log(`📁 Created database directory: ${DB_DIR}`);
+}
+
 const db = new DatabaseSync(DB_PATH);
+
 
 function initDb() {
   db.exec(`PRAGMA journal_mode = WAL`);
