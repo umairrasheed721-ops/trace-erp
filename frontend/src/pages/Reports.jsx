@@ -275,8 +275,10 @@ export default function Reports() {
                 <th className="head-out">Mar %</th>
                 <th className="head-out">Meta Ads ✏️</th>
                 <th className="head-out">Tiktok ✏️</th>
-                <th className="head-out">Courier Fee (Actual/Est)</th>
-                <th className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>Actual Exp ✏️</th>
+                <th className="head-out">Est. Courier</th>
+                <th className="head-out">Actual Courier</th>
+                <th className="head-out">Diff Correction</th>
+                <th className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>Manual Exp ✏️</th>
                 
                 <th className="head-pnl" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>FINAL PNL</th>
                 
@@ -320,6 +322,8 @@ export default function Reports() {
                     {view === 'daily' ? renderEditable(row, 'tiktokMarketing') : formatCurrency(row.tiktokMarketing)}
                   </td>
                   <td className="col-out" style={{ color: '#f87171' }}>{formatCurrency(row.estCourier)}</td>
+                  <td className="col-out">{formatCurrency(row.actualCourier)}</td>
+                  <td className="col-out" style={{ color: row.courierDiff > 0 ? '#f87171' : '#34d399' }}>{formatCurrency(row.courierDiff)}</td>
                   <td className="col-out" style={{ borderRight: '1px solid rgba(255,255,255,0.1)' }}>
                     {view === 'daily' ? renderEditable(row, 'actualExp') : formatCurrency(row.actualExp)}
                   </td>
