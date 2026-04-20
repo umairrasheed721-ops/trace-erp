@@ -63,6 +63,10 @@ app.use('/api/cost-debug', costDebugRoutes);
 const financeRoutes = require('./routes/finance');
 app.use('/api/finance', financeRoutes);
 
+// REPORTS ROUTES
+const reportsRoutes = require('./routes/reports');
+app.use('/api/reports', reportsRoutes);
+
 // Catch-all route to serve the React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

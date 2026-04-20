@@ -88,6 +88,15 @@ function initDb() {
       UNIQUE(store_id, tracking_number)
     );
 
+    CREATE TABLE IF NOT EXISTS daily_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      date_string TEXT NOT NULL,
+      marketing_spend REAL DEFAULT 0,
+      actual_exp REAL DEFAULT 0,
+      UNIQUE(store_id, date_string)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
     CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(delivery_status);

@@ -8,6 +8,7 @@ import AdviceMonitor from './pages/AdviceMonitor'
 import Watchdog from './pages/Watchdog'
 import ReturnsManager from './pages/ReturnsManager'
 import FinanceManager from './pages/FinanceManager'
+import Reports from './pages/Reports'
 import Connect from './pages/Connect'
 
 // ─── Global Context ───────────────────────
@@ -97,6 +98,7 @@ export default function App() {
                 <Route path="/search" element={<SearchTool />} />
                 <Route path="/returns" element={<ReturnsManager />} />
                 <Route path="/finance" element={<FinanceManager />} />
+                <Route path="/reports" element={<Reports />} />
                 <Route path="/stuck" element={<StuckMonitor />} />
                 <Route path="/advice" element={<AdviceMonitor />} />
                 <Route path="/watchdog" element={<Watchdog />} />
@@ -121,6 +123,7 @@ function Sidebar() {
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/finance', icon: '💰', label: 'Finance Engine' },
+    { to: '/reports', icon: '📊', label: 'Profit & Loss' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
