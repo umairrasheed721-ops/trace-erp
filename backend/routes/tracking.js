@@ -76,6 +76,76 @@ router.get('/progress', (req, res) => {
   res.json(global.syncProgress[store_id] || { status: 'idle', total: 0, processed: 0 });
 });
 
+// POST /api/tracking/sync-shopify - Shopify data only (new orders + refresh + costs)
+router.post('/sync-shopify', async (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  const store = getStore(store_id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0 };
+
+  const updateProgress = (stage, processed, total) => {
+    if (global.syncProgress[store_id]) {
+      global.syncProgress[store_id] = { status: stage, processed, total };
+    }
+  };
+
+  res.json({ success: true, message: 'Shopify sync started in background' });
+
+  (async () => {
+    try {
+      updateProgress('Fetching New Shopify Orders', 0, 100);
+      await fetchShopifyOrders(store, updateProgress);
+
+      updateProgress('Refreshing Shopify Data & Costs', 0, 100);
+      await refreshShopifyUpdates(store, updateProgress);
+
+      updateProgress('Sync Complete', 100, 100);
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
+    } catch (e) {
+      console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
+      updateProgress(`Error: ${e.message}`, 0, 0);
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
+    }
+  })();
+});
+
+// POST /api/tracking/sync-couriers - Courier tracking only (PostEx + Instaworld)
+router.post('/sync-couriers', async (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  const store = getStore(store_id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0 };
+
+  const updateProgress = (stage, processed, total) => {
+    if (global.syncProgress[store_id]) {
+      global.syncProgress[store_id] = { status: stage, processed, total };
+    }
+  };
+
+  res.json({ success: true, message: 'Courier sync started in background' });
+
+  (async () => {
+    try {
+      updateProgress('Syncing PostEx Tracking', 0, 100);
+      await syncPostEx(store, 'FULL', updateProgress);
+
+      updateProgress('Syncing Instaworld Tracking', 0, 100);
+      await syncInstaworld(store, 'FULL', updateProgress);
+
+      updateProgress('Sync Complete', 100, 100);
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
+    } catch (e) {
+      console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
+      updateProgress(`Error: ${e.message}`, 0, 0);
+      setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
+    }
+  })();
+});
+
 // POST /api/tracking/sync-all - Full sync for a store (Shopify fetch + both couriers)
 router.post('/sync-all', async (req, res) => {
   const { store_id } = req.body;

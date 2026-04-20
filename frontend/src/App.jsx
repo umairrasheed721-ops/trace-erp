@@ -119,7 +119,7 @@ function Sidebar() {
     { to: '/', icon: '🏠', label: 'Dashboard' },
     { to: '/orders', icon: '📦', label: 'Orders' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
-    { to: '/returns', icon: '📦', label: 'Unified Returns' },
+    { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/finance', icon: '💰', label: 'Finance Engine' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
@@ -175,60 +175,80 @@ function Sidebar() {
 // ─── Topbar ───────────────────────────────
 function Topbar() {
   const { activeStore, activeStoreId, addToast } = useApp()
-  const [syncing, setSyncing] = useState(false)
+  const [syncingShopify, setSyncingShopify] = useState(false)
+  const [syncingCouriers, setSyncingCouriers] = useState(false)
   const [progress, setProgress] = useState(null)
 
+  const syncing = syncingShopify || syncingCouriers
+
   useEffect(() => {
-    if (!activeStoreId) return;
-    let isComplete = false;
-    
+    if (!activeStoreId) return
+    let isComplete = false
+
     const check = async () => {
       try {
-        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`);
-        const data = await res.json();
+        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`)
+        const data = await res.json()
         if (data && data.status && data.status !== 'idle') {
           if (data.status === 'Sync Complete') {
-             if (!isComplete) {
-               addToast('✅ Sync complete! Refreshing page...', 'success');
-               isComplete = true;
-               setSyncing(false);
-               setProgress(null);
-               setTimeout(() => window.location.reload(), 1500);
-             }
+            if (!isComplete) {
+              addToast('✅ Sync complete! Refreshing...', 'success')
+              isComplete = true
+              setSyncingShopify(false)
+              setSyncingCouriers(false)
+              setProgress(null)
+              setTimeout(() => window.location.reload(), 1500)
+            }
           } else {
-            setSyncing(true);
-            setProgress(data);
-            isComplete = false;
+            setProgress(data)
+            isComplete = false
           }
         } else {
-          setSyncing(false);
-          setProgress(null);
+          setSyncingShopify(false)
+          setSyncingCouriers(false)
+          setProgress(null)
         }
       } catch (e) {}
-    };
-    
-    check();
-    const iv = setInterval(check, 2000);
-    return () => clearInterval(iv);
-  }, [activeStoreId, addToast]);
+    }
 
-  const handleFullSync = async () => {
+    check()
+    const iv = setInterval(check, 2000)
+    return () => clearInterval(iv)
+  }, [activeStoreId, addToast])
+
+  const handleShopifySync = async () => {
     if (!activeStoreId || syncing) return
-    setSyncing(true)
-    addToast('🔄 Full sync started in background...', 'info')
+    setSyncingShopify(true)
+    addToast('🛒 Shopify sync started...', 'info')
     try {
-      await fetch('/api/tracking/sync-all', {
+      await fetch('/api/tracking/sync-shopify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId })
       })
     } catch (e) {
-      addToast('❌ Sync failed to start', 'error')
-      setSyncing(false)
+      addToast('❌ Shopify sync failed to start', 'error')
+      setSyncingShopify(false)
     }
   }
 
-  const percent = progress?.total ? Math.round((progress.processed / progress.total) * 100) : 0;
+  const handleCourierSync = async () => {
+    if (!activeStoreId || syncing) return
+    setSyncingCouriers(true)
+    addToast('🚚 Courier sync started...', 'info')
+    try {
+      await fetch('/api/tracking/sync-couriers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId })
+      })
+    } catch (e) {
+      addToast('❌ Courier sync failed to start', 'error')
+      setSyncingCouriers(false)
+    }
+  }
+
+  const percent = progress?.total ? Math.round((progress.processed / progress.total) * 100) : 0
 
   return (
     <header className="topbar" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
@@ -242,13 +262,26 @@ function Topbar() {
             </div>
           )}
         </div>
-        <div className="topbar-actions">
-          <button className="btn btn-secondary btn-sm" onClick={handleFullSync} disabled={syncing || !activeStoreId}>
-            {syncing ? <><span className="loading-spinner"></span> Syncing...</> : '🔄 Sync Now'}
+        <div className="topbar-actions" style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleShopifySync}
+            disabled={syncing || !activeStoreId}
+            title="Fetch new orders + update prices & costs from Shopify"
+          >
+            {syncingShopify ? <><span className="loading-spinner"></span> Syncing...</> : '🛒 Shopify Sync'}
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={handleCourierSync}
+            disabled={syncing || !activeStoreId}
+            title="Update delivery statuses from PostEx & Instaworld"
+          >
+            {syncingCouriers ? <><span className="loading-spinner"></span> Syncing...</> : '🚚 Courier Sync'}
           </button>
         </div>
       </div>
-      {syncing && progress && progress.status !== 'Starting Sync...' && (
+      {syncing && progress && (
         <div style={{ marginTop: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 6 }}>
             <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{progress.status}</span>
@@ -264,4 +297,3 @@ function Topbar() {
     </header>
   )
 }
-
