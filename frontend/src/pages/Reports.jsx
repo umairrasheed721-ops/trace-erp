@@ -29,7 +29,7 @@ export default function Reports() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/reports/daily?store_id=${activeStoreId}`);
+      const res = await fetch(`/api/reports/daily?store_id=${activeStoreId}&t=${Date.now()}`);
       if (!res.ok) throw new Error('Failed to fetch data');
       const data = await res.json();
       setDailyData(data);
@@ -73,7 +73,7 @@ export default function Reports() {
         diff_correction: field === 'diffCorrection' ? numValue : row.diffCorrection
       };
       
-      const res = await fetch('/api/reports/metrics', {
+      const res = await fetch(`/api/reports/metrics?t=${Date.now()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
