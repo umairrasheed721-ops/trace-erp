@@ -179,9 +179,15 @@ export default function FinanceManager() {
                       <th style={{ padding: '12px 8px' }}>Order ID</th>
                       <th style={{ padding: '12px 8px' }}>Tracking</th>
                       <th style={{ padding: '12px 8px' }}>Type</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Payout</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>COD Amt</th>
+                      <th style={{ padding: '12px 8px' }}>Courier</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Balance</th>
                       <th style={{ padding: '12px 8px' }}>Status</th>
-                      <th style={{ padding: '12px 8px' }}>Recommendation</th>
+                      <th style={{ padding: '12px 8px' }}>Rec.</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Net Pay</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Charges Trick</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>4% TAX</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>FINAL</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -190,9 +196,9 @@ export default function FinanceManager() {
                         <td style={{ padding: '12px 8px' }}>{r.orderId}</td>
                         <td style={{ padding: '12px 8px', fontFamily: 'monospace' }}>{r.trackingNumber}</td>
                         <td style={{ padding: '12px 8px', fontWeight: 'bold', color: r.type === 'D' ? '#34d399' : '#f87171' }}>{r.type}</td>
-                        <td style={{ padding: '12px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
-                          Rs. {r.netPayout}
-                        </td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right' }}>{r.codAmount}</td>
+                        <td style={{ padding: '12px 8px', opacity: 0.8 }}>{r.courierName}</td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', color: '#60a5fa' }}>{r.balance}</td>
                         <td style={{ padding: '12px 8px', fontWeight: 600 }}>
                           <span style={{ 
                             color: r.status.includes('✅') ? '#34d399' : 
@@ -202,6 +208,12 @@ export default function FinanceManager() {
                           </span>
                         </td>
                         <td style={{ padding: '12px 8px', opacity: 0.8 }}>{r.recommendation}</td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>
+                          Rs. {r.netPayout}
+                        </td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', opacity: 0.6 }}>{r.chargesTrick}</td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', opacity: 0.6 }}>{r.taxAddOn}</td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 600 }}>{r.finalCharges}</td>
                       </tr>
                     ))}
                   </tbody>

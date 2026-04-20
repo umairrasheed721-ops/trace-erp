@@ -134,18 +134,56 @@ router.post('/bulk-update', async (req, res) => {
       }
 
       if (isGhost) {
-        results.push({ ...row, status: '🛑 GHOST: Not in Database', recommendation: 'Manual Search Required', netPayout: 0, orderId: null });
+        results.push({ 
+          ...row, 
+          status: '🛑 GHOST: Not in Database', 
+          recommendation: 'Manual Search Required', 
+          netPayout: 0, 
+          orderId: null,
+          courierName: '?',
+          balance: 0,
+          chargesTrick: 'Not Found',
+          taxAddOn: 0,
+          finalCharges: 0
+        });
         ghostCount++;
         continue;
       }
+
+      // Pre-calculate XLOOKUP-style "Charges Trick" and tax columns for the response
+      const chargesTrick = order.courier_fee || 0;
+      const taxAddOn = Math.round((charges * 0.04) * 100) / 100;
+      const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
 
       if (needsAuditNote) {
         const noteText = `⚠️ [TRACE PK FINANCE]: Activity of Rs. ${amount || charges} reported in CPR Ref #${ref}. However, Tracking ID [${inputTrack}] was missing or mismatched in the ERP. Record NOT updated. Manual verification required.`;
         try {
           await appendShopifyNote(store, order.shopify_order_id, noteText);
-          results.push({ ...row, status: '⚠️ CPR Note Added to Shopify', recommendation: 'Fix Tracking in Main Sheet', netPayout: 0, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '⚠️ CPR Note Added to Shopify', 
+            recommendation: 'Fix Tracking in Main Sheet', 
+            netPayout: 0, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
         } catch (e) {
-          results.push({ ...row, status: '⚠️ Tracking Mismatch', recommendation: 'API Error: Shopify ID invalid', netPayout: 0, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '⚠️ Tracking Mismatch', 
+            recommendation: 'API Error: Shopify ID invalid', 
+            netPayout: 0, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
         }
         auditCount++;
         continue;
@@ -154,7 +192,18 @@ router.post('/bulk-update', async (req, res) => {
       // Standard Processing
       if (type === 'D') {
         if (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted') {
-          results.push({ ...row, status: '🛑 Skipped', recommendation: 'Already Paid', netPayout: 0, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '🛑 Skipped', 
+            recommendation: 'Already Paid', 
+            netPayout: 0, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
           continue;
         }
 
@@ -164,7 +213,18 @@ router.post('/bulk-update', async (req, res) => {
           let roundedAmount = Math.round(amount * 100) / 100;
 
           if (roundedAmount > balance) {
-            results.push({ ...row, status: '🛑 Skipped', recommendation: `Input (${amount}) > Balance (${balance})`, netPayout: 0, orderId: order.shopify_order_id });
+            results.push({ 
+              ...row, 
+              status: '🛑 Skipped', 
+              recommendation: `Input (${amount}) > Balance (${balance})`, 
+              netPayout: 0, 
+              orderId: order.shopify_order_id,
+              courierName: order.courier,
+              balance,
+              chargesTrick,
+              taxAddOn,
+              finalCharges
+            });
           } else {
             await captureShopifyPayment(store, order.shopify_order_id, amount);
             const noteText = ` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`;
@@ -174,11 +234,33 @@ router.post('/bulk-update', async (req, res) => {
               .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
               
             const rec = (roundedAmount < balance) ? "⚠️ Partial Payment" : "✅ Full Payment";
-            results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, orderId: order.shopify_order_id });
+            results.push({ 
+              ...row, 
+              status: '✅ Done', 
+              recommendation: rec, 
+              netPayout: amount - charges, 
+              orderId: order.shopify_order_id,
+              courierName: order.courier,
+              balance,
+              chargesTrick,
+              taxAddOn,
+              finalCharges
+            });
             processedCount++;
           }
         } catch (e) {
-          results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '❌ API Error', 
+            recommendation: e.message, 
+            netPayout: 0, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
         }
       } else if (type === 'R') {
         try {
@@ -190,13 +272,46 @@ router.post('/bulk-update', async (req, res) => {
 
           db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ? WHERE id = ?').run(delStatus, charges, order.id);
           
-          results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '✅ Done', 
+            recommendation: 'Return Fee Recorded', 
+            netPayout: -charges, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
           processedCount++;
         } catch (e) {
-          results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0, orderId: order.shopify_order_id });
+          results.push({ 
+            ...row, 
+            status: '❌ API Error', 
+            recommendation: e.message, 
+            netPayout: 0, 
+            orderId: order.shopify_order_id,
+            courierName: order.courier,
+            balance: 0,
+            chargesTrick,
+            taxAddOn,
+            finalCharges
+          });
         }
       } else {
-        results.push({ ...row, status: '⚠️ Invalid Type', recommendation: "Use 'D' or 'R'", netPayout: 0, orderId: order.shopify_order_id });
+        results.push({ 
+          ...row, 
+          status: '⚠️ Invalid Type', 
+          recommendation: "Use 'D' or 'R'", 
+          netPayout: 0, 
+          orderId: order.shopify_order_id,
+          courierName: order.courier,
+          balance: 0,
+          chargesTrick,
+          taxAddOn,
+          finalCharges
+        });
       }
     }
 
