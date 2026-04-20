@@ -116,7 +116,7 @@ router.post('/bulk-update', async (req, res) => {
       let needsAuditNote = false;
 
       if (masterKey === "Match by Tracking Number") {
-        order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, " ", "")) = ?').get(store_id, inputTrack);
+        order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
         if (!order && inputId) {
           order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
           if (order) needsAuditNote = true;
