@@ -2,112 +2,158 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// GET /api/reports/daily
 router.get('/daily', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id is required' });
 
   try {
-    // 1. Get aggregated order data by day (only Delivered)
+    // 1. Get all orders and their metrics grouped by day
     const ordersQuery = `
       SELECT 
         substr(order_date, 1, 10) as date_string,
-        COUNT(id) as total_delivered_orders,
-        SUM(price) as delivered_sale,
-        SUM(cost) as cgs,
-        SUM(courier_fee) as est_courier
-      FROM orders
-      WHERE store_id = ? AND delivery_status = 'Delivered'
-      GROUP BY substr(order_date, 1, 10)
-    `;
-    const dailyOrders = db.prepare(ordersQuery).all(store_id);
-
-    // 2. Get total orders by day (for AOV and landed orders)
-    const allOrdersQuery = `
-      SELECT 
-        substr(order_date, 1, 10) as date_string,
-        COUNT(id) as total_orders,
-        SUM(CASE WHEN delivery_status IN ('Returned', 'RTO', 'Returned to Origin', 'Cancelled') THEN 1 ELSE 0 END) as cancelations
+        COUNT(id) as landed_orders,
+        SUM(price) as total_sale,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END) as delivered_sale,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN cost ELSE 0 END) as cgs,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE 0 END) as delivered_courier_fee,
+        SUM(courier_fee) as total_courier_fee,
+        SUM(paid_amount) as payment_paid,
+        
+        -- Counts
+        SUM(CASE WHEN delivery_status = 'Cancelled' THEN 1 ELSE 0 END) as cancelations,
+        SUM(CASE WHEN delivery_status = 'Pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'RTO', 'Returned to Origin') THEN 1 ELSE 0 END) as restocked,
+        SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
+        SUM(CASE WHEN tracking_number IS NULL OR tracking_number = '' THEN 1 ELSE 0 END) as without_tracking_id,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending
       FROM orders
       WHERE store_id = ?
       GROUP BY substr(order_date, 1, 10)
     `;
-    const allOrders = db.prepare(allOrdersQuery).all(store_id);
+    const dailyOrders = db.prepare(ordersQuery).all(store_id);
+
+    // 2. Get Fake Returns from Watchdog
+    const fakeReturnsQuery = `
+      SELECT 
+        substr(o.order_date, 1, 10) as date_string,
+        COUNT(w.id) as fake_returns
+      FROM watchdog_results w
+      JOIN orders o ON w.tracking_number = o.tracking_number AND w.store_id = o.store_id
+      WHERE w.store_id = ? AND w.verdict LIKE '%FAKE%'
+      GROUP BY substr(o.order_date, 1, 10)
+    `;
+    const fakeReturns = db.prepare(fakeReturnsQuery).all(store_id);
 
     // 3. Get manual metrics
     const metricsQuery = `
-      SELECT date_string, marketing_spend, actual_exp
+      SELECT date_string, marketing_spend, tiktok_marketing, actual_exp, diff_correction
       FROM daily_metrics
       WHERE store_id = ?
     `;
     const metrics = db.prepare(metricsQuery).all(store_id);
 
-    // Combine data
+    // Map the supplemental data
     const metricsMap = {};
     metrics.forEach(m => metricsMap[m.date_string] = m);
 
-    const allOrdersMap = {};
-    allOrders.forEach(o => allOrdersMap[o.date_string] = o);
+    const fakeMap = {};
+    fakeReturns.forEach(f => fakeMap[f.date_string] = f.fake_returns);
 
+    // Calculate final rows
     const results = dailyOrders.map(day => {
       const dateStr = day.date_string;
-      const allOrd = allOrdersMap[dateStr] || { total_orders: 0, cancelations: 0 };
-      const m = metricsMap[dateStr] || { marketing_spend: 0, actual_exp: 0 };
+      const m = metricsMap[dateStr] || { marketing_spend: 0, tiktok_marketing: 0, actual_exp: 0, diff_correction: 0 };
+      const fakeRet = fakeMap[dateStr] || 0;
+
+      const landedOrders = day.landed_orders || 0;
+      const cancelations = day.cancelations || 0;
+      const pending = day.pending || 0;
+      const delivered = day.delivered || 0;
+      const restocked = day.restocked || 0;
+      const intransit = day.intransit || 0;
+      
+      const totalDispatched = landedOrders - cancelations - pending;
 
       const deliveredSale = day.delivered_sale || 0;
+      const totalSale = day.total_sale || 0;
       const cgs = day.cgs || 0;
-      const aov = allOrd.total_orders > 0 ? (deliveredSale / allOrd.total_orders) : 0; // Or based on delivered orders? Sheet AOV uses all orders maybe? Let's stick to total sales / total orders if possible. Wait, AOV is usually total sales / number of orders. Let's use delivered sale / delivered orders for now, or just total sale / total orders. 
-      // Actually AOV = Delivered Sale / Delivered Orders is safer for PNL.
-      const actualAov = day.total_delivered_orders > 0 ? (deliveredSale / day.total_delivered_orders) : 0;
-      
+      const paymentPaid = day.payment_paid || 0;
+
+      const marketingSpend = m.marketing_spend || 0;
+      const tiktokMarketing = m.tiktok_marketing || 0;
+      const actualExp = m.actual_exp || 0;
+      const diffCorrection = m.diff_correction || 0;
+      const totalMarketing = marketingSpend + tiktokMarketing;
+
+      // Derived Metrics
+      const aov = delivered > 0 ? (deliveredSale / delivered) : 0;
       const cgsPercent = deliveredSale > 0 ? (cgs / deliveredSale) * 100 : 0;
-      const taxPaid = deliveredSale * 0.04; // 4% tax
+      const taxPaid = deliveredSale * 0.04;
       const netSales = deliveredSale - taxPaid;
       const grossProfit = deliveredSale - cgs;
-      const marPercent = deliveredSale > 0 ? (m.marketing_spend / deliveredSale) * 100 : 0;
-      const estCourier = day.est_courier || 0;
+      const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
       
-      const pnl = grossProfit - taxPaid - m.marketing_spend - estCourier - m.actual_exp;
+      // As requested by user: est courier is 200 * total dispatched
+      const estCourier = 200 * totalDispatched;
       
-      // For Month vise metrics
-      const landedOrders = allOrd.total_orders;
-      const cancelations = allOrd.cancelations;
+      const pnl = grossProfit - taxPaid - totalMarketing - estCourier - actualExp;
+      
+      const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
+      const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
+      const cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
+      
+      const netOrders = landedOrders - cancelations;
+      const netCpaAvg = netOrders > 0 ? (totalMarketing / netOrders) : 0;
+      
       const canPercent = landedOrders > 0 ? (cancelations / landedOrders) * 100 : 0;
-      const delPercent = landedOrders > 0 ? (day.total_delivered_orders / landedOrders) * 100 : 0;
+      const disPercent = landedOrders > 0 ? (totalDispatched / landedOrders) * 100 : 0;
 
       return {
         date: dateStr,
-        aov: actualAov,
+        aov,
         deliveredSale,
         cgs,
         cgsPercent,
-        netSales, // -4% tax
+        netSales,
         taxPaid,
         grossProfit,
         marPercent,
-        marketingSpend: m.marketing_spend,
+        marketingSpend,
+        tiktokMarketing,
         estCourier,
-        actualExp: m.actual_exp,
+        actualExp,
         pnl,
         delPercent,
+        roasMeta,
+        cpaAvg,
+        netCpaAvg,
         landedOrders,
         cancelations,
-        canPercent
+        canPercent,
+        pending,
+        totalDispatched,
+        disPercent,
+        delivered,
+        restocked,
+        intransit,
+        fakeReturns: fakeRet,
+        withoutTrackingId: day.without_tracking_id || 0,
+        paymentPaid,
+        diffCorrection,
+        deliveredPaymentPending: day.delivered_payment_pending || 0
       };
     });
 
-    // Sort descending by date
     results.sort((a, b) => b.date.localeCompare(a.date));
-
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/reports/metrics
 router.post('/metrics', (req, res) => {
-  const { store_id, date, marketing_spend, actual_exp } = req.body;
+  const { store_id, date, marketing_spend, tiktok_marketing, actual_exp, diff_correction } = req.body;
   if (!store_id || !date) return res.status(400).json({ error: 'store_id and date required' });
 
   try {
@@ -116,14 +162,14 @@ router.post('/metrics', (req, res) => {
     if (check) {
       db.prepare(`
         UPDATE daily_metrics 
-        SET marketing_spend = ?, actual_exp = ?
+        SET marketing_spend = ?, tiktok_marketing = ?, actual_exp = ?, diff_correction = ?
         WHERE store_id = ? AND date_string = ?
-      `).run(marketing_spend || 0, actual_exp || 0, store_id, date);
+      `).run(marketing_spend || 0, tiktok_marketing || 0, actual_exp || 0, diff_correction || 0, store_id, date);
     } else {
       db.prepare(`
-        INSERT INTO daily_metrics (store_id, date_string, marketing_spend, actual_exp)
-        VALUES (?, ?, ?, ?)
-      `).run(store_id, date, marketing_spend || 0, actual_exp || 0);
+        INSERT INTO daily_metrics (store_id, date_string, marketing_spend, tiktok_marketing, actual_exp, diff_correction)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(store_id, date, marketing_spend || 0, tiktok_marketing || 0, actual_exp || 0, diff_correction || 0);
     }
     
     res.json({ success: true });

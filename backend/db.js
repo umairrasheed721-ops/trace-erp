@@ -93,9 +93,15 @@ function initDb() {
       store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
       date_string TEXT NOT NULL,
       marketing_spend REAL DEFAULT 0,
+      tiktok_marketing REAL DEFAULT 0,
       actual_exp REAL DEFAULT 0,
+      diff_correction REAL DEFAULT 0,
       UNIQUE(store_id, date_string)
     );
+
+    -- Safe schema migrations (ignore errors if columns already exist)
+    try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
+    try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
 
     CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
     CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
