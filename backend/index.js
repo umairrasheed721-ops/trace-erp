@@ -60,13 +60,14 @@ const costDebugRoutes = require('./routes/cost_debug');
 app.use('/api/cost-debug', costDebugRoutes);
 
 app.get('/api/sync-log', (req, res) => {
-  const fs = require('fs');
-  const path = require('path');
-  const logPath = path.join(__dirname, 'sync_audit.log');
-  if (!fs.existsSync(logPath)) return res.send('Log file not found yet. Run sync first.');
-  const content = fs.readFileSync(logPath, 'utf8');
-  res.header('Content-Type', 'text/plain');
-  res.send(content.split('\n').reverse().join('\n')); // Show latest first
+  try {
+    const logs = db.prepare('SELECT * FROM sync_audit ORDER BY timestamp DESC LIMIT 200').all();
+    let text = logs.map(l => `[${l.timestamp}] [${l.tracking_number}] ${l.message}`).join('\n');
+    res.header('Content-Type', 'text/plain');
+    res.send(text || 'No logs found in DB yet. Run sync first.');
+  } catch (err) {
+    res.status(500).send('Error reading logs: ' + err.message);
+  }
 });
 
 // FINANCE ROUTES
