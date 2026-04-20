@@ -103,6 +103,12 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(delivery_status);
     CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status_date);
+    CREATE TABLE IF NOT EXISTS sync_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tracking_number TEXT,
+      message TEXT,
+      timestamp DATETIME DEFAULT (datetime('now'))
+    );
   `);
 
   // Safe schema migrations (ignore errors if columns already exist)
