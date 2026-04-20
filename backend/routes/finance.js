@@ -84,7 +84,7 @@ router.post('/returns', async (req, res) => {
 // 💰 FINANCE & PAYMENTS HYBRID ENGINE
 // ==========================================
 router.post('/bulk-update', async (req, res) => {
-  const { store_id, rows, masterKey } = req.body;
+  const { store_id, rows, masterKey, syncToShopify } = req.body;
   // rows expected format: { orderId, trackingNumber, type, codAmount, charges, ref, date }
   if (!store_id || !rows || !Array.isArray(rows)) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -149,18 +149,24 @@ router.post('/bulk-update', async (req, res) => {
             }
 
             try {
-              const financials = await getShopifyFinancials(store, order.shopify_order_id);
-              let balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
-              if (amount > balance) {
+              let balance = 0;
+              if (syncToShopify) {
+                const financials = await getShopifyFinancials(store, order.shopify_order_id);
+                balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
+              }
+
+              if (syncToShopify && amount > balance) {
                 results.push({ ...row, status: '🛑 Skipped', recommendation: `Amt > Bal`, netPayout: 0, courierName: order.courier, balance });
               } else {
-                await captureShopifyPayment(store, order.shopify_order_id, amount);
-                combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
+                if (syncToShopify) {
+                  await captureShopifyPayment(store, order.shopify_order_id, amount);
+                  combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
+                }
                 
                 db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
                   .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
                   
-                results.push({ ...row, status: '✅ Done', recommendation: (amount < balance ? "⚠️ Partial" : "✅ Full"), netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
+                results.push({ ...row, status: '✅ Done', recommendation: (syncToShopify && amount < balance ? "⚠️ Partial" : "✅ Recorded"), netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
                 processedCount++;
               }
             } catch (e) {
@@ -168,7 +174,9 @@ router.post('/bulk-update', async (req, res) => {
             }
           } else if (type === 'R') {
             try {
-              combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`);
+              if (syncToShopify) {
+                combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`);
+              }
               
               let delStatus = order.delivery_status;
               if (delStatus !== 'Return Received') delStatus = 'Returned';
@@ -185,7 +193,7 @@ router.post('/bulk-update', async (req, res) => {
         }
 
         // Bulk apply all notes for this order in one shot
-        if (combinedNotes.length > 0) {
+        if (syncToShopify && combinedNotes.length > 0) {
           try {
             await appendShopifyNote(store, order.shopify_order_id, combinedNotes.join('\n'));
           } catch (e) {

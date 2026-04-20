@@ -5,6 +5,7 @@ export default function FinanceManager() {
   const { activeStoreId } = useApp()
   const [pasteData, setPasteData] = useState('')
   const [masterKey, setMasterKey] = useState('Match by Tracking Number')
+  const [syncToShopify, setSyncToShopify] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [results, setResults] = useState([])
   const [summary, setSummary] = useState(null)
@@ -59,7 +60,8 @@ export default function FinanceManager() {
           body: JSON.stringify({
             store_id: activeStoreId,
             rows: chunks[i],
-            masterKey
+            masterKey,
+            syncToShopify
           })
         })
         
@@ -138,6 +140,17 @@ export default function FinanceManager() {
                 <option value="Match by Tracking Number">Match by Tracking Number</option>
                 <option value="Match by Order ID">Match by Order ID</option>
               </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+              <input 
+                type="checkbox" 
+                id="syncToShopify" 
+                checked={syncToShopify} 
+                onChange={e => setSyncToShopify(e.target.checked)} 
+                style={{ width: 18, height: 18 }}
+              />
+              <label htmlFor="syncToShopify" style={{ fontWeight: 600, cursor: 'pointer' }}>Sync Updates to Shopify?</label>
             </div>
 
             <div>
