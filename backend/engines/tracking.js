@@ -257,11 +257,6 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     await sleep(SLEEP_MS);
   }
 
-    processed += batch.length;
-    if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
-    await sleep(SLEEP_MS);
-  }
-
   // LOG TO CONSOLE FOR RAILWAY DEBUGGING
   if (updatesToApply.length > 0) {
     console.log(`[Instaworld Sync] Updated ${updatesToApply.length} orders for ${store.shop_domain}`);
