@@ -120,6 +120,8 @@ export default function Orders() {
                   <th>Status</th>
                   <th>Payment</th>
                   <th>Price</th>
+                  <th>Cost</th>
+                  <th>Profit</th>
                   <th>Source</th>
                   <th>Date</th>
                   <th>Last Update</th>
@@ -140,6 +142,12 @@ export default function Orders() {
                       </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>Rs {parseInt(o.price || 0).toLocaleString()}</td>
+                    <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      {o.cost > 0 ? `Rs ${parseInt(o.cost).toLocaleString()}` : '—'}
+                    </td>
+                    <td style={{ fontWeight: 600, color: (() => { const p = (o.price || 0) - (o.cost || 0) - (o.courier_fee || 0); return p > 0 ? '#34d399' : p < 0 ? '#f87171' : 'var(--text-muted)'; })() }}>
+                      {o.cost > 0 ? `Rs ${parseInt((o.price || 0) - (o.cost || 0) - (o.courier_fee || 0)).toLocaleString()}` : '—'}
+                    </td>
                     <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{o.order_source}</td>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{o.order_date}</td>
                     <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
