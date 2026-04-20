@@ -157,9 +157,18 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     return { updated: 0 };
   }
 
-  console.log(`🔄 Instaworld [${store.shop_domain}]: Syncing ${toProcess.length} orders...`);
-  const updatesToApply = [];
-  let processed = 0;
+  const STATUS_MAP = {
+    'delivered': 'Delivered',
+    'pickup done': 'Booked',
+    'arrival at insta-hub': 'Booked',
+    'handover to courier': 'In Transit',
+    'in transit': 'In Transit',
+    'returned to shipper': 'Returned',
+    'return received at insta hub': 'Return Received',
+    'delivery unsuccessful': 'Shipper Advice',
+    'shipper advice': 'Shipper Advice',
+    'uncollected': 'Pending'
+  };
 
   const trackOne = async (order, apiKey) => {
     try {
@@ -175,16 +184,21 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       if (!res.ok) return { status: res.status, order, newStatus: null };
 
       const data = await res.json();
-      let newStatus = null;
+      let rawStatus = null;
 
-      // Logic from working Apps Script: array of history events
       if (Array.isArray(data) && data.length > 0) {
-        newStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
+        rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
       } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-        newStatus = data.data[data.data.length - 1]?.status;
+        rawStatus = data.data[data.data.length - 1]?.status;
       } else if (data?.status) {
-        newStatus = data.status;
+        rawStatus = data.status;
       }
+
+      if (!rawStatus) return { status: 200, order, newStatus: null };
+
+      // Normalize status
+      const lowerRaw = String(rawStatus).toLowerCase();
+      const newStatus = STATUS_MAP[lowerRaw] || rawStatus;
 
       return { status: 200, order, newStatus };
     } catch (err) {
@@ -193,28 +207,25 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   };
 
   for (const batch of chunks(toProcess, 10)) {
-    // Try Primary Key
     const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
     const retryOrders = [];
 
     for (const r of primaryResults) {
       if (r.status === 200 && r.newStatus) {
-        if (String(r.newStatus).toLowerCase() !== (r.order.delivery_status || '').toLowerCase()) {
+        if (String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase()) {
           updatesToApply.push({ id: r.order.id, status: r.newStatus });
         }
       } else if (r.status !== 404 && apiKeys[1]) {
-        // Retry any failure (429, 500, or empty result) with backup key
         retryOrders.push(r.order);
       }
     }
 
-    // Try Backup Key for failures
     if (retryOrders.length > 0) {
       await sleep(2000);
       const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
       for (const r of backupResults) {
         if (r.status === 200 && r.newStatus) {
-          if (String(r.newStatus).toLowerCase() !== (r.order.delivery_status || '').toLowerCase()) {
+          if (String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase()) {
             updatesToApply.push({ id: r.order.id, status: r.newStatus });
           }
         }
@@ -225,6 +236,12 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
     await sleep(SLEEP_MS);
   }
+
+  // LOG TO CONSOLE FOR RAILWAY DEBUGGING
+  if (updatesToApply.length > 0) {
+    console.log(`[Instaworld Sync] Updated ${updatesToApply.length} orders for ${store.shop_domain}`);
+  }
+
 
   // Safe bulk write
   const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE id=?");
