@@ -240,14 +240,16 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
   const costMap = {};
   if (!variantIds || !variantIds.length) return costMap;
 
+  const uniqueIds = [...new Set(variantIds.map(id => String(id)))];
   const variantToInventoryItem = {};
   const inventoryItemIds = new Set();
 
-  console.log(`[CostSync] Processing ${variantIds.length} unique variants for ${shopDomain}`);
+  console.log(`[CostSync] Requesting ${uniqueIds.length} unique variants in chunks of 25`);
 
   // Step 1: Get inventory_item_id for each variant
-  for (let i = 0; i < variantIds.length; i += CHUNK_SIZE) {
-    const chunk = variantIds.slice(i, i + CHUNK_SIZE);
+  const SMALL_CHUNK = 25;
+  for (let i = 0; i < uniqueIds.length; i += SMALL_CHUNK) {
+    const chunk = uniqueIds.slice(i, i + SMALL_CHUNK);
     let success = false;
     let attempts = 0;
 
@@ -259,48 +261,41 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
         );
 
         if (res.status === 429) {
-          console.log(`[CostSync] Rate limit hit on variants, sleeping 2s...`);
           await sleep(2000);
           attempts++;
           continue;
         }
 
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Shopify API Error (${res.status}): ${err.substring(0, 100)}`);
-        }
+        if (!res.ok) throw new Error(`Shopify API Error (${res.status})`);
 
         const data = await res.json();
         const variants = data.variants || [];
+        
         variants.forEach(v => {
-          if (v.inventory_item_id) {
-            variantToInventoryItem[String(v.id)] = String(v.inventory_item_id);
+          const vIdStr = String(v.id);
+          // Only map if it was actually in our request chunk (Shopify sometimes returns more)
+          if (chunk.includes(vIdStr) && v.inventory_item_id) {
+            variantToInventoryItem[vIdStr] = String(v.inventory_item_id);
             inventoryItemIds.add(String(v.inventory_item_id));
           }
         });
         success = true;
       } catch (e) {
-        console.error(`[CostSync] Step 1 Error (Attempt ${attempts + 1}): ${e.message}`);
         attempts++;
         await sleep(1000);
       }
     }
-    await sleep(300);
+    await sleep(200);
   }
 
-  if (inventoryItemIds.size === 0) {
-    console.log(`[CostSync] No inventory item IDs found for variants.`);
-    return costMap;
-  }
+  if (inventoryItemIds.size === 0) return costMap;
 
   // Step 2: Get cost for each inventory_item_id
   const inventoryItemIdsArray = Array.from(inventoryItemIds);
   const inventoryItemToCost = {};
 
-  console.log(`[CostSync] Fetching costs for ${inventoryItemIdsArray.length} inventory items`);
-
-  for (let i = 0; i < inventoryItemIdsArray.length; i += CHUNK_SIZE) {
-    const chunk = inventoryItemIdsArray.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < inventoryItemIdsArray.length; i += SMALL_CHUNK) {
+    const chunk = inventoryItemIdsArray.slice(i, i + SMALL_CHUNK);
     let success = false;
     let attempts = 0;
 
@@ -312,42 +307,32 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds) {
         );
 
         if (res.status === 429) {
-          console.log(`[CostSync] Rate limit hit on inventory_items, sleeping 2s...`);
           await sleep(2000);
           attempts++;
           continue;
         }
 
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Shopify API Error (${res.status}): ${err.substring(0, 100)}`);
-        }
+        if (!res.ok) throw new Error(`Shopify API Error (${res.status})`);
 
         const data = await res.json();
-        const items = data.inventory_items || [];
-        items.forEach(item => {
+        (data.inventory_items || []).forEach(item => {
           inventoryItemToCost[String(item.id)] = parseFloat(item.cost || 0);
         });
         success = true;
       } catch (e) {
-        console.error(`[CostSync] Step 2 Error (Attempt ${attempts + 1}): ${e.message}`);
         attempts++;
         await sleep(1000);
       }
     }
-    await sleep(300);
+    await sleep(200);
   }
 
   // Step 3: Map variant_id back to cost
-  let mappedCount = 0;
-  Object.keys(variantToInventoryItem).forEach(vId => {
+  uniqueIds.forEach(vId => {
     const iiId = variantToInventoryItem[vId];
-    const cost = inventoryItemToCost[iiId] || 0;
-    costMap[vId] = cost;
-    if (cost > 0) mappedCount++;
+    costMap[vId] = iiId ? (inventoryItemToCost[iiId] || 0) : 0;
   });
 
-  console.log(`[CostSync] Successfully mapped costs for ${mappedCount}/${variantIds.length} variants`);
   return costMap;
 }
 
