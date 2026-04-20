@@ -56,6 +56,9 @@ app.use('/api/watchdog', watchdogRoutes);
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
 
+const costDebugRoutes = require('./routes/cost_debug');
+app.use('/api/cost-debug', costDebugRoutes);
+
 // FINANCE ROUTES
 const financeRoutes = require('./routes/finance');
 app.use('/api/finance', financeRoutes);
