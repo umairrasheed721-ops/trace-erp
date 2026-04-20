@@ -60,6 +60,14 @@ app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISO
 const costDebugRoutes = require('./routes/cost_debug');
 app.use('/api/cost-debug', costDebugRoutes);
 
+// NUCLEAR FIX: Ensure production DB always has the correct URL
+try {
+  db.exec(`UPDATE stores SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment' WHERE instaworld_track_url LIKE '%app.instaworld.pk%'`);
+  console.log('✅ Production URL Fix applied.');
+} catch (e) {
+  console.error('❌ Failed to apply URL fix:', e.message);
+}
+
 app.get('/api/sync-log', (req, res) => {
   try {
     const logs = db.prepare('SELECT * FROM sync_audit ORDER BY timestamp DESC LIMIT 200').all();
