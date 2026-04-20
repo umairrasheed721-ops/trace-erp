@@ -135,8 +135,14 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const orders = db.prepare(`
     SELECT id, tracking_number, delivery_status FROM orders
     WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
-    AND (LOWER(courier) IN ('instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs', 'private rider')
-         OR courier LIKE '%Insta%' OR courier IS NULL OR courier = '')
+    AND (
+      TRIM(LOWER(courier)) IN ('instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs', 'private rider')
+      OR courier LIKE '%Insta%' 
+      OR courier LIKE '%Leopard%'
+      OR courier LIKE '%TCS%'
+      OR courier IS NULL 
+      OR courier = ''
+    )
   `).all(storeId);
 
   const toProcess = orders.filter(o => {
