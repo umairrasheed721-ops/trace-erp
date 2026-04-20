@@ -163,64 +163,67 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
   const trackOne = async (order, apiKey) => {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-
       const res = await fetch(trackUrl, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'api-key': apiKey // Some versions of the API want it in headers
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          tracking_number: order.tracking_number, 
-          trackingNumber: order.tracking_number, // Fallback key name
+          tracking_number: String(order.tracking_number).trim(), 
           api_key: apiKey 
-        }),
-        signal: controller.signal
+        })
       });
-      clearTimeout(timeout);
 
       if (!res.ok) return { status: res.status, order, newStatus: null };
 
       const data = await res.json();
       let newStatus = null;
 
-      // Robust response parsing for different InstaWorld versions
+      // Logic from working Apps Script: array of history events
       if (Array.isArray(data) && data.length > 0) {
-        newStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription || data[data.length - 1]?.status_description;
+        newStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
       } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-        newStatus = data.data[data.data.length - 1]?.status || data.data[data.data.length - 1]?.statusDescription;
-      } else if (data?.current_status) {
-        newStatus = data.current_status;
+        newStatus = data.data[data.data.length - 1]?.status;
       } else if (data?.status) {
         newStatus = data.status;
-      } else if (data?.transactionStatus) {
-        newStatus = data.transactionStatus;
       }
 
       return { status: 200, order, newStatus };
     } catch (err) {
-      console.error(`Instaworld Fetch Error [${order.tracking_number}]:`, err.message);
       return { status: 0, order, newStatus: null };
     }
   };
 
-  // Process in smaller batches to avoid rate limits
-  for (const batch of chunks(toProcess, 5)) {
+  for (const batch of chunks(toProcess, 10)) {
+    // Try Primary Key
     const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
-    
+    const retryOrders = [];
+
     for (const r of primaryResults) {
-      if (r && r.status === 200 && r.newStatus) {
-        if (String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase()) {
-          updatesToApply.push({ id: r.order.id, status: String(r.newStatus) });
+      if (r.status === 200 && r.newStatus) {
+        if (String(r.newStatus).toLowerCase() !== (r.order.delivery_status || '').toLowerCase()) {
+          updatesToApply.push({ id: r.order.id, status: r.newStatus });
+        }
+      } else if (r.status !== 404 && apiKeys[1]) {
+        // Retry any failure (429, 500, or empty result) with backup key
+        retryOrders.push(r.order);
+      }
+    }
+
+    // Try Backup Key for failures
+    if (retryOrders.length > 0) {
+      await sleep(2000);
+      const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
+      for (const r of backupResults) {
+        if (r.status === 200 && r.newStatus) {
+          if (String(r.newStatus).toLowerCase() !== (r.order.delivery_status || '').toLowerCase()) {
+            updatesToApply.push({ id: r.order.id, status: r.newStatus });
+          }
         }
       }
     }
 
     processed += batch.length;
     if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
-    await sleep(1500);
+    await sleep(SLEEP_MS);
   }
 
   // Safe bulk write
