@@ -56,6 +56,14 @@ app.use('/api/watchdog', watchdogRoutes);
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
 
+// DEBUG ROUTE
+const debugRoutes = require('./routes/debug');
+app.use('/api/debug', debugRoutes);
+
+// FINANCE ROUTES
+const financeRoutes = require('./routes/finance');
+app.use('/api/finance', financeRoutes);
+
 // Catch-all route to serve the React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -65,6 +73,3 @@ app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
   schedulerInit();
 });
-// DEBUG ROUTE
-const debugRoutes = require('./routes/debug');
-app.use('/api/debug', debugRoutes);
