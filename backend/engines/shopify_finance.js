@@ -82,8 +82,10 @@ async function processSmartRestock(store, orderId, locationId) {
 }
 
 async function appendShopifyNote(store, orderId, fullNoteText) {
-  // Use a timestamp to bypass any API caching
-  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,note&t=${Date.now()}`);
+  const t = Date.now();
+  console.log(`[ShopifyNote] Processing order ${orderId} at ${t}`);
+  
+  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,note&t=${t}`);
   if (res.ok) {
     const order = (await res.json()).order;
     const currentNote = order.note || '';
@@ -96,15 +98,15 @@ async function appendShopifyNote(store, orderId, fullNoteText) {
     for (let line of lines) {
       if (!line.trim()) continue;
 
-      const refMatch = line.match(/Ref:\s*([^\s|]+)/);
+      // Extract reference - be more flexible (look for CPR pattern or Ref: prefix)
+      const refMatch = line.match(/Ref:\s*([^\s|]+)/) || line.match(/(CPR-[A-Z0-9-]+)/i);
       const ref = refMatch ? refMatch[1] : null;
 
       if (ref) {
         const cleanRef = ref.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
         
-        // Skip if already in Shopify OR already in this consolidated batch
         if (cleanCurrentNote.includes(cleanRef) || seenRefsInThisBatch.has(cleanRef)) {
-          console.log(`⏭️ Duplicate Ref detected: ${ref}. Skipping line.`);
+          console.log(`[ShopifyNote] Skip duplicate ref ${ref} for order ${orderId}`);
           continue;
         }
         seenRefsInThisBatch.add(cleanRef);
@@ -113,15 +115,24 @@ async function appendShopifyNote(store, orderId, fullNoteText) {
       newLines.push(line.trim());
     }
 
-    if (newLines.length === 0) return;
+    if (newLines.length === 0) {
+      console.log(`[ShopifyNote] All notes in batch were duplicates for order ${orderId}`);
+      return;
+    }
 
     const finalNoteToAppend = newLines.join('\n');
     const newNote = currentNote ? `${currentNote}\n${finalNoteToAppend}` : finalNoteToAppend;
 
-    await shopifyFetch(store, `orders/${orderId}.json`, {
+    console.log(`[ShopifyNote] Updating Shopify order ${orderId} with ${newLines.length} new lines.`);
+    const putRes = await shopifyFetch(store, `orders/${orderId}.json`, {
       method: 'PUT',
       body: JSON.stringify({ order: { id: orderId, note: newNote } })
     });
+    
+    if (!putRes.ok) {
+      const errText = await putRes.text();
+      console.error(`[ShopifyNote] PUT failed for ${orderId}: ${errText}`);
+    }
   }
 }
 

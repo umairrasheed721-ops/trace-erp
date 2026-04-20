@@ -42,32 +42,51 @@ export default function FinanceManager() {
     setResults([])
 
     try {
-      const res = await fetch(`/api/finance/bulk-update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: activeStoreId,
-          rows: parsedRows,
-          masterKey
-        })
-      })
-      
-      let data;
-      try {
-        data = await res.json()
-      } catch (e) {
-        throw new Error(`Invalid server response (Status: ${res.status}). The server might have crashed.`)
+      // Chunking logic to prevent 503 timeouts and respect rate limits
+      const CHUNK_SIZE = 10
+      const chunks = []
+      for (let i = 0; i < parsedRows.length; i += CHUNK_SIZE) {
+        chunks.push(parsedRows.slice(i, i + CHUNK_SIZE))
       }
 
-      if (data.success) {
-        setResults(data.results)
-        setSummary(data.summary)
-        setPasteData('')
-      } else {
-        alert('Error: ' + (data.error || 'Unknown server error'))
+      let allResults = []
+      let finalSummary = { processedCount: 0, ghostCount: 0, auditCount: 0 }
+
+      for (let i = 0; i < chunks.length; i++) {
+        const res = await fetch(`/api/finance/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            rows: chunks[i],
+            masterKey
+          })
+        })
+        
+        let data;
+        try {
+          data = await res.json()
+        } catch (e) {
+          throw new Error(`Batch ${i+1}/${chunks.length} failed: Invalid response (Status: ${res.status}).`)
+        }
+
+        if (data.success) {
+          allResults = [...allResults, ...data.results]
+          finalSummary.processedCount += data.summary.processedCount
+          finalSummary.ghostCount += data.summary.ghostCount
+          finalSummary.auditCount += data.summary.auditCount
+          
+          // Update partial results so user sees progress
+          setResults([...allResults])
+          setSummary({ ...finalSummary })
+        } else {
+          throw new Error(`Batch ${i+1}/${chunks.length} Error: ${data.error || 'Unknown'}`)
+        }
       }
+
+      setPasteData('')
     } catch (e) {
-      alert('Network/Server Error: ' + e.message)
+      alert('Processing Error: ' + e.message)
     } finally {
       setIsProcessing(false)
     }
