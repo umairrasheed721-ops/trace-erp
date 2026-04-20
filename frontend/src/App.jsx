@@ -171,7 +171,7 @@ function Sidebar() {
           </select>
         )}
         <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
-          TRACE ERP v1.5.1
+          TRACE ERP v1.5.2
         </div>
       </div>
     </aside>
