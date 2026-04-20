@@ -94,10 +94,14 @@ router.get('/daily', (req, res) => {
       const grossProfit = deliveredSale - cgs;
       const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
       
-      // As requested by user: est courier is 200 * total dispatched
-      const estCourier = 200 * totalDispatched;
+      // NEW LOGIC: Use Actual Courier Fees from Finance Paste, fallback to 200 for unreconciled dispatched orders
+      const actualCourierFee = day.total_courier_fee || 0;
+      const reconciledCount = db.prepare('SELECT COUNT(id) as count FROM orders WHERE store_id = ? AND substr(order_date, 1, 10) = ? AND courier_fee > 0').get(store_id, dateStr).count;
+      const unreconciledDispatched = Math.max(0, totalDispatched - reconciledCount);
       
-      const pnl = grossProfit - taxPaid - totalMarketing - estCourier - actualExp;
+      const dynamicCourierFee = actualCourierFee + (unreconciledDispatched * 200);
+      
+      const pnl = grossProfit - taxPaid - totalMarketing - dynamicCourierFee - actualExp;
       
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
@@ -121,7 +125,7 @@ router.get('/daily', (req, res) => {
         marPercent,
         marketingSpend,
         tiktokMarketing,
-        estCourier,
+        estCourier: dynamicCourierFee, // Show the mixed Actual+Estimated fee
         actualExp,
         pnl,
         delPercent,

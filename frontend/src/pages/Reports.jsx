@@ -275,7 +275,7 @@ export default function Reports() {
                 <th className="head-out">Mar %</th>
                 <th className="head-out">Meta Ads ✏️</th>
                 <th className="head-out">Tiktok ✏️</th>
-                <th className="head-out">Courier Fee</th>
+                <th className="head-out">Courier Fee (Actual/Est)</th>
                 <th className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>Actual Exp ✏️</th>
                 
                 <th className="head-pnl" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>FINAL PNL</th>
