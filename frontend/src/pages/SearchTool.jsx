@@ -120,7 +120,7 @@ export default function SearchTool() {
   useEffect(() => {
     if (!activeStoreId) return
     setLoading(true)
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000`)
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })

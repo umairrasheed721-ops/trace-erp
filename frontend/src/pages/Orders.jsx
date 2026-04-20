@@ -35,7 +35,7 @@ export default function Orders() {
     if (status) params.set('status', status)
     if (courier) params.set('courier', courier)
 
-    fetch(`/api/orders?${params}`)
+    fetch(`/api/orders?${params}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setOrders(data.orders || []); setTotal(data.total || 0); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
