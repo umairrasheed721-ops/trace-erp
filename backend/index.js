@@ -57,13 +57,8 @@ app.use((req, res, next) => {
 // Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/stores', storesRoutes);
-app.use('/api/orders', ordersRoutes);
-app.use('/api/tracking', trackingRoutes);
-app.use('/api/monitors', monitorsRoutes);
-app.use('/api/watchdog', watchdogRoutes);
+// Scheduler (DISABLED TEMPORARILY TO DIAGNOSE HANG)
+// schedulerInit();
 
 app.get('/api/crash-log', (req, res) => {
   const fs = require('fs');
@@ -72,13 +67,18 @@ app.get('/api/crash-log', (req, res) => {
   res.send(fs.readFileSync('crash.log', 'utf8'));
 });
 
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/stores', storesRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/tracking', trackingRoutes);
+app.use('/api/monitors', monitorsRoutes);
+app.use('/api/watchdog', watchdogRoutes);
+app.use('/api/finance', financeRoutes);
+app.use('/api/reports', reportsRoutes);
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
-
-app.use('/api/finance', financeRoutes);
-
-// REPORTS ROUTES
-app.use('/api/reports', reportsRoutes);
 
 // Catch-all route to serve the React app
 app.get('*', (req, res) => {
@@ -87,5 +87,4 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
-  schedulerInit();
 });
