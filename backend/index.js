@@ -59,6 +59,16 @@ app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISO
 const costDebugRoutes = require('./routes/cost_debug');
 app.use('/api/cost-debug', costDebugRoutes);
 
+app.get('/api/sync-log', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const logPath = path.join(__dirname, 'sync_audit.log');
+  if (!fs.existsSync(logPath)) return res.send('Log file not found yet. Run sync first.');
+  const content = fs.readFileSync(logPath, 'utf8');
+  res.header('Content-Type', 'text/plain');
+  res.send(content.split('\n').reverse().join('\n')); // Show latest first
+});
+
 // FINANCE ROUTES
 const financeRoutes = require('./routes/finance');
 app.use('/api/finance', financeRoutes);
