@@ -26,7 +26,11 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status IN ('Returned', 'RTO', 'Returned to Origin') THEN 1 ELSE 0 END) as restocked,
         SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN tracking_number IS NULL OR tracking_number = '' THEN 1 ELSE 0 END) as without_tracking_id,
-        SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending
+        SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending,
+        
+        -- Reconciliation Stats (for PNL)
+        SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END) as actual_courier_fees,
+        SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END) as reconciled_count
       FROM orders
       WHERE store_id = ?
       GROUP BY substr(order_date, 1, 10)
@@ -94,14 +98,17 @@ router.get('/daily', (req, res) => {
       const grossProfit = deliveredSale - cgs;
       const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
       
-      // NEW LOGIC: Use Actual Courier Fees from Finance Paste, fallback to 200 for unreconciled dispatched orders
-      const actualCourierFee = day.total_courier_fee || 0;
-      const reconciledCount = db.prepare('SELECT COUNT(id) as count FROM orders WHERE store_id = ? AND substr(order_date, 1, 10) = ? AND courier_fee > 0').get(store_id, dateStr).count;
+      // 🚚 DYNAMIC COURIER LOGIC (PRE-AGGREGATED)
+      const estCourierFee = totalDispatched * 200;
+      const actualCourierFee = day.actual_courier_fees || 0;
+      const reconciledCount = day.reconciled_count || 0;
+      const courierDiff = actualCourierFee - (reconciledCount * 200);
+
+      // Hybrid: Actuals for reconciled + 200 for unreconciled
       const unreconciledDispatched = Math.max(0, totalDispatched - reconciledCount);
+      const hybridCourierFee = actualCourierFee + (unreconciledDispatched * 200);
       
-      const dynamicCourierFee = actualCourierFee + (unreconciledDispatched * 200);
-      
-      const pnl = grossProfit - taxPaid - totalMarketing - dynamicCourierFee - actualExp;
+      const finalPnl = grossProfit - taxPaid - totalMarketing - hybridCourierFee - actualExp;
       
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
