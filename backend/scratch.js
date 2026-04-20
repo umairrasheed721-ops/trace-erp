@@ -1,4 +1,4 @@
-const { syncPostEx } = require('./engines/tracking');
+const { syncInstaworld } = require('./engines/tracking');
 const db = require('./db');
 
 async function test() {
@@ -6,16 +6,13 @@ async function test() {
   console.log("Store:", store);
 
   // insert dummy order
-  db.prepare("INSERT INTO orders (store_id, shopify_order_id, tracking_number, courier, delivery_status) VALUES (?, ?, ?, ?, ?)").run(store.id, "TEST-123", "20120050021771", "PostEx", "Pending");
+  db.prepare("INSERT INTO orders (store_id, shopify_order_id, tracking_number, courier, delivery_status) VALUES (?, ?, ?, ?, ?)").run(store.id, "TEST-IW-123", "IW123456789", "Instaworld", "Pending");
 
-  const orderBefore = db.prepare("SELECT * FROM orders WHERE shopify_order_id = 'TEST-123'").get();
-  console.log("Before Sync:", orderBefore.delivery_status);
+  await syncInstaworld(store);
 
-  await syncPostEx(store);
-
-  const orderAfter = db.prepare("SELECT * FROM orders WHERE shopify_order_id = 'TEST-123'").get();
+  const orderAfter = db.prepare("SELECT * FROM orders WHERE shopify_order_id = 'TEST-IW-123'").get();
   console.log("After Sync:", orderAfter.delivery_status);
 
-  db.prepare("DELETE FROM orders WHERE shopify_order_id = 'TEST-123'").run();
+  db.prepare("DELETE FROM orders WHERE shopify_order_id = 'TEST-IW-123'").run();
 }
 test();

@@ -27,7 +27,12 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   }
 
   // Base URL — ensure trailing slash
-  const baseUrl = (postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/').replace(/\/?$/, '/');
+  let rawUrl = postex_track_url;
+  // If the DB has the bad v3 bulk endpoint saved as the default, override it for individual v1 tracking
+  if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
+    rawUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+  }
+  const baseUrl = rawUrl.replace(/\/?$/, '/');
 
   const orders = db.prepare(`
     SELECT id, tracking_number, delivery_status FROM orders

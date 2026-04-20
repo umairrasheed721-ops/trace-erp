@@ -29,7 +29,7 @@ function initDb() {
       postex_token TEXT,
       instaworld_key TEXT,
       instaworld_key_backup TEXT,
-      postex_track_url TEXT DEFAULT 'https://api.postex.pk/services/integration/api/order/v3/get-multiple-order-detail-by-tracking-numbers',
+      postex_track_url TEXT DEFAULT 'https://api.postex.pk/services/integration/api/order/v1/track-order/',
       instaworld_track_url TEXT DEFAULT 'https://app.instaworld.pk/api/track-order',
       last_synced_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))

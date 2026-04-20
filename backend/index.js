@@ -65,3 +65,6 @@ app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
   schedulerInit();
 });
+// DEBUG ROUTE
+const debugRoutes = require('./routes/debug');
+app.use('/api/debug', debugRoutes);
