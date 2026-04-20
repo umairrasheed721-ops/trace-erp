@@ -142,15 +142,30 @@ export default function FinanceManager() {
               </select>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 12, 
+              padding: '12px 16px',
+              backgroundColor: syncToShopify ? 'rgba(52, 211, 153, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              border: `1px solid ${syncToShopify ? '#34d399' : '#ef4444'}`,
+              borderRadius: 8,
+              transition: 'all 0.3s ease'
+            }}>
               <input 
                 type="checkbox" 
                 id="syncToShopify" 
                 checked={syncToShopify} 
                 onChange={e => setSyncToShopify(e.target.checked)} 
-                style={{ width: 18, height: 18 }}
+                style={{ width: 20, height: 20, cursor: 'pointer' }}
               />
-              <label htmlFor="syncToShopify" style={{ fontWeight: 600, cursor: 'pointer' }}>Sync Updates to Shopify?</label>
+              <label htmlFor="syncToShopify" style={{ 
+                fontWeight: 600, 
+                cursor: 'pointer',
+                color: syncToShopify ? '#34d399' : '#ef4444'
+              }}>
+                {syncToShopify ? '✅ Sync Updates to Shopify' : '🚫 Update ERP ONLY (Skip Shopify)'}
+              </label>
             </div>
 
             <div>
