@@ -3,6 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
+const fs = require('fs');
+
+process.on('uncaughtException', (err) => {
+  fs.appendFileSync('crash.log', `[${new Date().toISOString()}] UNCAUGHT: ${err.stack}\n`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  fs.appendFileSync('crash.log', `[${new Date().toISOString()}] REJECTION: ${reason}\n`);
+});
 
 const authRoutes = require('./routes/auth');
 const ordersRoutes = require('./routes/orders');
@@ -55,6 +64,13 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/monitors', monitorsRoutes);
 app.use('/api/watchdog', watchdogRoutes);
+
+app.get('/api/crash-log', (req, res) => {
+  const fs = require('fs');
+  if (!fs.existsSync('crash.log')) return res.send('No crash log found.');
+  res.header('Content-Type', 'text/plain');
+  res.send(fs.readFileSync('crash.log', 'utf8'));
+});
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
