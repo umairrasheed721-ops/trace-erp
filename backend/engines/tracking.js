@@ -206,6 +206,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     }
   };
 
+  const updatesToApply = [];
+  let processed = 0;
+
   const fs = require('fs');
   const LOG_PATH = path.join(__dirname, '..', 'sync_audit.log');
   const log = (msg) => fs.appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${msg}\n`);
