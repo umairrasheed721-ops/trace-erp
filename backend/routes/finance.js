@@ -143,32 +143,30 @@ router.post('/bulk-update', async (req, res) => {
           const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
 
           if (type === 'D') {
-            if (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted') {
-              results.push({ ...row, status: '🛑 Skipped', recommendation: 'Already Paid', netPayout: 0, courierName: order.courier });
-              continue;
-            }
-
             try {
               let balance = 0;
+              let alreadyPaidInERP = (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted');
+              
               if (syncToShopify) {
                 const financials = await getShopifyFinancials(store, order.shopify_order_id);
                 balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
               }
 
-              if (syncToShopify && amount > balance) {
-                results.push({ ...row, status: '🛑 Skipped', recommendation: `Amt > Bal`, netPayout: 0, courierName: order.courier, balance });
-              } else {
-                if (syncToShopify) {
-                  await captureShopifyPayment(store, order.shopify_order_id, amount);
-                  combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
-                }
-                
-                db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
-                  .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
-                  
-                results.push({ ...row, status: '✅ Done', recommendation: (syncToShopify && amount < balance ? "⚠️ Partial" : "✅ Recorded"), netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
-                processedCount++;
+              const shouldCapture = syncToShopify && !alreadyPaidInERP && amount <= balance && amount > 0;
+
+              if (shouldCapture) {
+                await captureShopifyPayment(store, order.shopify_order_id, amount);
+                combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
               }
+
+              // ALWAYS update internal ERP database with the actual settlement data
+              db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
+                .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
+                
+              const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
+              results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
+              processedCount++;
+              
             } catch (e) {
               results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
             }
