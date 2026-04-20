@@ -30,7 +30,7 @@ function initDb() {
       instaworld_key TEXT,
       instaworld_key_backup TEXT,
       postex_track_url TEXT DEFAULT 'https://api.postex.pk/services/integration/api/order/v1/track-order/',
-      instaworld_track_url TEXT DEFAULT 'https://app.instaworld.pk/api/track-order',
+      instaworld_track_url TEXT DEFAULT 'https://one-be.instaworld.pk/logistics/v1/trackShipment',
       last_synced_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -111,7 +111,8 @@ function initDb() {
     );
   `);
 
-  // Safe schema migrations (ignore errors if columns already exist)
+  // MIGRATION: Update Instaworld URL if it's the old one
+  db.exec(`UPDATE stores SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment' WHERE instaworld_track_url LIKE '%app.instaworld.pk%'`);
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
 
