@@ -212,11 +212,6 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const updatesToApply = [];
   let processed = 0;
 
-  const logStmt = db.prepare("INSERT INTO sync_audit (tracking_number, message) VALUES (?, ?)");
-  const log = (tNum, msg) => logStmt.run(tNum, msg);
-
-  console.log(`--- Starting Instaworld Sync for ${store.shop_domain} (${toProcess.length} orders) ---`);
-
   for (const batch of chunks(toProcess, 10)) {
     const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
     const retryOrders = [];
@@ -226,14 +221,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
         if (changed) {
           updatesToApply.push({ id: r.order.id, status: r.newStatus });
-          log(r.order.tracking_number, `✅ UPDATING: ${r.order.delivery_status} -> ${r.newStatus}`);
-        } else {
-          log(r.order.tracking_number, `⚪ NO CHANGE: Status is already ${r.newStatus}`);
         }
       } else if (r.status !== 404 && apiKeys[1]) {
         retryOrders.push(r.order);
-      } else {
-        log(r.order.tracking_number, `❌ FAILED: Status Code ${r.status}`);
       }
     }
 
@@ -245,10 +235,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
           const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
           if (changed) {
             updatesToApply.push({ id: r.order.id, status: r.newStatus });
-            log(r.order.tracking_number, `✅ BACKUP UPDATE: ${r.order.delivery_status} -> ${r.newStatus}`);
           }
-        } else {
-          log(r.order.tracking_number, `❌ BACKUP FAILED: Status Code ${r.status}`);
         }
       }
     }

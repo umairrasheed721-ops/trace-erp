@@ -10,6 +10,8 @@ const trackingRoutes = require('./routes/tracking');
 const monitorsRoutes = require('./routes/monitors');
 const watchdogRoutes = require('./routes/watchdog');
 const storesRoutes = require('./routes/stores');
+const financeRoutes = require('./routes/finance');
+const reportsRoutes = require('./routes/reports');
 const schedulerInit = require('./scheduler');
 
 const app = express();
@@ -57,30 +59,6 @@ app.use('/api/watchdog', watchdogRoutes);
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
 
-const costDebugRoutes = require('./routes/cost_debug');
-app.use('/api/cost-debug', costDebugRoutes);
-
-// NUCLEAR FIX: Ensure production DB always has the correct URL
-try {
-  db.exec(`UPDATE stores SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment' WHERE instaworld_track_url LIKE '%app.instaworld.pk%'`);
-  console.log('✅ Production URL Fix applied.');
-} catch (e) {
-  console.error('❌ Failed to apply URL fix:', e.message);
-}
-
-app.get('/api/sync-log', (req, res) => {
-  try {
-    const logs = db.prepare('SELECT * FROM sync_audit ORDER BY timestamp DESC LIMIT 200').all();
-    let text = logs.map(l => `[${l.timestamp}] [${l.tracking_number}] ${l.message}`).join('\n');
-    res.header('Content-Type', 'text/plain');
-    res.send(text || 'No logs found in DB yet. Run sync first.');
-  } catch (err) {
-    res.status(500).send('Error reading logs: ' + err.message);
-  }
-});
-
-// FINANCE ROUTES
-const financeRoutes = require('./routes/finance');
 app.use('/api/finance', financeRoutes);
 
 // REPORTS ROUTES
