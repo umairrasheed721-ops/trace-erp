@@ -206,31 +206,53 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     }
   };
 
+  const fs = require('fs');
+  const LOG_PATH = path.join(__dirname, '..', 'sync_audit.log');
+  const log = (msg) => fs.appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${msg}\n`);
+
+  log(`--- Starting Instaworld Sync for ${store.shop_domain} (${toProcess.length} orders) ---`);
+
   for (const batch of chunks(toProcess, 10)) {
     const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
     const retryOrders = [];
 
     for (const r of primaryResults) {
       if (r.status === 200 && r.newStatus) {
-        if (String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase()) {
+        const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
+        if (changed) {
           updatesToApply.push({ id: r.order.id, status: r.newStatus });
+          log(`✅ UPDATING [${r.order.tracking_number}]: ${r.order.delivery_status} -> ${r.newStatus}`);
+        } else {
+          log(`⚪ NO CHANGE [${r.order.tracking_number}]: Status is already ${r.newStatus}`);
         }
       } else if (r.status !== 404 && apiKeys[1]) {
         retryOrders.push(r.order);
+      } else {
+        log(`❌ FAILED [${r.order.tracking_number}]: Status Code ${r.status}`);
       }
     }
 
     if (retryOrders.length > 0) {
+      log(`🔄 RETRYING ${retryOrders.length} orders with backup key...`);
       await sleep(2000);
       const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
       for (const r of backupResults) {
         if (r.status === 200 && r.newStatus) {
-          if (String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase()) {
+          const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
+          if (changed) {
             updatesToApply.push({ id: r.order.id, status: r.newStatus });
+            log(`✅ BACKUP UPDATE [${r.order.tracking_number}]: ${r.order.delivery_status} -> ${r.newStatus}`);
           }
+        } else {
+          log(`❌ BACKUP FAILED [${r.order.tracking_number}]: Status Code ${r.status}`);
         }
       }
     }
+
+    processed += batch.length;
+    if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
+    await sleep(SLEEP_MS);
+  }
 
     processed += batch.length;
     if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
