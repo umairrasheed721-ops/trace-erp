@@ -62,7 +62,6 @@ app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISO
 app.use('/api/finance', financeRoutes);
 
 // REPORTS ROUTES
-const reportsRoutes = require('./routes/reports');
 app.use('/api/reports', reportsRoutes);
 
 // Catch-all route to serve the React app
