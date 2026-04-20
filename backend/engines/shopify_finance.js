@@ -84,7 +84,25 @@ async function processSmartRestock(store, orderId, locationId) {
 async function appendShopifyNote(store, orderId, noteText) {
   const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,note`);
   if (res.ok) {
-    const currentNote = (await res.json()).order.note || '';
+    const order = (await res.json()).order;
+    const currentNote = order.note || '';
+    
+    // 🛡️ DEDUPLICATION LOGIC:
+    // If the exact note text OR the reference number within the note already exists, skip.
+    // Extract reference if possible (e.g. "Ref: CPR123")
+    const refMatch = noteText.match(/Ref:\s*([^\s|]+)/);
+    const ref = refMatch ? refMatch[1] : null;
+
+    if (currentNote.includes(noteText)) {
+      console.log(`⏭️ Note already exists for order ${orderId}, skipping.`);
+      return;
+    }
+    
+    if (ref && currentNote.includes(ref)) {
+      console.log(`⏭️ Reference ${ref} already exists in note for order ${orderId}, skipping.`);
+      return;
+    }
+
     const newNote = currentNote ? `${currentNote}\n${noteText}` : noteText;
     await shopifyFetch(store, `orders/${orderId}.json`, {
       method: 'PUT',
