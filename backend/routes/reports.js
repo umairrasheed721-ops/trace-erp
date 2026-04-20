@@ -29,8 +29,8 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending,
         
         -- Reconciliation Stats (for PNL)
-        SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END) as actual_courier_fees,
-        SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END) as reconciled_count
+        COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
+        COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count
       FROM orders
       WHERE store_id = ?
       GROUP BY substr(order_date, 1, 10)
@@ -99,7 +99,7 @@ router.get('/daily', (req, res) => {
       const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
       
       // 🚚 DYNAMIC COURIER LOGIC (PRE-AGGREGATED)
-      const estCourierFee = totalDispatched * 200;
+      const estCourierFee = (totalDispatched || 0) * 200;
       const actualCourierFee = day.actual_courier_fees || 0;
       const reconciledCount = day.reconciled_count || 0;
       const courierDiff = actualCourierFee - (reconciledCount * 200);
