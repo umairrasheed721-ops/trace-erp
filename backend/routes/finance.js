@@ -128,6 +128,7 @@ router.post('/bulk-update', async (req, res) => {
 
       for (const orderIdKey in ordersToProcess) {
         const { order, rows: orderRows } = ordersToProcess[orderIdKey];
+        const combinedNotes = [];
         
         for (const row of orderRows) {
           const type = String(row.type || '').toUpperCase().trim();
@@ -154,8 +155,7 @@ router.post('/bulk-update', async (req, res) => {
                 results.push({ ...row, status: '🛑 Skipped', recommendation: `Amt > Bal`, netPayout: 0, courierName: order.courier, balance });
               } else {
                 await captureShopifyPayment(store, order.shopify_order_id, amount);
-                const noteText = ` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`;
-                await appendShopifyNote(store, order.shopify_order_id, noteText);
+                combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
                 
                 db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
                   .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
@@ -168,8 +168,7 @@ router.post('/bulk-update', async (req, res) => {
             }
           } else if (type === 'R') {
             try {
-              const noteText = ` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`;
-              await appendShopifyNote(store, order.shopify_order_id, noteText);
+              combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`);
               
               let delStatus = order.delivery_status;
               if (delStatus !== 'Return Received') delStatus = 'Returned';
@@ -182,6 +181,15 @@ router.post('/bulk-update', async (req, res) => {
             }
           } else {
             results.push({ ...row, status: '⚠️ Invalid Type', recommendation: "Use 'D' or 'R'" });
+          }
+        }
+
+        // Bulk apply all notes for this order in one shot
+        if (combinedNotes.length > 0) {
+          try {
+            await appendShopifyNote(store, order.shopify_order_id, combinedNotes.join('\n'));
+          } catch (e) {
+            console.error(`Failed to append notes for ${order.shopify_order_id}:`, e);
           }
         }
       }
