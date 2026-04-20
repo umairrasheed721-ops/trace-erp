@@ -1,0 +1,30 @@
+HTTP/2 200 
+date: Mon, 20 Apr 2026 07:09:56 GMT
+content-type: application/json; charset=utf-8
+vary: Accept-Encoding,Sec-Fetch-Site
+referrer-policy: origin-when-cross-origin
+x-frame-options: DENY
+x-stats-userid: 
+x-stats-apiclientid: 327292518401
+x-stats-apipermissionid: 654673182979
+x-shopify-api-version: 2025-07
+x-shopify-api-version-warning: https://shopify.dev/concepts/about-apis/versioning
+x-shopify-shop-api-call-limit: 1/40
+strict-transport-security: max-age=7889238
+server-timing: processing;dur=59, verdict_flag_enabled;desc="count=8";dur=0.304, _y;desc="b87b794b-9017-4499-beff-bac590a7bb33", _s;desc="5aa4397d-5388-47bf-9818-398a4b251c0f"
+content-security-policy: default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval' https://* shopify-pos://*; block-all-mixed-content; child-src 'self' https://* shopify-pos://*; connect-src 'self' wss://* https://*; frame-ancestors 'none'; img-src 'self' data: blob: https:; script-src https://cdn.shopify.com https://cdn.shopifycdn.net https://checkout.pci.shopifyinc.com https://checkout.pci.shopifyinc.com/build/04ed4e1/card_fields.js https://api.stripe.com https://mpsnare.iesnare.com https://appcenter.intuit.com https://www.paypal.com https://js.braintreegateway.com https://c.paypal.com https://maps.googleapis.com https://www.google-analytics.com https://v.shopify.com 'self' 'unsafe-inline' 'unsafe-eval'; upgrade-insecure-requests; report-uri /csp-report?source%5Baction%5D=show&source%5Bapp%5D=Shopify&source%5Bcontroller%5D=admin%2Fshops&source%5Bsection%5D=admin_api&source%5Buuid%5D=3c67bd05-9fce-4ff7-9649-d25a6140a3e9-1776668995; report-to shopify-csp
+x-content-type-options: nosniff
+x-download-options: noopen
+x-permitted-cross-domain-policies: none
+x-xss-protection: 1; mode=block
+reporting-endpoints: shopify-csp="/csp-report?source%5Baction%5D=show&source%5Bapp%5D=Shopify&source%5Bcontroller%5D=admin%2Fshops&source%5Bsection%5D=admin_api&source%5Buuid%5D=3c67bd05-9fce-4ff7-9649-d25a6140a3e9-1776668995"
+x-dc: gcp-europe-west1,gcp-us-central1,gcp-us-central1
+x-request-id: 3c67bd05-9fce-4ff7-9649-d25a6140a3e9-1776668995
+alt-svc: h3=":443"; ma=86400
+cf-cache-status: DYNAMIC
+report-to: {"endpoints":[{"url":"https:\/\/a.nel.cloudflare.com\/report\/v4?s=67mYgTU69C8UtXwf2OJn9IBQp9qhqpUGcYnMX%2FKdSO6cd335hGiqYjJCbhrksL%2BZhoMDydFsXSKqylBegTQcrt8eNp37Hjl8cOC9ykUpPoASDWNSeyYigffWybbVm4UxSXIwYKk2u9E%3D"}],"group":"cf-nel","max_age":604800}
+nel: {"success_fraction":0.01,"report_to":"cf-nel","max_age":604800}
+server-timing: cfRequestDuration;dur=220.999956
+server: cloudflare
+cf-ray: 9ef25387f9a3d3b5-FRA
+
