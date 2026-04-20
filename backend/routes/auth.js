@@ -14,7 +14,8 @@ router.post('/url', (req, res) => {
   }
 
   const cleanDomain = shop_domain.replace('https://', '').replace('http://', '').replace(/\/$/, '').trim();
-  const appUrl = process.env.APP_URL || 'http://localhost:3001';
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null;
+  const appUrl = process.env.APP_URL || railwayDomain || 'http://localhost:3001';
   const redirectUri = `${appUrl}/api/auth/callback`;
 
   // Temporarily store setup data in DB with a placeholder token
