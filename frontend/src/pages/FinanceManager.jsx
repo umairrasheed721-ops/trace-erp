@@ -51,16 +51,23 @@ export default function FinanceManager() {
           masterKey
         })
       })
-      const data = await res.json()
+      
+      let data;
+      try {
+        data = await res.json()
+      } catch (e) {
+        throw new Error(`Invalid server response (Status: ${res.status}). The server might have crashed.`)
+      }
+
       if (data.success) {
         setResults(data.results)
         setSummary(data.summary)
         setPasteData('')
       } else {
-        alert('Error: ' + data.error)
+        alert('Error: ' + (data.error || 'Unknown server error'))
       }
     } catch (e) {
-      alert('Network Error: ' + e.message)
+      alert('Network/Server Error: ' + e.message)
     } finally {
       setIsProcessing(false)
     }
