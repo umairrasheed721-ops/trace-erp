@@ -183,10 +183,11 @@ function Topbar() {
         if (data && data.status && data.status !== 'idle') {
           if (data.status === 'Sync Complete') {
              if (!isComplete) {
-               addToast('✅ Sync complete!', 'success');
+               addToast('✅ Sync complete! Refreshing page...', 'success');
                isComplete = true;
                setSyncing(false);
                setProgress(null);
+               setTimeout(() => window.location.reload(), 1500);
              }
           } else {
             setSyncing(true);
