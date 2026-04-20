@@ -93,11 +93,11 @@ export default function Reports() {
         acc[month] = {
           month,
           deliveredSale: 0, cgs: 0, marketingSpend: 0, tiktokMarketing: 0,
-          estCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
+          estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
           pending: 0, totalDispatched: 0, delivered: 0, restocked: 0,
           intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0,
-          totalSale: 0 // to calc roas
+          totalSale: 0
         };
       }
       
@@ -107,6 +107,8 @@ export default function Reports() {
       m.marketingSpend += row.marketingSpend || 0;
       m.tiktokMarketing += row.tiktokMarketing || 0;
       m.estCourier += row.estCourier || 0;
+      m.actualCourier += row.actualCourier || 0;
+      m.hybridCourier += row.hybridCourier || 0;
       m.actualExp += row.actualExp || 0;
       m.landedOrders += row.landedOrders || 0;
       m.cancelations += row.cancelations || 0;
@@ -121,9 +123,6 @@ export default function Reports() {
       m.diffCorrection += row.diffCorrection || 0;
       m.deliveredPaymentPending += row.deliveredPaymentPending || 0;
       
-      // We can approximate totalSale by reverse engineering roas Meta if available, or just keeping the raw value.
-      // Wait, in daily we sent totalSale? No, we used it for ROAS but didn't output totalSale directly.
-      // Let's approximate it. ROAS = totalSale / totalMarketing.
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
       m.totalSale += (row.roasMeta * totalMarketing);
 
@@ -135,20 +134,17 @@ export default function Reports() {
       const netSales = m.deliveredSale - taxPaid;
       const grossProfit = m.deliveredSale - m.cgs;
       const marPercent = m.deliveredSale > 0 ? (totalMarketing / m.deliveredSale) * 100 : 0;
-      const pnl = grossProfit - taxPaid - totalMarketing - m.estCourier - m.actualExp;
+      const courierDiff = m.actualCourier - (m.estCourier); // Simplified for monthly diff or just sum row.courierDiff
+      const pnl = grossProfit - taxPaid - totalMarketing - m.hybridCourier - m.actualExp;
       const canPercent = m.landedOrders > 0 ? (m.cancelations / m.landedOrders) * 100 : 0;
       const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
-      const disPercent = m.landedOrders > 0 ? (m.totalDispatched / m.landedOrders) * 100 : 0;
       const aov = m.delivered > 0 ? (m.deliveredSale / m.delivered) : 0;
       const roasMeta = totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0;
       const cpaAvg = m.landedOrders > 0 ? (totalMarketing / m.landedOrders) : 0;
       const netOrders = m.landedOrders - m.cancelations;
       const netCpaAvg = netOrders > 0 ? (totalMarketing / netOrders) : 0;
 
-      return {
-        ...m, aov, cgsPercent, netSales, taxPaid, grossProfit, marPercent,
-        pnl, canPercent, delPercent, disPercent, roasMeta, cpaAvg, netCpaAvg
-      };
+      return { ...m, aov, cgsPercent, taxPaid, netSales, grossProfit, marPercent, pnl, canPercent, delPercent, roasMeta, cpaAvg, netCpaAvg, courierDiff };
     }).sort((a, b) => b.month.localeCompare(a.month));
   }, [dailyData]);
 
