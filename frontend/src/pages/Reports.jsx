@@ -449,7 +449,7 @@ export default function Reports() {
                     let content = row[col.id];
                     let style = {};
                     if (col.id === 'date') return <td key={col.id} className="sticky-col">{row.date || row.month}</td>;
-                    if (['aov', 'deliveredSale', 'cgs', 'taxPaid', 'grossProfit', 'estCourier', 'actualCourier', 'courierDiff', 'actualExp', 'pnl', 'paymentPaid'].includes(col.id)) content = formatCurrency(row[col.id]);
+                    if (['aov', 'deliveredSale', 'cgs', 'taxPaid', 'grossProfit', 'estCourier', 'actualCourier', 'courierDiff', 'actualExp', 'pnl', 'paymentPaid', 'marketingSpend', 'tiktokMarketing', 'cpaAvg', 'netCpaAvg'].includes(col.id)) content = formatCurrency(row[col.id]);
                     if (['cgsPercent', 'marPercent', 'delPercent', 'canPercent'].includes(col.id)) content = formatPercent(row[col.id]);
                     if (['roasMeta'].includes(col.id)) content = formatNumber(row[col.id]);
                     if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
