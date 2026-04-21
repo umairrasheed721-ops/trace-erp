@@ -760,10 +760,11 @@ export default function SearchTool() {
                           <div className="flex items-center gap-2">
                             <button 
                               onClick={() => fetchOrderDetails(o.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.9rem', padding: 0 }}
+                              className="btn btn-primary btn-sm"
+                              style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
                               title="Edit Full Order"
                             >
-                              📝
+                              ✏️ EDIT
                             </button>
                             <a href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
                               {o.ref_number || o.shopify_order_id}
