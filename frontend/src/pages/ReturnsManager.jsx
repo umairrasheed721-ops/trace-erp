@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useApp } from '../App'
+import { useApp } from '../context/AppContext'
 
 export default function ReturnsManager() {
   const { activeStoreId } = useApp()

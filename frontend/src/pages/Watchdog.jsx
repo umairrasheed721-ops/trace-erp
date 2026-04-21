@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useApp } from '../App'
+import { useApp } from '../context/AppContext'
 
 const VERDICT_CLASS = {
   'FAKE': 'verdict-fake',

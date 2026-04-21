@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Orders from './pages/Orders'
@@ -13,15 +13,7 @@ import Connect from './pages/Connect'
 import Login from './pages/Login'
 import Users from './pages/Users'
 
-// ─── Global Context ───────────────────────
-export const AppContext = createContext(null)
-export const useApp = () => useContext(AppContext)
-
-// ─── Toast System ─────────────────────────
-export function useToast() {
-  const { addToast } = useApp()
-  return addToast
-}
+import { AppContext, useApp } from './context/AppContext'
 
 function ToastContainer({ toasts }) {
   return (

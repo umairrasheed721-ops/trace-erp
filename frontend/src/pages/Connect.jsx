@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useApp } from '../App'
+import { useApp } from '../context/AppContext'
 
 export default function Connect() {
   const { stores, setStores, addToast, setActiveStoreId } = useApp()
