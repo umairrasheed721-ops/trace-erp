@@ -50,6 +50,7 @@ function initDb() {
       items_count INTEGER,
       notes TEXT,
       product_titles TEXT,
+      line_items TEXT, -- Store JSON data of items (title, qty, price, image)
       delivery_status TEXT DEFAULT 'Pending',
       payment_status TEXT DEFAULT 'Pending',
       postex_weight REAL DEFAULT 0.5,
@@ -65,6 +66,19 @@ function initDb() {
       created_timestamp TEXT DEFAULT (datetime('now')),
       order_source TEXT DEFAULT 'Direct / Web',
       UNIQUE(store_id, shopify_order_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      shopify_product_id TEXT,
+      shopify_variant_id TEXT,
+      sku TEXT,
+      title TEXT,
+      image_url TEXT,
+      price REAL,
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(store_id, shopify_variant_id)
     );
 
     CREATE TABLE IF NOT EXISTS blacklist (

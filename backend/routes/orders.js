@@ -102,6 +102,81 @@ router.put('/:id', (req, res) => {
   res.json({ success: true, order: updated });
 });
 
+// GET /api/orders/:id/details - Fetch full order from Shopify (on-demand)
+router.get('/:id/details', async (req, res) => {
+  const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  try {
+    const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+    const sRes = await fetch(shopifyUrl, { headers: { 'X-Shopify-Access-Token': order.access_token } });
+    const sData = await sRes.json();
+    if (!sData.order) throw new Error('Shopify order not found');
+
+    const shopifyOrder = sData.order;
+
+    // Fetch images for line items
+    const lineItems = await Promise.all(shopifyOrder.line_items.map(async item => {
+      const mapped = {
+        id: item.id, variant_id: item.variant_id, product_id: item.product_id,
+        title: item.title, sku: item.sku, quantity: item.quantity, price: item.price,
+        variant_title: item.variant_title, image_url: null
+      };
+
+      const cached = db.prepare('SELECT image_url FROM products WHERE shopify_variant_id = ?').get(String(item.variant_id));
+      if (cached?.image_url) {
+        mapped.image_url = cached.image_url;
+      } else if (item.variant_id) {
+        try {
+          const pRes = await fetch(`https://${order.shop_domain}/admin/api/2024-10/products/${item.product_id}.json?fields=image`, {
+            headers: { 'X-Shopify-Access-Token': order.access_token }
+          });
+          const pData = await pRes.json();
+          mapped.image_url = pData.product?.image?.src || null;
+          if (mapped.image_url) {
+            db.prepare(`INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price) VALUES (?,?,?,?,?,?,?)`)
+              .run(order.store_id, String(item.product_id), String(item.variant_id), item.sku, item.title, mapped.image_url, parseFloat(item.price));
+          }
+        } catch (e) { console.error('Image fetch error', e); }
+      }
+      return mapped;
+    }));
+
+    db.prepare('UPDATE orders SET line_items = ? WHERE id = ?').run(JSON.stringify(lineItems), order.id);
+    res.json({ ...order, ...shopifyOrder, line_items: lineItems });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/orders/:id/address - Live Update Address in Shopify
+router.put('/:id/address', async (req, res) => {
+  const { first_name, last_name, address1, address2, city, phone } = req.body;
+  const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  try {
+    const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+    const body = { order: { id: order.shopify_order_id, shipping_address: { first_name, last_name, address1, address2, city, phone } } };
+
+    const sRes = await fetch(shopifyUrl, {
+      method: 'PUT',
+      headers: { 'X-Shopify-Access-Token': order.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    
+    if (!sRes.ok) throw new Error('Shopify update failed');
+
+    const fullName = `${first_name} ${last_name}`.trim();
+    const fullAddr = `${address1}${address2 ? ', ' + address2 : ''}`;
+    db.prepare('UPDATE orders SET customer_name = ?, address = ?, city = ?, phone = ? WHERE id = ?').run(fullName, fullAddr, city, phone, order.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/orders/export?store_id=1 - Export all orders as JSON for CSV download
 router.get('/export', (req, res) => {
   const { store_id } = req.query;
