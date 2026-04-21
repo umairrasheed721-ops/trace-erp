@@ -93,7 +93,7 @@ function applySpecialMode(order, mode, today) {
     return true; 
   }
   if (mode === '[NO TRACKING]') {
-    return !order.tracking_number || order.tracking_number.trim() === ''
+    return (!order.tracking_number || order.tracking_number.trim() === '') && s !== 'cancelled'
   }
   if (mode === '[UNPAID DELIVERED]') {
     return s.includes('delivered') && paid < 1
