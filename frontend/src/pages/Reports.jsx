@@ -130,7 +130,7 @@ export default function Reports() {
           month,
           deliveredSale: 0, cgs: 0, marketingSpend: 0, tiktokMarketing: 0,
           estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
-          pending: 0, totalDispatched: 0, delivered: 0, restocked: 0,
+          pending: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0,
           totalSale: 0
@@ -151,7 +151,8 @@ export default function Reports() {
       m.pending += row.pending || 0;
       m.totalDispatched += row.totalDispatched || 0;
       m.delivered += row.delivered || 0;
-      m.restocked += row.restocked || 0;
+      m.restock += row.restock || 0;
+      m.missingParcel += row.missingParcel || 0;
       m.intransit += row.intransit || 0;
       m.fakeReturns += row.fakeReturns || 0;
       m.withoutTrackingId += row.withoutTrackingId || 0;
@@ -233,9 +234,10 @@ export default function Reports() {
     { id: 'totalDispatched', label: 'Dispatched', group: 'kpi' },
     { id: 'disPercent', label: 'Dis %', group: 'kpi' },
     { id: 'delivered', label: 'Delivered', group: 'kpi' },
-    { id: 'restocked', label: 'Returned', group: 'kpi' },
+    { id: 'restock', label: 'Restock', group: 'kpi' },
+    { id: 'missingParcel', label: 'Missing Parcel', group: 'kpi' },
     { id: 'intransit', label: 'Transit', group: 'kpi' },
-    { id: 'fakeReturns', label: 'FAKE RET', group: 'kpi' },
+    { id: 'fakeReturns', label: 'Fake Attempt', group: 'kpi' },
     { id: 'withoutTrackingId', label: 'No Tracking', group: 'kpi' },
     { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },
     { id: 'diffCorrection', label: 'Correction', group: 'kpi' },
@@ -461,9 +463,9 @@ export default function Reports() {
                       else if (col.id === 'diffCorrection') content = view === 'daily' ? renderEditable(row, col.id) : formatCurrency(row[col.id]);
                       else content = row[col.id];
 
-                      if (col.id === 'cancelations' || col.id === 'restocked' || col.id === 'fakeReturns') style = { color: '#f87171' };
+                      if (col.id === 'cancelations' || col.id === 'missingParcel' || col.id === 'fakeReturns') style = { color: '#f87171' };
                       if (col.id === 'pending' || col.id === 'deliveredPaymentPending') style = { color: '#fbbf24' };
-                      if (col.id === 'delivered' || col.id === 'paymentPaid') style = { color: '#34d399' };
+                      if (col.id === 'delivered' || col.id === 'restock' || col.id === 'paymentPaid') style = { color: '#34d399' };
                       if (col.id === 'intransit') style = { color: '#60a5fa' };
                     }
 
