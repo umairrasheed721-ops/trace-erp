@@ -215,6 +215,14 @@ export default function SearchTool() {
 
   const agingBuckets = getAgingBuckets()
   const today = new Date(); today.setHours(0,0,0,0)
+  const [showAgingBar, setShowAgingBar] = useState(() => localStorage.getItem('trace_show_aging') !== 'false')
+
+  const toggleAgingBar = () => {
+    setShowAgingBar(prev => {
+      localStorage.setItem('trace_show_aging', !prev)
+      return !prev
+    })
+  }
 
   const getAgingCounts = (orders) => {
     const counts = {}
@@ -531,45 +539,56 @@ export default function SearchTool() {
         )}
 
         <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAgingBar ? 10 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
+              <button 
+                onClick={toggleAgingBar} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, fontSize: '0.75rem', padding: '2px 6px' }}
+                title={showAgingBar ? 'Hide Bar' : 'Show Bar'}
+              >
+                {showAgingBar ? '🙈 Hide' : '👁️ Show'}
+              </button>
+            </div>
             <button onClick={() => setShowAgingConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.9rem' }}>⚙️</button>
           </div>
           
-          <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)' }}>
-            {agingBuckets.map((b, idx) => {
-              const count = agingCounts[b.label] || 0
-              const isActive = activeAgingBucket === b.label
-              // Color logic: green -> brown -> red
-              let bg = 'var(--green)'
-              if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
-              else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
-              
-              return (
-                <div 
-                  key={b.label}
-                  onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
-                  style={{ 
-                    flex: 1, 
-                    background: bg, 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    opacity: activeAgingBucket && !isActive ? 0.3 : 1,
-                    borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                    transition: 'all 0.2s',
-                    position: 'relative'
-                  }}
-                >
-                  <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
-                  {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
-                </div>
-              )
-            })}
-          </div>
+          {showAgingBar && (
+            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)', transition: 'all 0.3s ease' }}>
+              {agingBuckets.map((b, idx) => {
+                const count = agingCounts[b.label] || 0
+                const isActive = activeAgingBucket === b.label
+                // Color logic: green -> brown -> red
+                let bg = 'var(--green)'
+                if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
+                else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
+                
+                return (
+                  <div 
+                    key={b.label}
+                    onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
+                    style={{ 
+                      flex: 1, 
+                      background: bg, 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      opacity: activeAgingBucket && !isActive ? 0.3 : 1,
+                      borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                      transition: 'all 0.2s',
+                      position: 'relative'
+                    }}
+                  >
+                    <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
+                    {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Filters */}

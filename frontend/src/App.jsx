@@ -39,6 +39,14 @@ export default function App() {
   const [activeStoreId, setActiveStoreId] = useState(null)
   const [toasts, setToasts] = useState([])
   const [badgeCounts, setBadgeCounts] = useState({ stuck: 0, advice: 0, watchdog: 0 })
+  const [showAgingBar, setShowAgingBar] = useState(() => localStorage.getItem('trace_show_aging') !== 'false')
+
+  const toggleAgingBar = () => {
+    setShowAgingBar(prev => {
+      localStorage.setItem('trace_show_aging', !prev)
+      return !prev
+    })
+  }
 
   const addToast = (message, type = 'info', duration = 3500) => {
     const id = Date.now()
@@ -94,10 +102,20 @@ export default function App() {
 
   const activeStore = stores.find(s => s.id === activeStoreId)
 
+  const [theme, setTheme] = useState(() => localStorage.getItem('trace_theme') || 'dark')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('trace_theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+
   const ctx = { 
     stores, setStores, activeStoreId, setActiveStoreId, activeStore, 
     addToast, badgeCounts, setBadgeCounts, 
-    sidebarCollapsed, toggleSidebar 
+    sidebarCollapsed, toggleSidebar,
+    theme, toggleTheme, showAgingBar, toggleAgingBar
   }
 
   return (
@@ -213,7 +231,7 @@ function Sidebar() {
 
 // ─── Topbar ───────────────────────────────
 function Topbar() {
-  const { activeStore, activeStoreId, addToast } = useApp()
+  const { activeStore, activeStoreId, addToast, theme, toggleTheme } = useApp()
   const [syncingShopify, setSyncingShopify] = useState(false)
   const [syncingCouriers, setSyncingCouriers] = useState(false)
   const [progress, setProgress] = useState(null)
@@ -301,12 +319,19 @@ function Topbar() {
             </div>
           )}
         </div>
-        <div className="topbar-actions" style={{ display: 'flex', gap: 8 }}>
+        <div className="topbar-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button 
+            onClick={toggleTheme} 
+            className="btn btn-secondary btn-sm"
+            style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', borderRadius: '50%' }}
+            title={theme === 'dark' ? 'Switch to Light Mode (Eye-Care)' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleShopifySync}
             disabled={syncing || !activeStoreId}
-            title="Fetch new orders + update prices & costs from Shopify"
           >
             {syncingShopify ? <><span className="loading-spinner"></span> Syncing...</> : '🛒 Shopify Sync'}
           </button>
@@ -314,7 +339,6 @@ function Topbar() {
             className="btn btn-secondary btn-sm"
             onClick={handleCourierSync}
             disabled={syncing || !activeStoreId}
-            title="Update delivery statuses from PostEx & Instaworld"
           >
             {syncingCouriers ? <><span className="loading-spinner"></span> Syncing...</> : '🚚 Courier Sync'}
           </button>
@@ -323,13 +347,13 @@ function Topbar() {
       {syncing && progress && (
         <div style={{ marginTop: 12, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 6 }}>
-            <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{progress.status}</span>
-            <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontWeight: 500, color: 'var(--brand)' }}>{progress.status}</span>
+            <span style={{ color: 'var(--text-muted)' }}>
               {progress.total > 0 ? `${progress.processed} / ${progress.total} (${percent}%)` : `${progress.processed} processed`}
             </span>
           </div>
-          <div style={{ height: 6, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', background: 'var(--primary)', width: `${percent}%`, transition: 'width 0.3s ease' }}></div>
+          <div style={{ height: 6, background: 'var(--bg-base)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'var(--brand)', width: `${percent}%`, transition: 'width 0.3s ease' }}></div>
           </div>
         </div>
       )}
