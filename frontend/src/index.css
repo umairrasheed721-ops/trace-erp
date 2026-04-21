@@ -272,13 +272,16 @@ body {
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
 .page-content { padding: 24px; flex: 1; }
+.sidebar-collapsed .page-content { padding: 12px; }
+.sidebar-collapsed.ultra-compact-mode .page-content { padding: 0; }
 
-/* ─── Cards ─── */
-.card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
+.sticky-controls {
+  position: sticky;
+  top: var(--topbar-height);
+  z-index: 40;
+  background: var(--bg-base);
+  padding-top: 10px;
+  margin-top: -10px;
 }
 
 .card-title {
@@ -402,6 +405,10 @@ thead th {
   letter-spacing: 0.06em;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-elevated);
 }
 
 tbody tr {
@@ -420,6 +427,13 @@ tbody td {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Ultra Compact Mode */
+.ultra-compact table thead th { padding: 6px 10px; font-size: 0.62rem; }
+.ultra-compact table tbody td { padding: 4px 10px; font-size: 0.72rem; }
+.ultra-compact .kpi-card { padding: 8px 12px; }
+.ultra-compact .kpi-value { font-size: 1.2rem; }
+.ultra-compact .card { padding: 10px 14px; }
 
 /* ─── Status Badges ─── */
 .badge {

@@ -103,7 +103,7 @@ export default function App() {
   return (
     <AppContext.Provider value={ctx}>
       <BrowserRouter>
-        <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+        <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${localStorage.getItem('search_compact') === 'true' ? 'ultra-compact-mode' : ''}`}>
           <Sidebar />
           <div className="main-content">
             <Topbar />

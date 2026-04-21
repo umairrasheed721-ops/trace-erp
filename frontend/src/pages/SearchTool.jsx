@@ -307,114 +307,105 @@ export default function SearchTool() {
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h2>🔍 Command Center</h2>
-          <p>Advanced search, filter, and order management</p>
+    <div className={compactMode ? 'ultra-compact' : ''}>
+      <div className="sticky-controls">
+        <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
+          <div>
+            <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
+            {!compactMode && <p>Advanced search, filter, and order management</p>}
+          </div>
+          <div className="flex gap-2">
+            <button 
+              className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={toggleCompact}
+              title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
+            >
+              {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
+            {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
+            <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button 
-            className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
-            onClick={toggleCompact}
-            title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
-          >
-            {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
-          {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
-          <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
-        </div>
-      </div>
 
-      {!compactMode && (
-        <>
-          {/* KPI Scorecard */}
-          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
-            {[
-              { label: 'Results', value: kpi.total.toLocaleString(), color: 'blue', icon: '🔍' },
-              { label: 'Total Value', value: `Rs ${Math.round(kpi.sum).toLocaleString()}`, color: 'purple', icon: '💰' },
-              { label: 'Delivered', value: kpi.delivered, color: 'green', icon: '✅' },
-              { label: 'Returned', value: kpi.returned, color: 'red', icon: '↩️' },
-              { label: 'In Transit', value: kpi.pending, color: 'yellow', icon: '🚚' },
-            ].map(k => (
-              <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: 12 }}>
-                <div className="kpi-label">{k.label}</div>
-                <div className="kpi-value" style={{ fontSize: '1.3rem' }}>{k.value}</div>
-                <div className="kpi-icon" style={{ fontSize: '1rem' }}>{k.icon}</div>
+        {!compactMode && (
+          <>
+            {/* KPI Scorecard */}
+            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
+              {[
+                { label: 'Results', value: kpi.total.toLocaleString(), color: 'blue', icon: '🔍' },
+                { label: 'Total Value', value: `Rs ${Math.round(kpi.sum).toLocaleString()}`, color: 'purple', icon: '💰' },
+                { label: 'Delivered', value: kpi.delivered, color: 'green', icon: '✅' },
+                { label: 'Returned', value: kpi.returned, color: 'red', icon: '↩️' },
+                { label: 'In Transit', value: kpi.pending, color: 'yellow', icon: '🚚' },
+              ].map(k => (
+                <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: 12 }}>
+                  <div className="kpi-label">{k.label}</div>
+                  <div className="kpi-value" style={{ fontSize: '1.3rem' }}>{k.value}</div>
+                  <div className="kpi-icon" style={{ fontSize: '1rem' }}>{k.icon}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pipeline Bar */}
+            <div className="card mb-4" style={{ padding: '8px 16px' }}>
+              <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--bg-elevated)', marginBottom: 8 }}>
+                <div style={{ width: `${(kpi.delivered / kpi.total * 100) || 0}%`, background: 'var(--green)' }}></div>
+                <div style={{ width: `${(kpi.returned / kpi.total * 100) || 0}%`, background: 'var(--red)' }}></div>
+                <div style={{ width: `${(kpi.pending / kpi.total * 100) || 0}%`, background: 'var(--yellow)' }}></div>
               </div>
-            ))}
-          </div>
+              <div className="flex gap-3" style={{ fontSize: '0.68rem', fontWeight: 600 }}>
+                <span style={{ color: 'var(--green)' }}>Delivered: {deliveryRate}%</span>
+                <span style={{ color: 'var(--red)' }}>Returned: {((kpi.returned / kpi.total * 100) || 0).toFixed(1)}%</span>
+                <span style={{ color: 'var(--yellow)' }}>In Transit: {kpi.pending}</span>
+              </div>
+            </div>
+          </>
+        )}
 
-          {/* Pipeline Bar */}
-          <div className="card mb-4" style={{ padding: '8px 16px' }}>
-            <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--bg-elevated)', marginBottom: 8 }}>
-              <div style={{ width: `${(kpi.delivered / kpi.total * 100) || 0}%`, background: 'var(--green)' }}></div>
-              <div style={{ width: `${(kpi.returned / kpi.total * 100) || 0}%`, background: 'var(--red)' }}></div>
-              <div style={{ width: `${(kpi.pending / kpi.total * 100) || 0}%`, background: 'var(--yellow)' }}></div>
-            </div>
-            <div className="flex gap-3" style={{ fontSize: '0.68rem', fontWeight: 600 }}>
-              <span style={{ color: 'var(--green)' }}>Delivered: {deliveryRate}%</span>
-              <span style={{ color: 'var(--red)' }}>Returned: {((kpi.returned / kpi.total * 100) || 0).toFixed(1)}%</span>
-              <span style={{ color: 'var(--yellow)' }}>In Transit: {kpi.pending}</span>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Filters */}
-      <div className="card" style={{ padding: '14px 16px', marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-          <div>
-            <label className="form-label">📅 Date Preset</label>
-            <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
-              {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          {preset === 'Custom Range' ? <>
+        {/* Filters */}
+        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
             <div>
-              <label className="form-label">📆 Start</label>
-              <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+              <label className="form-label">📅 Date Preset</label>
+              <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
+                {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+            {preset === 'Custom Range' ? <>
+              <div>
+                <label className="form-label">📆 Start</label>
+                <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">🏁 End</label>
+                <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              </div>
+            </> : <><div/><div/></>}
+            <div>
+              <label className="form-label">🏷️ Status / Mode</label>
+              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
+                {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+              </select>
             </div>
             <div>
-              <label className="form-label">🏁 End</label>
-              <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              <label className="form-label">🔑 Keyword</label>
+              <input className="form-input" placeholder="name, city, tracking..." value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSearch()} />
             </div>
-          </> : <><div/><div/></>}
-          <div>
-            <label className="form-label">🏷️ Status / Mode</label>
-            <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
-              {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">🔑 Keyword (use commas for OR)</label>
-            <input className="form-input" placeholder="name, city, tracking, phone..." value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSearch()} />
-          </div>
-          <div>
-            <label className="form-label">🗂️ Sort By</label>
-            <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
-              {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">⭐ Load View</label>
-            <div className="flex gap-2">
+            <div>
+              <label className="form-label">🗂️ Sort</label>
+              <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
+                {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">⭐ View</label>
               <select className="form-select" value={selectedView} onChange={e => loadView(e.target.value)}>
                 <option value="">— Select View —</option>
                 {savedViews.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
               </select>
             </div>
           </div>
-        </div>
-
-        <div className="flex gap-2 mt-4" style={{ paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-          <button className="btn btn-primary" onClick={runSearch} disabled={loading}>
-            {loading ? <><span className="loading-spinner"></span> Searching...</> : '🔄 Run Search'}
-          </button>
-          <button className="btn btn-secondary" onClick={() => { setPreset('Last Month'); setStatus('[ACTIVE PIPELINE]'); setKeyword(''); setSort('Default'); setCustomStart(''); setCustomEnd('') }}>
-            🧹 Reset
-          </button>
         </div>
       </div>
 
