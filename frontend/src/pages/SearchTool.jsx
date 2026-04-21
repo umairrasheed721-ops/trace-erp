@@ -328,14 +328,13 @@ export default function SearchTool() {
       const orderDate = order.order_date ? new Date(order.order_date) : null
       const diff = orderDate ? Math.floor((today - new Date(orderDate).setHours(0,0,0,0)) / 86400000) : -1
 
-      // 1. Aging Bucket Filter (ONLY for True Backlog: Pending + No Tracking)
+      // 1. Aging Bucket Filter (Bypasses Date Preset when active)
       if (activeAgingBucket) {
         if (!isBacklogOrder(order)) return false
         const b = agingBuckets.find(bucket => bucket.label === activeAgingBucket)
         if (b && (diff < b.min || diff > b.max)) return false
-      }
-
-      if (dateRange && orderDate) {
+      } else if (dateRange && orderDate) {
+        // Only apply Date Preset if no Aging Bucket is active
         orderDate.setHours(0,0,0,0)
         if (orderDate < dateRange.start || orderDate > dateRange.end) return false
       }
