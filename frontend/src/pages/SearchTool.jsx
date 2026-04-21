@@ -189,6 +189,46 @@ export default function SearchTool() {
     return words.join(' ') || '—'
   }
 
+  // ─── Aging Logic ─────────────────────────
+  const [agingConfig, setAgingConfig] = useState(() => {
+    const saved = localStorage.getItem('trace_aging_config')
+    return saved ? JSON.parse(saved) : { criticalLevel: 8, span: 1 }
+  })
+  const [activeAgingBucket, setActiveAgingBucket] = useState(null)
+  const [showAgingConfig, setShowAgingConfig] = useState(false)
+
+  const getAgingBuckets = () => {
+    const { criticalLevel, span } = agingConfig
+    const buckets = [{ label: 'Day 0', min: 0, max: 0 }]
+    
+    for (let i = 1; i < criticalLevel; i += span) {
+      const max = Math.min(i + span - 1, criticalLevel - 1)
+      buckets.push({ 
+        label: i === max ? `Day ${i}` : `Day ${i}-${max}`, 
+        min: i, 
+        max: max 
+      })
+    }
+    buckets.push({ label: `Day ${criticalLevel}+`, min: criticalLevel, max: 9999 })
+    return buckets
+  }
+
+  const agingBuckets = getAgingBuckets()
+  const today = new Date(); today.setHours(0,0,0,0)
+
+  const getAgingCounts = (orders) => {
+    const counts = {}
+    orders.forEach(o => {
+      if (!o.order_date) return
+      const d = new Date(o.order_date); d.setHours(0,0,0,0)
+      const diff = Math.floor((today - d) / 86400000)
+      const b = agingBuckets.find(bucket => diff >= bucket.min && diff <= bucket.max)
+      if (b) counts[b.label] = (counts[b.label] || 0) + 1
+    })
+    return counts
+  }
+  const agingCounts = getAgingCounts(results)
+
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
     { id: 'ref_number', label: 'Order ID' },
@@ -269,6 +309,14 @@ export default function SearchTool() {
       order._meta = { colFilters }
       
       const orderDate = order.order_date ? new Date(order.order_date) : null
+      const diff = orderDate ? Math.floor((today - new Date(orderDate).setHours(0,0,0,0)) / 86400000) : -1
+
+      // 1. Aging Bucket Filter
+      if (activeAgingBucket) {
+        const b = agingBuckets.find(bucket => bucket.label === activeAgingBucket)
+        if (b && (diff < b.min || diff > b.max)) return false
+      }
+
       if (dateRange && orderDate) {
         orderDate.setHours(0,0,0,0)
         if (orderDate < dateRange.start || orderDate > dateRange.end) return false
@@ -352,6 +400,42 @@ export default function SearchTool() {
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
       
+      {/* Aging Config Dialog */}
+      {showAgingConfig && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card" style={{ width: 360, padding: 24 }}>
+            <div style={{ fontWeight: 700, marginBottom: 20, fontSize: '1.1rem' }}>⚙️ Configure Aging Bar</div>
+            
+            <div className="form-group">
+              <label className="form-label">Critical Level (Days until Red)</label>
+              <select 
+                className="form-select" 
+                value={agingConfig.criticalLevel}
+                onChange={e => setAgingConfig(prev => ({ ...prev, criticalLevel: parseInt(e.target.value) }))}
+              >
+                {[3, 5, 7, 8, 10, 14].map(v => <option key={v} value={v}>{v} Days</option>)}
+              </select>
+            </div>
+
+            <div className="form-group mt-4">
+              <label className="form-label">Aging Span (Grouping)</label>
+              <select 
+                className="form-select" 
+                value={agingConfig.span}
+                onChange={e => setAgingConfig(prev => ({ ...prev, span: parseInt(e.target.value) }))}
+              >
+                {[1, 2, 3].map(v => <option key={v} value={v}>{v} Day{v > 1 ? 's' : ''}</option>)}
+              </select>
+            </div>
+
+            <div className="flex gap-2 mt-8">
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { localStorage.setItem('trace_aging_config', JSON.stringify(agingConfig)); setShowAgingConfig(false); }}>Confirm</button>
+              <button className="btn btn-secondary" onClick={() => setShowAgingConfig(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Name Settings Dialog */}
       {showNameDialog && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -445,6 +529,48 @@ export default function SearchTool() {
             </div>
           </>
         )}
+
+        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
+            <button onClick={() => setShowAgingConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.9rem' }}>⚙️</button>
+          </div>
+          
+          <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)' }}>
+            {agingBuckets.map((b, idx) => {
+              const count = agingCounts[b.label] || 0
+              const isActive = activeAgingBucket === b.label
+              // Color logic: green -> brown -> red
+              let bg = 'var(--green)'
+              if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
+              else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
+              
+              return (
+                <div 
+                  key={b.label}
+                  onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
+                  style={{ 
+                    flex: 1, 
+                    background: bg, 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    opacity: activeAgingBucket && !isActive ? 0.3 : 1,
+                    borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    transition: 'all 0.2s',
+                    position: 'relative'
+                  }}
+                >
+                  <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
+                  {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
 
         {/* Filters */}
         <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
