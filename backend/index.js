@@ -11,6 +11,7 @@ const watchdogRoutes = require('./routes/watchdog');
 const storesRoutes = require('./routes/stores');
 const financeRoutes = require('./routes/finance');
 const reportsRoutes = require('./routes/reports');
+const usersRoutes = require('./routes/users');
 const schedulerInit = require('./scheduler');
 
 const app = express();
@@ -24,24 +25,32 @@ app.use(cors({
 
 app.use(express.json());
 
-// ─── Security: Basic Auth for Production ───
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+
+// ─── Security: JWT Auth for API ───
 app.use((req, res, next) => {
-  // Allow Shopify to send OAuth callbacks
+  // Public paths
   if (req.path.startsWith('/api/auth/callback')) return next();
-  // Allow health check for Railway
+  if (req.path === '/api/auth/login') return next();
   if (req.path === '/health') return next();
-
-  const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
-  const [login, password] = Buffer.from(b64auth, 'base64').toString().split(':');
   
-  const correctPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  // Allow all non-API requests (static files, frontend routes)
+  if (!req.path.startsWith('/api/')) return next();
 
-  if (login === 'admin' && password === correctPassword) {
-    return next();
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Authentication required' });
+
+  const token = (authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader) || '';
+  if (!token) return res.status(401).json({ error: 'Token missing' });
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
-
-  res.set('WWW-Authenticate', 'Basic realm="Secure Trace ERP"');
-  res.status(401).send('Authentication required.');
 });
 
 // Serve static frontend files
@@ -56,6 +65,7 @@ app.use('/api/monitors', monitorsRoutes);
 app.use('/api/watchdog', watchdogRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/users', usersRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));

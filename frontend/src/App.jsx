@@ -10,6 +10,8 @@ import ReturnsManager from './pages/ReturnsManager'
 import FinanceManager from './pages/FinanceManager'
 import Reports from './pages/Reports'
 import Connect from './pages/Connect'
+import Login from './pages/Login'
+import Users from './pages/Users'
 
 // ─── Global Context ───────────────────────
 export const AppContext = createContext(null)
@@ -55,6 +57,7 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!token) return
     fetch('/api/stores')
       .then(r => r.json())
       .then(data => {
@@ -70,7 +73,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!activeStoreId) return
+    if (!activeStoreId || !token) return
     localStorage.setItem('activeStoreId', activeStoreId)
 
     // Fetch badge counts
@@ -109,13 +112,55 @@ export default function App() {
     localStorage.setItem('trace_theme', theme)
   }, [theme])
 
+  useEffect(() => {
+    if (!token) return
+    const originalFetch = window.fetch
+    window.fetch = async (...args) => {
+      let [resource, config] = args
+      if (typeof resource === 'string' && resource.startsWith('/api/') && !resource.includes('/api/auth/login') && !resource.includes('/api/auth/callback')) {
+        config = config || {}
+        config.headers = config.headers || {}
+        config.headers['Authorization'] = `Bearer ${token}`
+      }
+      const response = await originalFetch(resource, config)
+      if (response.status === 401 && !resource.includes('/api/auth/login')) {
+        logout()
+      }
+      return response
+    }
+    return () => { window.fetch = originalFetch }
+  }, [token])
+
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+
+  const [token, setToken] = useState(() => localStorage.getItem('trace_token'))
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('trace_user')) } catch(e) { return null }
+  })
+
+  const logout = () => {
+    localStorage.removeItem('trace_token')
+    localStorage.removeItem('trace_user')
+    setToken(null)
+    setUser(null)
+    addToast('Logged out successfully', 'info')
+  }
 
   const ctx = { 
     stores, setStores, activeStoreId, setActiveStoreId, activeStore, 
     addToast, badgeCounts, setBadgeCounts, 
     sidebarCollapsed, toggleSidebar,
-    theme, toggleTheme, showAgingBar, toggleAgingBar
+    theme, toggleTheme, showAgingBar, toggleAgingBar,
+    token, setToken, user, setUser, logout
+  }
+
+  if (!token) {
+    return (
+      <AppContext.Provider value={ctx}>
+        <Login />
+        <ToastContainer toasts={toasts} />
+      </AppContext.Provider>
+    )
   }
 
   return (
@@ -137,6 +182,7 @@ export default function App() {
                 <Route path="/advice" element={<AdviceMonitor />} />
                 <Route path="/watchdog" element={<Watchdog />} />
                 <Route path="/connect" element={<Connect />} />
+                <Route path="/users" element={<Users />} />
               </Routes>
             </div>
           </div>
@@ -149,20 +195,26 @@ export default function App() {
 
 // ─── Sidebar ──────────────────────────────
 function Sidebar() {
-  const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar } = useApp()
+  const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout } = useApp()
 
   const navItems = [
     { to: '/', icon: '🏠', label: 'Dashboard' },
     { to: '/orders', icon: '📦', label: 'Orders' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
-    { to: '/finance', icon: '💰', label: 'Finance Engine' },
-    { to: '/reports', icon: '📊', label: 'Profit & Loss' },
+    { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'view_finance' },
+    { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'view_reports' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
-    { to: '/connect', icon: '🔌', label: 'Connect Store' },
-  ]
+    { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'manage_stores' },
+    { to: '/users', icon: '👥', label: 'User Management', permission: 'super_admin' },
+  ].filter(item => {
+    if (!item.permission) return true
+    if (user?.role === 'admin') return true
+    if (item.permission === 'super_admin') return user?.role === 'admin'
+    return user?.permissions?.includes(item.permission)
+  })
 
   return (
     <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -219,6 +271,13 @@ function Sidebar() {
             ))}
           </select>
         )}
+        <button 
+          onClick={logout}
+          className="btn btn-secondary btn-sm" 
+          style={{ width: '100%', justifyContent: 'center', marginTop: 10, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+        >
+          {sidebarCollapsed ? '🚪' : '🚪 Logout'}
+        </button>
         {!sidebarCollapsed && (
           <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
             TRACE ERP v1.5.2

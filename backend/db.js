@@ -126,6 +126,15 @@ function initDb() {
       message TEXT,
       timestamp DATETIME DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'agent',
+      permissions TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   // MIGRATION: Update Instaworld URL if it's the old one
@@ -136,6 +145,18 @@ function initDb() {
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
+
+  // Initial Admin User
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+  if (userCount === 0) {
+    try {
+      const bcrypt = require('bcryptjs');
+      const salt = bcrypt.genSaltSync(10);
+      const hash = bcrypt.hashSync('admin123', salt);
+      db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')").run(hash);
+      console.log('👤 Created default admin user: admin / admin123');
+    } catch (e) { console.error('Failed to create default admin:', e.message); }
+  }
 
   console.log('✅ Database initialized at', DB_PATH);
 }
