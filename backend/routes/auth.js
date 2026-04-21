@@ -15,7 +15,8 @@ router.post('/url', (req, res) => {
 
   const cleanDomain = shop_domain.replace('https://', '').replace('http://', '').replace(/\/$/, '').trim();
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null;
-  const appUrl = process.env.APP_URL || railwayDomain || 'http://localhost:3001';
+  // Prioritize Railway domain if available, otherwise use APP_URL or fallback to localhost
+  const appUrl = railwayDomain || process.env.APP_URL || 'http://localhost:3001';
   const redirectUri = `${appUrl}/api/auth/callback`;
 
   // Temporarily store setup data in DB with a placeholder token
