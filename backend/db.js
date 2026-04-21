@@ -33,6 +33,8 @@ function initDb() {
       instaworld_track_url TEXT DEFAULT 'https://one-be.instaworld.pk/logistics/v1/trackShipment',
       last_synced_at TEXT,
       sync_start_date TEXT,
+      sync_status TEXT DEFAULT 'idle',
+      sync_progress TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -132,6 +134,8 @@ function initDb() {
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE orders ADD COLUMN line_items TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
+  try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
 
   console.log('✅ Database initialized at', DB_PATH);
 }

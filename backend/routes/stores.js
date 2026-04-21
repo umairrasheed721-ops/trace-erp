@@ -8,6 +8,7 @@ router.get('/', (req, res) => {
   const stores = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
            postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
+           sync_status, sync_progress,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores ORDER BY created_at DESC
   `).all();
@@ -19,6 +20,7 @@ router.get('/:id', (req, res) => {
   const store = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
            postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
+           sync_status, sync_progress,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores WHERE id = ?
   `).get(req.params.id);
@@ -29,6 +31,8 @@ router.get('/:id', (req, res) => {
 // PUT /api/stores/:id - Update courier credentials + API URLs
 router.put('/:id', (req, res) => {
   const { postex_token, instaworld_key, instaworld_key_backup, store_name, postex_track_url, instaworld_track_url, sync_start_date } = req.body;
+  const startDate = sync_start_date || '';
+  
   db.prepare(`
     UPDATE stores SET postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?,
     postex_track_url=COALESCE(NULLIF(?,''),(SELECT postex_track_url FROM stores WHERE id=?)),
@@ -38,7 +42,7 @@ router.put('/:id', (req, res) => {
   `).run(postex_token, instaworld_key, instaworld_key_backup, store_name,
          postex_track_url, req.params.id,
          instaworld_track_url, req.params.id,
-         sync_start_date,
+         startDate,
          req.params.id);
   res.json({ success: true });
 });

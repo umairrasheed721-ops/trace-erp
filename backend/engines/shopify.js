@@ -41,7 +41,16 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
   const { id: storeId, shop_domain, access_token, sync_start_date } = store;
   if (!access_token || access_token === 'PENDING') return { added: 0 };
 
-  const { forceDeepSync = false } = options;
+  const updateStatus = (status, progress) => {
+    try {
+      db.prepare('UPDATE stores SET sync_status = ?, sync_progress = ? WHERE id = ?').run(status, progress, storeId);
+    } catch (e) { console.error('Status Error:', e.message); }
+    if (onProgress) onProgress(status, progress);
+  };
+
+  try {
+    updateStatus('syncing', 'Initializing sync...');
+    const { forceDeepSync = false } = options;
   const dateMin = sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70);
   let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc&created_at_min=${dateMin}`;
 
@@ -66,6 +75,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     if (!batch.length) break;
 
     if (onProgress) onProgress('Fetching Shopify (New Orders)', newOrdersFound.length + batch.length, 0);
+    updateStatus('syncing', `Fetching batch... Found ${newOrdersFound.length + batch.length} new orders so far`);
 
     for (const order of batch) {
       if (existingIds.has(String(order.id))) {
@@ -140,13 +150,19 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     return count;
   });
 
-  const added = insertMany(newOrdersFound.reverse());
+    updateStatus('syncing', `Saving ${newOrdersFound.length} orders...`);
+    const added = insertMany(newOrdersFound.reverse());
 
-  // Update last synced time
-  db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
+    // Update last synced time
+    db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
 
-  console.log(`✅ Shopify Fetch [${shop_domain}]: Added ${added} new orders`);
-  return { added };
+    console.log(`✅ Shopify Fetch [${shop_domain}]: Added ${added} new orders`);
+    updateStatus('idle', `Finished. Added ${added} orders.`);
+    return { added };
+  } catch (err) {
+    updateStatus('error', `Sync failed: ${err.message}`);
+    throw err;
+  }
 }
 
 async function refreshShopifyUpdates(store, onProgress) {

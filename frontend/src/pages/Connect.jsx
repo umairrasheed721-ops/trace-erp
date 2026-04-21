@@ -39,6 +39,14 @@ export default function Connect() {
     setLoading(false)
   }
 
+  useEffect(() => {
+    const anySyncing = stores.some(s => s.sync_status === 'syncing');
+    if (anySyncing) {
+      const timer = setInterval(refreshStores, 3000);
+      return () => clearInterval(timer);
+    }
+  }, [stores]);
+
   const refreshStores = async () => {
     const res = await fetch('/api/stores')
     const data = await res.json()
@@ -63,12 +71,12 @@ export default function Connect() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         store_name: store.store_name,
-        postex_token: store.postex_token,
-        instaworld_key: store.instaworld_key,
-        instaworld_key_backup: store.instaworld_key_backup,
-        sync_start_date: store.sync_start_date,
-        postex_track_url: store.postex_track_url,
-        instaworld_track_url: store.instaworld_track_url
+        postex_token: store.postex_token || '',
+        instaworld_key: store.instaworld_key || '',
+        instaworld_key_backup: store.instaworld_key_backup || '',
+        sync_start_date: store.sync_start_date || '',
+        postex_track_url: store.postex_track_url || '',
+        instaworld_track_url: store.instaworld_track_url || ''
       })
     })
     if (res.ok) { addToast('✅ Credentials updated', 'success'); setEditingStore(null); refreshStores() }
@@ -182,17 +190,35 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
 
   return (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 14 }}>
-      <div className="flex items-center gap-2" style={{ marginBottom: editing ? 14 : 0 }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: (editing || store.sync_status === 'syncing') ? 14 : 0 }}>
         <span style={{ fontSize: '1.1rem' }}>🏪</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{store.store_name || store.shop_domain}</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
         </div>
-        <span className="badge badge-delivered">● Connected</span>
-        <button className="btn btn-secondary btn-sm" onClick={onDeepSync}>🔍 Pull Historical Data</button>
+        {store.sync_status === 'syncing' ? (
+          <span className="badge badge-pending">⏳ Syncing...</span>
+        ) : store.sync_status === 'error' ? (
+          <span className="badge badge-danger" title={store.sync_progress}>❌ Error</span>
+        ) : (
+          <span className="badge badge-delivered">● Connected</span>
+        )}
+        <button className="btn btn-secondary btn-sm" onClick={onDeepSync} disabled={store.sync_status === 'syncing'}>🔍 Pull Historical Data</button>
         <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : '✏️ Edit Keys'}</button>
         <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>
+
+      {store.sync_status === 'syncing' && (
+        <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.05)', padding: '10px 14px', borderRadius: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: 5 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Historical Sync Progress</span>
+            <span style={{ color: '#60a5fa', fontWeight: 600 }}>{store.sync_progress}</span>
+          </div>
+          <div className="progress-bar">
+            <div className="progress-bar-fill progress-bar-animated" style={{ width: '100%' }} />
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div style={{ marginTop: 12 }}>
