@@ -146,6 +146,49 @@ export default function SearchTool() {
     })
   }
 
+  // ─── Name Cleaning Logic ─────────────────
+  const [nameSettings, setNameSettings] = useState(() => {
+    const saved = localStorage.getItem('trace_name_settings')
+    return saved ? JSON.parse(saved) : { shorten: true, stripWords: 'Mr, Ms, Dr, Malik, M.' }
+  })
+  const [showNameDialog, setShowNameDialog] = useState(false)
+
+  const saveNameSettings = (newSettings) => {
+    setNameSettings(newSettings)
+    localStorage.setItem('trace_name_settings', JSON.stringify(newSettings))
+    setShowNameDialog(false)
+  }
+
+  const formatCustomerName = (name) => {
+    if (!name) return '—'
+    let n = name.trim()
+    
+    // 1. Strip words
+    const strip = nameSettings.stripWords.split(',').map(s => s.trim()).filter(Boolean)
+    strip.forEach(s => {
+      const reg = new RegExp(`\\b${s}\\b`, 'gi')
+      n = n.replace(reg, '')
+    })
+
+    // 2. Clean extra spaces
+    let words = n.split(/\s+/).filter(Boolean)
+    
+    // 3. Deduplicate (e.g. "John Doe John Doe")
+    if (words.length >= 4 && words.length % 2 === 0) {
+      const mid = words.length / 2
+      const firstHalf = words.slice(0, mid).join(' ').toLowerCase()
+      const secondHalf = words.slice(mid).join(' ').toLowerCase()
+      if (firstHalf === secondHalf) words = words.slice(0, mid)
+    }
+
+    // 4. Shorten to max 2 words
+    if (nameSettings.shorten && words.length > 2) {
+      words = words.slice(0, 2)
+    }
+
+    return words.join(' ') || '—'
+  }
+
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
     { id: 'ref_number', label: 'Order ID' },
@@ -308,6 +351,46 @@ export default function SearchTool() {
 
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
+      
+      {/* Name Settings Dialog */}
+      {showNameDialog && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="card" style={{ width: 380, padding: 24 }}>
+            <div style={{ fontWeight: 700, marginBottom: 18, fontSize: '1.1rem' }}>🖊️ Customer Name Rules</div>
+            
+            <div className="form-group">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={nameSettings.shorten} 
+                  onChange={e => saveNameSettings({ ...nameSettings, shorten: e.target.checked })} 
+                />
+                <span style={{ fontSize: '0.85rem' }}>Limit to max 2 words (Short View)</span>
+              </label>
+            </div>
+
+            <div className="form-group mt-4">
+              <label className="form-label">Hide Words (comma separated)</label>
+              <textarea 
+                className="form-textarea" 
+                rows={3}
+                placeholder="e.g. Mr, Ms, Dr, Malik"
+                value={nameSettings.stripWords}
+                onChange={e => setNameSettings({ ...nameSettings, stripWords: e.target.value })}
+                style={{ fontSize: '0.8rem' }}
+              />
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                These words will be hidden from the Customer column automatically.
+              </p>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => saveNameSettings(nameSettings)}>Save Instructions</button>
+              <button className="btn btn-secondary" onClick={() => setShowNameDialog(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="sticky-controls">
         <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
           <div>
@@ -446,6 +529,15 @@ export default function SearchTool() {
                     style={{ cursor: 'move', userSelect: 'none' }}
                   >
                     {col.label}
+                    {col.id === 'customer_name' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
+                        title="Edit Name Rules"
+                      >
+                        🖊️
+                      </button>
+                    )}
                   </th>
                 ))}
               </tr>
@@ -495,7 +587,11 @@ export default function SearchTool() {
                           {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
                         </td>
                       )
-                      if (col.id === 'customer_name') return <td key={col.id}>{o.customer_name}</td>
+                      if (col.id === 'customer_name') return (
+                        <td key={col.id} title={o.customer_name}>
+                          {formatCustomerName(o.customer_name)}
+                        </td>
+                      )
                       if (col.id === 'phone') return (
                         <td key={col.id} style={{ fontSize: '0.75rem' }}>
                           {o.phone ? <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }}>💬 {o.phone}</a> : '—'}
