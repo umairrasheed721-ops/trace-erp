@@ -79,8 +79,26 @@ router.put('/:id', (req, res) => {
 
   db.prepare(`UPDATE orders SET ${allSets} WHERE id = ?`).run(...allValues, req.params.id);
 
+  // 5. SHOPIFY LIVE SYNC: If note changed, push to Shopify
+  if (req.body.notes !== undefined) {
+    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    if (order && order.shopify_order_id) {
+      const { appendShopifyNote } = require('../engines/shopify_finance'); // We can repurpose or add a new one
+      // Actually, let's just do a direct PUT for the whole note
+      const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+      fetch(shopifyUrl, {
+        method: 'PUT',
+        headers: {
+          'X-Shopify-Access-Token': order.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ order: { id: order.shopify_order_id, note: req.body.notes } })
+      }).catch(err => console.error('Failed to sync note to Shopify:', err));
+    }
+  }
+
   // Return updated row so frontend can reflect all auto-changes
-  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+  const updated = db.prepare('SELECT o.*, s.shop_domain FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
   res.json({ success: true, order: updated });
 });
 

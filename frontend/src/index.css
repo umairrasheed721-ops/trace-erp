@@ -147,6 +147,24 @@ body {
   min-width: 18px;
   text-align: center;
 }
+.header-search-row th {
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border);
+}
+.header-search-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  outline: none;
+}
+.header-search-input:focus {
+  border-color: var(--primary);
+  background: rgba(255,255,255,0.1);
+}
 
 .store-switcher {
   padding: 12px 10px;

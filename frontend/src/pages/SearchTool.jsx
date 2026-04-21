@@ -62,7 +62,19 @@ function matchesSearch(order, keyword) {
   const parts = kw.split(/\s+/)
   const includes = parts.filter(p => !p.startsWith('-'))
   const excludes = parts.filter(p => p.startsWith('-')).map(p => p.slice(1))
-  return includes.every(t => expanded.includes(t)) && !excludes.some(e => expanded.includes(e))
+  
+  const matchesGlobal = includes.every(t => expanded.includes(t)) && !excludes.some(e => expanded.includes(e))
+  if (!matchesGlobal) return false
+
+  // Add column specific filters if any
+  const { colFilters } = order._meta || {} // We will attach this in runSearch
+  if (colFilters) {
+    for (const [key, val] of Object.entries(colFilters)) {
+      if (val && !String(order[key] || '').toLowerCase().includes(val.toLowerCase())) return false
+    }
+  }
+
+  return true
 }
 
 function applySpecialMode(order, mode, today) {
@@ -122,6 +134,9 @@ export default function SearchTool() {
   const [status, setStatus] = useState('[ACTIVE PIPELINE]')
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('Default')
+  const [colFilters, setColFilters] = useState({
+    ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+  })
 
   // Apply drill-down state from Reports page
   useEffect(() => {
@@ -164,6 +179,9 @@ export default function SearchTool() {
     const bypassStatus = status === 'All Statuses' || isSpecial
 
     let filtered = allOrders.filter(order => {
+      // Inject colFilters for matchesSearch to use
+      order._meta = { colFilters }
+      
       const orderDate = order.order_date ? new Date(order.order_date) : null
       if (dateRange && orderDate) {
         orderDate.setHours(0,0,0,0)
@@ -377,7 +395,24 @@ export default function SearchTool() {
               <tr>
                 <th>Order ID</th><th>Date</th><th>Customer</th><th>Phone</th><th>City</th>
                 <th>Price</th><th>Paid Amount</th><th>Pending Bal.</th><th>Status</th>
-                <th>Courier</th><th>Tracking #</th><th>Edit Status</th><th>P&L Date</th>
+                <th>Courier</th><th>Tracking #</th><th>Edit Status</th><th>P&L Date</th><th>Shopify Note</th>
+              </tr>
+              <tr className="header-search-row">
+                {['ref_number','order_date','customer_name','phone','city','price','paid_amount','diff','delivery_status','courier','tracking_number','edit','payment_date','notes'].map(key => {
+                  const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(key);
+                  return (
+                    <th key={key} style={{ padding: '4px 8px' }}>
+                      {isFiltered && (
+                        <input 
+                          className="header-search-input"
+                          placeholder="Search..."
+                          value={colFilters[key] || ''}
+                          onChange={e => setColFilters(prev => ({ ...prev, [key]: e.target.value }))}
+                        />
+                      )}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -457,6 +492,9 @@ export default function SearchTool() {
                     <td style={{ fontSize: '0.72rem', color: o.payment_date ? 'var(--green)' : 'var(--text-muted)', fontWeight: o.payment_date ? 600 : 400 }}>
                       {o.payment_date ? `📅 ${o.payment_date}` : s.includes('delivered') ? '⚠️ Missing' : '—'}
                     </td>
+                    <td>
+                      <NoteCell order={o} onSave={updateOrderField} />
+                    </td>
                   </tr>
                 )
               })}
@@ -521,5 +559,51 @@ function PaidAmountCell({ order, onSave }) {
       {isPartial && <span style={{ fontSize: '0.6rem', background: 'var(--yellow-dim)', color: 'var(--yellow)', padding: '1px 4px', borderRadius: 4 }}>Partial</span>}
       <span style={{ fontSize: '0.6rem', opacity: 0.3, marginLeft: 2 }}>✏️</span>
     </span>
+  )
+}
+// ─── Inline Note Cell ───────────────────────────────────────────────────
+function NoteCell({ order, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(order.notes || '')
+
+  useEffect(() => { setVal(order.notes || '') }, [order.notes])
+
+  const commit = () => {
+    if (val !== (order.notes || '')) {
+      onSave(order.id, 'notes', val)
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        className="form-input"
+        style={{ width: 180, height: 60, fontSize: '0.72rem', padding: '4px' }}
+        value={val}
+        autoFocus
+        onChange={e => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Escape') setEditing(false) }}
+      />
+    )
+  }
+
+  return (
+    <div
+      onClick={() => setEditing(true)}
+      style={{
+        cursor: 'pointer',
+        fontSize: '0.72rem',
+        color: order.notes ? '#fff' : 'var(--text-muted)',
+        maxWidth: 180,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis'
+      }}
+      title={order.notes || 'Click to edit Shopify Note'}
+    >
+      {order.notes || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
+    </div>
   )
 }
