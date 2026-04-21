@@ -130,7 +130,16 @@ export default function Orders() {
               <tbody>
                 {orders.map(o => (
                   <tr key={o.id}>
-                    <td className="font-mono" style={{ color: 'var(--brand)', fontSize: '0.75rem' }}>{o.ref_number}</td>
+                    <td className="font-mono" style={{ fontSize: '0.75rem' }}>
+                      <a 
+                        href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        style={{ color: 'var(--brand)', textDecoration: 'none', fontWeight: 600 }}
+                      >
+                        {o.ref_number}
+                      </a>
+                    </td>
                     <td>{o.customer_name}</td>
                     <td>{o.city}</td>
                     <td className="font-mono" style={{ fontSize: '0.75rem' }}>{o.tracking_number || '—'}</td>

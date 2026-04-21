@@ -364,9 +364,9 @@ export default function SearchTool() {
                   <tr key={o.id}>
                     <td>
                       <a
-                        href={`https://admin.shopify.com/store/${(o.store_id ? '' : 'unknown')}/orders/${o.shopify_order_id}`}
+                        href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`}
                         target="_blank" rel="noreferrer"
-                        style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none' }}
+                        style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}
                       >
                         🛍️ {o.ref_number || o.shopify_order_id}
                       </a>

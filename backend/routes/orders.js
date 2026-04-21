@@ -22,8 +22,11 @@ router.get('/', (req, res) => {
 
   const total = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE ${where}`).get(...params);
   const orders = db.prepare(`
-    SELECT * FROM orders WHERE ${where}
-    ORDER BY created_timestamp DESC
+    SELECT o.*, s.shop_domain 
+    FROM orders o
+    JOIN stores s ON o.store_id = s.id
+    WHERE ${where.replace(/store_id/g, 'o.store_id')}
+    ORDER BY o.created_timestamp DESC
     LIMIT ? OFFSET ?
   `).all(...params, parseInt(limit), offset);
 
