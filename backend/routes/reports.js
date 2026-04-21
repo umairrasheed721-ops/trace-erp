@@ -192,4 +192,50 @@ router.post('/metrics', (req, res) => {
   }
 });
 
+router.post('/bulk-metrics', (req, res) => {
+  const { store_id, metric_field, updates } = req.body;
+  if (!store_id || !metric_field || !updates || !Array.isArray(updates)) {
+    return res.status(400).json({ error: 'store_id, metric_field, and updates array required' });
+  }
+
+  // Validate metric_field to prevent SQL injection
+  const allowedFields = ['marketing_spend', 'tiktok_marketing', 'actual_exp', 'diff_correction'];
+  if (!allowedFields.includes(metric_field)) {
+    return res.status(400).json({ error: 'Invalid metric field' });
+  }
+
+  try {
+    const updateStmt = db.prepare(`
+      UPDATE daily_metrics 
+      SET ${metric_field} = ? 
+      WHERE store_id = ? AND date_string = ?
+    `);
+    const insertStmt = db.prepare(`
+      INSERT INTO daily_metrics (store_id, date_string, ${metric_field})
+      VALUES (?, ?, ?)
+    `);
+    const checkStmt = db.prepare('SELECT id FROM daily_metrics WHERE store_id = ? AND date_string = ?');
+
+    db.exec('BEGIN TRANSACTION');
+    
+    for (const update of updates) {
+      const { date, value } = update;
+      const numValue = parseFloat(value) || 0;
+      const check = checkStmt.get(store_id, date);
+      
+      if (check) {
+        updateStmt.run(numValue, store_id, date);
+      } else {
+        insertStmt.run(store_id, date, numValue);
+      }
+    }
+
+    db.exec('COMMIT');
+    res.json({ success: true, count: updates.length });
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch(e) {}
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -139,6 +139,84 @@ export default function Reports() {
     }
   };
 
+  const handleBulkMetricUpdate = async (field, updates) => {
+    const fieldMapping = {
+      marketingSpend: 'marketing_spend',
+      tiktokMarketing: 'tiktok_marketing',
+      actualExp: 'actual_exp',
+      diffCorrection: 'diff_correction'
+    };
+
+    const dbField = fieldMapping[field];
+    if (!dbField) return;
+
+    // Optimistic Update
+    setDailyData(prev => prev.map(row => {
+      const update = updates.find(u => u.date === row.date);
+      if (update) {
+        const numValue = parseFloat(update.value) || 0;
+        const updated = { ...row, [field]: numValue };
+        const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
+        
+        updated.pnl = updated.grossProfit - updated.taxPaid - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+        updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
+        const landedOrders = updated.landedOrders || 0;
+        updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
+        const netOrders = landedOrders - (updated.cancelations || 0);
+        updated.netCpaAvg = netOrders > 0 ? (totalMarketing / netOrders) : 0;
+        return updated;
+      }
+      return row;
+    }));
+
+    try {
+      const res = await fetch(`/api/reports/bulk-metrics?t=${Date.now()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          metric_field: dbField,
+          updates: updates
+        })
+      });
+      if (!res.ok) throw new Error('Failed to save bulk updates');
+      toast(`Successfully synced ${updates.length} rows`, 'success');
+    } catch (e) {
+      toast('Error saving bulk: ' + e.message, 'error');
+      fetchData();
+    }
+  };
+
+  const handlePaste = (e, startDate, field) => {
+    const text = e.clipboardData.getData('text');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+    
+    if (lines.length <= 1) return; // Standard single-cell paste handled by browser
+    
+    e.preventDefault();
+    
+    // Find rows starting from the startDate
+    const currentData = view === 'daily' ? filteredDaily : monthlyData;
+    const startIndex = currentData.findIndex(r => r.date === startDate);
+    
+    if (startIndex === -1) return;
+
+    const updates = [];
+    for (let i = 0; i < lines.length; i++) {
+      const rowIndex = startIndex + i;
+      if (rowIndex < currentData.length) {
+        updates.push({
+          date: currentData[rowIndex].date,
+          value: parseFloat(lines[i].replace(/[^0-9.]/g, '')) || 0
+        });
+      }
+    }
+
+    if (updates.length > 0) {
+      handleBulkMetricUpdate(field, updates);
+    }
+  };
+
   const sortData = (data, config) => {
     if (!config.key) return data;
     const sorted = [...data].sort((a, b) => {
@@ -291,8 +369,10 @@ export default function Reports() {
       value={row[field] || ''}
       onChange={(e) => handleMetricChange(row.date, field, e.target.value)}
       onBlur={(e) => handleMetricChange(row.date, field, e.target.value)}
+      onPaste={(e) => handlePaste(e, row.date, field)}
       placeholder="0"
       className="editable-input"
+      title="You can paste a whole column from Excel here to bulk-fill rows below."
     />
   );
 
@@ -405,6 +485,17 @@ export default function Reports() {
             📊 Month Vise
           </button>
         </div>
+
+        <button 
+          className="btn" 
+          onClick={() => {
+            const val = prompt("🚀 BULK SYNC SPEND\n\n1. Copy a column of numbers from Excel.\n2. Click the FIRST cell in the table (e.g. Meta Ads).\n3. Press Ctrl+V.\n\nType 'ok' to see more options or just try the paste now!");
+            if (val === 'ok') toast("Try pasting directly into any marketing cell!", "info");
+          }}
+          style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid var(--blue)' }}
+        >
+          🚀 Bulk Sync Spend
+        </button>
       </div>
 
       {loading ? (
