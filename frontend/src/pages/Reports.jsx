@@ -139,6 +139,33 @@ export default function Reports() {
     }
   };
 
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkMetric, setBulkMetric] = useState('marketingSpend');
+  const [bulkData, setBulkData] = useState('');
+
+  const processBulkSync = () => {
+    const lines = bulkData.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+    if (lines.length === 0) return toast("Please paste some data first", "error");
+
+    const currentData = view === 'daily' ? filteredDaily : monthlyData;
+    const updates = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      if (i < currentData.length) {
+        updates.push({
+          date: currentData[i].date,
+          value: parseFloat(lines[i].replace(/[^0-9.]/g, '')) || 0
+        });
+      }
+    }
+
+    if (updates.length > 0) {
+      handleBulkMetricUpdate(bulkMetric, updates);
+      setShowBulkModal(false);
+      setBulkData('');
+    }
+  };
+
   const handleBulkMetricUpdate = async (field, updates) => {
     const fieldMapping = {
       marketingSpend: 'marketing_spend',
@@ -191,11 +218,10 @@ export default function Reports() {
     const text = e.clipboardData.getData('text');
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
     
-    if (lines.length <= 1) return; // Standard single-cell paste handled by browser
+    if (lines.length <= 1) return; 
     
     e.preventDefault();
     
-    // Find rows starting from the startDate
     const currentData = view === 'daily' ? filteredDaily : monthlyData;
     const startIndex = currentData.findIndex(r => r.date === startDate);
     
@@ -365,19 +391,66 @@ export default function Reports() {
 
   const renderEditable = (row, field) => (
     <input 
-      type="number" 
-      value={row[field] || ''}
-      onChange={(e) => handleMetricChange(row.date, field, e.target.value)}
-      onBlur={(e) => handleMetricChange(row.date, field, e.target.value)}
+      type="text" 
+      inputMode="numeric"
+      value={row[field] === 0 ? '' : row[field] || ''}
+      onChange={(e) => {
+        const val = e.target.value.replace(/[^0-9.]/g, '');
+        handleMetricChange(row.date, field, val);
+      }}
       onPaste={(e) => handlePaste(e, row.date, field)}
       placeholder="0"
       className="editable-input"
-      title="You can paste a whole column from Excel here to bulk-fill rows below."
+      title="Paste a column from Excel to bulk-fill below."
     />
   );
 
   return (
     <div className="page-container" style={{ maxWidth: '100%' }}>
+      {/* 🚀 Bulk Sync Modal */}
+      {showBulkModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div className="stat-card" style={{ width: 500, padding: 24, border: '1px solid var(--border)' }}>
+            <h2 style={{ margin: '0 0 8px 0' }}>🚀 Bulk Marketing Sync</h2>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: 20 }}>Paste a column of numbers from Excel. They will be applied to the rows in the current table order.</p>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 6, opacity: 0.6 }}>1. Select Metric to Update</label>
+              <select 
+                className="editable-input" 
+                style={{ width: '100%', background: 'rgba(255,255,255,0.05)' }}
+                value={bulkMetric}
+                onChange={e => setBulkMetric(e.target.value)}
+              >
+                <option value="marketingSpend">Meta Ads Spend</option>
+                <option value="tiktokMarketing">TikTok Ads Spend</option>
+                <option value="actualExp">Manual Expenses</option>
+                <option value="diffCorrection">Diff Correction</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 6, opacity: 0.6 }}>2. Paste Excel Column Here</label>
+              <textarea 
+                className="editable-input" 
+                style={{ width: '100%', height: 150, textAlign: 'left', fontFamily: 'monospace' }} 
+                placeholder="Paste numbers here..."
+                value={bulkData}
+                onChange={e => setBulkData(e.target.value)}
+              />
+              <div style={{ fontSize: '0.7rem', marginTop: 8, color: 'var(--blue)' }}>
+                {bulkData.split('\n').filter(l => l.trim()).length} values detected.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={processBulkSync}>Apply Bulk Sync</button>
+              <button className="btn" style={{ background: 'rgba(255,255,255,0.1)' }} onClick={() => setShowBulkModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .reports-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; text-align: right; white-space: nowrap; }
         .reports-table th { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 10; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
