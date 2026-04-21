@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../App'
 
@@ -213,7 +213,7 @@ export default function SearchTool() {
     return buckets
   }
 
-  const agingBuckets = getAgingBuckets()
+  const agingBuckets = useMemo(() => getAgingBuckets(), [agingConfig])
   const today = new Date(); today.setHours(0,0,0,0)
   const [showAgingBar, setShowAgingBar] = useState(() => localStorage.getItem('trace_show_aging') !== 'false')
 
@@ -353,7 +353,7 @@ export default function SearchTool() {
     })
     setKpi({ total: filtered.length, sum, delivered, returned, pending })
     setResults(filtered)
-  }, [allOrders, preset, customStart, customEnd, status, keyword, sort])
+  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, activeAgingBucket, agingBuckets])
 
   useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
 
