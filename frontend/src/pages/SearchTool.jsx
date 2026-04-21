@@ -12,7 +12,7 @@ const CITY_ALIASES = {
   faisalabad: ['fsd','faisalabd']
 }
 
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[RUN SYSTEM AUDIT]','[WATCHDOG FRAUD]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[RUN SYSTEM AUDIT]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function getDateRange(preset, customStart, customEnd) {
@@ -90,15 +90,13 @@ function applySpecialMode(order, mode, today) {
            (diff < -1)
   }
   if (mode === '[WATCHDOG FRAUD]') {
-    // This requires us to know if the order has a watchdog 'FAKE' result.
-    // In SearchTool, we might not have the watchdog verdict on the order object.
-    // However, the backend query for watchdog joins with orders.
-    // If we want this to work instantly, we should have a 'is_fake' flag or check tracking.
-    // For now, let's look for orders where tracking is known and we can match.
-    // Since we don't have the watchdog data here yet, I'll update the keyword logic 
-    // to search for 'FAKE' if that's how we store it.
-    // Actually, let's just use the keyword 'FAKE' for now as a simple solution.
     return true; 
+  }
+  if (mode === '[NO TRACKING]') {
+    return !order.tracking_number || order.tracking_number.trim() === ''
+  }
+  if (mode === '[UNPAID DELIVERED]') {
+    return s.includes('delivered') && paid < 1
   }
   return true
 }

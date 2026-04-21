@@ -45,6 +45,12 @@ export default function Reports() {
     else if (colId === 'fakeReturns') {
       filters.status = '[WATCHDOG FRAUD]';
     }
+    else if (colId === 'withoutTrackingId') {
+      filters.status = '[NO TRACKING]';
+    }
+    else if (colId === 'deliveredPaymentPending') {
+      filters.status = '[UNPAID DELIVERED]';
+    }
 
     navigate('/search', { state: filters });
   };
@@ -498,7 +504,7 @@ export default function Reports() {
                     }
 
                     const isKPI = col.group === 'kpi' || col.id === 'landedOrders' || col.id === 'cancelations';
-                    const isClickable = isKPI && ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns'].includes(col.id);
+                    const isClickable = isKPI && ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending'].includes(col.id);
 
                     const nextCol = visibleCols[idx+1];
                     if (nextCol && nextCol.group !== col.group) {
