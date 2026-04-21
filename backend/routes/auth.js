@@ -3,11 +3,11 @@ const router = express.Router();
 const db = require('../db');
 const fetch = require('node-fetch');
 
-const TRACEPK_SCOPES = 'read_orders,write_orders,read_locations,read_inventory,read_customers,read_products';
+const TRACEPK_SCOPES = 'read_orders,write_orders,read_locations,read_inventory,read_customers,read_products,read_all_orders';
 
 // GET /api/auth/url - Generate Shopify OAuth URL for a given store
 router.post('/url', (req, res) => {
-  const { shop_domain, client_id, client_secret, postex_token, instaworld_key, instaworld_key_backup, store_name } = req.body;
+  const { shop_domain, client_id, client_secret, postex_token, instaworld_key, instaworld_key_backup, store_name, sync_start_date } = req.body;
 
   if (!shop_domain || !client_id || !client_secret) {
     return res.status(400).json({ error: 'Missing shop_domain, client_id, or client_secret' });
@@ -23,14 +23,14 @@ router.post('/url', (req, res) => {
   const existing = db.prepare('SELECT id FROM stores WHERE shop_domain = ?').get(cleanDomain);
   if (!existing) {
     db.prepare(`
-      INSERT INTO stores (shop_domain, store_name, access_token, shopify_client_id, postex_token, instaworld_key, instaworld_key_backup)
-      VALUES (?, ?, 'PENDING', ?, ?, ?, ?)
-    `).run(cleanDomain, store_name || cleanDomain, client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '');
+      INSERT INTO stores (shop_domain, store_name, access_token, shopify_client_id, postex_token, instaworld_key, instaworld_key_backup, sync_start_date)
+      VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?)
+    `).run(cleanDomain, store_name || cleanDomain, client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '', sync_start_date || '');
   } else {
     db.prepare(`
-      UPDATE stores SET shopify_client_id=?, postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?
+      UPDATE stores SET shopify_client_id=?, postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?, sync_start_date=?
       WHERE shop_domain=?
-    `).run(client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '', store_name || cleanDomain, cleanDomain);
+    `).run(client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '', store_name || cleanDomain, sync_start_date || '', cleanDomain);
   }
 
   // Temporarily store client_secret in a separate temp table using properties

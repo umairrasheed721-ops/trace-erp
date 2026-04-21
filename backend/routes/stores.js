@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { fetchShopifyOrders } = require('../engines/shopify');
 
 // GET /api/stores - List all connected stores
 router.get('/', (req, res) => {
   const stores = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
-           postex_token, instaworld_key, instaworld_key_backup,
+           postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores ORDER BY created_at DESC
   `).all();
@@ -17,7 +18,7 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const store = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
-           postex_token, instaworld_key, instaworld_key_backup,
+           postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores WHERE id = ?
   `).get(req.params.id);
@@ -27,17 +28,33 @@ router.get('/:id', (req, res) => {
 
 // PUT /api/stores/:id - Update courier credentials + API URLs
 router.put('/:id', (req, res) => {
-  const { postex_token, instaworld_key, instaworld_key_backup, store_name, postex_track_url, instaworld_track_url } = req.body;
+  const { postex_token, instaworld_key, instaworld_key_backup, store_name, postex_track_url, instaworld_track_url, sync_start_date } = req.body;
   db.prepare(`
     UPDATE stores SET postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?,
     postex_track_url=COALESCE(NULLIF(?,''),(SELECT postex_track_url FROM stores WHERE id=?)),
-    instaworld_track_url=COALESCE(NULLIF(?,''),(SELECT instaworld_track_url FROM stores WHERE id=?))
+    instaworld_track_url=COALESCE(NULLIF(?,''),(SELECT instaworld_track_url FROM stores WHERE id=?)),
+    sync_start_date=?
     WHERE id=?
   `).run(postex_token, instaworld_key, instaworld_key_backup, store_name,
          postex_track_url, req.params.id,
          instaworld_track_url, req.params.id,
+         sync_start_date,
          req.params.id);
   res.json({ success: true });
+});
+
+// POST /api/stores/:id/deep-sync - Trigger historical sync
+router.post('/:id/deep-sync', async (req, res) => {
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+  
+  try {
+    // Run sync in background (fire and forget for now, or we could return progress)
+    fetchShopifyOrders(store, null, { forceDeepSync: true });
+    res.json({ success: true, message: 'Historical sync started in background' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // DELETE /api/stores/:id - Disconnect a store (deletes all its data)

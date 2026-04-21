@@ -5,7 +5,8 @@ export default function Connect() {
   const { stores, setStores, addToast, setActiveStoreId } = useApp()
   const [form, setForm] = useState({
     store_name: '', shop_domain: '', client_id: '', client_secret: '',
-    postex_token: '', instaworld_key: '', instaworld_key_backup: ''
+    postex_token: '', instaworld_key: '', instaworld_key_backup: '',
+    sync_start_date: ''
   })
   const [loading, setLoading] = useState(false)
   const [editingStore, setEditingStore] = useState(null)
@@ -65,10 +66,24 @@ export default function Connect() {
         postex_token: store.postex_token,
         instaworld_key: store.instaworld_key,
         instaworld_key_backup: store.instaworld_key_backup,
+        sync_start_date: store.sync_start_date,
+        postex_track_url: store.postex_track_url,
+        instaworld_track_url: store.instaworld_track_url
       })
     })
     if (res.ok) { addToast('✅ Credentials updated', 'success'); setEditingStore(null); refreshStores() }
     else addToast('❌ Failed to update', 'error')
+  }
+
+  const handleDeepSync = async (storeId, name) => {
+    if (!confirm(`🚀 Start deep historical sync for "${name}"?\nThis will scan back to your chosen Start Date and fill any missing gaps.`)) return
+    try {
+      const res = await fetch(`/api/stores/${storeId}/deep-sync`, { method: 'POST' })
+      if (res.ok) addToast('🔍 Historical sync started in background', 'success')
+      else addToast('❌ Failed to start sync', 'error')
+    } catch {
+      addToast('Network error', 'error')
+    }
   }
 
   return (
@@ -105,6 +120,12 @@ export default function Connect() {
               <label className="form-label">Shopify Client Secret *</label>
               <input className="form-input font-mono" type="password" placeholder="From Shopify Partner Dashboard" value={form.client_secret} onChange={set('client_secret')} required />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Initial Sync Start Date (Authority)</label>
+            <input className="form-input" type="date" value={form.sync_start_date} onChange={set('sync_start_date')} />
+            <small style={{ color: 'var(--text-muted)' }}>Orders before this date will never be pulled.</small>
           </div>
 
           <div className="divider" />
@@ -144,6 +165,7 @@ export default function Connect() {
                 onEdit={() => setEditingStore(store.id)}
                 onCancel={() => setEditingStore(null)}
                 onSave={handleUpdateCreds}
+                onDeepSync={() => handleDeepSync(store.id, store.store_name || store.shop_domain)}
                 onDisconnect={() => handleDisconnect(store.id, store.store_name || store.shop_domain)}
               />
             ))}
@@ -154,7 +176,7 @@ export default function Connect() {
   )
 }
 
-function StoreCard({ store, editing, onEdit, onCancel, onSave, onDisconnect }) {
+function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDisconnect }) {
   const [local, setLocal] = useState({ ...store })
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
@@ -167,15 +189,22 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDisconnect }) {
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
         </div>
         <span className="badge badge-delivered">● Connected</span>
+        <button className="btn btn-secondary btn-sm" onClick={onDeepSync}>🔍 Pull Historical Data</button>
         <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : '✏️ Edit Keys'}</button>
         <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>
 
       {editing && (
         <div style={{ marginTop: 12 }}>
-          <div className="form-group">
-            <label className="form-label">Store Name</label>
-            <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Store Name</label>
+              <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Sync Start Date (Authority)</label>
+              <input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} />
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">PostEx Token</label>

@@ -37,11 +37,12 @@ function detectOrderSource(order) {
   return order.source_name || 'Direct / Web';
 }
 
-async function fetchShopifyOrders(store, onProgress) {
-  const { id: storeId, shop_domain, access_token } = store;
+async function fetchShopifyOrders(store, onProgress, options = {}) {
+  const { id: storeId, shop_domain, access_token, sync_start_date } = store;
   if (!access_token || access_token === 'PENDING') return { added: 0 };
 
-  const dateMin = getDaysAgo(70);
+  const { forceDeepSync = false } = options;
+  const dateMin = sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70);
   let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc&created_at_min=${dateMin}`;
 
   // Get existing IDs as a Set for fast O(1) lookup
@@ -67,7 +68,10 @@ async function fetchShopifyOrders(store, onProgress) {
     if (onProgress) onProgress('Fetching Shopify (New Orders)', newOrdersFound.length + batch.length, 0);
 
     for (const order of batch) {
-      if (existingIds.has(String(order.id))) { keepFetching = false; break; }
+      if (existingIds.has(String(order.id))) {
+        if (!forceDeepSync) { keepFetching = false; break; }
+        continue; // Skip if it exists but keep going for forceDeepSync
+      }
       newOrdersFound.push(order);
     }
 
