@@ -144,7 +144,8 @@ export default function SearchTool() {
   const fetchOrderDetails = async (orderId) => {
     setEditorLoading(true)
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/orders/${orderId}/details`)
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/details`)
       const data = await res.json()
       setEditingOrder(data)
     } catch (e) {
