@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp, useToast } from '../App';
 
 function formatCurrency(amount) {
@@ -15,11 +16,38 @@ function formatNumber(value) {
 
 export default function Reports() {
   const { activeStoreId } = useApp();
+  const navigate = useNavigate();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState([]);
   const [view, setView] = useState('daily'); // 'daily' or 'monthly'
   const [monthFilter, setMonthFilter] = useState('all');
+  
+  const handleDrilldown = (row, colId) => {
+    const isMonthly = !!row.month;
+    const dateStr = isMonthly ? row.month : row.date;
+    
+    let filters = {
+      preset: 'Custom Range',
+      customStart: isMonthly ? `${dateStr}-01` : dateStr,
+      customEnd: isMonthly ? `${dateStr}-31` : dateStr, // backend/helper handles overflow
+      status: 'All Statuses'
+    };
+
+    if (colId === 'landedOrders') filters.status = 'All Statuses';
+    else if (colId === 'cancelations') filters.status = 'Cancelled';
+    else if (colId === 'pending') filters.status = 'Pending,Booked,Picked Up';
+    else if (colId === 'totalDispatched') filters.status = 'In Transit,Out for Delivery,Shipped';
+    else if (colId === 'delivered') filters.status = 'Delivered';
+    else if (colId === 'restock') filters.status = 'Return Received';
+    else if (colId === 'missingParcel') filters.status = 'Returned';
+    else if (colId === 'intransit') filters.status = 'In Transit';
+    else if (colId === 'fakeReturns') {
+      filters.status = '[WATCHDOG FRAUD]';
+    }
+
+    navigate('/search', { state: filters });
+  };
   
   // View Persistence State
   const [hiddenColumns, setHiddenColumns] = useState(() => {
@@ -469,13 +497,32 @@ export default function Reports() {
                       if (col.id === 'intransit') style = { color: '#60a5fa' };
                     }
 
+                    const isKPI = col.group === 'kpi' || col.id === 'landedOrders' || col.id === 'cancelations';
+                    const isClickable = isKPI && ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns'].includes(col.id);
+
                     const nextCol = visibleCols[idx+1];
                     if (nextCol && nextCol.group !== col.group) {
                       style.borderRight = '1px solid rgba(255,255,255,0.1)';
                       if (col.id === 'pnl') style.borderRight = '2px solid rgba(255,255,255,0.2)';
                     }
 
-                    return <td key={col.id} className={className} style={style}>{content}</td>;
+                    return (
+                      <td 
+                        key={col.id} 
+                        className={className} 
+                        style={{
+                          ...style,
+                          cursor: isClickable ? 'pointer' : 'default',
+                        }}
+                        onClick={() => isClickable && handleDrilldown(row, col.id)}
+                      >
+                        {isClickable ? (
+                          <span style={{ borderBottom: '1px dashed rgba(255,255,255,0.3)', display: 'inline-block' }}>
+                            {content}
+                          </span>
+                        ) : content}
+                      </td>
+                    );
                   })}
                 </tr>
               ))}

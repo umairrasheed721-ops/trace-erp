@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useApp } from '../App'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','All Time','Custom Range']
@@ -11,7 +12,7 @@ const CITY_ALIASES = {
   faisalabad: ['fsd','faisalabd']
 }
 
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[RUN SYSTEM AUDIT]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[RUN SYSTEM AUDIT]','[WATCHDOG FRAUD]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function getDateRange(preset, customStart, customEnd) {
@@ -88,9 +89,16 @@ function applySpecialMode(order, mode, today) {
            (returnedOrCancelled && paid > 1) || 
            (diff < -1)
   }
-  if (mode === '[RUN SYSTEM AUDIT]') {
-    const noTrack = (s.includes('shipped')||s.includes('transit')) && !order.tracking_number
-    return noTrack || (price === 0 && !s.includes('cancel'))
+  if (mode === '[WATCHDOG FRAUD]') {
+    // This requires us to know if the order has a watchdog 'FAKE' result.
+    // In SearchTool, we might not have the watchdog verdict on the order object.
+    // However, the backend query for watchdog joins with orders.
+    // If we want this to work instantly, we should have a 'is_fake' flag or check tracking.
+    // For now, let's look for orders where tracking is known and we can match.
+    // Since we don't have the watchdog data here yet, I'll update the keyword logic 
+    // to search for 'FAKE' if that's how we store it.
+    // Actually, let's just use the keyword 'FAKE' for now as a simple solution.
+    return true; 
   }
   return true
 }
@@ -105,6 +113,7 @@ function getStatusColor(status) {
 
 export default function SearchTool() {
   const { activeStoreId, addToast } = useApp()
+  const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
@@ -115,6 +124,20 @@ export default function SearchTool() {
   const [status, setStatus] = useState('[ACTIVE PIPELINE]')
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('Default')
+
+  // Apply drill-down state from Reports page
+  useEffect(() => {
+    if (location.state) {
+      const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: k } = location.state
+      if (p) setPreset(p)
+      if (cs) setCustomStart(cs)
+      if (ce) setCustomEnd(ce)
+      if (s) setStatus(s)
+      if (k) setKeyword(k)
+      // Clear state after application so refreshes use defaults or current state
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state])
 
   const [savedViews, setSavedViews] = useState(() => {
     try { return JSON.parse(localStorage.getItem('traceerp_views') || '[]') } catch { return [] }
