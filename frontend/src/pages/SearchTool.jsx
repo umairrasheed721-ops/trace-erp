@@ -966,9 +966,9 @@ export default function SearchTool() {
             </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      )}
+    </div>
+  )
 }
 
 // ─── Inline Paid Amount Cell ───────────────────────────────────────────────────
