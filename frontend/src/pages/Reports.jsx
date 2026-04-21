@@ -358,15 +358,19 @@ export default function Reports() {
 
   const visibleCols = columns.filter(c => !hiddenColumns.includes(c.id));
 
-  const renderEditable = (row, field) => (
-    <input 
-      type="text" inputMode="numeric"
-      value={row[field] === 0 ? '' : row[field] || ''}
-      onChange={(e) => handleMetricChange(row.date, field, e.target.value.replace(/[^0-9.]/g, ''))}
-      onPaste={(e) => handlePaste(e, row.date, field)}
-      placeholder="0" className="editable-input"
-    />
-  );
+  const renderEditable = (row, field) => {
+    const rawVal = row[field];
+    const displayVal = (rawVal === 0 || rawVal === null || rawVal === undefined) ? '' : Math.round(rawVal * 100) / 100;
+    return (
+      <input 
+        type="text" inputMode="numeric"
+        value={displayVal}
+        onChange={(e) => handleMetricChange(row.date, field, e.target.value.replace(/[^0-9.]/g, ''))}
+        onPaste={(e) => handlePaste(e, row.date, field)}
+        placeholder="0" className="editable-input"
+      />
+    );
+  };
 
   return (
     <div className="page-container" style={{ maxWidth: '100%' }}>
