@@ -43,6 +43,7 @@
 
   /* Layout */
   --sidebar-width: 220px;
+  --sidebar-width-collapsed: 60px;
   --topbar-height: 60px;
   --radius: 10px;
   --radius-sm: 6px;
@@ -77,12 +78,40 @@ body {
   top: 0; left: 0;
   height: 100vh;
   z-index: 100;
-  transition: var(--transition);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar.collapsed {
+  width: var(--sidebar-width-collapsed);
 }
 
 .sidebar-logo {
-  padding: 20px 18px 16px;
+  padding: 16px 14px;
   border-bottom: 1px solid var(--border);
+  min-height: 65px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-toggle {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  transition: all 0.2s;
+}
+
+.sidebar-toggle:hover {
+  background: var(--brand-glow);
+  color: var(--brand);
+  border-color: var(--brand);
 }
 
 .sidebar-logo h1 {
@@ -214,6 +243,11 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-layout.sidebar-collapsed .main-content {
+  margin-left: var(--sidebar-width-collapsed);
 }
 
 .topbar {

@@ -80,14 +80,30 @@ export default function App() {
     }).catch(() => {})
   }, [activeStoreId])
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true'
+  })
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar_collapsed', next)
+      return next
+    })
+  }
+
   const activeStore = stores.find(s => s.id === activeStoreId)
 
-  const ctx = { stores, setStores, activeStoreId, setActiveStoreId, activeStore, addToast, badgeCounts, setBadgeCounts }
+  const ctx = { 
+    stores, setStores, activeStoreId, setActiveStoreId, activeStore, 
+    addToast, badgeCounts, setBadgeCounts, 
+    sidebarCollapsed, toggleSidebar 
+  }
 
   return (
     <AppContext.Provider value={ctx}>
       <BrowserRouter>
-        <div className="app-layout">
+        <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <Sidebar />
           <div className="main-content">
             <Topbar />
@@ -115,7 +131,7 @@ export default function App() {
 
 // ─── Sidebar ──────────────────────────────
 function Sidebar() {
-  const { stores, activeStoreId, setActiveStoreId, badgeCounts } = useApp()
+  const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar } = useApp()
 
   const navItems = [
     { to: '/', icon: '🏠', label: 'Dashboard' },
@@ -131,48 +147,65 @@ function Sidebar() {
   ]
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <h1>TRACE ERP</h1>
-        <span>Multi-Store Dashboard</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          {!sidebarCollapsed && (
+            <div style={{ overflow: 'hidden' }}>
+              <h1>TRACE ERP</h1>
+              <span>Multi-Store Dashboard</span>
+            </div>
+          )}
+          <button 
+            onClick={toggleSidebar} 
+            className="sidebar-toggle"
+            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+          >
+            {sidebarCollapsed ? '➡️' : '⬅️'}
+          </button>
+        </div>
       </div>
 
       <nav className="sidebar-nav">
-        <div className="nav-section-label">Navigation</div>
+        {!sidebarCollapsed && <div className="nav-section-label">Navigation</div>}
         {navItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            title={sidebarCollapsed ? item.label : ''}
           >
             <span className="nav-icon">{item.icon}</span>
-            {item.label}
+            {!sidebarCollapsed && item.label}
             {item.badge > 0 && <span className="nav-badge">{item.badge}</span>}
           </NavLink>
         ))}
       </nav>
 
       <div className="store-switcher">
-        <span className="store-select-label">Active Store</span>
+        {!sidebarCollapsed && <span className="store-select-label">Active Store</span>}
         {stores.length === 0 ? (
           <NavLink to="/connect" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
-            + Connect Store
+            + {sidebarCollapsed ? '' : 'Connect Store'}
           </NavLink>
         ) : (
           <select
             className="store-select"
             value={activeStoreId || ''}
             onChange={e => setActiveStoreId(parseInt(e.target.value))}
+            style={sidebarCollapsed ? { padding: '4px 2px', textAlign: 'center' } : {}}
           >
             {stores.map(s => (
-              <option key={s.id} value={s.id}>{s.store_name || s.shop_domain}</option>
+              <option key={s.id} value={s.id}>{sidebarCollapsed ? (s.store_name || s.shop_domain).substring(0,2).toUpperCase() : (s.store_name || s.shop_domain)}</option>
             ))}
           </select>
         )}
-        <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
-          TRACE ERP v1.5.2
-        </div>
+        {!sidebarCollapsed && (
+          <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
+            TRACE ERP v1.5.2
+          </div>
+        )}
       </div>
     </aside>
   )

@@ -137,6 +137,14 @@ export default function SearchTool() {
   const [colFilters, setColFilters] = useState({
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
+  const [compactMode, setCompactMode] = useState(() => localStorage.getItem('search_compact') === 'true')
+
+  const toggleCompact = () => {
+    setCompactMode(prev => {
+      localStorage.setItem('search_compact', !prev)
+      return !prev
+    })
+  }
 
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
@@ -306,43 +314,52 @@ export default function SearchTool() {
           <p>Advanced search, filter, and order management</p>
         </div>
         <div className="flex gap-2">
+          <button 
+            className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
+            onClick={toggleCompact}
+            title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
+          >
+            {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
           {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
           <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
         </div>
       </div>
 
-      {/* KPI Scorecard */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
-        {[
-          { label: 'Results', value: kpi.total.toLocaleString(), color: 'blue', icon: '🔍' },
-          { label: 'Total Value', value: `Rs ${Math.round(kpi.sum).toLocaleString()}`, color: 'purple', icon: '💰' },
-          { label: 'Delivered', value: kpi.delivered, color: 'green', icon: '✅' },
-          { label: 'Returned', value: kpi.returned, color: 'red', icon: '↩️' },
-          { label: 'In Transit', value: kpi.pending, color: 'yellow', icon: '🚚' },
-        ].map(k => (
-          <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: 12 }}>
-            <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value" style={{ fontSize: '1.3rem' }}>{k.value}</div>
-            <div className="kpi-icon" style={{ fontSize: '1rem' }}>{k.icon}</div>
+      {!compactMode && (
+        <>
+          {/* KPI Scorecard */}
+          <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
+            {[
+              { label: 'Results', value: kpi.total.toLocaleString(), color: 'blue', icon: '🔍' },
+              { label: 'Total Value', value: `Rs ${Math.round(kpi.sum).toLocaleString()}`, color: 'purple', icon: '💰' },
+              { label: 'Delivered', value: kpi.delivered, color: 'green', icon: '✅' },
+              { label: 'Returned', value: kpi.returned, color: 'red', icon: '↩️' },
+              { label: 'In Transit', value: kpi.pending, color: 'yellow', icon: '🚚' },
+            ].map(k => (
+              <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: 12 }}>
+                <div className="kpi-label">{k.label}</div>
+                <div className="kpi-value" style={{ fontSize: '1.3rem' }}>{k.value}</div>
+                <div className="kpi-icon" style={{ fontSize: '1rem' }}>{k.icon}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Pipeline Bar */}
-      {kpi.total > 0 && (
-        <div className="card" style={{ padding: '10px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', gap: 2 }}>
-            <div style={{ flex: kpi.delivered, background: 'var(--green)', transition: '0.5s' }} title={`Delivered: ${kpi.delivered}`} />
-            <div style={{ flex: kpi.returned, background: 'var(--red)', transition: '0.5s' }} title={`Returned: ${kpi.returned}`} />
-            <div style={{ flex: kpi.pending, background: 'var(--yellow)', transition: '0.5s' }} title={`In Transit: ${kpi.pending}`} />
+          {/* Pipeline Bar */}
+          <div className="card mb-4" style={{ padding: '8px 16px' }}>
+            <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--bg-elevated)', marginBottom: 8 }}>
+              <div style={{ width: `${(kpi.delivered / kpi.total * 100) || 0}%`, background: 'var(--green)' }}></div>
+              <div style={{ width: `${(kpi.returned / kpi.total * 100) || 0}%`, background: 'var(--red)' }}></div>
+              <div style={{ width: `${(kpi.pending / kpi.total * 100) || 0}%`, background: 'var(--yellow)' }}></div>
+            </div>
+            <div className="flex gap-3" style={{ fontSize: '0.68rem', fontWeight: 600 }}>
+              <span style={{ color: 'var(--green)' }}>Delivered: {deliveryRate}%</span>
+              <span style={{ color: 'var(--red)' }}>Returned: {((kpi.returned / kpi.total * 100) || 0).toFixed(1)}%</span>
+              <span style={{ color: 'var(--yellow)' }}>In Transit: {kpi.pending}</span>
+            </div>
           </div>
-          <div className="flex gap-3 mt-4" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            <span style={{ color: 'var(--green)' }}>✅ Delivered: {deliveryRate}%</span>
-            <span style={{ color: 'var(--red)' }}>↩️ Returned: {kpi.total > 0 ? ((kpi.returned/kpi.total)*100).toFixed(1) : 0}%</span>
-            <span style={{ color: 'var(--yellow)' }}>🚚 In Transit: {kpi.pending}</span>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Filters */}
