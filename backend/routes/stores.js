@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { fetchShopifyOrders } = require('../engines/shopify');
+// Removed top-level require for shopify engine to avoid circular dependency
 
 // GET /api/stores - List all connected stores
 router.get('/', (req, res) => {
   const stores = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
            postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
-           sync_status, sync_progress,
+           sync_status, sync_progress, postex_track_url, instaworld_track_url,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores ORDER BY created_at DESC
   `).all();
@@ -20,7 +20,7 @@ router.get('/:id', (req, res) => {
   const store = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
            postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
-           sync_status, sync_progress,
+           sync_status, sync_progress, postex_track_url, instaworld_track_url,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores WHERE id = ?
   `).get(req.params.id);
@@ -39,9 +39,9 @@ router.put('/:id', (req, res) => {
     instaworld_track_url=COALESCE(NULLIF(?,''),(SELECT instaworld_track_url FROM stores WHERE id=?)),
     sync_start_date=?
     WHERE id=?
-  `).run(postex_token, instaworld_key, instaworld_key_backup, store_name,
-         postex_track_url, req.params.id,
-         instaworld_track_url, req.params.id,
+  `).run(postex_token || null, instaworld_key || null, instaworld_key_backup || null, store_name || null,
+         postex_track_url || null, req.params.id,
+         instaworld_track_url || null, req.params.id,
          startDate,
          req.params.id);
   res.json({ success: true });
@@ -49,6 +49,7 @@ router.put('/:id', (req, res) => {
 
 // POST /api/stores/:id/deep-sync - Trigger historical sync
 router.post('/:id/deep-sync', async (req, res) => {
+  const { fetchShopifyOrders } = require('../engines/shopify');
   const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
   
