@@ -76,7 +76,17 @@ function applySpecialMode(order, mode, today) {
   if (mode === '[NEEDS ADJUSTMENT]') {
     const delivered = s.includes('delivered')
     const returnedOrCancelled = s.includes('return') || s.includes('cancel')
-    return (delivered && paid === 0 && price > 0) || (delivered && paid > 0 && paid < price) || (returnedOrCancelled && paid > 0) || (paid > price)
+    const diff = price - paid
+    
+    // Flag if:
+    // 1. Delivered but essentially unpaid (balance > 1)
+    // 2. Delivered but partially paid (balance > 1)
+    // 3. Returned/Cancelled but has any significant payment (> 1)
+    // 4. Significant overpayment (balance < -1)
+    return (delivered && paid < 1 && price > 1) || 
+           (delivered && diff > 1 && paid >= 1) || 
+           (returnedOrCancelled && paid > 1) || 
+           (diff < -1)
   }
   if (mode === '[RUN SYSTEM AUDIT]') {
     const noTrack = (s.includes('shipped')||s.includes('transit')) && !order.tracking_number
@@ -351,7 +361,8 @@ export default function SearchTool() {
             </thead>
             <tbody>
               {results.map(o => {
-                const bal = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
+                const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
+                const isClear = Math.abs(diff) <= 1
                 const { bg, color } = getStatusColor(o.delivery_status)
                 const s = (o.delivery_status||'').toLowerCase()
                 const orderDate = o.order_date ? new Date(o.order_date) : null
@@ -391,8 +402,8 @@ export default function SearchTool() {
                       <PaidAmountCell order={o} onSave={updateOrderField} />
                     </td>
 
-                    <td style={{ color: bal > 0 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: bal > 0 && s.includes('delivered') ? 700 : 400 }}>
-                      {bal > 0 ? `Rs ${Math.round(bal).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
+                    <td style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
+                      {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
                     </td>
                     <td><span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span></td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
@@ -469,8 +480,9 @@ function PaidAmountCell({ order, onSave }) {
 
   const paid = parseFloat(order.paid_amount) || 0
   const price = parseFloat(order.price) || 0
-  const isPartial = paid > 0 && paid < price
-  const isFull = paid >= price && paid > 0
+  const diff = price - paid
+  const isPartial = paid >= 1 && diff > 1
+  const isFull = Math.abs(diff) <= 1 && paid >= 1
 
   return (
     <span
