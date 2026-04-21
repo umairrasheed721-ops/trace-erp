@@ -459,9 +459,17 @@ export default function Reports() {
                     if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                     
                     if (col.id === 'pnl') style = { color: row.pnl >= 0 ? '#34d399' : '#fca5a5', fontWeight: 800 };
+                    const isClickable = ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending'].includes(col.id);
+
                     return (
-                      <td key={col.id} style={style} onClick={() => ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered'].includes(col.id) && handleDrilldown(row, col.id)}>
-                        {content}
+                      <td 
+                        key={col.id} 
+                        style={{ ...style, cursor: isClickable ? 'pointer' : 'default' }} 
+                        onClick={() => isClickable && handleDrilldown(row, col.id)}
+                      >
+                        {isClickable ? (
+                          <span style={{ borderBottom: '1px dashed rgba(255,255,255,0.3)' }}>{content}</span>
+                        ) : content}
                       </td>
                     );
                   })}
