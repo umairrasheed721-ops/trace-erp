@@ -226,10 +226,22 @@ export default function SearchTool() {
 
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()
-    const isPending = status.includes('pending')
-    const hasTracking = !!o.tracking_number && o.tracking_number !== '—'
-    // Backlog = Pending ERP status AND not yet booked/tracked
-    return isPending && !hasTracking
+    const hasTracking = !!o.tracking_number && o.tracking_number !== '—' && String(o.tracking_number).length > 3
+    const hasCourier = !!o.courier && o.courier !== '—'
+    
+    // Statuses that imply it's NOT in the warehouse anymore
+    const isOut = status.includes('booked') || 
+                  status.includes('picked') || 
+                  status.includes('transit') || 
+                  status.includes('attempt') || 
+                  status.includes('delivered') || 
+                  status.includes('return') ||
+                  status.includes('cancel') ||
+                  status.includes('warehouse') ||
+                  status.includes('available')
+
+    // It's ONLY a backlog if it's Pending AND has no tracking/courier AND isn't already "Out"
+    return status.includes('pending') && !hasTracking && !hasCourier && !isOut
   }
 
   const getAgingCounts = (orders) => {
@@ -771,7 +783,11 @@ export default function SearchTool() {
                       if (col.id === 'edit') return (
                         <td key={col.id}>
                           <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || ''} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
-                            {['Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered','Return Initiated','Return Received','Cancelled'].map(st => <option key={st} value={st}>{st}</option>)}
+                            {[
+                              'Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered',
+                              'Attempted','Refused','Arrived at Warehouse','Not Available',
+                              'Return Initiated','Return Received','Cancelled'
+                            ].map(st => <option key={st} value={st}>{st}</option>)}
                           </select>
                         </td>
                       )
