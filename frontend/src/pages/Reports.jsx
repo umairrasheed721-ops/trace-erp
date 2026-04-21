@@ -20,6 +20,25 @@ export default function Reports() {
   const [dailyData, setDailyData] = useState([]);
   const [view, setView] = useState('daily'); // 'daily' or 'monthly'
   const [monthFilter, setMonthFilter] = useState('all');
+  
+  // View Persistence State
+  const [hiddenColumns, setHiddenColumns] = useState(() => {
+    const saved = localStorage.getItem('reports_hidden_columns');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [sortConfig, setSortConfig] = useState(() => {
+    const saved = localStorage.getItem('reports_sort_config');
+    return saved ? JSON.parse(saved) : { key: 'date', direction: 'desc' };
+  });
+  const [showColPicker, setShowColPicker] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('reports_hidden_columns', JSON.stringify(hiddenColumns));
+  }, [hiddenColumns]);
+
+  useEffect(() => {
+    localStorage.setItem('reports_sort_config', JSON.stringify(sortConfig));
+  }, [sortConfig]);
 
   useEffect(() => {
     if (!activeStoreId) return;
@@ -50,11 +69,12 @@ export default function Reports() {
         const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
         
         // Recalculate dependencies
-        updated.pnl = updated.grossProfit - updated.taxPaid - totalMarketing - updated.estCourier - (updated.actualExp || 0);
+        updated.pnl = updated.grossProfit - updated.taxPaid - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
         updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
-        updated.roasMeta = totalMarketing > 0 ? ((updated.deliveredSale / (updated.delPercent/100)) / totalMarketing) : 0; // Approximate total sale if not stored, wait totalSale is not in state directly. But it's fine, we update it via backend sync soon.
-        updated.cpaAvg = updated.landedOrders > 0 ? (totalMarketing / updated.landedOrders) : 0;
-        const netOrders = updated.landedOrders - updated.cancelations;
+        // Approximation of roasMeta if needed, but usually we trust the calculated roasMeta from backend
+        const landedOrders = updated.landedOrders || 0;
+        updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
+        const netOrders = landedOrders - (updated.cancelations || 0);
         updated.netCpaAvg = netOrders > 0 ? (totalMarketing / netOrders) : 0;
         
         return updated;
@@ -67,10 +87,10 @@ export default function Reports() {
       const payload = {
         store_id: activeStoreId,
         date: date,
-        marketing_spend: field === 'marketingSpend' ? numValue : row.marketingSpend,
-        tiktok_marketing: field === 'tiktokMarketing' ? numValue : row.tiktokMarketing,
-        actual_exp: field === 'actualExp' ? numValue : row.actualExp,
-        diff_correction: field === 'diffCorrection' ? numValue : row.diffCorrection
+        marketing_spend: field === 'marketingSpend' ? numValue : (row.marketingSpend || 0),
+        tiktok_marketing: field === 'tiktokMarketing' ? numValue : (row.tiktokMarketing || 0),
+        actual_exp: field === 'actualExp' ? numValue : (row.actualExp || 0),
+        diff_correction: field === 'diffCorrection' ? numValue : (row.diffCorrection || 0)
       };
       
       const res = await fetch(`/api/reports/metrics?t=${Date.now()}`, {
@@ -79,15 +99,31 @@ export default function Reports() {
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error('Failed to save');
-      // No toast for every keystroke to avoid spam
     } catch (e) {
       toast('Error saving: ' + e.message, 'error');
       fetchData(); // Revert on error
     }
   };
 
+  const sortData = (data, config) => {
+    if (!config.key) return data;
+    const sorted = [...data].sort((a, b) => {
+      let valA = a[config.key];
+      let valB = b[config.key];
+
+      // Handle month vs date
+      if (config.key === 'date' && !a.date && a.month) valA = a.month;
+      if (config.key === 'date' && !b.date && b.month) valB = b.month;
+
+      if (valA < valB) return config.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return config.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  };
+
   const monthlyData = useMemo(() => {
-    return Object.values(dailyData.reduce((acc, row) => {
+    const rawMonthly = Object.values(dailyData.reduce((acc, row) => {
       const month = row.date.substring(0, 7); // YYYY-MM
       if (!acc[month]) {
         acc[month] = {
@@ -134,7 +170,7 @@ export default function Reports() {
       const netSales = m.deliveredSale - taxPaid;
       const grossProfit = m.deliveredSale - m.cgs;
       const marPercent = m.deliveredSale > 0 ? (totalMarketing / m.deliveredSale) * 100 : 0;
-      const courierDiff = m.actualCourier - (m.estCourier); // Simplified for monthly diff or just sum row.courierDiff
+      const courierDiff = m.actualCourier - (m.estCourier);
       const pnl = grossProfit - taxPaid - totalMarketing - m.hybridCourier - m.actualExp;
       const canPercent = m.landedOrders > 0 ? (m.cancelations / m.landedOrders) * 100 : 0;
       const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
@@ -144,27 +180,81 @@ export default function Reports() {
       const netOrders = m.landedOrders - m.cancelations;
       const netCpaAvg = netOrders > 0 ? (totalMarketing / netOrders) : 0;
 
-      return { ...m, aov, cgsPercent, taxPaid, netSales, grossProfit, marPercent, pnl, canPercent, delPercent, roasMeta, cpaAvg, netCpaAvg, courierDiff };
-    }).sort((a, b) => b.month.localeCompare(a.month));
-  }, [dailyData]);
+      return { ...m, date: m.month, aov, cgsPercent, taxPaid, netSales, grossProfit, marPercent, pnl, canPercent, delPercent, roasMeta, cpaAvg, netCpaAvg, courierDiff };
+    });
 
-  // Available months for filter
-  const months = useMemo(() => {
-    const s = new Set(dailyData.map(r => r.date.substring(0, 7)));
-    return Array.from(s).sort((a,b)=>b.localeCompare(a));
-  }, [dailyData]);
+    return sortData(rawMonthly, sortConfig);
+  }, [dailyData, sortConfig]);
 
   const filteredDaily = useMemo(() => {
-    if (monthFilter === 'all') return dailyData;
-    return dailyData.filter(r => r.date.startsWith(monthFilter));
-  }, [dailyData, monthFilter]);
+    let data = monthFilter === 'all' ? dailyData : dailyData.filter(r => r.date.startsWith(monthFilter));
+    return sortData(data, sortConfig);
+  }, [dailyData, monthFilter, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const toggleColumn = (colId) => {
+    setHiddenColumns(prev => 
+      prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+    );
+  };
+
+  const columns = [
+    { id: 'date', label: view === 'daily' ? 'Dates' : 'Month', group: 'key' },
+    { id: 'aov', label: 'AOV', group: 'income' },
+    { id: 'deliveredSale', label: 'Delivered Sale', group: 'income' },
+    { id: 'cgs', label: 'CGS', group: 'income' },
+    { id: 'cgsPercent', label: 'CGS %', group: 'income' },
+    { id: 'netSales', label: '-4% Tax', group: 'income' },
+    { id: 'taxPaid', label: 'TAX Paid', group: 'income' },
+    { id: 'grossProfit', label: 'Gross Profit', group: 'income' },
+    { id: 'marPercent', label: 'Mar %', group: 'expense' },
+    { id: 'marketingSpend', label: 'Meta Ads', group: 'expense' },
+    { id: 'tiktokMarketing', label: 'Tiktok', group: 'expense' },
+    { id: 'estCourier', label: 'Est. Courier', group: 'expense' },
+    { id: 'actualCourier', label: 'Actual Courier', group: 'expense' },
+    { id: 'courierDiff', label: 'Diff Correction', group: 'expense' },
+    { id: 'actualExp', label: 'Manual Exp', group: 'expense' },
+    { id: 'pnl', label: 'FINAL PNL', group: 'profit' },
+    { id: 'delPercent', label: 'Del%', group: 'kpi' },
+    { id: 'roasMeta', label: 'ROAS', group: 'kpi' },
+    { id: 'cpaAvg', label: 'CPA AVG', group: 'kpi' },
+    { id: 'netCpaAvg', label: 'Net CPA', group: 'kpi' },
+    { id: 'landedOrders', label: 'Landed', group: 'kpi' },
+    { id: 'cancelations', label: 'Cancel', group: 'kpi' },
+    { id: 'canPercent', label: 'Can %', group: 'kpi' },
+    { id: 'pending', label: 'Pending', group: 'kpi' },
+    { id: 'totalDispatched', label: 'Dispatched', group: 'kpi' },
+    { id: 'disPercent', label: 'Dis %', group: 'kpi' },
+    { id: 'delivered', label: 'Delivered', group: 'kpi' },
+    { id: 'restocked', label: 'Returned', group: 'kpi' },
+    { id: 'intransit', label: 'Transit', group: 'kpi' },
+    { id: 'fakeReturns', label: 'FAKE RET', group: 'kpi' },
+    { id: 'withoutTrackingId', label: 'No Tracking', group: 'kpi' },
+    { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },
+    { id: 'diffCorrection', label: 'Correction', group: 'kpi' },
+    { id: 'deliveredPaymentPending', label: 'Unpaid Del', group: 'kpi' }
+  ];
+
+  const visibleCols = columns.filter(c => !hiddenColumns.includes(c.id));
+
+  const renderSortIcon = (key) => {
+    if (sortConfig.key !== key) return <span style={{ opacity: 0.2, marginLeft: 4 }}>↕</span>;
+    return <span style={{ marginLeft: 4, color: '#fbbf24' }}>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+  };
 
   const renderEditable = (row, field) => (
     <input 
       type="number" 
       value={row[field] || ''}
       onChange={(e) => handleMetricChange(row.date, field, e.target.value)}
-      onBlur={(e) => handleMetricChange(row.date, field, e.target.value)} // ensure save on blur
+      onBlur={(e) => handleMetricChange(row.date, field, e.target.value)}
       placeholder="0"
       className="editable-input"
     />
@@ -174,191 +264,222 @@ export default function Reports() {
     <div className="page-container" style={{ maxWidth: '100%' }}>
       <style>{`
         .reports-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; text-align: right; white-space: nowrap; }
-        .reports-table th { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 10; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+        .reports-table th { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 10; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; }
+        .reports-table th:hover { background-color: rgba(255,255,255,0.1); }
         .reports-table td { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
         .reports-table tr:hover { background-color: rgba(255,255,255,0.05); }
         
         .editable-input { width: 90px; padding: 6px; text-align: right; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-weight: 600; }
         .editable-input:focus { outline: none; border-color: #fbbf24; box-shadow: 0 0 0 2px rgba(251,191,36,0.2); }
         
-        /* Spreadsheet Color Coding */
-        .head-sales { background-color: #854d0e !important; } /* Dark Yellow/Gold */
-        .head-out { background-color: #6b21a8 !important; }   /* Dark Purple */
-        .head-pnl { background-color: #065f46 !important; }   /* Dark Green */
-        .head-kpi { background-color: #1e293b !important; }   /* Neutral Dark */
+        .head-sales { background-color: #854d0e !important; }
+        .head-out { background-color: #6b21a8 !important; }
+        .head-pnl { background-color: #065f46 !important; }
+        .head-kpi { background-color: #1e293b !important; }
 
         .col-sales { background-color: rgba(251, 191, 36, 0.05); }
         .col-out { background-color: rgba(168, 85, 247, 0.05); }
         .col-pnl-cell { background-color: rgba(16, 185, 129, 0.1); font-weight: 800; font-size: 14px; }
         
         .sticky-col { position: sticky; left: 0; background-color: #0f172a !important; z-index: 20; border-right: 2px solid rgba(255,255,255,0.1); text-align: left !important; font-weight: 800; }
+        
+        .column-picker { position: absolute; top: 100%; left: 0; z-index: 100; background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 16px; width: 250px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 400px; overflow-y: auto; }
+        .column-item { display: flex; alignItems: center; gap: 8px; margin-bottom: 8px; cursor: pointer; font-size: 12px; }
+        .column-item input { cursor: pointer; }
+        
+        .view-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
       `}</style>
 
-      <header className="page-header" style={{ marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 className="page-title">📈 Profit & Loss Command Center</h1>
-          <p className="page-subtitle">Complete 34-column operational dashboard synchronized with Shopify & Couriers</p>
-        </div>
-        
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          {view === 'daily' && (
-            <select 
-              value={monthFilter} 
-              onChange={e => setMonthFilter(e.target.value)}
-              className="editable-input"
-              style={{ width: 'auto', background: 'rgba(255,255,255,0.1)', cursor: 'pointer' }}
-            >
-              <option value="all">All Months</option>
-              {months.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          )}
-
-          <div style={{ display: 'flex', gap: 8, background: 'rgba(0,0,0,0.3)', padding: 6, borderRadius: 10 }}>
-            <button 
-              className={`btn ${view === 'daily' ? 'btn-primary' : ''}`}
-              onClick={() => setView('daily')}
-              style={{ 
-                backgroundColor: view === 'daily' ? '#4f46e5' : 'transparent', 
-                border: 'none',
-                padding: '8px 16px',
-                fontWeight: 600
-              }}
-            >
-              📅 Daily PNL
-            </button>
-            <button 
-              className={`btn ${view === 'monthly' ? 'btn-primary' : ''}`}
-              onClick={() => setView('monthly')}
-              style={{ 
-                backgroundColor: view === 'monthly' ? '#4f46e5' : 'transparent', 
-                border: 'none',
-                padding: '8px 16px',
-                fontWeight: 600
-              }}
-            >
-              📊 Month Vise
-            </button>
-          </div>
-        </div>
+      <header className="page-header" style={{ marginBottom: 20 }}>
+        <h1 className="page-title">📈 Profit & Loss Command Center</h1>
+        <p className="page-subtitle">Complete 34-column operational dashboard synchronized with Shopify & Couriers</p>
       </header>
+
+      <div className="view-controls" style={{ justifyContent: 'flex-start' }}>
+        <div style={{ position: 'relative' }}>
+          <button 
+            className="btn" 
+            onClick={() => setShowColPicker(!showColPicker)}
+            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
+          >
+            ⚙️ Columns {hiddenColumns.length > 0 && `(${columns.length - hiddenColumns.length}/${columns.length})`}
+          </button>
+          
+          {showColPicker && (
+            <div className="column-picker">
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <button onClick={() => setHiddenColumns([])} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: 11, cursor: 'pointer' }}>Show All</button>
+                <button onClick={() => setHiddenColumns(columns.filter(c => c.group !== 'key').map(c => c.id))} style={{ background: 'none', border: 'none', color: '#f87171', fontSize: 11, cursor: 'pointer' }}>Hide All</button>
+                <button onClick={() => { setHiddenColumns([]); setSortConfig({ key: 'date', direction: 'desc' }); }} style={{ background: 'none', border: 'none', color: '#fbbf24', fontSize: 11, cursor: 'pointer' }}>Reset View</button>
+              </div>
+              {columns.map(col => (
+                <label key={col.id} className="column-item">
+                  <input 
+                    type="checkbox" 
+                    checked={!hiddenColumns.includes(col.id)} 
+                    onChange={() => toggleColumn(col.id)}
+                    disabled={col.group === 'key'}
+                  />
+                  <span>{col.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {view === 'daily' && (
+          <select 
+            value={monthFilter} 
+            onChange={e => setMonthFilter(e.target.value)}
+            className="editable-input"
+            style={{ width: 'auto', background: 'rgba(255,255,255,0.1)', cursor: 'pointer' }}
+          >
+            <option value="all">All Months</option>
+            {columns.find(c => c.id === 'date' && !hiddenColumns.includes('date')) && (
+               Array.from(new Set(dailyData.map(r => r.date.substring(0, 7)))).sort((a,b)=>b.localeCompare(a)).map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))
+            )}
+          </select>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, background: 'rgba(0,0,0,0.3)', padding: 6, borderRadius: 10 }}>
+          <button 
+            className={`btn ${view === 'daily' ? 'btn-primary' : ''}`}
+            onClick={() => setView('daily')}
+            style={{ 
+              backgroundColor: view === 'daily' ? '#4f46e5' : 'transparent', 
+              border: 'none',
+              padding: '8px 16px',
+              fontWeight: 600
+            }}
+          >
+            📅 Daily PNL
+          </button>
+          <button 
+            className={`btn ${view === 'monthly' ? 'btn-primary' : ''}`}
+            onClick={() => setView('monthly')}
+            style={{ 
+              backgroundColor: view === 'monthly' ? '#4f46e5' : 'transparent', 
+              border: 'none',
+              padding: '8px 16px',
+              fontWeight: 600
+            }}
+          >
+            📊 Month Vise
+          </button>
+        </div>
+      </div>
 
       {loading ? (
         <div style={{ padding: 100, textAlign: 'center', opacity: 0.5 }}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>⏳</div>
-          Crunching numbers for all 34 columns...
+          Crunching numbers...
         </div>
       ) : (
         <div className="stat-card" style={{ padding: 0, overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)' }}>
           <table className="reports-table">
             <thead>
               <tr style={{ height: 40 }}>
-                <th className="sticky-col" style={{ zIndex: 21 }}></th>
-                <th colSpan="7" className="head-sales" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>💸 INCOME & SALES</th>
-                <th colSpan="5" className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>📉 EXPENSES (OUT)</th>
-                <th colSpan="1" className="head-pnl" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>💰 PROFIT</th>
-                <th colSpan="18" className="head-kpi">🛡️ OPERATIONAL KPIs</th>
+                {columns.find(c => c.id === 'date' && !hiddenColumns.includes('date')) && <th className="sticky-col" style={{ zIndex: 21 }}></th>}
+                
+                {columns.filter(c => c.group === 'income' && !hiddenColumns.includes(c.id)).length > 0 && (
+                  <th colSpan={columns.filter(c => c.group === 'income' && !hiddenColumns.includes(c.id)).length} className="head-sales" style={{ borderRight: '1px solid rgba(255,255,255,0.2)', textAlign: 'center' }}>💸 INCOME & SALES</th>
+                )}
+                
+                {columns.filter(c => c.group === 'expense' && !hiddenColumns.includes(c.id)).length > 0 && (
+                  <th colSpan={columns.filter(c => c.group === 'expense' && !hiddenColumns.includes(c.id)).length} className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)', textAlign: 'center' }}>📉 EXPENSES (OUT)</th>
+                )}
+                
+                {columns.filter(c => c.group === 'profit' && !hiddenColumns.includes(c.id)).length > 0 && (
+                  <th colSpan={columns.filter(c => c.group === 'profit' && !hiddenColumns.includes(c.id)).length} className="head-pnl" style={{ borderRight: '1px solid rgba(255,255,255,0.2)', textAlign: 'center' }}>💰 PROFIT</th>
+                )}
+                
+                {columns.filter(c => c.group === 'kpi' && !hiddenColumns.includes(c.id)).length > 0 && (
+                  <th colSpan={columns.filter(c => c.group === 'kpi' && !hiddenColumns.includes(c.id)).length} className="head-kpi" style={{ textAlign: 'center' }}>🛡️ OPERATIONAL KPIs</th>
+                )}
               </tr>
               <tr>
-                <th className="sticky-col" style={{ zIndex: 21 }}>{view === 'daily' ? 'Dates' : 'Month'}</th>
-                <th className="head-sales">AOV</th>
-                <th className="head-sales">Delivered Sale</th>
-                <th className="head-sales">CGS</th>
-                <th className="head-sales">CGS %</th>
-                <th className="head-sales">-4% Tax</th>
-                <th className="head-sales">TAX Paid</th>
-                <th className="head-sales" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>Gross Profit</th>
-                
-                <th className="head-out">Mar %</th>
-                <th className="head-out">Meta Ads ✏️</th>
-                <th className="head-out">Tiktok ✏️</th>
-                <th className="head-out">Est. Courier</th>
-                <th className="head-out">Actual Courier</th>
-                <th className="head-out">Diff Correction</th>
-                <th className="head-out" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>Manual Exp ✏️</th>
-                
-                <th className="head-pnl" style={{ borderRight: '1px solid rgba(255,255,255,0.2)' }}>FINAL PNL</th>
-                
-                <th className="head-kpi">Del%</th>
-                <th className="head-kpi">ROAS</th>
-                <th className="head-kpi">CPA AVG</th>
-                <th className="head-kpi">Net CPA</th>
-                <th className="head-kpi">Landed</th>
-                <th className="head-kpi">Cancel</th>
-                <th className="head-kpi">Can %</th>
-                <th className="head-kpi">Pending</th>
-                <th className="head-kpi">Dispatched</th>
-                <th className="head-kpi">Dis %</th>
-                <th className="head-kpi">Delivered</th>
-                <th className="head-kpi">Returned</th>
-                <th className="head-kpi">Transit</th>
-                <th className="head-kpi" style={{ color: '#f87171' }}>FAKE RET</th>
-                <th className="head-kpi">No Tracking</th>
-                <th className="head-kpi">Payouts</th>
-                <th className="head-kpi">Correction ✏️</th>
-                <th className="head-kpi">Unpaid Del</th>
+                {visibleCols.map((col, idx) => {
+                  let className = "";
+                  if (col.id === 'date') className = "sticky-col";
+                  else if (col.group === 'income') className = "head-sales";
+                  else if (col.group === 'expense') className = "head-out";
+                  else if (col.group === 'profit') className = "head-pnl";
+                  else if (col.group === 'kpi') className = "head-kpi";
+
+                  // Add border right to last in group if next is different
+                  const nextCol = visibleCols[idx+1];
+                  const style = (nextCol && nextCol.group !== col.group) ? { borderRight: '1px solid rgba(255,255,255,0.2)' } : {};
+                  if (col.id === 'date') style.zIndex = 21;
+
+                  return (
+                    <th key={col.id} className={className} style={style} onClick={() => requestSort(col.id)}>
+                      {col.label} {renderSortIcon(col.id)}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {(view === 'daily' ? filteredDaily : monthlyData).map(row => (
                 <tr key={row.date || row.month}>
-                  <td className="sticky-col">{row.date || row.month}</td>
-                  <td className="col-sales">{formatCurrency(row.aov)}</td>
-                  <td className="col-sales" style={{ color: '#34d399', fontWeight: 600 }}>{formatCurrency(row.deliveredSale)}</td>
-                  <td className="col-sales">{formatCurrency(row.cgs)}</td>
-                  <td className="col-sales">{formatPercent(row.cgsPercent)}</td>
-                  <td className="col-sales">{formatCurrency(row.netSales)}</td>
-                  <td className="col-sales" style={{ color: '#f87171' }}>{formatCurrency(row.taxPaid)}</td>
-                  <td className="col-sales" style={{ fontWeight: 800, borderRight: '1px solid rgba(255,255,255,0.1)' }}>{formatCurrency(row.grossProfit)}</td>
-                  
-                  <td className="col-out">{formatPercent(row.marPercent)}</td>
-                  <td className="col-out">
-                    {view === 'daily' ? renderEditable(row, 'marketingSpend') : formatCurrency(row.marketingSpend)}
-                  </td>
-                  <td className="col-out">
-                    {view === 'daily' ? renderEditable(row, 'tiktokMarketing') : formatCurrency(row.tiktokMarketing)}
-                  </td>
-                  <td className="col-out" style={{ color: '#f87171' }}>{formatCurrency(row.estCourier)}</td>
-                  <td className="col-out">{formatCurrency(row.actualCourier)}</td>
-                  <td className="col-out" style={{ color: row.courierDiff > 0 ? '#f87171' : '#34d399' }}>{formatCurrency(row.courierDiff)}</td>
-                  <td className="col-out" style={{ borderRight: '1px solid rgba(255,255,255,0.1)' }}>
-                    {view === 'daily' ? renderEditable(row, 'actualExp') : formatCurrency(row.actualExp)}
-                  </td>
-                  
-                  <td className="col-pnl-cell" style={{ 
-                    color: row.pnl >= 0 ? '#34d399' : '#fca5a5',
-                    borderRight: '2px solid rgba(255,255,255,0.2)',
-                    textAlign: 'center'
-                  }}>
-                    {formatCurrency(row.pnl)}
-                  </td>
-                  
-                  <td>{formatPercent(row.delPercent)}</td>
-                  <td>{formatNumber(row.roasMeta)}</td>
-                  <td>{formatCurrency(row.cpaAvg)}</td>
-                  <td>{formatCurrency(row.netCpaAvg)}</td>
-                  
-                  <td style={{ fontWeight: 600 }}>{row.landedOrders}</td>
-                  <td style={{ color: '#f87171' }}>{row.cancelations}</td>
-                  <td>{formatPercent(row.canPercent)}</td>
-                  <td style={{ color: '#fbbf24' }}>{row.pending}</td>
-                  <td style={{ fontWeight: 600 }}>{row.totalDispatched}</td>
-                  <td>{formatPercent(row.disPercent)}</td>
-                  <td style={{ color: '#34d399', fontWeight: 600 }}>{row.delivered}</td>
-                  <td style={{ color: '#f87171' }}>{row.restocked}</td>
-                  <td style={{ color: '#60a5fa' }}>{row.intransit}</td>
-                  <td style={{ color: '#ef4444', fontWeight: 900 }}>{row.fakeReturns}</td>
-                  <td style={{ opacity: 0.5 }}>{row.withoutTrackingId}</td>
-                  
-                  <td style={{ color: '#34d399' }}>{formatCurrency(row.paymentPaid)}</td>
-                  <td>
-                    {view === 'daily' ? renderEditable(row, 'diffCorrection') : formatCurrency(row.diffCorrection)}
-                  </td>
-                  <td style={{ color: '#fbbf24' }}>{row.deliveredPaymentPending}</td>
+                  {visibleCols.map((col, idx) => {
+                    let content = "";
+                    let className = "";
+                    let style = {};
+
+                    if (col.id === 'date') {
+                      content = row.date || row.month;
+                      className = "sticky-col";
+                    } else if (col.group === 'income') {
+                      className = "col-sales";
+                      if (['aov', 'deliveredSale', 'cgs', 'netSales', 'taxPaid', 'grossProfit'].includes(col.id)) content = formatCurrency(row[col.id]);
+                      else if (col.id === 'cgsPercent') content = formatPercent(row[col.id]);
+                      
+                      if (col.id === 'deliveredSale') style = { color: '#34d399', fontWeight: 600 };
+                      if (col.id === 'taxPaid') style = { color: '#f87171' };
+                    } else if (col.group === 'expense') {
+                      className = "col-out";
+                      if (['marPercent'].includes(col.id)) content = formatPercent(row[col.id]);
+                      else if (['marketingSpend', 'tiktokMarketing', 'actualExp'].includes(col.id)) {
+                        content = view === 'daily' ? renderEditable(row, col.id) : formatCurrency(row[col.id]);
+                      } else {
+                        content = formatCurrency(row[col.id]);
+                        if (col.id === 'estCourier') style = { color: '#f87171' };
+                        if (col.id === 'courierDiff') style = { color: row.courierDiff > 0 ? '#f87171' : '#34d399' };
+                      }
+                    } else if (col.id === 'pnl') {
+                      className = "col-pnl-cell";
+                      content = formatCurrency(row.pnl);
+                      style = { color: row.pnl >= 0 ? '#34d399' : '#fca5a5', textAlign: 'center' };
+                    } else {
+                      // KPIs
+                      if (['delPercent', 'canPercent', 'disPercent'].includes(col.id)) content = formatPercent(row[col.id]);
+                      else if (['roasMeta'].includes(col.id)) content = formatNumber(row[col.id]);
+                      else if (['cpaAvg', 'netCpaAvg', 'paymentPaid'].includes(col.id)) content = formatCurrency(row[col.id]);
+                      else if (col.id === 'diffCorrection') content = view === 'daily' ? renderEditable(row, col.id) : formatCurrency(row[col.id]);
+                      else content = row[col.id];
+
+                      if (col.id === 'cancelations' || col.id === 'restocked' || col.id === 'fakeReturns') style = { color: '#f87171' };
+                      if (col.id === 'pending' || col.id === 'deliveredPaymentPending') style = { color: '#fbbf24' };
+                      if (col.id === 'delivered' || col.id === 'paymentPaid') style = { color: '#34d399' };
+                      if (col.id === 'intransit') style = { color: '#60a5fa' };
+                    }
+
+                    const nextCol = visibleCols[idx+1];
+                    if (nextCol && nextCol.group !== col.group) {
+                      style.borderRight = '1px solid rgba(255,255,255,0.1)';
+                      if (col.id === 'pnl') style.borderRight = '2px solid rgba(255,255,255,0.2)';
+                    }
+
+                    return <td key={col.id} className={className} style={style}>{content}</td>;
+                  })}
                 </tr>
               ))}
               {(view === 'daily' ? filteredDaily : monthlyData).length === 0 && (
                 <tr>
-                  <td colSpan="32" style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>No data found.</td>
+                  <td colSpan={visibleCols.length} style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>No data found.</td>
                 </tr>
               )}
             </tbody>
