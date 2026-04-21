@@ -138,6 +138,41 @@ export default function SearchTool() {
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
 
+  // ─── Drag & Drop Columns ─────────────────
+  const DEFAULT_COLS = [
+    { id: 'ref_number', label: 'Order ID' },
+    { id: 'order_date', label: 'Date' },
+    { id: 'customer_name', label: 'Customer' },
+    { id: 'phone', label: 'Phone' },
+    { id: 'city', label: 'City' },
+    { id: 'price', label: 'Price' },
+    { id: 'paid_amount', label: 'Paid Amount' },
+    { id: 'diff', label: 'Pending Bal.' },
+    { id: 'delivery_status', label: 'Status' },
+    { id: 'courier', label: 'Courier' },
+    { id: 'tracking_number', label: 'Tracking #' },
+    { id: 'edit', label: 'Edit Status' },
+    { id: 'payment_date', label: 'P&L Date' },
+    { id: 'notes', label: 'Shopify Note' }
+  ]
+  const [cols, setCols] = useState(() => {
+    const saved = localStorage.getItem('trace_search_cols')
+    return saved ? JSON.parse(saved) : DEFAULT_COLS
+  })
+  const [draggedIdx, setDraggedIdx] = useState(null)
+
+  const onDragStart = (idx) => setDraggedIdx(idx)
+  const onDragOver = (e) => e.preventDefault()
+  const onDrop = (targetIdx) => {
+    if (draggedIdx === null) return
+    const newCols = [...cols]
+    const [removed] = newCols.splice(draggedIdx, 1)
+    newCols.splice(targetIdx, 0, removed)
+    setCols(newCols)
+    localStorage.setItem('trace_search_cols', JSON.stringify(newCols))
+    setDraggedIdx(null)
+  }
+
   // Apply drill-down state from Reports page
   useEffect(() => {
     if (location.state) {
@@ -390,24 +425,33 @@ export default function SearchTool() {
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
         <div className="table-wrapper">
-          <table>
+          <table className="draggable-table">
             <thead>
               <tr>
-                <th>Order ID</th><th>Date</th><th>Customer</th><th>Phone</th><th>City</th>
-                <th>Price</th><th>Paid Amount</th><th>Pending Bal.</th><th>Status</th>
-                <th>Courier</th><th>Tracking #</th><th>Edit Status</th><th>P&L Date</th><th>Shopify Note</th>
+                {cols.map((col, idx) => (
+                  <th 
+                    key={col.id}
+                    draggable
+                    onDragStart={() => onDragStart(idx)}
+                    onDragOver={onDragOver}
+                    onDrop={() => onDrop(idx)}
+                    style={{ cursor: 'move', userSelect: 'none' }}
+                  >
+                    {col.label}
+                  </th>
+                ))}
               </tr>
               <tr className="header-search-row">
-                {['ref_number','order_date','customer_name','phone','city','price','paid_amount','diff','delivery_status','courier','tracking_number','edit','payment_date','notes'].map(key => {
-                  const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(key);
+                {cols.map(col => {
+                  const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
                   return (
-                    <th key={key} style={{ padding: '4px 8px' }}>
+                    <th key={col.id} style={{ padding: '4px 8px' }}>
                       {isFiltered && (
                         <input 
                           className="header-search-input"
                           placeholder="Search..."
-                          value={colFilters[key] || ''}
-                          onChange={e => setColFilters(prev => ({ ...prev, [key]: e.target.value }))}
+                          value={colFilters[col.id] || ''}
+                          onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
                         />
                       )}
                     </th>
@@ -429,72 +473,58 @@ export default function SearchTool() {
 
                 return (
                   <tr key={o.id}>
-                    <td>
-                      <a
-                        href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`}
-                        target="_blank" rel="noreferrer"
-                        style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}
-                      >
-                        🛍️ {o.ref_number || o.shopify_order_id}
-                      </a>
-                    </td>
-                    <td style={{ fontSize: '0.75rem', color: dateAged ? 'var(--orange)' : 'var(--text-muted)', fontWeight: dateAged ? 700 : 400 }}>
-                      {o.order_date || '—'}
-                      {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
-                    </td>
-                    <td>{o.customer_name}</td>
-                    <td style={{ fontSize: '0.75rem' }}>
-                      {o.phone ? (
-                        <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }}>
-                          💬 {o.phone}
-                        </a>
-                      ) : '—'}
-                    </td>
-                    <td>{o.city || '—'}</td>
-                    <td style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-
-                    {/* 3. INLINE PAID AMOUNT EDIT */}
-                    <td>
-                      <PaidAmountCell order={o} onSave={updateOrderField} />
-                    </td>
-
-                    <td style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
-                      {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
-                    </td>
-                    <td><span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span></td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
-                    <td style={{ fontSize: '0.75rem' }}>
-                      {o.tracking_number ? (
-                        <a
-                          href={(o.courier||'').toLowerCase().includes('insta')
-                            ? `https://instaworld.com.pk/track/${o.tracking_number}`
-                            : `https://merchant.postex.pk/track/${o.tracking_number}`}
-                          target="_blank" rel="noreferrer"
-                          style={{ color: 'var(--blue)', textDecoration: 'none' }}
-                        >
-                          🚚 {o.tracking_number}
-                        </a>
-                      ) : '—'}
-                    </td>
-                    <td>
-                      <select
-                        className="form-select"
-                        style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }}
-                        value={o.delivery_status || ''}
-                        onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}
-                      >
-                        {['Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered','Return Initiated','Return Received','Cancelled'].map(st => (
-                          <option key={st} value={st}>{st}</option>
-                        ))}
-                      </select>
-                    </td>
-                    {/* 4. P&L DATE — auto-stamped by backend on Delivered */}
-                    <td style={{ fontSize: '0.72rem', color: o.payment_date ? 'var(--green)' : 'var(--text-muted)', fontWeight: o.payment_date ? 600 : 400 }}>
-                      {o.payment_date ? `📅 ${o.payment_date}` : s.includes('delivered') ? '⚠️ Missing' : '—'}
-                    </td>
-                    <td>
-                      <NoteCell order={o} onSave={updateOrderField} />
-                    </td>
+                    {cols.map(col => {
+                      if (col.id === 'ref_number') return (
+                        <td key={col.id}>
+                          <a href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
+                            🛍️ {o.ref_number || o.shopify_order_id}
+                          </a>
+                        </td>
+                      )
+                      if (col.id === 'order_date') return (
+                        <td key={col.id} style={{ fontSize: '0.75rem', color: dateAged ? 'var(--orange)' : 'var(--text-muted)', fontWeight: dateAged ? 700 : 400 }}>
+                          {o.order_date || '—'}
+                          {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
+                        </td>
+                      )
+                      if (col.id === 'customer_name') return <td key={col.id}>{o.customer_name}</td>
+                      if (col.id === 'phone') return (
+                        <td key={col.id} style={{ fontSize: '0.75rem' }}>
+                          {o.phone ? <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }}>💬 {o.phone}</a> : '—'}
+                        </td>
+                      )
+                      if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
+                      if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
+                      if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} /></td>
+                      if (col.id === 'diff') return (
+                        <td key={col.id} style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
+                          {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
+                        </td>
+                      )
+                      if (col.id === 'delivery_status') return <td key={col.id}><span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span></td>
+                      if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
+                      if (col.id === 'tracking_number') return (
+                        <td key={col.id} style={{ fontSize: '0.75rem' }}>
+                          {o.tracking_number ? (
+                            <a href={(o.courier||'').toLowerCase().includes('insta') ? `https://instaworld.com.pk/track/${o.tracking_number}` : `https://merchant.postex.pk/track/${o.tracking_number}`} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', textDecoration: 'none' }}>🚚 {o.tracking_number}</a>
+                          ) : '—'}
+                        </td>
+                      )
+                      if (col.id === 'edit') return (
+                        <td key={col.id}>
+                          <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || ''} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
+                            {['Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered','Return Initiated','Return Received','Cancelled'].map(st => <option key={st} value={st}>{st}</option>)}
+                          </select>
+                        </td>
+                      )
+                      if (col.id === 'payment_date') return (
+                        <td key={col.id} style={{ fontSize: '0.72rem', color: o.payment_date ? 'var(--green)' : 'var(--text-muted)', fontWeight: o.payment_date ? 600 : 400 }}>
+                          {o.payment_date ? `📅 ${o.payment_date}` : s.includes('delivered') ? '⚠️ Missing' : '—'}
+                        </td>
+                      )
+                      if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>
+                      return <td key={col.id}>—</td>
+                    })}
                   </tr>
                 )
               })}

@@ -166,6 +166,17 @@ body {
   background: rgba(255,255,255,0.1);
 }
 
+.draggable-table th[draggable="true"] {
+  cursor: move;
+  position: relative;
+}
+.draggable-table th[draggable="true"]:hover {
+  background: rgba(255,255,255,0.05);
+}
+.draggable-table th:active {
+  cursor: grabbing;
+}
+
 .store-switcher {
   padding: 12px 10px;
   border-top: 1px solid var(--border);
