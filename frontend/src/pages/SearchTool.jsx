@@ -224,11 +224,18 @@ export default function SearchTool() {
     })
   }
 
+  const isBacklogOrder = (o) => {
+    const status = (o.delivery_status || '').toLowerCase()
+    const isPending = status.includes('pending')
+    const hasTracking = !!o.tracking_number && o.tracking_number !== '—'
+    // Backlog = Pending ERP status AND not yet booked/tracked
+    return isPending && !hasTracking
+  }
+
   const getAgingCounts = (orders) => {
     const counts = {}
     orders.forEach(o => {
-      // ONLY count Pending orders for the Aging Bar
-      if (!o.order_date || !(o.delivery_status || '').toLowerCase().includes('pending')) return
+      if (!o.order_date || !isBacklogOrder(o)) return
       
       const d = new Date(o.order_date); d.setHours(0,0,0,0)
       const diff = Math.floor((today - d) / 86400000)
@@ -321,9 +328,9 @@ export default function SearchTool() {
       const orderDate = order.order_date ? new Date(order.order_date) : null
       const diff = orderDate ? Math.floor((today - new Date(orderDate).setHours(0,0,0,0)) / 86400000) : -1
 
-      // 1. Aging Bucket Filter (ONLY for Pending orders)
+      // 1. Aging Bucket Filter (ONLY for True Backlog: Pending + No Tracking)
       if (activeAgingBucket) {
-        if (!(order.delivery_status || '').toLowerCase().includes('pending')) return false
+        if (!isBacklogOrder(order)) return false
         const b = agingBuckets.find(bucket => bucket.label === activeAgingBucket)
         if (b && (diff < b.min || diff > b.max)) return false
       }
