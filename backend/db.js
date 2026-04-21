@@ -129,6 +129,7 @@ function initDb() {
   db.exec(`UPDATE stores SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment' WHERE instaworld_track_url LIKE '%app.instaworld.pk%'`);
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE orders ADD COLUMN line_items TEXT;"); } catch(e) {}
 
   console.log('✅ Database initialized at', DB_PATH);
 }
