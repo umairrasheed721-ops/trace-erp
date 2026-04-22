@@ -281,6 +281,7 @@ export default function SearchTool() {
     { id: 'customer_name', label: 'Customer' },
     { id: 'phone', label: 'Phone' },
     { id: 'city', label: 'City' },
+    { id: 'items', label: 'Line Items' },
     { id: 'price', label: 'Price' },
     { id: 'paid_amount', label: 'Paid Amount' },
     { id: 'diff', label: 'Pending Bal.' },
@@ -790,6 +791,13 @@ export default function SearchTool() {
                         </td>
                       )
                       if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
+                      if (col.id === 'items') return (
+                        <td key={col.id} title={o.product_titles}>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {o.product_titles || '—'}
+                          </div>
+                        </td>
+                      )
                       if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
                       if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} /></td>
                       if (col.id === 'diff') return (

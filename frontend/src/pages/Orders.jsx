@@ -115,6 +115,7 @@ export default function Orders() {
                   <th>Ref #</th>
                   <th>Customer</th>
                   <th>City</th>
+                  <th>Line Items</th>
                   <th>Tracking #</th>
                   <th>Courier</th>
                   <th>Status</th>
@@ -142,6 +143,11 @@ export default function Orders() {
                     </td>
                     <td>{o.customer_name}</td>
                     <td>{o.city}</td>
+                    <td title={o.product_titles}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {o.product_titles || '—'}
+                      </div>
+                    </td>
                     <td className="font-mono" style={{ fontSize: '0.75rem' }}>{o.tracking_number || '—'}</td>
                     <td>{o.courier || '—'}</td>
                     <td>{getStatusBadge(o.delivery_status)}</td>
