@@ -292,6 +292,7 @@ router.get('/courier-comparison', (req, res) => {
           WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
           WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
           WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
+          WHEN courier GLOB '*[0-9]*' AND length(courier) < 4 THEN 'PostEx' -- IDs often belong to main courier
           ELSE COALESCE(courier, 'PostEx')
         END as courier_name,
         COUNT(id) as total_orders,
@@ -318,6 +319,7 @@ router.get('/courier-comparison', (req, res) => {
           WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
           WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
           WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
+          WHEN courier GLOB '*[0-9]*' AND length(courier) < 4 THEN 'PostEx'
           ELSE COALESCE(courier, 'PostEx')
         END as courier_name,
         COUNT(id) as total,
