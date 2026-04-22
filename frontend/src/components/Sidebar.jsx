@@ -17,6 +17,7 @@ export default function Sidebar() {
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
     { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'manage_stores' },
     { to: '/users', icon: '👥', label: 'User Management', permission: 'super_admin' },
+    { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
     if (!item.permission) return true
     if (user?.role === 'admin') return true

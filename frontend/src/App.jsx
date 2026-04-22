@@ -19,6 +19,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const Connect = lazy(() => import('./pages/Connect'))
 const Login = lazy(() => import('./pages/Login'))
 const Users = lazy(() => import('./pages/Users'))
+const Profile = lazy(() => import('./pages/Profile'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -54,6 +55,7 @@ function AppContent() {
                 <Route path="/watchdog" element={<Watchdog />} />
                 <Route path="/connect" element={<Connect />} />
                 <Route path="/users" element={<Users />} />
+                <Route path="/profile" element={<Profile />} />
               </Routes>
             </Suspense>
           </div>

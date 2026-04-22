@@ -133,6 +133,7 @@ function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      email TEXT,
       role TEXT NOT NULL DEFAULT 'agent',
       permissions TEXT,
       created_at TEXT DEFAULT (datetime('now'))
@@ -205,3 +206,4 @@ function transaction(fn) {
 module.exports = { prepare, transaction, exec: (sql) => db.exec(sql) };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}

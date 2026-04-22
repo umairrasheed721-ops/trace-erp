@@ -11,19 +11,19 @@ const isAdmin = (req, res, next) => {
 
 // GET /api/users - List all users (Admin only)
 router.get('/', isAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, role, created_at FROM users').all();
+  const users = db.prepare('SELECT id, username, email, role, created_at FROM users').all();
   res.json(users);
 });
 
 // POST /api/users - Create new user (Admin only)
 router.post('/', isAdmin, async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, email } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: 'Missing fields' });
 
   try {
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
-    db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run(username, hash, role);
+    db.prepare('INSERT INTO users (username, password_hash, role, email) VALUES (?, ?, ?, ?)').run(username, hash, role, email || null);
     res.json({ success: true });
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'Username already exists' });

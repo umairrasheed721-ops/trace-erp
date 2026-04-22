@@ -54,11 +54,103 @@ router.get('/me', (req, res) => {
     res.json({
       id: user.id,
       username: user.username,
+      email: user.email,
       role: user.role,
       permissions: JSON.parse(user.permissions || '[]')
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// POST /api/auth/change-password - Change own password
+router.post('/change-password', async (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const match = await bcrypt.compare(current_password, user.password_hash);
+    if (!match) return res.status(400).json({ error: 'Current password incorrect' });
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(new_password, salt);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user.id);
+    res.json({ success: true, message: 'Password updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/update-email - Update recovery email
+router.post('/update-email', (req, res) => {
+  const { email } = req.body;
+  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, req.user.id);
+    res.json({ success: true, message: 'Email updated' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/forgot-password - Start recovery
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user) return res.status(404).json({ error: 'No account found with that email' });
+
+  // Generate a 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiry = Date.now() + 15 * 60 * 1000; // 15 mins
+
+  // Store in global memory for now (or a table if we want it persistent)
+  global._resetCodes = global._resetCodes || {};
+  global._resetCodes[email] = { code, expiry, userId: user.id };
+
+  // Send Email (using nodemailer)
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  try {
+    await transporter.sendMail({
+      from: `"TRACE ERP Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Password Reset Code",
+      text: `Your password reset code is: ${code}. It expires in 15 minutes.`,
+      html: `<h3>ERP Password Reset</h3><p>Your password reset code is: <b>${code}</b></p><p>It expires in 15 minutes.</p>`
+    });
+    res.json({ success: true, message: 'Recovery code sent' });
+  } catch (err) {
+    console.error('Email failed:', err.message);
+    res.status(500).json({ error: 'Failed to send email. Check your SMTP settings.' });
+  }
+});
+
+// POST /api/auth/reset-password - Verify code and set new password
+router.post('/reset-password', async (req, res) => {
+  const { email, code, new_password } = req.body;
+  const entry = (global._resetCodes || {})[email];
+
+  if (!entry || entry.code !== code || Date.now() > entry.expiry) {
+    return res.status(400).json({ error: 'Invalid or expired code' });
+  }
+
+  try {
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(new_password, salt);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, entry.userId);
+    delete global._resetCodes[email];
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

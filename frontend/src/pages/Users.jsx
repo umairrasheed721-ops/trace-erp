@@ -6,7 +6,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true)
   const { addToast, token } = useApp()
   const [showAdd, setShowAdd] = useState(false)
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'agent' })
+  const [newUser, setNewUser] = useState({ username: '', password: '', email: '', role: 'agent' })
 
   const fetchUsers = async () => {
     try {
@@ -40,7 +40,7 @@ export default function Users() {
       if (res.ok) {
         addToast('User created successfully', 'success')
         setShowAdd(false)
-        setNewUser({ username: '', password: '', role: 'agent' })
+        setNewUser({ username: '', password: '', email: '', role: 'agent' })
         fetchUsers()
       } else {
         const d = await res.json()
@@ -112,6 +112,16 @@ export default function Users() {
               />
             </div>
             <div className="form-group">
+              <label className="form-label">Email (Recovery)</label>
+              <input 
+                className="form-input" 
+                type="email"
+                value={newUser.email} 
+                onChange={e => setNewUser({...newUser, email: e.target.value})} 
+                placeholder="user@gmail.com"
+              />
+            </div>
+            <div className="form-group">
               <label className="form-label">Role</label>
               <select 
                 className="form-select"
@@ -136,6 +146,7 @@ export default function Users() {
             <tr>
               <th>ID</th>
               <th>Username</th>
+              <th>Email (Recovery)</th>
               <th>Role</th>
               <th>Created At</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
@@ -151,6 +162,7 @@ export default function Users() {
                 <tr key={u.id}>
                   <td>#{u.id}</td>
                   <td style={{ fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{u.email || '—'}</td>
                   <td>
                     <span className={`badge ${u.role === 'admin' ? 'badge-delivered' : u.role === 'manager' ? 'badge-advice' : 'badge-pending'}`}>
                       {u.role.toUpperCase()}
