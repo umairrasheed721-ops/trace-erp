@@ -215,7 +215,10 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
             <span style={{ color: '#60a5fa', fontWeight: 600 }}>{store.sync_progress}</span>
           </div>
           <div className="progress-bar">
-            <div className="progress-bar-fill progress-bar-animated" style={{ width: '100%' }} />
+            <div 
+              className={`progress-bar-fill ${!store.sync_total ? 'progress-bar-animated' : ''}`} 
+              style={{ width: store.sync_total ? `${Math.round((store.sync_processed / store.sync_total) * 100)}%` : '100%' }} 
+            />
           </div>
         </div>
       )}

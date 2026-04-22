@@ -35,6 +35,8 @@ function initDb() {
       sync_start_date TEXT,
       sync_status TEXT DEFAULT 'idle',
       sync_progress TEXT,
+      sync_total INTEGER DEFAULT 0,
+      sync_processed INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -201,3 +203,5 @@ function transaction(fn) {
 }
 
 module.exports = { prepare, transaction, exec: (sql) => db.exec(sql) };
+try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
