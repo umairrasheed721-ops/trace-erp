@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Orders from './pages/Orders'
-import SearchTool from './pages/SearchTool'
-import StuckMonitor from './pages/StuckMonitor'
-import AdviceMonitor from './pages/AdviceMonitor'
-import Watchdog from './pages/Watchdog'
-import ReturnsManager from './pages/ReturnsManager'
-import FinanceManager from './pages/FinanceManager'
-import Reports from './pages/Reports'
-import Connect from './pages/Connect'
-import Login from './pages/Login'
-import Users from './pages/Users'
+import { lazy, Suspense } from 'react'
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Orders = lazy(() => import('./pages/Orders'))
+const SearchTool = lazy(() => import('./pages/SearchTool'))
+const StuckMonitor = lazy(() => import('./pages/StuckMonitor'))
+const AdviceMonitor = lazy(() => import('./pages/AdviceMonitor'))
+const Watchdog = lazy(() => import('./pages/Watchdog'))
+const ReturnsManager = lazy(() => import('./pages/ReturnsManager'))
+const FinanceManager = lazy(() => import('./pages/FinanceManager'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Connect = lazy(() => import('./pages/Connect'))
+const Login = lazy(() => import('./pages/Login'))
+const Users = lazy(() => import('./pages/Users'))
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -141,7 +142,9 @@ export default function App() {
   if (!token) {
     return (
       <AppContext.Provider value={ctx}>
-        <Login />
+        <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
+          <Login />
+        </Suspense>
         <ToastContainer toasts={toasts} />
       </AppContext.Provider>
     )
@@ -155,19 +158,21 @@ export default function App() {
           <div className="main-content">
             <Topbar />
             <div className="page-content">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/search" element={<SearchTool />} />
-                <Route path="/returns" element={<ReturnsManager />} />
-                <Route path="/finance" element={<FinanceManager />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/stuck" element={<StuckMonitor />} />
-                <Route path="/advice" element={<AdviceMonitor />} />
-                <Route path="/watchdog" element={<Watchdog />} />
-                <Route path="/connect" element={<Connect />} />
-                <Route path="/users" element={<Users />} />
-              </Routes>
+              <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/search" element={<SearchTool />} />
+                  <Route path="/returns" element={<ReturnsManager />} />
+                  <Route path="/finance" element={<FinanceManager />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/stuck" element={<StuckMonitor />} />
+                  <Route path="/advice" element={<AdviceMonitor />} />
+                  <Route path="/watchdog" element={<Watchdog />} />
+                  <Route path="/connect" element={<Connect />} />
+                  <Route path="/users" element={<Users />} />
+                </Routes>
+              </Suspense>
             </div>
           </div>
         </div>
