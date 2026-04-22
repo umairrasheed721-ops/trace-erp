@@ -99,4 +99,42 @@ router.get('/:id/stats', (req, res) => {
   });
 });
 
+// ─── SAVED VIEWS ───
+router.get('/:id/views', (req, res) => {
+  const views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? ORDER BY v.created_at DESC').all(req.params.id);
+  res.json(views);
+});
+
+router.post('/:id/views', (req, res) => {
+  const { view_name, column_config, is_locked } = req.body;
+  if (!view_name || !column_config) return res.status(400).json({ error: 'view_name and column_config required' });
+
+  try {
+    db.prepare(`
+      INSERT INTO saved_views (store_id, user_id, view_name, column_config, is_locked)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(store_id, view_name) DO UPDATE SET
+        column_config = excluded.column_config,
+        is_locked = excluded.is_locked,
+        user_id = excluded.user_id
+    `).run(req.params.id, req.user.id, view_name, JSON.stringify(column_config), is_locked ? 1 : 0);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:store_id/views/:view_id', (req, res) => {
+  const view = db.prepare('SELECT * FROM saved_views WHERE id = ?').get(req.params.view_id);
+  if (!view) return res.status(404).json({ error: 'View not found' });
+
+  // Only creator or admin can delete locked views
+  if (view.is_locked && req.user.role !== 'admin' && view.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'This view is locked and can only be deleted by an admin or its creator.' });
+  }
+
+  db.prepare('DELETE FROM saved_views WHERE id = ?').run(req.params.view_id);
+  res.json({ success: true });
+});
+
 module.exports = router;

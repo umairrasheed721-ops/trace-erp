@@ -280,20 +280,24 @@ export default function SearchTool() {
 
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
-    { id: 'ref_number', label: 'Order ID' },
+    { id: 'ref_number', label: 'Ref #' },
     { id: 'order_date', label: 'Date' },
     { id: 'customer_name', label: 'Customer' },
     { id: 'phone', label: 'Phone' },
     { id: 'city', label: 'City' },
     { id: 'items', label: 'Line Items' },
-    { id: 'price', label: 'Price' },
-    { id: 'paid_amount', label: 'Paid Amount' },
-    { id: 'diff', label: 'Pending Bal.' },
-    { id: 'delivery_status', label: 'Status' },
-    { id: 'courier', label: 'Courier' },
     { id: 'tracking_number', label: 'Tracking #' },
-    { id: 'edit', label: 'Edit Status' },
-    { id: 'payment_date', label: 'P&L Date' },
+    { id: 'courier', label: 'Courier' },
+    { id: 'delivery_status', label: 'Status' },
+    { id: 'payment_status', label: 'Payment' },
+    { id: 'price', label: 'Price' },
+    { id: 'cost', label: 'Cost' },
+    { id: 'profit', label: 'Profit' },
+    { id: 'order_source', label: 'Source' },
+    { id: 'status_date', label: 'Last Update' },
+    { id: 'payment_ref', label: 'Expense CPR Ref' },
+    { id: 'payment_date', label: 'Payment Date' },
+    { id: 'edit', label: 'Action' },
     { id: 'notes', label: 'Shopify Note' }
   ]
   const [cols, setCols] = useState(() => {
@@ -303,16 +307,9 @@ export default function SearchTool() {
 
   // Force inject missing columns for existing users
   useEffect(() => {
-    if (!cols.find(c => c.id === 'items')) {
-      const newCols = [...cols]
-      const cityIdx = newCols.findIndex(c => c.id === 'city')
-      if (cityIdx !== -1) {
-        newCols.splice(cityIdx + 1, 0, { id: 'items', label: 'Line Items' })
-      } else {
-        newCols.push({ id: 'items', label: 'Line Items' })
-      }
-      setCols(newCols)
-      localStorage.setItem('trace_search_cols', JSON.stringify(newCols))
+    if (!cols.find(c => c.id === 'profit')) {
+      setCols(DEFAULT_COLS)
+      localStorage.setItem('trace_search_cols', JSON.stringify(DEFAULT_COLS))
     }
   }, [cols])
   const [draggedIdx, setDraggedIdx] = useState(null)
@@ -343,12 +340,23 @@ export default function SearchTool() {
     }
   }, [location.state])
 
-  const [savedViews, setSavedViews] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('traceerp_views') || '[]') } catch { return [] }
-  })
+  const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')
   const [viewName, setViewName] = useState('')
+  const [isViewLocked, setIsViewLocked] = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [showColPicker, setShowColPicker] = useState(false)
+
+  const fetchViews = async () => {
+    if (!activeStoreId) return
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views`)
+      const data = await res.json()
+      setSavedViews(data)
+    } catch (e) { console.error('Failed to fetch views', e) }
+  }
+
+  useEffect(() => { fetchViews() }, [activeStoreId])
 
   // KPIs
   const [kpi, setKpi] = useState({ total: 0, sum: 0, delivered: 0, returned: 0, pending: 0 })
@@ -414,30 +422,51 @@ export default function SearchTool() {
 
   useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
 
-  const saveView = () => {
+  const saveView = async () => {
     if (!viewName.trim()) return
-    const view = { name: viewName, preset, customStart, customEnd, status, keyword, sort, createdAt: Date.now() }
-    const updated = [...savedViews.filter(v => v.name !== viewName), view]
-    setSavedViews(updated)
-    localStorage.setItem('traceerp_views', JSON.stringify(updated))
-    setShowSaveDialog(false); setViewName('')
-    addToast(`✅ View "${viewName}" saved`, 'success')
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          view_name: viewName,
+          column_config: cols,
+          is_locked: isViewLocked
+        })
+      })
+      if (res.ok) {
+        addToast(`✅ View "${viewName}" saved`, 'success')
+        fetchViews()
+        setShowSaveDialog(false); setViewName('')
+      }
+    } catch (e) { addToast('Failed to save view', 'error') }
   }
 
-  const loadView = (name) => {
-    const v = savedViews.find(v => v.name === name)
+  const loadView = (id) => {
+    const v = savedViews.find(v => String(v.id) === String(id))
     if (!v) return
-    setPreset(v.preset); setCustomStart(v.customStart||''); setCustomEnd(v.customEnd||'')
-    setStatus(v.status); setKeyword(v.keyword||''); setSort(v.sort)
-    setSelectedView(name)
+    try {
+      const config = JSON.parse(v.column_config)
+      setCols(config)
+      localStorage.setItem('trace_search_cols', JSON.stringify(config))
+      setSelectedView(id)
+    } catch (e) { console.error('Failed to load view config', e) }
   }
 
-  const deleteView = () => {
+  const deleteView = async () => {
     if (!selectedView) return
-    const updated = savedViews.filter(v => v.name !== selectedView)
-    setSavedViews(updated)
-    localStorage.setItem('traceerp_views', JSON.stringify(updated))
-    setSelectedView(''); addToast(`View deleted`, 'info')
+    if (!window.confirm('Are you sure you want to delete this view?')) return
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views/${selectedView}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`View deleted`, 'info')
+        fetchViews()
+        setSelectedView('')
+      } else {
+        addToast(data.error || 'Failed to delete', 'error')
+      }
+    } catch (e) { addToast('Delete failed', 'error') }
   }
 
   const updateOrderField = async (orderId, field, value) => {
@@ -554,11 +583,36 @@ export default function SearchTool() {
             >
               {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
             </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
             {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
             <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
           </div>
         </div>
+
+        {showColPicker && (
+          <div className="card mb-4" style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+            {DEFAULT_COLS.map(c => {
+              const isVisible = cols.find(col => col.id === c.id)
+              return (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={!!isVisible} 
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setCols(prev => [...prev, c])
+                      } else {
+                        setCols(prev => prev.filter(col => col.id !== c.id))
+                      }
+                    }} 
+                  />
+                  {c.label}
+                </label>
+              )
+            })}
+          </div>
+        )}
 
         {!compactMode && (
           <>
@@ -684,10 +738,10 @@ export default function SearchTool() {
               </select>
             </div>
             <div>
-              <label className="form-label">⭐ View</label>
+              <label className="form-label">⭐ Saved Views</label>
               <select className="form-select" value={selectedView} onChange={e => loadView(e.target.value)}>
-                <option value="">— Select View —</option>
-                {savedViews.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+                <option value="">— Default Layout —</option>
+                {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
               </select>
             </div>
           </div>
@@ -701,10 +755,16 @@ export default function SearchTool() {
             <div style={{ fontWeight: 700, marginBottom: 14 }}>💾 Save Current View</div>
             <div className="form-group">
               <label className="form-label">View Name</label>
-              <input className="form-input" placeholder="e.g. Karachi Pending" value={viewName} onChange={e => setViewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveView()} autoFocus />
+              <input className="form-input" placeholder="e.g. Finance View" value={viewName} onChange={e => setViewName(e.target.value)} autoFocus />
+            </div>
+            <div className="form-group mt-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={isViewLocked} onChange={e => setIsViewLocked(e.target.checked)} />
+                <span style={{ fontSize: '0.85rem' }}>🔒 Lock this view (Only you can edit)</span>
+              </label>
             </div>
             <div className="flex gap-2 mt-4">
-              <button className="btn btn-primary" onClick={saveView}>Save</button>
+              <button className="btn btn-primary" onClick={saveView}>Save View</button>
               <button className="btn btn-secondary" onClick={() => setShowSaveDialog(false)}>Cancel</button>
             </div>
           </div>
@@ -842,6 +902,21 @@ export default function SearchTool() {
                           ) : '—'}
                         </td>
                       )
+                      if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
+                      if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
+                      if (col.id === 'cost') return <td key={col.id} style={{ opacity: 0.8 }}>Rs {Math.round(parseFloat(o.cost)||0).toLocaleString()}</td>
+                      if (col.id === 'profit') {
+                        const fee = parseFloat(o.courier_fee) || 0
+                        const cost = parseFloat(o.cost) || 0
+                        const price = parseFloat(o.price) || 0
+                        const profit = price - cost - fee
+                        return <td key={col.id} style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)' }}>Rs {Math.round(profit).toLocaleString()}</td>
+                      }
+                      if (col.id === 'order_source') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.order_source || 'Shopify'}</td>
+                      if (col.id === 'status_date') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.status_date ? new Date(o.status_date).toLocaleDateString() : '—'}</td>
+                      if (col.id === 'payment_ref') return <td key={col.id} style={{ fontSize: '0.7rem' }}>{o.payment_ref || '—'}</td>
+                      if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
+                      
                       if (col.id === 'edit') return (
                         <td key={col.id}>
                           <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || ''} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
@@ -851,11 +926,6 @@ export default function SearchTool() {
                               'Return Initiated','Return Received','Cancelled'
                             ].map(st => <option key={st} value={st}>{st}</option>)}
                           </select>
-                        </td>
-                      )
-                      if (col.id === 'payment_date') return (
-                        <td key={col.id} style={{ fontSize: '0.72rem', color: o.payment_date ? 'var(--green)' : 'var(--text-muted)', fontWeight: o.payment_date ? 600 : 400 }}>
-                          {o.payment_date ? `📅 ${o.payment_date}` : s.includes('delivered') ? '⚠️ Missing' : '—'}
                         </td>
                       )
                       if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>

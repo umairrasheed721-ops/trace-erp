@@ -160,6 +160,17 @@ function initDb() {
       old_payment_date TEXT,
       shopify_note_added TEXT -- The specific line we added to the Shopify note
     );
+
+    CREATE TABLE IF NOT EXISTS saved_views (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      view_name TEXT NOT NULL,
+      column_config TEXT NOT NULL, -- JSON array of column IDs
+      is_locked BOOLEAN DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(store_id, view_name)
+    );
   `);
 
   // MIGRATION: Update Instaworld URL if it's the old one
