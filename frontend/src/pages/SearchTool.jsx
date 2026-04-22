@@ -903,7 +903,7 @@ export default function SearchTool() {
                           ) : '—'}
                         </td>
                       )
-                      if (col.id === 'courier_fee') return <td key={col.id} style={{ color: 'var(--orange-dim)', fontWeight: 600 }}>Rs {Math.round(parseFloat(o.courier_fee)||0).toLocaleString()}</td>
+                      if (col.id === 'courier_fee') return <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td>
                       if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
                       if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
                       if (col.id === 'cost') return <td key={col.id} style={{ opacity: 0.8 }}>Rs {Math.round(parseFloat(o.cost)||0).toLocaleString()}</td>
@@ -1179,5 +1179,55 @@ function NoteCell({ order, onSave }) {
     >
       {order.notes || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
     </div>
+  )
+}
+
+// ─── Inline Courier Fee Cell ───────────────────────────────────────────────────
+function CourierFeeCell({ order, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(order.courier_fee || '')
+
+  useEffect(() => { setVal(order.courier_fee || '') }, [order.courier_fee])
+
+  const commit = () => {
+    const num = parseFloat(val)
+    if (!isNaN(num) && num !== parseFloat(order.courier_fee || 0)) {
+      onSave(order.id, 'courier_fee', num)
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        className="form-input"
+        style={{ width: 80, padding: '3px 6px', fontSize: '0.75rem' }}
+        value={val}
+        autoFocus
+        onChange={e => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+      />
+    )
+  }
+
+  const fee = parseFloat(order.courier_fee) || 0
+
+  return (
+    <span
+      onClick={() => setEditing(true)}
+      title="Click to edit expense"
+      style={{
+        cursor: 'pointer',
+        color: fee > 0 ? 'var(--orange-dim)' : 'var(--text-muted)',
+        fontWeight: 600,
+        fontSize: '0.78rem',
+        display: 'flex', alignItems: 'center', gap: 4
+      }}
+    >
+      {fee > 0 ? `Rs ${Math.round(fee).toLocaleString()}` : <span style={{ opacity: 0.5 }}>Rs 0</span>}
+      <span style={{ fontSize: '0.6rem', opacity: 0.3, marginLeft: 2 }}>✏️</span>
+    </span>
   )
 }
