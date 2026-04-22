@@ -276,13 +276,24 @@ router.post('/bulk-metrics', (req, res) => {
 });
 
 router.get('/courier-comparison', (req, res) => {
-  const { store_id } = req.query;
+  const { store_id, startDate, endDate } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  let dateFilter = '';
+  if (startDate && endDate) {
+    dateFilter = `AND order_date BETWEEN '${startDate}' AND '${endDate}'`;
+  }
 
   try {
     const query = `
       SELECT 
-        COALESCE(courier, 'PostEx') as courier_name,
+        CASE 
+          WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+          WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
+          WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
+          WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
+          ELSE COALESCE(courier, 'PostEx')
+        END as courier_name,
         COUNT(id) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
         SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received') THEN 1 ELSE 0 END) as returned,
@@ -293,7 +304,8 @@ router.get('/courier-comparison', (req, res) => {
             THEN (julianday(status_date) - julianday(order_date)) ELSE NULL END) as avg_days_to_deliver
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
-      GROUP BY COALESCE(courier, 'PostEx')
+        ${dateFilter}
+      GROUP BY courier_name
     `;
     const results = db.prepare(query).all(store_id);
 
@@ -301,14 +313,21 @@ router.get('/courier-comparison', (req, res) => {
     const cityQuery = `
       SELECT 
         city,
-        COALESCE(courier, 'PostEx') as courier_name,
+        CASE 
+          WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+          WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
+          WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
+          WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
+          ELSE COALESCE(courier, 'PostEx')
+        END as courier_name,
         COUNT(id) as total,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
         AND city IS NOT NULL AND city != ''
-      GROUP BY city, COALESCE(courier, 'PostEx')
-      HAVING total > 5
+        ${dateFilter}
+      GROUP BY city, courier_name
+      HAVING total >= 3
     `;
     const cityResults = db.prepare(cityQuery).all(store_id);
 
