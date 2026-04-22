@@ -288,6 +288,7 @@ export default function SearchTool() {
     { id: 'items', label: 'Line Items' },
     { id: 'tracking_number', label: 'Tracking #' },
     { id: 'courier', label: 'Courier' },
+    { id: 'courier_fee', label: 'Actual Expense' },
     { id: 'delivery_status', label: 'Status' },
     { id: 'payment_status', label: 'Payment' },
     { id: 'price', label: 'Price' },
@@ -902,6 +903,7 @@ export default function SearchTool() {
                           ) : '—'}
                         </td>
                       )
+                      if (col.id === 'courier_fee') return <td key={col.id} style={{ color: 'var(--orange-dim)', fontWeight: 600 }}>Rs {Math.round(parseFloat(o.courier_fee)||0).toLocaleString()}</td>
                       if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
                       if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
                       if (col.id === 'cost') return <td key={col.id} style={{ opacity: 0.8 }}>Rs {Math.round(parseFloat(o.cost)||0).toLocaleString()}</td>
