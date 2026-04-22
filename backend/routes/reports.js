@@ -159,8 +159,45 @@ router.get('/daily', (req, res) => {
       };
     });
 
-    results.sort((a, b) => b.date.localeCompare(a.date));
-    res.json(results);
+    // 4. BACKFILL MISSING DATES
+    const backfilledResults = [];
+    if (results.length > 0) {
+      // Find range
+      const sortedByDate = [...results].sort((a,b) => a.date.localeCompare(b.date));
+      const firstDate = new Date(sortedByDate[0].date);
+      const lastDate = new Date(sortedByDate[sortedByDate.length - 1].date);
+      
+      const resultMap = {};
+      results.forEach(r => resultMap[r.date] = r);
+      
+      const curr = new Date(firstDate);
+      while (curr <= lastDate) {
+        const dStr = curr.toISOString().split('T')[0];
+        if (resultMap[dStr]) {
+          backfilledResults.push(resultMap[dStr]);
+        } else {
+          // Create zeroed row
+          const m = metricsMap[dStr] || { marketing_spend: 0, tiktok_marketing: 0, actual_exp: 0, diff_correction: 0 };
+          const marketingSpend = m.marketing_spend || 0;
+          const tiktokMarketing = m.tiktok_marketing || 0;
+          const totalMarketing = marketingSpend + tiktokMarketing;
+          
+          backfilledResults.push({
+            date: dStr, aov: 0, deliveredSale: 0, cgs: 0, cgsPercent: 0, netSales: 0, taxPaid: 0, grossProfit: 0,
+            marPercent: 0, marketingSpend, tiktokMarketing, estCourier: 0, actualCourier: 0, courierDiff: 0,
+            hybridCourier: 0, actualExp: m.actual_exp || 0, pnl: -(totalMarketing + (m.actual_exp || 0)),
+            delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
+            pending: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
+            intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
+            deliveredPaymentPending: 0
+          });
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+    }
+
+    backfilledResults.sort((a, b) => b.date.localeCompare(a.date));
+    res.json(backfilledResults);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
