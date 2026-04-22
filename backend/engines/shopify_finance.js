@@ -133,6 +133,30 @@ async function appendShopifyNote(store, orderId, fullNoteText) {
       const errText = await putRes.text();
       console.error(`[ShopifyNote] PUT failed for ${orderId}: ${errText}`);
     }
+    return finalNoteToAppend; // Return what was actually added
+  }
+}
+
+async function removeShopifyNoteLine(store, orderId, lineToRemove) {
+  const t = Date.now();
+  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,note&t=${t}`);
+  if (res.ok) {
+    const order = (await res.json()).order;
+    const currentNote = order.note || '';
+    if (!currentNote) return;
+
+    // Filter out the line. We use trim and include check for robustness
+    const lines = currentNote.split('\n');
+    const filteredLines = lines.filter(l => l.trim() !== lineToRemove.trim());
+
+    if (lines.length === filteredLines.length) return; // Nothing found to remove
+
+    const newNote = filteredLines.join('\n').trim();
+    await shopifyFetch(store, `orders/${orderId}.json`, {
+      method: 'PUT',
+      body: JSON.stringify({ order: { id: orderId, note: newNote } })
+    });
+    console.log(`[ShopifyNote] Removed line from order ${orderId}`);
   }
 }
 
@@ -182,6 +206,7 @@ module.exports = {
   getPrimaryLocationId,
   processSmartRestock,
   appendShopifyNote,
+  removeShopifyNoteLine,
   addShopifyTag,
   getShopifyFinancials,
   captureShopifyPayment

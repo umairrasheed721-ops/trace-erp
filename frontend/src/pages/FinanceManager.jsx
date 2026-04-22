@@ -9,6 +9,43 @@ export default function FinanceManager() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [results, setResults] = useState([])
   const [summary, setSummary] = useState(null)
+  const [history, setHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    if (activeStoreId) fetchHistory()
+  }, [activeStoreId])
+
+  const fetchHistory = async () => {
+    setLoadingHistory(true)
+    try {
+      const res = await fetch(`/api/finance/reconciliation-history?store_id=${activeStoreId}`)
+      const data = await res.json()
+      setHistory(data)
+    } catch (e) { console.error('Failed to fetch history', e) }
+    finally { setLoadingHistory(false) }
+  }
+
+  const handleUndo = async (sessionId) => {
+    if (!window.confirm('🚨 Are you sure? This will revert all ERP changes for this upload and attempt to CLEAN UP any notes added to Shopify.')) return
+    
+    setIsProcessing(true)
+    try {
+      const res = await fetch(`/api/finance/reconciliation-undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert(`✅ Undo Successful! Reverted ${data.count} orders.`)
+        fetchHistory()
+      } else {
+        alert('❌ Undo Failed: ' + data.error)
+      }
+    } catch (e) { alert('Network Error: ' + e.message) }
+    finally { setIsProcessing(false) }
+  }
 
   const handleProcess = async () => {
     if (!activeStoreId) return alert('No active store selected')
@@ -61,7 +98,8 @@ export default function FinanceManager() {
             store_id: activeStoreId,
             rows: chunks[i],
             masterKey,
-            syncToShopify
+            syncToShopify,
+            filename: `Pasted Batch (${new Date().toLocaleTimeString()})`
           })
         })
         
@@ -87,6 +125,7 @@ export default function FinanceManager() {
       }
 
       setPasteData('')
+      fetchHistory()
     } catch (e) {
       alert('Processing Error: ' + e.message)
     } finally {
@@ -208,6 +247,51 @@ export default function FinanceManager() {
             >
               {isProcessing ? '⏳ Processing Payments...' : '🚀 Process Payments'}
             </button>
+          </div>
+
+          <div className="stat-card" style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+             <h3 style={{ margin: 0, fontSize: '1.1rem' }}>📜 Recent Upload History</h3>
+             <p style={{ fontSize: '0.75rem', opacity: 0.7, margin: 0 }}>View your last 50 reconciliation sessions. Use 'Undo' to revert accidental uploads.</p>
+             
+             <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {loadingHistory ? (
+                  <div style={{ textAlign: 'center', padding: 20, opacity: 0.5 }}>Loading history...</div>
+                ) : history.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 20, opacity: 0.3 }}>No history found.</div>
+                ) : history.map(session => (
+                  <div key={session.id} style={{ 
+                    padding: '12px 16px', 
+                    backgroundColor: 'rgba(255,255,255,0.03)', 
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 8,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{session.filename}</span>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>
+                        {new Date(session.created_at).toLocaleString()} • {session.row_count} orders 
+                        {session.sync_to_shopify ? ' • 🛒 Shopify Sync ON' : ''}
+                      </span>
+                    </div>
+                    <button 
+                      className="btn btn-sm" 
+                      onClick={() => handleUndo(session.id)}
+                      disabled={isProcessing}
+                      style={{ 
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                        color: '#fca5a5', 
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        padding: '4px 12px',
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      ↩️ UNDO
+                    </button>
+                  </div>
+                ))}
+             </div>
           </div>
         </div>
 

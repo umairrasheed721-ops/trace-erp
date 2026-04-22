@@ -138,6 +138,28 @@ function initDb() {
       permissions TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS recon_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      filename TEXT,
+      row_count INTEGER,
+      sync_to_shopify BOOLEAN,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS recon_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES recon_sessions(id) ON DELETE CASCADE,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      old_delivery_status TEXT,
+      old_payment_status TEXT,
+      old_courier_fee REAL,
+      old_paid_amount REAL,
+      old_payment_ref TEXT,
+      old_payment_date TEXT,
+      shopify_note_added TEXT -- The specific line we added to the Shopify note
+    );
   `);
 
   // MIGRATION: Update Instaworld URL if it's the old one

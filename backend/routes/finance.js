@@ -7,7 +7,8 @@ const {
   appendShopifyNote, 
   addShopifyTag, 
   getShopifyFinancials, 
-  captureShopifyPayment 
+  captureShopifyPayment,
+  removeShopifyNoteLine
 } = require('../engines/shopify_finance');
 
 function formatDate(dStr) {
@@ -99,6 +100,10 @@ router.post('/bulk-update', async (req, res) => {
     let auditCount = 0;
     let processedCount = 0;
 
+    // Start a Reconciliation Session
+    const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify) VALUES (?, ?, ?, ?)').run(store_id, req.body.filename || 'Manual Upload', rows.length, syncToShopify ? 1 : 0);
+    const sessionId = sessionResult.lastInsertRowid;
+
       // Group by Order to prevent race conditions and multiple Shopify calls for the same order
       const ordersToProcess = {};
       for (const row of rows) {
@@ -142,6 +147,19 @@ router.post('/bulk-update', async (req, res) => {
           const taxAddOn = Math.round((charges * 0.04) * 100) / 100;
           const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
 
+          // Snapshot for Undo
+          const logData = {
+            session_id: sessionId,
+            order_id: order.id,
+            old_delivery_status: order.delivery_status,
+            old_payment_status: order.payment_status,
+            old_courier_fee: order.courier_fee,
+            old_paid_amount: order.paid_amount,
+            old_payment_ref: order.payment_ref,
+            old_payment_date: order.payment_date,
+            shopify_note_added: null
+          };
+
           if (type === 'D') {
             try {
               let balance = 0;
@@ -166,6 +184,10 @@ router.post('/bulk-update', async (req, res) => {
               const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
               results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
               processedCount++;
+
+              // Save snapshot
+              db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date) VALUES (?,?,?,?,?,?,?,?)`)
+                .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date);
               
             } catch (e) {
               results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
@@ -182,6 +204,10 @@ router.post('/bulk-update', async (req, res) => {
               
               results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
               processedCount++;
+
+              // Save snapshot
+              db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date) VALUES (?,?,?,?,?,?,?,?)`)
+                .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date);
             } catch (e) {
               results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
             }
@@ -193,7 +219,10 @@ router.post('/bulk-update', async (req, res) => {
         // Bulk apply all notes for this order in one shot
         if (syncToShopify && combinedNotes.length > 0) {
           try {
-            await appendShopifyNote(store, order.shopify_order_id, combinedNotes.join('\n'));
+            const addedNote = await appendShopifyNote(store, order.shopify_order_id, combinedNotes.join('\n'));
+            if (addedNote) {
+              db.prepare('UPDATE recon_logs SET shopify_note_added = ? WHERE session_id = ? AND order_id = ?').run(addedNote, sessionId, order.id);
+            }
           } catch (e) {
             console.error(`Failed to append notes for ${order.shopify_order_id}:`, e);
           }
@@ -204,6 +233,52 @@ router.post('/bulk-update', async (req, res) => {
   } catch (err) {
     console.error('Finance Bulk Update Error:', err);
     res.status(500).json({ error: 'Internal Server Error: ' + err.message });
+  }
+});
+
+// GET /api/finance/reconciliation-history?store_id=1
+router.get('/reconciliation-history', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  const history = db.prepare('SELECT * FROM recon_sessions WHERE store_id = ? ORDER BY created_at DESC LIMIT 50').all(store_id);
+  res.json(history);
+});
+
+// POST /api/finance/reconciliation-undo
+router.post('/reconciliation-undo', async (req, res) => {
+  const { session_id } = req.body;
+  if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+  try {
+    const session = db.prepare('SELECT * FROM recon_sessions WHERE id = ?').get(session_id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(session.store_id);
+    const logs = db.prepare('SELECT * FROM recon_logs WHERE session_id = ?').all(session_id);
+
+    for (const log of logs) {
+      // Revert ERP
+      db.prepare(`
+        UPDATE orders 
+        SET delivery_status = ?, payment_status = ?, courier_fee = ?, paid_amount = ?, payment_ref = ?, payment_date = ?
+        WHERE id = ?
+      `).run(log.old_delivery_status, log.old_payment_status, log.old_courier_fee, log.old_paid_amount, log.old_payment_ref, log.old_payment_date, log.order_id);
+
+      // Revert Shopify Note
+      if (session.sync_to_shopify && log.shopify_note_added) {
+        const order = db.prepare('SELECT shopify_order_id FROM orders WHERE id = ?').get(log.order_id);
+        if (order) {
+          try {
+            await removeShopifyNoteLine(store, order.shopify_order_id, log.shopify_note_added);
+          } catch (e) { console.error(`Failed to revert Shopify note for ${order.shopify_order_id}`, e); }
+        }
+      }
+    }
+
+    db.prepare('DELETE FROM recon_sessions WHERE id = ?').run(session_id);
+    res.json({ success: true, count: logs.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
