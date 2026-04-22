@@ -675,20 +675,22 @@ export default function SearchTool() {
           )}
 
         <div className="sticky-controls" style={{ 
-          background: 'var(--bg-base)', 
-          zIndex: 100, 
-          borderBottom: '1px solid var(--border)', 
+          background: '#0a0b0f', 
+          zIndex: 1000, 
+          borderBottom: '2px solid var(--brand)', 
           position: 'sticky', 
           top: 'var(--topbar-height)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          height: 48,
+          display: 'flex',
+          alignItems: 'center'
         }}>
           {/* Filters - High Density One-Line */}
-          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto', height: 48 }}>
-            <select className="form-select" style={{ width: 130, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={preset} onChange={e => setPreset(e.target.value)}>
+          <div style={{ padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto', width: '100%' }}>
+            <select className="form-select" style={{ width: 130, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={preset} onChange={e => setPreset(e.target.value)}>
               {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
             </select>
             
-            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={status} onChange={e => setStatus(e.target.value)}>
+            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={status} onChange={e => setStatus(e.target.value)}>
               {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
             </select>
 
@@ -696,15 +698,15 @@ export default function SearchTool() {
               <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, fontSize: '0.8rem' }}>🔍</span>
               <input 
                 className="form-input" 
-                style={{ height: 32, paddingLeft: 30, fontSize: '0.78rem' }} 
-                placeholder="Search..." 
+                style={{ height: 32, paddingLeft: 30, fontSize: '0.78rem', background: 'var(--bg-elevated)' }} 
+                placeholder="Search orders..." 
                 value={keyword} 
                 onChange={e => setKeyword(e.target.value)} 
                 onKeyDown={e => e.key === 'Enter' && runSearch()} 
               />
             </div>
 
-            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={selectedView} onChange={e => loadView(e.target.value)}>
+            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={selectedView} onChange={e => loadView(e.target.value)}>
               <option value="">— Views —</option>
               {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
             </select>
@@ -758,8 +760,8 @@ export default function SearchTool() {
                       userSelect: 'none',
                       position: 'sticky',
                       top: 'calc(var(--topbar-height) + 48px)',
-                      zIndex: 90,
-                      background: 'var(--bg-elevated)',
+                      zIndex: 999,
+                      background: '#1a1b23',
                       borderBottom: '1px solid var(--border)'
                     }}
                   >
@@ -784,8 +786,8 @@ export default function SearchTool() {
                       padding: '4px 8px',
                       position: 'sticky',
                       top: 'calc(var(--topbar-height) + 84px)',
-                      zIndex: 89,
-                      background: 'var(--bg-elevated)',
+                      zIndex: 998,
+                      background: '#1a1b23',
                       borderBottom: '1px solid var(--border)'
                     }}>
                       {isFiltered && (
