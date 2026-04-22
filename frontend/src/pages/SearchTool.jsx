@@ -742,7 +742,6 @@ export default function SearchTool() {
             <button className="btn btn-primary btn-sm" onClick={runSearch} style={{ height: 32, padding: '0 12px' }}>🔄 Run</button>
           </div>
         </div>
-      </div>
 
       {/* Save View Dialog */}
       {showSaveDialog && (
