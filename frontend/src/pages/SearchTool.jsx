@@ -649,17 +649,9 @@ export default function SearchTool() {
           </>
         )}
 
-        <div className="sticky-controls" style={{ 
-          background: 'var(--bg-base)', 
-          zIndex: 100, 
-          borderBottom: '1px solid var(--border)', 
-          position: 'sticky', 
-          top: 'var(--topbar-height)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-        }}>
-          {/* Aging Bar - Minimalist */}
+          {/* Aging Bar - Minimalist (Now Scrolls Away) */}
           {showAgingBar && (
-            <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-base)' }}>
               <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 24, border: '1px solid var(--border)' }}>
                 {agingBuckets.map((b, idx) => {
                   const count = agingCounts[b.label] || 0
@@ -682,8 +674,16 @@ export default function SearchTool() {
             </div>
           )}
 
+        <div className="sticky-controls" style={{ 
+          background: 'var(--bg-base)', 
+          zIndex: 100, 
+          borderBottom: '1px solid var(--border)', 
+          position: 'sticky', 
+          top: 'var(--topbar-height)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+        }}>
           {/* Filters - High Density One-Line */}
-          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto' }}>
+          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto', height: 48 }}>
             <select className="form-select" style={{ width: 130, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={preset} onChange={e => setPreset(e.target.value)}>
               {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
             </select>
@@ -757,7 +757,7 @@ export default function SearchTool() {
                       cursor: 'move', 
                       userSelect: 'none',
                       position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 48px + ' + (showAgingBar ? '37px' : '0px') + ')',
+                      top: 'calc(var(--topbar-height) + 48px)',
                       zIndex: 90,
                       background: 'var(--bg-elevated)',
                       borderBottom: '1px solid var(--border)'
@@ -783,7 +783,7 @@ export default function SearchTool() {
                     <th key={col.id} style={{ 
                       padding: '4px 8px',
                       position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 84px + ' + (showAgingBar ? '37px' : '0px') + ')',
+                      top: 'calc(var(--topbar-height) + 84px)',
                       zIndex: 89,
                       background: 'var(--bg-elevated)',
                       borderBottom: '1px solid var(--border)'
