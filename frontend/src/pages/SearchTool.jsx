@@ -296,6 +296,21 @@ export default function SearchTool() {
     const saved = localStorage.getItem('trace_search_cols')
     return saved ? JSON.parse(saved) : DEFAULT_COLS
   })
+
+  // Force inject missing columns for existing users
+  useEffect(() => {
+    if (!cols.find(c => c.id === 'items')) {
+      const newCols = [...cols]
+      const cityIdx = newCols.findIndex(c => c.id === 'city')
+      if (cityIdx !== -1) {
+        newCols.splice(cityIdx + 1, 0, { id: 'items', label: 'Line Items' })
+      } else {
+        newCols.push({ id: 'items', label: 'Line Items' })
+      }
+      setCols(newCols)
+      localStorage.setItem('trace_search_cols', JSON.stringify(newCols))
+    }
+  }, [cols])
   const [draggedIdx, setDraggedIdx] = useState(null)
 
   const onDragStart = (idx) => setDraggedIdx(idx)
