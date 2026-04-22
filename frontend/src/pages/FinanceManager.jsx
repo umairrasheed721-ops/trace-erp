@@ -47,6 +47,30 @@ export default function FinanceManager() {
     finally { setIsProcessing(false) }
   }
 
+  const handleCreateGhost = async (row) => {
+    try {
+      const res = await fetch(`/api/finance/create-ghost-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          tracking_number: row.trackingNumber,
+          order_id_ref: row.orderId,
+          amount: row.codAmount,
+          courier_fee: row.charges,
+          date: row.date
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        alert('✅ Ghost Buster: Order created in ERP!')
+        setResults(prev => prev.map(r => r.trackingNumber === row.trackingNumber ? { ...r, status: '✅ Done (Ghost Recovered)' } : r))
+      } else {
+        alert('Error: ' + data.error)
+      }
+    } catch (e) { alert('Network Error: ' + e.message) }
+  }
+
   const handleProcess = async () => {
     if (!activeStoreId) return alert('No active store selected')
     const lines = pasteData.split('\n').filter(l => l.trim())
@@ -337,6 +361,15 @@ export default function FinanceManager() {
                           }}>
                             {r.status}
                           </span>
+                          {r.status.includes('GHOST') && (
+                            <button 
+                              onClick={() => handleCreateGhost(r)}
+                              className="btn btn-sm"
+                              style={{ marginLeft: 8, padding: '2px 8px', fontSize: '0.65rem', backgroundColor: 'rgba(96, 165, 250, 0.2)', color: '#60a5fa', border: '1px solid #60a5fa' }}
+                            >
+                              👻 Fix Ghost
+                            </button>
+                          )}
                         </td>
                         <td style={{ padding: '12px 8px', opacity: 0.8 }}>{r.recommendation}</td>
                         <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>

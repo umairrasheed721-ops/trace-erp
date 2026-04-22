@@ -282,4 +282,41 @@ router.post('/reconciliation-undo', async (req, res) => {
   }
 });
 
+// POST /api/finance/create-ghost-order
+router.post('/create-ghost-order', async (req, res) => {
+  const { store_id, tracking_number, order_id_ref, amount, courier_fee, date } = req.body;
+  if (!store_id || !tracking_number) return res.status(400).json({ error: 'store_id and tracking_number required' });
+
+  try {
+    const existing = db.prepare('SELECT id FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
+    if (existing) return res.json({ success: true, message: 'Already exists' });
+
+    db.prepare(`
+      INSERT INTO orders (
+        store_id, shopify_order_id, ref_number, customer_name, order_date, 
+        price, tracking_number, delivery_status, payment_status, 
+        courier_fee, paid_amount, payment_date, order_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      store_id, 
+      order_id_ref || ('GHOST-' + Date.now()), 
+      order_id_ref || 'GHOST',
+      'GHOST CUSTOMER',
+      date || new Date().toISOString().split('T')[0],
+      amount,
+      tracking_number,
+      'Delivered',
+      'Paid',
+      courier_fee || 0,
+      amount,
+      date || new Date().toISOString().split('T')[0],
+      'Manual / Ghost'
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

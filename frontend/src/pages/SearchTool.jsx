@@ -12,7 +12,7 @@ const CITY_ALIASES = {
   faisalabad: ['fsd','faisalabd']
 }
 
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[RUN SYSTEM AUDIT]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function getDateRange(preset, customStart, customEnd) {
@@ -109,6 +109,10 @@ function applySpecialMode(order, mode, today) {
   }
   if (mode === '[UNPAID DELIVERED]') {
     return s.includes('delivered') && paid < 1
+  }
+  if (mode === '[AUDIT: MISSING CHARGES]') {
+    const fee = parseFloat(order.courier_fee) || 0
+    return fee < 1 && !['pending','cancelled'].includes(s) && !!order.tracking_number
   }
   return true
 }
@@ -783,7 +787,7 @@ export default function SearchTool() {
                             >
                               ✏️ EDIT
                             </button>
-                            <a href={`https://${o.shop_domain}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
+                            <a href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
                               {o.ref_number || o.shopify_order_id}
                             </a>
                           </div>
@@ -825,7 +829,16 @@ export default function SearchTool() {
                       if (col.id === 'tracking_number') return (
                         <td key={col.id} style={{ fontSize: '0.75rem' }}>
                           {o.tracking_number ? (
-                            <a href={(o.courier||'').toLowerCase().includes('insta') ? `https://instaworld.com.pk/track/${o.tracking_number}` : `https://merchant.postex.pk/track/${o.tracking_number}`} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', textDecoration: 'none' }}>🚚 {o.tracking_number}</a>
+                            <a 
+                              href={(o.courier||'').toLowerCase().includes('insta') 
+                                ? `https://instaworld.pk/tracking?tracking_number=${o.tracking_number}` 
+                                : `https://postex.pk/tracking?trackingId=${o.tracking_number}`} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              style={{ color: 'var(--blue)', textDecoration: 'none' }}
+                            >
+                              🚚 {o.tracking_number}
+                            </a>
                           ) : '—'}
                         </td>
                       )
