@@ -92,7 +92,7 @@ export default function Reports() {
       if (row.date === date) {
         const updated = { ...row, [field]: numValue };
         const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
-        updated.pnl = updated.grossProfit - updated.taxPaid - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+        updated.pnl = updated.grossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
         updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
         const landedOrders = updated.landedOrders || 0;
         updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
@@ -177,7 +177,7 @@ export default function Reports() {
         const numValue = parseFloat(update.value) || 0;
         const updated = { ...row, [field]: numValue };
         const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
-        updated.pnl = updated.grossProfit - updated.taxPaid - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+        updated.pnl = updated.grossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
         updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
         const landedOrders = updated.landedOrders || 0;
         updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
@@ -284,7 +284,7 @@ export default function Reports() {
       const totalMarketing = m.marketingSpend + m.tiktokMarketing;
       const taxPaid = m.deliveredSale * 0.04;
       const grossProfit = m.deliveredSale - m.cgs;
-      const pnl = grossProfit - taxPaid - totalMarketing - m.hybridCourier - m.actualExp;
+      const pnl = grossProfit - totalMarketing - m.hybridCourier - m.actualExp;
       const landedOrders = m.landedOrders || 0;
       const netOrders = landedOrders - m.cancelations;
       return { 
