@@ -95,74 +95,76 @@ export default function Connect() {
   }
 
   return (
-    <div className="animate-fade" style={{ maxWidth: 800 }}>
+    <div style={{ maxWidth: 700 }}>
       <div className="page-header">
         <div>
-          <h2>Integrations</h2>
-          <p>Manage your Shopify stores and courier API connections</p>
+          <h2>🔌 Connect Store</h2>
+          <p>Add a new Shopify store to TRACE ERP</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={refreshStores}>🔄 Sync Status</button>
+        <button className="btn btn-secondary btn-sm" onClick={refreshStores}>🔄 Refresh Stores</button>
       </div>
 
-      <div className="card mb-8">
-        <h3 className="mb-4">Connect New Store</h3>
+      {/* Connect New Store */}
+      <div className="card mb-4">
+        <div className="card-title">Add New Shopify Store</div>
         <form onSubmit={handleConnect}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">Store Identifier</label>
-              <input className="form-input" placeholder="e.g. TRACE CLOTHING" value={form.store_name} onChange={set('store_name')} />
+              <label className="form-label">Store Name (Label)</label>
+              <input className="form-input" placeholder="e.g. My Fashion Store" value={form.store_name} onChange={set('store_name')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Shop Domain (.myshopify.com) *</label>
-              <input className="form-input" placeholder="trace-demo.myshopify.com" value={form.shop_domain} onChange={set('shop_domain')} required />
+              <label className="form-label">Shop Domain *</label>
+              <input className="form-input" placeholder="your-store.myshopify.com" value={form.shop_domain} onChange={set('shop_domain')} required />
             </div>
           </div>
 
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Shopify Client ID *</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} placeholder="76e82..." value={form.client_id} onChange={set('client_id')} required />
+              <input className="form-input font-mono" placeholder="From Shopify Partner Dashboard" value={form.client_id} onChange={set('client_id')} required />
             </div>
             <div className="form-group">
               <label className="form-label">Shopify Client Secret *</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} type="password" placeholder="••••••••" value={form.client_secret} onChange={set('client_secret')} required />
+              <input className="form-input font-mono" type="password" placeholder="From Shopify Partner Dashboard" value={form.client_secret} onChange={set('client_secret')} required />
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Historical Authority Date</label>
+            <label className="form-label">Initial Sync Start Date (Authority)</label>
             <input className="form-input" type="date" value={form.sync_start_date} onChange={set('sync_start_date')} />
-            <small className="text-muted">Orders older than this will be ignored by TRACE.</small>
+            <small style={{ color: 'var(--text-muted)' }}>Orders before this date will never be pulled.</small>
           </div>
 
           <div className="divider" />
-          <h4 className="mb-4 text-secondary">Courier Gateway Configuration</h4>
+          <div className="card-title">Courier API Keys (Optional — can add later)</div>
 
           <div className="form-group">
-            <label className="form-label">PostEx API Token</label>
-            <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} placeholder="Enter PostEx merchant token" value={form.postex_token} onChange={set('postex_token')} />
+            <label className="form-label">PostEx Token</label>
+            <input className="form-input font-mono" placeholder="PostEx API token for this store" value={form.postex_token} onChange={set('postex_token')} />
           </div>
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Instaworld Primary Key</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} placeholder="Primary key" value={form.instaworld_key} onChange={set('instaworld_key')} />
+              <input className="form-input font-mono" placeholder="Primary API key" value={form.instaworld_key} onChange={set('instaworld_key')} />
             </div>
             <div className="form-group">
               <label className="form-label">Instaworld Backup Key</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} placeholder="Backup key" value={form.instaworld_key_backup} onChange={set('instaworld_key_backup')} />
+              <input className="form-input font-mono" placeholder="Backup/fallback key" value={form.instaworld_key_backup} onChange={set('instaworld_key_backup')} />
             </div>
           </div>
 
-          <button className="btn btn-primary btn-lg mt-4" type="submit" disabled={loading}>
-            {loading ? <><span className="loading-spinner"></span> Connecting...</> : '🚀 Connect Store'}
+          <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ marginTop: 8 }}>
+            {loading ? <><span className="loading-spinner"></span> Connecting...</> : '🚀 Generate Auth Link & Connect'}
           </button>
         </form>
       </div>
 
+      {/* Connected Stores List */}
       {stores.length > 0 && (
         <div className="card">
-          <h3 className="mb-4">Active Connections ({stores.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="card-title">Connected Stores ({stores.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {stores.map(store => (
               <StoreCard
                 key={store.id}
@@ -187,64 +189,75 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
   return (
-    <div className="card bg-elevated animate-fade" style={{ padding: 20 }}>
-      <div className="flex items-center gap-4">
-        <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', border: '1px solid var(--border)' }}>🏪</div>
+    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 14 }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: (editing || store.sync_status === 'syncing') ? 14 : 0 }}>
+        <span style={{ fontSize: '1.1rem' }}>🏪</span>
         <div style={{ flex: 1 }}>
-          <div className="font-bold" style={{ fontSize: '1.1rem' }}>{store.store_name || store.shop_domain}</div>
-          <div className="text-secondary" style={{ fontSize: '0.8rem' }}>{store.shop_domain}</div>
+          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{store.store_name || store.shop_domain}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
         </div>
-        <div className="flex gap-2">
-          {store.sync_status === 'syncing' ? (
-            <span className="badge badge-pending">⏳ Syncing...</span>
-          ) : (
-            <span className="badge badge-delivered">● Connected</span>
-          )}
-          <button className="btn btn-secondary btn-sm" onClick={onDeepSync} disabled={store.sync_status === 'syncing'}>Historical Pull</button>
-          <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : 'Configure'}</button>
-          <button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)' }} onClick={onDisconnect}>Remove</button>
-        </div>
+        {store.sync_status === 'syncing' ? (
+          <span className="badge badge-pending">⏳ Syncing...</span>
+        ) : store.sync_status === 'error' ? (
+          <span className="badge badge-danger" title={store.sync_progress}>❌ Error</span>
+        ) : (
+          <span className="badge badge-delivered">● Connected</span>
+        )}
+        <button className="btn btn-secondary btn-sm" onClick={onDeepSync} disabled={store.sync_status === 'syncing'}>🔍 Pull Historical Data</button>
+        <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : '✏️ Edit Keys'}</button>
+        <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>
 
       {store.sync_status === 'syncing' && (
-        <div className="mt-8 animate-fade">
-           <div className="flex justify-between mb-4">
-              <span className="text-secondary font-bold" style={{ fontSize: '0.8rem' }}>Historical Sync: {store.sync_progress}</span>
-              <span className="text-brand font-bold" style={{ fontSize: '0.8rem' }}>{store.sync_total ? `${Math.round((store.sync_processed / store.sync_total) * 100)}%` : 'Processing...'}</span>
-           </div>
-           <div className="progress-bar">
-              <div className="progress-fill" style={{ width: store.sync_total ? `${Math.round((store.sync_processed / store.sync_total) * 100)}%` : '100%' }}></div>
-           </div>
+        <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.05)', padding: '10px 14px', borderRadius: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: 5 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Historical Sync Progress</span>
+            <span style={{ color: '#60a5fa', fontWeight: 600 }}>{store.sync_progress}</span>
+          </div>
+          <div className="progress-bar">
+            <div 
+              className={`progress-bar-fill ${!store.sync_total ? 'progress-bar-animated' : ''}`} 
+              style={{ width: store.sync_total ? `${Math.round((store.sync_processed / store.sync_total) * 100)}%` : '100%' }} 
+            />
+          </div>
         </div>
       )}
 
       {editing && (
-        <div className="mt-8 pt-8 border-t border-dashed animate-fade">
+        <div style={{ marginTop: 12 }}>
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">Store Label</label>
+              <label className="form-label">Store Name</label>
               <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Sync Start Date</label>
+              <label className="form-label">Sync Start Date (Authority)</label>
               <input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} />
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">PostEx Token</label>
-            <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} value={local.postex_token || ''} onChange={setL('postex_token')} />
+            <input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} placeholder="PostEx API token" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">PostEx Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(paste exact URL from your GAS config.gs)</span></label>
+            <input className="form-input font-mono" value={local.postex_track_url || ''} onChange={setL('postex_track_url')} placeholder="https://api.postex.pk/services/..." />
           </div>
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Instaworld Key</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
+              <input className="form-input font-mono" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Backup Key</label>
-              <input className="form-input font-mono" style={{ fontSize: '0.8rem' }} value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
+              <label className="form-label">Instaworld Backup</label>
+              <input className="form-input font-mono" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
             </div>
           </div>
-          <button className="btn btn-primary btn-sm mt-4" onClick={() => onSave(local)}>💾 Save Configuration</button>
+          <div className="form-group">
+            <label className="form-label">Instaworld Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional, only if different from default)</span></label>
+            <input className="form-input font-mono" value={local.instaworld_track_url || ''} onChange={setL('instaworld_track_url')} placeholder="https://app.instaworld.pk/api/track-order" />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>
       )}
     </div>
