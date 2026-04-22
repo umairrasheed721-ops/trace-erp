@@ -570,25 +570,26 @@ export default function SearchTool() {
           </div>
         </div>
       )}
-      <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
-        <div>
-          <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
-          {!compactMode && <p>Advanced search, filter, and order management</p>}
+      <div className="sticky-controls">
+        <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
+          <div>
+            <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
+            {!compactMode && <p>Advanced search, filter, and order management</p>}
+          </div>
+          <div className="flex gap-2">
+            <button 
+              className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={toggleCompact}
+              title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
+            >
+              {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
+            {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
+            <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button 
-            className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
-            onClick={toggleCompact}
-            title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
-          >
-            {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
-          </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
-          {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
-          <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
-        </div>
-      </div>
 
         {showColPicker && (
           <div className="card mb-4" style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
@@ -649,71 +650,104 @@ export default function SearchTool() {
           </>
         )}
 
-          {/* Aging Bar - Minimalist (Now Scrolls Away) */}
+        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAgingBar ? 10 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
+              <button 
+                onClick={toggleAgingBar} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, fontSize: '0.75rem', padding: '2px 6px' }}
+                title={showAgingBar ? 'Hide Bar' : 'Show Bar'}
+              >
+                {showAgingBar ? '🙈 Hide' : '👁️ Show'}
+              </button>
+            </div>
+            <button onClick={() => setShowAgingConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.9rem' }}>⚙️</button>
+          </div>
+          
           {showAgingBar && (
-            <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-base)' }}>
-              <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 24, border: '1px solid var(--border)' }}>
-                {agingBuckets.map((b, idx) => {
-                  const count = agingCounts[b.label] || 0
-                  const isActive = activeAgingBucket === b.label
-                  let bg = 'var(--green)'
-                  if (b.min >= agingConfig.criticalLevel) bg = '#c53030'
-                  else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e'
-                  return (
-                    <div 
-                      key={b.label}
-                      onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
-                      style={{ flex: 1, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: activeAgingBucket && !isActive ? 0.3 : 1, borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}
-                    >
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'rgba(255,255,255,0.9)', marginRight: 6 }}>{b.label}</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fff' }}>{count}</span>
-                    </div>
-                  )
-                })}
-              </div>
+            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)', transition: 'all 0.3s ease' }}>
+              {agingBuckets.map((b, idx) => {
+                const count = agingCounts[b.label] || 0
+                const isActive = activeAgingBucket === b.label
+                // Color logic: green -> brown -> red
+                let bg = 'var(--green)'
+                if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
+                else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
+                
+                return (
+                  <div 
+                    key={b.label}
+                    onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
+                    style={{ 
+                      flex: 1, 
+                      background: bg, 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      opacity: activeAgingBucket && !isActive ? 0.3 : 1,
+                      borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                      transition: 'all 0.2s',
+                      position: 'relative'
+                    }}
+                  >
+                    <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
+                    {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
+                  </div>
+                )
+              })}
             </div>
           )}
+        </div>
 
-        <div className="sticky-controls" style={{ 
-          background: '#0a0b0f', 
-          zIndex: 1000, 
-          borderBottom: '2px solid var(--brand)', 
-          position: 'sticky', 
-          top: 'var(--topbar-height)',
-          height: 48,
-          display: 'flex',
-          alignItems: 'center'
-        }}>
-          {/* Filters - High Density One-Line */}
-          <div style={{ padding: '0 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto', width: '100%' }}>
-            <select className="form-select" style={{ width: 130, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={preset} onChange={e => setPreset(e.target.value)}>
-              {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
-            </select>
-            
-            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={status} onChange={e => setStatus(e.target.value)}>
-              {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-            </select>
-
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, fontSize: '0.8rem' }}>🔍</span>
-              <input 
-                className="form-input" 
-                style={{ height: 32, paddingLeft: 30, fontSize: '0.78rem', background: 'var(--bg-elevated)' }} 
-                placeholder="Search orders..." 
-                value={keyword} 
-                onChange={e => setKeyword(e.target.value)} 
-                onKeyDown={e => e.key === 'Enter' && runSearch()} 
-              />
+        {/* Filters */}
+        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+            <div>
+              <label className="form-label">📅 Date Preset</label>
+              <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
+                {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
+              </select>
             </div>
-
-            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem', background: 'var(--bg-elevated)' }} value={selectedView} onChange={e => loadView(e.target.value)}>
-              <option value="">— Views —</option>
-              {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
-            </select>
-            
-            <button className="btn btn-primary btn-sm" onClick={runSearch} style={{ height: 32, padding: '0 12px' }}>Refresh</button>
+            {preset === 'Custom Range' ? <>
+              <div>
+                <label className="form-label">📆 Start</label>
+                <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">🏁 End</label>
+                <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              </div>
+            </> : <><div/><div/></>}
+            <div>
+              <label className="form-label">🏷️ Status / Mode</label>
+              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
+                {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">🔑 Keyword</label>
+              <input className="form-input" placeholder="name, city, tracking..." value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSearch()} />
+            </div>
+            <div>
+              <label className="form-label">🗂️ Sort</label>
+              <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
+                {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">⭐ Saved Views</label>
+              <select className="form-select" value={selectedView} onChange={e => loadView(e.target.value)}>
+                <option value="">— Default Layout —</option>
+                {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
+              </select>
+            </div>
           </div>
         </div>
+      </div>
 
       {/* Save View Dialog */}
       {showSaveDialog && (
@@ -755,15 +789,7 @@ export default function SearchTool() {
                     onDragStart={() => onDragStart(idx)}
                     onDragOver={onDragOver}
                     onDrop={() => onDrop(idx)}
-                    style={{ 
-                      cursor: 'move', 
-                      userSelect: 'none',
-                      position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 48px)',
-                      zIndex: 999,
-                      background: '#1a1b23',
-                      borderBottom: '1px solid var(--border)'
-                    }}
+                    style={{ cursor: 'move', userSelect: 'none' }}
                   >
                     {col.label}
                     {col.id === 'customer_name' && (
@@ -782,14 +808,7 @@ export default function SearchTool() {
                 {cols.map(col => {
                   const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
                   return (
-                    <th key={col.id} style={{ 
-                      padding: '4px 8px',
-                      position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 84px)',
-                      zIndex: 998,
-                      background: '#1a1b23',
-                      borderBottom: '1px solid var(--border)'
-                    }}>
+                    <th key={col.id} style={{ padding: '4px 8px' }}>
                       {isFiltered && (
                         <input 
                           className="header-search-input"
