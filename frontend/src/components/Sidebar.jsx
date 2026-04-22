@@ -25,71 +25,67 @@ export default function Sidebar() {
     return user?.permissions?.includes(item.permission)
   })
 
+  const toggleTheme = () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark'
+    const next = current === 'dark' ? 'light' : 'dark'
+    document.documentElement.setAttribute('data-theme', next)
+    localStorage.setItem('trace_theme', next)
+  }
+
   return (
     <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          {!sidebarCollapsed && (
-            <div style={{ overflow: 'hidden' }}>
-              <h1>TRACE ERP</h1>
-              <span>Multi-Store Dashboard</span>
-            </div>
-          )}
-          <button 
-            onClick={toggleSidebar} 
-            className="sidebar-toggle"
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {sidebarCollapsed ? '➡️' : '⬅️'}
-          </button>
-        </div>
+        {!sidebarCollapsed && <h1>TRACE ERP</h1>}
+        <button onClick={toggleSidebar} className="btn-toggle" style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>
+          {sidebarCollapsed ? '➡️' : '⬅️'}
+        </button>
       </div>
 
       <nav className="sidebar-nav">
-        {!sidebarCollapsed && <div className="nav-section-label">Navigation</div>}
+        {!sidebarCollapsed && <div className="nav-section-label">Main Menu</div>}
         {navItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            title={sidebarCollapsed ? item.label : ''}
           >
             <span className="nav-icon">{item.icon}</span>
-            {!sidebarCollapsed && item.label}
+            {!sidebarCollapsed && <span className="nav-label">{item.label}</span>}
             {item.badge > 0 && <span className="nav-badge">{item.badge}</span>}
           </NavLink>
         ))}
       </nav>
 
-      <div className="store-switcher">
-        {!sidebarCollapsed && <span className="store-select-label">Active Store</span>}
-        {stores.length === 0 ? (
-          <NavLink to="/connect" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
-            + {sidebarCollapsed ? '' : 'Connect Store'}
-          </NavLink>
-        ) : (
-          <select
-            className="store-select"
-            value={activeStoreId || ''}
-            onChange={e => setActiveStoreId(parseInt(e.target.value))}
-            style={sidebarCollapsed ? { padding: '4px 2px', textAlign: 'center' } : {}}
-          >
-            {stores.map(s => (
-              <option key={s.id} value={s.id}>{sidebarCollapsed ? (s.store_name || s.shop_domain).substring(0,2).toUpperCase() : (s.store_name || s.shop_domain)}</option>
-            ))}
-          </select>
-        )}
-        <button 
-          onClick={logout}
-          className="btn btn-secondary btn-sm" 
-          style={{ width: '100%', justifyContent: 'center', marginTop: 10, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
-        >
-          {sidebarCollapsed ? '🚪' : '🚪 Logout'}
-        </button>
+      <div className="sidebar-footer" style={{ padding: 16, borderTop: '1px solid var(--border)' }}>
         {!sidebarCollapsed && (
-          <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
-            TRACE ERP v1.5.2
+          <div className="form-group">
+            <label className="form-label" style={{ fontSize: '0.65rem' }}>Switch Store</label>
+            <select
+              className="form-select"
+              style={{ width: '100%', fontSize: '0.8rem', padding: '6px' }}
+              value={activeStoreId || ''}
+              onChange={e => setActiveStoreId(parseInt(e.target.value))}
+            >
+              {stores.map(s => (
+                <option key={s.id} value={s.id}>{s.store_name || s.shop_domain}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+           <button onClick={toggleTheme} className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: 'center' }} title="Toggle Light/Dark">
+             🌓
+           </button>
+           <button onClick={logout} className="btn btn-secondary btn-sm" style={{ flex: 1, justifyContent: 'center', color: 'var(--danger)' }} title="Logout">
+             🚪
+           </button>
+        </div>
+
+        {!sidebarCollapsed && (
+          <div style={{ textAlign: 'center', marginTop: 16, fontSize: '0.65rem', color: 'var(--text-muted)', opacity: 0.5 }}>
+            v1.6.0 Premium
           </div>
         )}
       </div>
