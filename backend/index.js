@@ -12,6 +12,7 @@ const storesRoutes = require('./routes/stores');
 const financeRoutes = require('./routes/finance');
 const reportsRoutes = require('./routes/reports');
 const usersRoutes = require('./routes/users');
+const webhooksRoutes = require('./routes/webhooks');
 const schedulerInit = require('./scheduler');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use((req, res, next) => {
   // Public paths
   if (req.path.startsWith('/api/auth/callback')) return next();
   if (req.path === '/api/auth/login') return next();
+  if (req.path.startsWith('/api/webhooks/')) return next();
   if (req.path === '/health') return next();
   
   // Allow all non-API requests (static files, frontend routes)
@@ -66,6 +68,7 @@ app.use('/api/watchdog', watchdogRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/webhooks', webhooksRoutes);
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
