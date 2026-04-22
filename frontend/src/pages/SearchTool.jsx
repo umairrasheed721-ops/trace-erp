@@ -649,97 +649,67 @@ export default function SearchTool() {
           </>
         )}
 
-        <div className="sticky-controls" style={{ background: 'var(--bg-base)', zIndex: 100, borderBottom: '1px solid var(--border)', position: 'sticky', top: 'var(--topbar-height)' }}>
-          <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 0, background: 'none', border: 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAgingBar ? 10 : 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
-              <button 
-                onClick={toggleAgingBar} 
-                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, fontSize: '0.75rem', padding: '2px 6px' }}
-                title={showAgingBar ? 'Hide Bar' : 'Show Bar'}
-              >
-                {showAgingBar ? '🙈 Hide' : '👁️ Show'}
-              </button>
-            </div>
-            <button onClick={() => setShowAgingConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.9rem' }}>⚙️</button>
-          </div>
-          
+        <div className="sticky-controls" style={{ 
+          background: 'var(--bg-base)', 
+          zIndex: 100, 
+          borderBottom: '1px solid var(--border)', 
+          position: 'sticky', 
+          top: 'var(--topbar-height)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+        }}>
+          {/* Aging Bar - Minimalist */}
           {showAgingBar && (
-            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)', transition: 'all 0.3s ease' }}>
-              {agingBuckets.map((b, idx) => {
-                const count = agingCounts[b.label] || 0
-                const isActive = activeAgingBucket === b.label
-                // Color logic: green -> brown -> red
-                let bg = 'var(--green)'
-                if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
-                else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
-                
-                return (
-                  <div 
-                    key={b.label}
-                    onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
-                    style={{ 
-                      flex: 1, 
-                      background: bg, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      opacity: activeAgingBucket && !isActive ? 0.3 : 1,
-                      borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                      transition: 'all 0.2s',
-                      position: 'relative'
-                    }}
-                  >
-                    <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
-                    {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
-                  </div>
-                )
-              })}
+            <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', height: 24, border: '1px solid var(--border)' }}>
+                {agingBuckets.map((b, idx) => {
+                  const count = agingCounts[b.label] || 0
+                  const isActive = activeAgingBucket === b.label
+                  let bg = 'var(--green)'
+                  if (b.min >= agingConfig.criticalLevel) bg = '#c53030'
+                  else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e'
+                  return (
+                    <div 
+                      key={b.label}
+                      onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
+                      style={{ flex: 1, background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: activeAgingBucket && !isActive ? 0.3 : 1, borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}
+                    >
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'rgba(255,255,255,0.9)', marginRight: 6 }}>{b.label}</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#fff' }}>{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
-        </div>
 
-          {/* Filters - Compact One-Line Bar */}
-          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', overflowX: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>📅</span>
-              <select className="form-select" style={{ width: 130, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={preset} onChange={e => setPreset(e.target.value)}>
-                {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
-              </select>
-            </div>
+          {/* Filters - High Density One-Line */}
+          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', overflowX: 'auto' }}>
+            <select className="form-select" style={{ width: 130, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={preset} onChange={e => setPreset(e.target.value)}>
+              {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
+            </select>
+            
+            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={status} onChange={e => setStatus(e.target.value)}>
+              {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+            </select>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>🏷️</span>
-              <select className="form-select" style={{ width: 160, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={status} onChange={e => setStatus(e.target.value)}>
-                {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>🔍</span>
+            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, fontSize: '0.8rem' }}>🔍</span>
               <input 
                 className="form-input" 
-                style={{ height: 32, padding: '2px 10px', fontSize: '0.75rem' }} 
-                placeholder="Quick search..." 
+                style={{ height: 32, paddingLeft: 30, fontSize: '0.78rem' }} 
+                placeholder="Search..." 
                 value={keyword} 
                 onChange={e => setKeyword(e.target.value)} 
                 onKeyDown={e => e.key === 'Enter' && runSearch()} 
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>⭐</span>
-              <select className="form-select" style={{ width: 160, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={selectedView} onChange={e => loadView(e.target.value)}>
-                <option value="">— Views —</option>
-                {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
-              </select>
-            </div>
+            <select className="form-select" style={{ width: 160, height: 32, padding: '0 8px', fontSize: '0.75rem' }} value={selectedView} onChange={e => loadView(e.target.value)}>
+              <option value="">— Views —</option>
+              {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
+            </select>
             
-            <button className="btn btn-primary btn-sm" onClick={runSearch} style={{ height: 32, padding: '0 12px' }}>🔄 Run</button>
+            <button className="btn btn-primary btn-sm" onClick={runSearch} style={{ height: 32, padding: '0 12px' }}>Refresh</button>
           </div>
         </div>
 
@@ -780,14 +750,8 @@ export default function SearchTool() {
                   <th 
                     key={col.id}
                     draggable
-                    onDragStart={() => onDragStart(idx)}
-                    onDragOver={onDragOver}
-                    onDrop={() => onDrop(idx)}
-                    style={{ 
-                      cursor: 'move', 
-                      userSelect: 'none',
-                      position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 42px + ' + (showAgingBar ? '32px' : '0px') + ')',
+                                     position: 'sticky',
+                      top: 'calc(var(--topbar-height) + 48px + ' + (showAgingBar ? '37px' : '0px') + ')',
                       zIndex: 90,
                       background: 'var(--bg-elevated)'
                     }}
@@ -812,6 +776,11 @@ export default function SearchTool() {
                     <th key={col.id} style={{ 
                       padding: '4px 8px',
                       position: 'sticky',
+                      top: 'calc(var(--topbar-height) + 84px + ' + (showAgingBar ? '37px' : '0px') + ')',
+                      zIndex: 89,
+                      background: 'var(--bg-elevated)'
+                    }}>
+          position: 'sticky',
                       top: 'calc(var(--topbar-height) + 78px + ' + (showAgingBar ? '32px' : '0px') + ')',
                       zIndex: 89,
                       background: 'var(--bg-elevated)'
