@@ -291,6 +291,7 @@ export default function SearchTool() {
     { id: 'courier_fee', label: 'Actual Expense' },
     { id: 'delivery_status', label: 'Status' },
     { id: 'payment_status', label: 'Payment' },
+    { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
     { id: 'cost', label: 'Cost' },
     { id: 'profit', label: 'Profit' },
@@ -308,11 +309,11 @@ export default function SearchTool() {
 
   // Force inject missing columns for existing users
   useEffect(() => {
-    if (!cols.find(c => c.id === 'profit')) {
+    if (!cols.find(c => c.id === 'profit') || !cols.find(c => c.id === 'paid_amount')) {
       setCols(DEFAULT_COLS)
       localStorage.setItem('trace_search_cols', JSON.stringify(DEFAULT_COLS))
     }
-  }, [cols])
+  }, [cols, DEFAULT_COLS])
   const [draggedIdx, setDraggedIdx] = useState(null)
 
   const onDragStart = (idx) => setDraggedIdx(idx)
