@@ -195,13 +195,28 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         rawStatus = data.status;
       }
 
-      if (!rawStatus) return { status: 200, order, newStatus: null };
+      // Capture Sub-Courier (LCS, TCS, etc) from Instaworld response
+      let courierName = null;
+      if (Array.isArray(data) && data.length > 0) {
+        courierName = data[data.length - 1]?.courier_name || data[data.length - 1]?.vendor_name;
+      } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+        courierName = data.data[data.data.length - 1]?.courier_name || data.data[data.data.length - 1]?.vendor_name;
+      }
+      
+      // Auto-detect by tracking number if still null
+      if (!courierName && order.tracking_number) {
+        const tn = String(order.tracking_number).toUpperCase();
+        if (tn.startsWith('LE') || tn.startsWith('LCS')) courierName = 'LCS';
+        else if (tn.match(/^[0-9]{11,12}$/)) courierName = 'TCS'; // TCS is usually 11-12 digits
+      }
+
+      if (!rawStatus) return { status: 200, order, newStatus: null, courierName };
 
       // Normalize status
       const lowerRaw = String(rawStatus).toLowerCase();
       const newStatus = STATUS_MAP[lowerRaw] || rawStatus;
 
-      return { status: 200, order, newStatus };
+      return { status: 200, order, newStatus, courierName };
     } catch (err) {
       const logStmt = db.prepare("INSERT INTO sync_audit (tracking_number, message) VALUES (?, ?)");
       logStmt.run(order.tracking_number, `ERR: ${err.message} | ${err.stack.split('\n')[0]}`);
@@ -218,9 +233,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
     for (const r of primaryResults) {
       if (r.status === 200 && r.newStatus) {
-        const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
-        if (changed) {
-          updatesToApply.push({ id: r.order.id, status: r.newStatus });
+        const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
+        if (changedStatus || r.courierName) {
+          updatesToApply.push({ id: r.order.id, status: r.newStatus || r.order.delivery_status, courier: r.courierName });
         }
       } else if (r.status !== 404 && apiKeys[1]) {
         retryOrders.push(r.order);
@@ -232,9 +247,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
       for (const r of backupResults) {
         if (r.status === 200 && r.newStatus) {
-          const changed = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
-          if (changed) {
-            updatesToApply.push({ id: r.order.id, status: r.newStatus });
+          const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
+          if (changedStatus || r.courierName) {
+            updatesToApply.push({ id: r.order.id, status: r.newStatus || r.order.delivery_status, courier: r.courierName });
           }
         }
       }
@@ -252,9 +267,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
 
   // Safe bulk write
-  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE id=?");
+  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, courier=COALESCE(?, courier), status_date=datetime('now') WHERE id=?");
   const updateMany = db.transaction(items => {
-    for (const u of items) updateStmt.run(u.status, u.id);
+    for (const u of items) updateStmt.run(u.status, u.courier || null, u.id);
   });
   updateMany(updatesToApply);
 

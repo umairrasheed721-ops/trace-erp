@@ -275,4 +275,47 @@ router.post('/bulk-metrics', (req, res) => {
   }
 });
 
+router.get('/courier-comparison', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const query = `
+      SELECT 
+        COALESCE(courier, 'PostEx') as courier_name,
+        COUNT(id) as total_orders,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received') THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN delivery_status IN ('Pending', 'In Transit', 'Out for Delivery', 'Booked') THEN 1 ELSE 0 END) as in_transit,
+        AVG(price) as avg_price,
+        AVG(courier_fee) as avg_fee,
+        AVG(CASE WHEN delivery_status = 'Delivered' AND status_date IS NOT NULL AND order_date IS NOT NULL 
+            THEN (julianday(status_date) - julianday(order_date)) ELSE NULL END) as avg_days_to_deliver
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
+      GROUP BY COALESCE(courier, 'PostEx')
+    `;
+    const results = db.prepare(query).all(store_id);
+
+    // City-wise success rate per courier
+    const cityQuery = `
+      SELECT 
+        city,
+        COALESCE(courier, 'PostEx') as courier_name,
+        COUNT(id) as total,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
+        AND city IS NOT NULL AND city != ''
+      GROUP BY city, COALESCE(courier, 'PostEx')
+      HAVING total > 5
+    `;
+    const cityResults = db.prepare(cityQuery).all(store_id);
+
+    res.json({ comparison: results, cities: cityResults });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

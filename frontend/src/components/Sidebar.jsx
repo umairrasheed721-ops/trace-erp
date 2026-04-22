@@ -12,6 +12,7 @@ export default function Sidebar() {
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'view_finance' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'view_reports' },
+    { to: '/intelligence', icon: '🧠', label: 'Courier Intelligence', permission: 'view_reports' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },

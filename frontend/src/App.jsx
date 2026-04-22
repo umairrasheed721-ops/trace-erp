@@ -16,6 +16,7 @@ const Watchdog = lazy(() => import('./pages/Watchdog'))
 const ReturnsManager = lazy(() => import('./pages/ReturnsManager'))
 const FinanceManager = lazy(() => import('./pages/FinanceManager'))
 const Reports = lazy(() => import('./pages/Reports'))
+const CourierIntelligence = lazy(() => import('./pages/CourierIntelligence'))
 const Connect = lazy(() => import('./pages/Connect'))
 const Login = lazy(() => import('./pages/Login'))
 const Users = lazy(() => import('./pages/Users'))
@@ -50,6 +51,7 @@ function AppContent() {
                 <Route path="/returns" element={<ReturnsManager />} />
                 <Route path="/finance" element={<FinanceManager />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/intelligence" element={<CourierIntelligence />} />
                 <Route path="/stuck" element={<StuckMonitor />} />
                 <Route path="/advice" element={<AdviceMonitor />} />
                 <Route path="/watchdog" element={<Watchdog />} />
