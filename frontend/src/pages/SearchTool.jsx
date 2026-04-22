@@ -750,10 +750,17 @@ export default function SearchTool() {
                   <th 
                     key={col.id}
                     draggable
-                                     position: 'sticky',
+                    onDragStart={() => onDragStart(idx)}
+                    onDragOver={onDragOver}
+                    onDrop={() => onDrop(idx)}
+                    style={{ 
+                      cursor: 'move', 
+                      userSelect: 'none',
+                      position: 'sticky',
                       top: 'calc(var(--topbar-height) + 48px + ' + (showAgingBar ? '37px' : '0px') + ')',
                       zIndex: 90,
-                      background: 'var(--bg-elevated)'
+                      background: 'var(--bg-elevated)',
+                      borderBottom: '1px solid var(--border)'
                     }}
                   >
                     {col.label}
@@ -778,12 +785,8 @@ export default function SearchTool() {
                       position: 'sticky',
                       top: 'calc(var(--topbar-height) + 84px + ' + (showAgingBar ? '37px' : '0px') + ')',
                       zIndex: 89,
-                      background: 'var(--bg-elevated)'
-                    }}>
-          position: 'sticky',
-                      top: 'calc(var(--topbar-height) + 78px + ' + (showAgingBar ? '32px' : '0px') + ')',
-                      zIndex: 89,
-                      background: 'var(--bg-elevated)'
+                      background: 'var(--bg-elevated)',
+                      borderBottom: '1px solid var(--border)'
                     }}>
                       {isFiltered && (
                         <input 
