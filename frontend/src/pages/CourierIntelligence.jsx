@@ -32,8 +32,15 @@ export default function CourierIntelligence() {
     try {
       const res = await fetch(`/api/reports/courier-comparison?store_id=${activeStoreId}&startDate=${start}&endDate=${end}`)
       const d = await res.json()
-      // Filter out empty courier names
-      d.comparison = d.comparison.filter(c => c.courier_name && c.courier_name.trim() !== '')
+      
+      // 🛡️ Data Sanitization: Filter out numeric-only names or short trash data
+      d.comparison = d.comparison.filter(c => 
+        c.courier_name && 
+        /[a-zA-Z]/.test(c.courier_name) && 
+        c.courier_name.length > 2 &&
+        c.total_orders > 0
+      )
+      
       setData(d)
     } catch (e) {
       console.error(e)
@@ -45,155 +52,175 @@ export default function CourierIntelligence() {
   useEffect(() => { fetchData() }, [fetchData])
 
   return (
-    <div className="page-container intelligence-page" style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 32px' }}>
+    <div className="page-container" style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
       
-      {/* Header Section */}
-      <div className="intelligence-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 40, flexWrap: 'wrap', gap: 20 }}>
-        <div style={{ flex: 1, minWidth: 300 }}>
-          <h1 style={{ fontSize: '2.2rem', fontWeight: 900, letterSpacing: '-0.8px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span style={{ fontSize: '2.5rem' }}>🧠</span> Courier Intelligence
+      {/* 🚀 ELITE HEADER */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        marginBottom: '40px',
+        padding: '20px 30px',
+        background: 'linear-gradient(90deg, rgba(124, 58, 237, 0.1) 0%, rgba(0,0,0,0) 100%)',
+        borderRadius: '20px',
+        borderLeft: '4px solid var(--brand)'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '2.4rem', fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '-1px' }}>
+            Logistics Intelligence
           </h1>
-          <p style={{ opacity: 0.5, fontSize: '1rem', fontWeight: 500 }}>Competitive benchmarking and regional logistics auditing</p>
+          <p style={{ opacity: 0.5, fontWeight: 600, fontSize: '1rem', marginTop: '4px' }}>
+            Global performance auditing and regional optimization
+          </p>
         </div>
         
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center',
-          gap: 12, 
-          background: 'rgba(255,255,255,0.03)', 
-          padding: '8px 16px', 
-          borderRadius: 16, 
-          border: '1px solid var(--border)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 800, opacity: 0.4 }}>TIMEFRAME</span>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
             <select 
-              className="form-select" 
               value={preset} 
-              onChange={e => setPreset(e.target.value)} 
-              style={{ width: 140, background: 'none', border: 'none', fontWeight: 800, fontSize: '0.9rem', color: 'var(--brand)', cursor: 'pointer' }}
+              onChange={e => setPreset(e.target.value)}
+              style={{ 
+                appearance: 'none',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '12px 40px 12px 20px',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: '0.9rem'
+              }}
             >
-              {DATE_PRESETS.map(p => <option key={p} style={{ background: '#111', color: '#fff' }}>{p}</option>)}
+              {DATE_PRESETS.map(p => <option key={p} style={{ background: '#111' }}>{p}</option>)}
             </select>
+            <span style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }}>▼</span>
           </div>
-          <div style={{ width: 1, height: 24, background: 'var(--border)' }}></div>
           <button 
-            className="btn btn-primary" 
-            onClick={fetchData} 
-            style={{ borderRadius: 10, padding: '8px 20px', fontWeight: 800, fontSize: '0.8rem', boxShadow: '0 4px 10px var(--brand-dim)' }}
+            onClick={fetchData}
+            style={{ 
+              background: 'var(--brand)', 
+              color: '#fff', 
+              border: 'none', 
+              padding: '12px 25px', 
+              borderRadius: '12px', 
+              fontWeight: 800, 
+              cursor: 'pointer',
+              boxShadow: '0 8px 20px rgba(124, 58, 237, 0.3)'
+            }}
           >
-            🔄 Sync Data
+            🔄 Sync Report
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ height: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-          <div className="loading-spinner" style={{ width: 40, height: 40, borderWidth: 4 }}></div>
-          <p style={{ fontWeight: 600, opacity: 0.5 }}>Analyzing logistics performance...</p>
+        <div style={{ height: '50vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="loading-spinner" style={{ width: '50px', height: '50px' }}></div>
         </div>
       ) : (
         <>
-          {/* Main Comparison Grid - FORCED 3 COLUMNS ON DESKTOP */}
+          {/* 🏆 COURIER SCORECARDS */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(3, 1fr)', 
-            gap: 24, 
-            marginBottom: 48,
-            // Responsive fallback
-            gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', 
+            gap: '30px', 
+            marginBottom: '60px' 
           }}>
             {data.comparison.sort((a,b) => b.total_orders - a.total_orders).map(c => {
               const totalFinished = c.delivered + c.returned
               const delRate = totalFinished > 0 ? ((c.delivered / totalFinished) * 100).toFixed(1) : 0
               const retRate = totalFinished > 0 ? ((c.returned / totalFinished) * 100).toFixed(1) : 0
-              const performanceScore = Math.round(parseFloat(delRate) - (parseFloat(retRate) * 0.5))
-              
+              const score = Math.round(parseFloat(delRate) - (parseFloat(retRate) * 0.4))
+
               return (
-                <div key={c.courier_name} className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-elevated)', transition: 'transform 0.2s' }}>
-                  
-                  {/* Card Header */}
-                  <div style={{ padding: '24px 24px 16px', background: 'rgba(255,255,255,0.01)', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: '#fff' }}>{c.courier_name}</h3>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 600, opacity: 0.4, marginTop: 4 }}>{c.total_orders.toLocaleString()} TOTAL SHIPMENTS</div>
+                <div key={c.courier_name} className="card" style={{ 
+                  padding: '30px', 
+                  borderRadius: '24px', 
+                  background: 'rgba(255,255,255,0.02)', 
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  {/* Subtle Background Glow */}
+                  <div style={{ 
+                    position: 'absolute', top: '-50px', right: '-50px', width: '150px', height: '150px', 
+                    background: score > 70 ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)', 
+                    filter: 'blur(50px)', borderRadius: '50%' 
+                  }}></div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px' }}>
+                    <div>
+                      <h2 style={{ fontSize: '1.8rem', fontWeight: 900, color: '#fff', margin: 0 }}>{c.courier_name}</h2>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.4, letterSpacing: '1px' }}>
+                        {c.total_orders} TOTAL DISPATCHES
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 900, color: score > 70 ? 'var(--green)' : 'var(--orange)', lineHeight: 0.9 }}>
+                        {score}
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, color: performanceScore > 60 ? 'var(--green)' : 'var(--orange)', lineHeight: 1 }}>{performanceScore}</div>
-                        <div style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.4 }}>PERF. SCORE</div>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.4 }}>PERF. INDEX</span>
+                    </div>
+                  </div>
+
+                  {/* Visual Gauges */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6 }}>DELIVERY SUCCESS</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--green)' }}>{delRate}%</span>
+                      </div>
+                      <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                        <div style={{ width: `${delRate}%`, height: '100%', background: 'var(--green)', borderRadius: '10px', boxShadow: '0 0 15px rgba(16, 185, 129, 0.3)' }}></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6 }}>RETURN RATE</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 900, color: parseFloat(retRate) > 20 ? 'var(--red)' : '#fff' }}>{retRate}%</span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div style={{ width: `${retRate}%`, height: '100%', background: parseFloat(retRate) > 20 ? 'var(--red)' : 'rgba(255,255,255,0.2)', borderRadius: '6px' }}></div>
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ padding: 24 }}>
-                    {/* Primary Bars */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 800, opacity: 0.6 }}>SUCCESS RATE</span>
-                          <span style={{ fontSize: '0.9rem', fontWeight: 900, color: 'var(--green)' }}>{delRate}%</span>
-                        </div>
-                        <div style={{ height: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 6, overflow: 'hidden' }}>
-                          <div style={{ width: `${delRate}%`, height: '100%', background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)', borderRadius: 6 }}></div>
-                        </div>
-                      </div>
+                  {/* Secondary Metrics */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>AVG. FEE</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>Rs {Math.round(c.avg_fee || 0)}</div>
+                    </div>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>DELIVERY TIME</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.8rem', opacity: 0.3 }}>days</span></div>
+                    </div>
+                  </div>
 
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 800, opacity: 0.6 }}>RETURN RATE</span>
-                          <span style={{ fontSize: '0.9rem', fontWeight: 900, color: parseFloat(retRate) > 25 ? 'var(--red)' : '#fff' }}>{retRate}%</span>
-                        </div>
-                        <div style={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ width: `${retRate}%`, height: '100%', background: parseFloat(retRate) > 25 ? 'var(--red)' : 'rgba(255,255,255,0.2)', borderRadius: 3 }}></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Meta Stats Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, textTransform: 'uppercase', marginBottom: 4 }}>Avg. Fee</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>Rs {Math.round(c.avg_fee || 0).toLocaleString()}</div>
-                      </div>
-                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px 16px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, textTransform: 'uppercase', marginBottom: 4 }}>Avg. Transit</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.75rem', opacity: 0.4 }}>days</span></div>
-                      </div>
-                    </div>
-                    
-                    <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'center' }}>
-                       <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                         📦 {c.in_transit} Orders Currently in Pipeline
-                       </div>
-                    </div>
+                  <div style={{ marginTop: '25px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--brand)' }}>
+                    <span style={{ fontSize: '1.2rem' }}>📦</span> {c.in_transit} Active Shipments in Route
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* Strategic Table Section */}
-          <div className="card" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-            <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>📍 Regional Strategic Playbook</h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', opacity: 0.5 }}>Recommended logistics provider per major delivery hub</p>
-              </div>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: 8 }}>
-                Min. Sample Size: 3 Orders
-              </div>
+          {/* 📍 REGIONAL STRATEGY */}
+          <div style={{ borderRadius: '30px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', padding: '40px' }}>
+            <div style={{ marginBottom: '30px' }}>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0 }}>City-Specific Strategy</h2>
+              <p style={{ opacity: 0.4, fontWeight: 600 }}>Dominant carrier recommendations by regional delivery success</p>
             </div>
-            
-            <div className="table-wrapper">
-              <table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 15px' }}>
                 <thead>
-                  <tr style={{ background: 'rgba(255,255,255,0.01)' }}>
-                    <th style={{ padding: '16px 32px', fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.6 }}>City Hub</th>
-                    <th style={{ padding: '16px 32px', fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.6 }}>Service Provider</th>
-                    <th style={{ padding: '16px 32px', fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.6, textAlign: 'center' }}>Success Rate</th>
-                    <th style={{ padding: '16px 32px', fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.6 }}>Market Verdict</th>
+                  <tr style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    <th style={{ padding: '0 20px', textAlign: 'left' }}>Regional Hub</th>
+                    <th style={{ padding: '0 20px', textAlign: 'left' }}>Primary Partner</th>
+                    <th style={{ padding: '0 20px', textAlign: 'center' }}>Success Rate</th>
+                    <th style={{ padding: '0 20px', textAlign: 'left' }}>Strategic Verdict</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,25 +236,27 @@ export default function CourierIntelligence() {
                     const rate = ((best.delivered / best.total) * 100).toFixed(1)
                     
                     return (
-                      <tr key={city} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                        <td style={{ padding: '20px 32px', fontWeight: 800, fontSize: '1rem' }}>{city}</td>
-                        <td style={{ padding: '20px 32px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--brand)' }}></div>
-                            <span style={{ fontWeight: 700 }}>{best.courier_name}</span>
+                      <tr key={city} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '15px' }}>
+                        <td style={{ padding: '25px 20px', fontWeight: 900, fontSize: '1.1rem', borderRadius: '15px 0 0 15px' }}>{city}</td>
+                        <td style={{ padding: '25px 20px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '35px', height: '35px', borderRadius: '10px', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.8rem' }}>
+                              {best.courier_name[0]}
+                            </div>
+                            <span style={{ fontWeight: 800, fontSize: '1rem' }}>{best.courier_name}</span>
                           </div>
                         </td>
-                        <td style={{ padding: '20px 32px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--green)' }}>{rate}%</span>
-                          <div style={{ fontSize: '0.65rem', opacity: 0.4, fontWeight: 700 }}>{best.total} SAMPLES</div>
+                        <td style={{ padding: '25px 20px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--green)' }}>{rate}%</div>
+                          <div style={{ fontSize: '0.6rem', opacity: 0.3, fontWeight: 800 }}>FROM {best.total} PARCELS</div>
                         </td>
-                        <td style={{ padding: '20px 32px' }}>
+                        <td style={{ padding: '25px 20px', borderRadius: '0 15px 15px 0' }}>
                           {parseFloat(rate) >= 90 ? (
-                            <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '6px 12px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 900 }}>🚀 HIGH RELIABILITY</span>
-                          ) : parseFloat(rate) >= 75 ? (
-                            <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '6px 12px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 900 }}>⭐ RECOMMENDED</span>
+                            <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '10px 20px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 900 }}>🚀 ELITE RELIABILITY</span>
+                          ) : parseFloat(rate) >= 70 ? (
+                            <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px 20px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 900 }}>👑 MARKET LEADER</span>
                           ) : (
-                            <span style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '6px 12px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 900 }}>⚠️ VOLATILE</span>
+                            <span style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '10px 20px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 900 }}>⚡ VOLATILE HUB</span>
                           )}
                         </td>
                       </tr>

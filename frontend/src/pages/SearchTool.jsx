@@ -570,26 +570,25 @@ export default function SearchTool() {
           </div>
         </div>
       )}
-      <div className="sticky-controls">
-        <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
-          <div>
-            <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
-            {!compactMode && <p>Advanced search, filter, and order management</p>}
-          </div>
-          <div className="flex gap-2">
-            <button 
-              className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
-              onClick={toggleCompact}
-              title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
-            >
-              {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
-            {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
-            <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
-          </div>
+      <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
+        <div>
+          <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
+          {!compactMode && <p>Advanced search, filter, and order management</p>}
         </div>
+        <div className="flex gap-2">
+          <button 
+            className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
+            onClick={toggleCompact}
+            title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
+          >
+            {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
+          {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
+          <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
+        </div>
+      </div>
 
         {showColPicker && (
           <div className="card mb-4" style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
@@ -650,7 +649,8 @@ export default function SearchTool() {
           </>
         )}
 
-        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
+        <div className="sticky-controls" style={{ background: 'var(--bg-base)', zIndex: 100, borderBottom: '1px solid var(--border)', position: 'sticky', top: 'var(--topbar-height)' }}>
+          <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 0, background: 'none', border: 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAgingBar ? 10 : 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
@@ -703,48 +703,43 @@ export default function SearchTool() {
           )}
         </div>
 
-        {/* Filters */}
-        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-            <div>
-              <label className="form-label">📅 Date Preset</label>
-              <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
+          {/* Filters - Compact One-Line Bar */}
+          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>📅</span>
+              <select className="form-select" style={{ width: 130, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={preset} onChange={e => setPreset(e.target.value)}>
                 {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
               </select>
             </div>
-            {preset === 'Custom Range' ? <>
-              <div>
-                <label className="form-label">📆 Start</label>
-                <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
-              </div>
-              <div>
-                <label className="form-label">🏁 End</label>
-                <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-              </div>
-            </> : <><div/><div/></>}
-            <div>
-              <label className="form-label">🏷️ Status / Mode</label>
-              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>🏷️</span>
+              <select className="form-select" style={{ width: 160, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={status} onChange={e => setStatus(e.target.value)}>
                 {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
-            <div>
-              <label className="form-label">🔑 Keyword</label>
-              <input className="form-input" placeholder="name, city, tracking..." value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSearch()} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 200 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>🔍</span>
+              <input 
+                className="form-input" 
+                style={{ height: 32, padding: '2px 10px', fontSize: '0.75rem' }} 
+                placeholder="Quick search..." 
+                value={keyword} 
+                onChange={e => setKeyword(e.target.value)} 
+                onKeyDown={e => e.key === 'Enter' && runSearch()} 
+              />
             </div>
-            <div>
-              <label className="form-label">🗂️ Sort</label>
-              <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
-                {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">⭐ Saved Views</label>
-              <select className="form-select" value={selectedView} onChange={e => loadView(e.target.value)}>
-                <option value="">— Default Layout —</option>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, opacity: 0.5 }}>⭐</span>
+              <select className="form-select" style={{ width: 160, height: 32, padding: '2px 8px', fontSize: '0.75rem' }} value={selectedView} onChange={e => loadView(e.target.value)}>
+                <option value="">— Views —</option>
                 {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
               </select>
             </div>
+            
+            <button className="btn btn-primary btn-sm" onClick={runSearch} style={{ height: 32, padding: '0 12px' }}>🔄 Run</button>
           </div>
         </div>
       </div>
@@ -789,7 +784,14 @@ export default function SearchTool() {
                     onDragStart={() => onDragStart(idx)}
                     onDragOver={onDragOver}
                     onDrop={() => onDrop(idx)}
-                    style={{ cursor: 'move', userSelect: 'none' }}
+                    style={{ 
+                      cursor: 'move', 
+                      userSelect: 'none',
+                      position: 'sticky',
+                      top: 'calc(var(--topbar-height) + 42px + ' + (showAgingBar ? '32px' : '0px') + ')',
+                      zIndex: 90,
+                      background: 'var(--bg-elevated)'
+                    }}
                   >
                     {col.label}
                     {col.id === 'customer_name' && (
@@ -808,7 +810,13 @@ export default function SearchTool() {
                 {cols.map(col => {
                   const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
                   return (
-                    <th key={col.id} style={{ padding: '4px 8px' }}>
+                    <th key={col.id} style={{ 
+                      padding: '4px 8px',
+                      position: 'sticky',
+                      top: 'calc(var(--topbar-height) + 78px + ' + (showAgingBar ? '32px' : '0px') + ')',
+                      zIndex: 89,
+                      background: 'var(--bg-elevated)'
+                    }}>
                       {isFiltered && (
                         <input 
                           className="header-search-input"
