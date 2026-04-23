@@ -45,33 +45,64 @@ function getDateRange(preset, customStart, customEnd) {
 
 function matchesSearch(order, keyword) {
   if (!keyword) return true
-  const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.customer_name||''} ${order.phone||''} ${order.city||''} ${order.tracking_number||''}`.toLowerCase()
+  const kw = keyword.toLowerCase().trim()
   
-  let expanded = searchable
-  for (const [city, aliases] of Object.entries(CITY_ALIASES)) {
-    if (searchable.includes(city) || aliases.some(a => searchable.includes(a))) {
-      expanded += ' ' + city + ' ' + aliases.join(' ')
-    }
-  }
-
-  const kw = keyword.toLowerCase()
+  // 1. Handle Bulk OR Search (Comma or Newline separated)
   if (kw.includes(',') || kw.includes('\n')) {
     const terms = kw.split(/[\n,]+/).map(t => t.trim()).filter(Boolean)
-    return terms.some(t => expanded.includes(t))
+    const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.tracking_number||''} ${order.phone||''}`.toLowerCase()
+    return terms.some(t => searchable.includes(t))
   }
-  const parts = kw.split(/\s+/)
-  const includes = parts.filter(p => !p.startsWith('-'))
-  const excludes = parts.filter(p => p.startsWith('-')).map(p => p.slice(1))
-  
-  const matchesGlobal = includes.every(t => expanded.includes(t)) && !excludes.some(e => expanded.includes(e))
-  if (!matchesGlobal) return false
 
-  // Add column specific filters if any
-  const { colFilters } = order._meta || {} // We will attach this in runSearch
-  if (colFilters) {
-    for (const [key, val] of Object.entries(colFilters)) {
-      if (val && !String(order[key] || '').toLowerCase().includes(val.toLowerCase())) return false
+  // 2. Tokenize Advanced Query
+  // Supports: city:karachi -tcs >5000 "exact phrase"
+  const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || []
+  const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.customer_name||''} ${order.phone||''} ${order.city||''} ${order.tracking_number||''} ${order.courier||''} ${order.delivery_status||''} ${order.notes||''}`.toLowerCase()
+  
+  // Scan items
+  const itemsText = (order.line_items || []).map(li => `${li.title} ${li.sku}`).join(' ').toLowerCase()
+  const fullText = searchable + ' ' + itemsText
+
+  for (let token of tokens) {
+    token = token.replace(/['"]/g, '') // Remove quotes
+    const isNegated = token.startsWith('-')
+    const actualToken = isNegated ? token.slice(1) : token
+    
+    if (!actualToken) continue
+
+    let match = false
+    
+    // Field Prefixes: city:, phone:, courier:, ref:, status:
+    if (actualToken.includes(':')) {
+      const [field, value] = actualToken.split(':')
+      if (field === 'city') match = (order.city || '').toLowerCase().includes(value)
+      else if (field === 'phone') match = (order.phone || '').includes(value)
+      else if (field === 'courier') match = (order.courier || '').toLowerCase().includes(value)
+      else if (field === 'ref') match = (order.ref_number || '').toLowerCase().includes(value) || (order.shopify_order_id || '').toLowerCase().includes(value)
+      else if (field === 'status') match = (order.delivery_status || '').toLowerCase().includes(value)
+      else if (field === 'item') match = itemsText.includes(value)
+      else match = fullText.includes(actualToken)
+    } 
+    // Numeric Ranges: >1000, <5000, 2000-4000
+    else if (actualToken.startsWith('>') || actualToken.startsWith('<')) {
+      const op = actualToken[0]
+      const val = parseFloat(actualToken.slice(1))
+      const price = parseFloat(order.price) || 0
+      if (op === '>') match = price > val
+      else match = price < val
     }
+    else if (actualToken.includes('-') && /^\d+-\d+$/.test(actualToken)) {
+      const [min, max] = actualToken.split('-').map(Number)
+      const price = parseFloat(order.price) || 0
+      match = price >= min && price <= max
+    }
+    // Global Search
+    else {
+      match = fullText.includes(actualToken)
+    }
+
+    if (isNegated && match) return false // Found a negated term
+    if (!isNegated && !match) return false // Didn't find a required term
   }
 
   return true
