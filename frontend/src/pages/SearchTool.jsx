@@ -59,8 +59,18 @@ function matchesSearch(order, keyword) {
   const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || []
   const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.customer_name||''} ${order.phone||''} ${order.city||''} ${order.tracking_number||''} ${order.courier||''} ${order.delivery_status||''} ${order.notes||''}`.toLowerCase()
   
-  // Scan items
-  const itemsText = (order.line_items || []).map(li => `${li.title} ${li.sku}`).join(' ').toLowerCase()
+  // Scan items safely
+  let itemsText = (order.product_titles || '').toLowerCase()
+  try {
+    if (order.line_items) {
+      const parsedItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items
+      if (Array.isArray(parsedItems)) {
+        itemsText += ' ' + parsedItems.map(li => `${li.title || ''} ${li.sku || ''}`).join(' ').toLowerCase()
+      }
+    }
+  } catch (e) {
+    // Fallback to product_titles if parse fails
+  }
   const fullText = searchable + ' ' + itemsText
 
   for (let token of tokens) {
