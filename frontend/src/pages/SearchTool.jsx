@@ -81,6 +81,7 @@ function matchesSearch(order, keyword) {
       else if (field === 'ref') match = (order.ref_number || '').toLowerCase().includes(value) || (order.shopify_order_id || '').toLowerCase().includes(value)
       else if (field === 'status') match = (order.delivery_status || '').toLowerCase().includes(value)
       else if (field === 'item') match = itemsText.includes(value)
+      else if (field === 'note') match = (order.notes || '').toLowerCase().includes(value)
       else match = fullText.includes(actualToken)
     } 
     // Numeric Ranges: >1000, <5000, 2000-4000
