@@ -475,7 +475,7 @@ export default function SearchTool() {
     })
     setKpi({ total: filtered.length, sum, delivered, returned, pending })
     setResults(filtered)
-  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, activeAgingBucket, agingBuckets])
+  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, activeAgingBucket, agingBuckets, colFilters])
 
   useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
 
