@@ -22,6 +22,7 @@ router.get('/daily', (req, res) => {
         -- Counts
         SUM(CASE WHEN delivery_status = 'Cancelled' THEN 1 ELSE 0 END) as cancelations,
         SUM(CASE WHEN delivery_status = 'Pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN delivery_status IN ('Booked', 'Picked Up', 'Unassigned') THEN 1 ELSE 0 END) as booked,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
         SUM(CASE WHEN delivery_status = 'Return Received' THEN 1 ELSE 0 END) as restock,
         SUM(CASE WHEN delivery_status = 'Returned' THEN 1 ELSE 0 END) as missing_parcel,
@@ -72,11 +73,10 @@ router.get('/daily', (req, res) => {
       const landedOrders = day.landed_orders || 0;
       const cancelations = day.cancelations || 0;
       const pending = day.pending || 0;
-      const delivered = day.delivered || 0;
-      const restocked = day.restocked || 0;
-      const intransit = day.intransit || 0;
+      const booked = day.booked || 0;
       
-      const totalDispatched = landedOrders - cancelations - pending;
+      // Calculate true dispatches (exclude pre-transit statuses)
+      const totalDispatched = landedOrders - cancelations - pending - booked;
 
       const deliveredSale = day.delivered_sale || 0;
       const totalSale = day.total_sale || 0;
@@ -90,6 +90,7 @@ router.get('/daily', (req, res) => {
       const totalMarketing = marketingSpend + tiktokMarketing;
 
       // Derived Metrics
+      const delivered = day.delivered || 0;
       const aov = delivered > 0 ? (deliveredSale / delivered) : 0;
       const cgsPercent = deliveredSale > 0 ? (cgs / deliveredSale) * 100 : 0;
       const taxPaid = deliveredSale * 0.04;
@@ -145,12 +146,13 @@ router.get('/daily', (req, res) => {
         cancelations,
         canPercent,
         pending,
+        booked,
         totalDispatched,
         disPercent,
         delivered,
         restock: day.restock || 0,
         missingParcel: day.missing_parcel || 0,
-        intransit,
+        intransit: day.intransit || 0,
         fakeReturns: fakeRet,
         withoutTrackingId: day.without_tracking_id || 0,
         paymentPaid,
@@ -187,7 +189,7 @@ router.get('/daily', (req, res) => {
             marPercent: 0, marketingSpend, tiktokMarketing, estCourier: 0, actualCourier: 0, courierDiff: 0,
             hybridCourier: 0, actualExp: m.actual_exp || 0, pnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
-            pending: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
+            pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
             deliveredPaymentPending: 0
           });

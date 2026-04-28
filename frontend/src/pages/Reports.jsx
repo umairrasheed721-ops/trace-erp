@@ -36,7 +36,8 @@ export default function Reports() {
 
     if (colId === 'landedOrders') filters.status = 'All Statuses';
     else if (colId === 'cancelations') filters.status = 'Cancelled';
-    else if (colId === 'pending') filters.status = 'Pending,Booked,Picked Up';
+    else if (colId === 'pending') filters.status = 'Pending';
+    else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';
     else if (colId === 'totalDispatched') filters.status = 'In Transit,Out for Delivery,Shipped';
     else if (colId === 'delivered') filters.status = 'Delivered';
     else if (colId === 'restock') filters.status = 'Return Received';
@@ -250,7 +251,7 @@ export default function Reports() {
         acc[month] = {
           month, deliveredSale: 0, cgs: 0, marketingSpend: 0, tiktokMarketing: 0,
           estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
-          pending: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
+          pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0
         };
@@ -267,6 +268,7 @@ export default function Reports() {
       m.landedOrders += row.landedOrders || 0;
       m.cancelations += row.cancelations || 0;
       m.pending += row.pending || 0;
+      m.booked += row.booked || 0;
       m.totalDispatched += row.totalDispatched || 0;
       m.delivered += row.delivered || 0;
       m.restock += row.restock || 0;
@@ -344,6 +346,7 @@ export default function Reports() {
     { id: 'cancelations', label: 'Cancel', group: 'kpi' },
     { id: 'canPercent', label: 'Can %', group: 'kpi' },
     { id: 'pending', label: 'Pending', group: 'kpi' },
+    { id: 'booked', label: 'Booked', group: 'kpi' },
     { id: 'totalDispatched', label: 'Dispatched', group: 'kpi' },
     { id: 'delivered', label: 'Delivered', group: 'kpi' },
     { id: 'restock', label: 'Restock', group: 'kpi' },
@@ -459,7 +462,7 @@ export default function Reports() {
                     if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                     
                     if (col.id === 'pnl') style = { color: row.pnl >= 0 ? '#34d399' : '#fca5a5', fontWeight: 800 };
-                    const isClickable = ['landedOrders', 'cancelations', 'pending', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending'].includes(col.id);
+                    const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending'].includes(col.id);
 
                     return (
                       <td 
