@@ -939,8 +939,8 @@ export default function SearchTool() {
                             {o.tracking_number ? (
                               <a 
                                 href={isInstaPortal 
-                                  ? `https://instaworld.pk/tracking?tracking_number=${o.tracking_number}` 
-                                  : `https://postex.pk/tracking?trackingId=${o.tracking_number}`} 
+                                  ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
+                                  : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
                                 target="_blank" 
                                 rel="noreferrer" 
                                 style={{ color: 'var(--blue)', textDecoration: 'none' }}
