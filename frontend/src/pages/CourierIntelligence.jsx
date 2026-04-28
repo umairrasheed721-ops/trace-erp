@@ -127,9 +127,9 @@ export default function CourierIntelligence() {
             marginBottom: '60px' 
           }}>
             {data.comparison.sort((a,b) => b.total_orders - a.total_orders).map(c => {
-              const totalFinished = c.delivered + c.returned
-              const delRate = totalFinished > 0 ? ((c.delivered / totalFinished) * 100).toFixed(1) : 0
-              const retRate = totalFinished > 0 ? ((c.returned / totalFinished) * 100).toFixed(1) : 0
+              const totalDispatched = c.total_orders;
+              const delRate = totalDispatched > 0 ? ((c.delivered / totalDispatched) * 100).toFixed(1) : 0
+              const retRate = totalDispatched > 0 ? ((c.returned / totalDispatched) * 100).toFixed(1) : 0
               const score = Math.round(parseFloat(delRate) - (parseFloat(retRate) * 0.4))
 
               return (
