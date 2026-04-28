@@ -444,6 +444,16 @@ export default function SearchTool() {
         if (!status.split(',').some(st => s.includes(st.trim().toLowerCase()))) return false
       }
       if (keyword && !matchesSearch(order, keyword)) return false
+      
+      // Apply Column Filters (natively supports space/comma separated OR search)
+      for (const [colId, filterVal] of Object.entries(colFilters)) {
+        if (!filterVal || !filterVal.trim()) continue
+        const term = filterVal.toLowerCase().trim()
+        const val = (order[colId] || '').toString().toLowerCase()
+        const subTerms = term.split(/[\s,]+/).filter(Boolean)
+        if (!subTerms.some(t => val.includes(t))) return false
+      }
+
       return true
     })
 
