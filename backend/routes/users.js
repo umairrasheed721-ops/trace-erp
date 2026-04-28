@@ -40,4 +40,24 @@ router.delete('/:id', isAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// PUT /api/users/:id - Update user (Admin only)
+router.put('/:id', isAdmin, async (req, res) => {
+  const { username, role, email, password } = req.body;
+  if (!username || !role) return res.status(400).json({ error: 'Username and role are required' });
+
+  try {
+    if (password) {
+      const salt = bcrypt.genSaltSync(10);
+      const hash = bcrypt.hashSync(password, salt);
+      db.prepare('UPDATE users SET username = ?, role = ?, email = ?, password_hash = ? WHERE id = ?').run(username, role, email || null, hash, req.params.id);
+    } else {
+      db.prepare('UPDATE users SET username = ?, role = ?, email = ? WHERE id = ?').run(username, role, email || null, req.params.id);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'Username already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

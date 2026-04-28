@@ -7,6 +7,7 @@ export default function Users() {
   const { addToast, token } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [newUser, setNewUser] = useState({ username: '', password: '', email: '', role: 'agent' })
+  const [editUser, setEditUser] = useState(null)
 
   const fetchUsers = async () => {
     try {
@@ -51,6 +52,30 @@ export default function Users() {
     }
   }
 
+  const handleEditUserSubmit = async (e) => {
+    e.preventDefault()
+    try {
+      const res = await fetch(`/api/users/${editUser.id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(editUser)
+      })
+      if (res.ok) {
+        addToast('User updated successfully', 'success')
+        setEditUser(null)
+        fetchUsers()
+      } else {
+        const d = await res.json()
+        addToast(d.error || 'Failed to update user', 'error')
+      }
+    } catch (e) {
+      addToast('Network error', 'error')
+    }
+  }
+
   const handleDeleteUser = async (id) => {
     if (!confirm('Are you sure you want to delete this user?')) return
     try {
@@ -74,10 +99,71 @@ export default function Users() {
           <h2>User Management</h2>
           <p>Manage ERP access and authorities</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(!showAdd)}>
+        <button className="btn btn-primary" onClick={() => { setShowAdd(!showAdd); setEditUser(null); }}>
           {showAdd ? 'Cancel' : '+ Create New User'}
         </button>
       </div>
+
+      {editUser && (
+        <div style={{ 
+          background: 'var(--bg-surface)', 
+          border: '1px solid var(--border)', 
+          borderRadius: 'var(--radius)', 
+          marginBottom: 24, 
+          padding: 20,
+          animation: 'slideIn 0.3s ease-out'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <h3 className="card-title" style={{ margin: 0 }}>Edit User: {editUser.username}</h3>
+            <button className="btn btn-secondary btn-sm" onClick={() => setEditUser(null)}>Cancel</button>
+          </div>
+          <form onSubmit={handleEditUserSubmit} className="form-grid-3">
+            <div className="form-group">
+              <label className="form-label">Username</label>
+              <input 
+                className="form-input" 
+                value={editUser.username} 
+                onChange={e => setEditUser({...editUser, username: e.target.value})} 
+                required 
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">New Password</label>
+              <input 
+                className="form-input" 
+                type="password"
+                value={editUser.password || ''} 
+                onChange={e => setEditUser({...editUser, password: e.target.value})} 
+                placeholder="Leave blank to keep current"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email (Recovery)</label>
+              <input 
+                className="form-input" 
+                type="email"
+                value={editUser.email || ''} 
+                onChange={e => setEditUser({...editUser, email: e.target.value})} 
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Role</label>
+              <select 
+                className="form-select"
+                value={editUser.role}
+                onChange={e => setEditUser({...editUser, role: e.target.value})}
+              >
+                <option value="admin">Super Admin (All Access)</option>
+                <option value="manager">Manager (No P&L / Settings)</option>
+                <option value="agent">Agent (Order Lookup Only)</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: 'span 3', textAlign: 'right', marginTop: 10 }}>
+              <button type="submit" className="btn btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showAdd && (
         <div style={{ 
@@ -170,9 +256,12 @@ export default function Users() {
                   </td>
                   <td>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {u.username !== 'admin' && (
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDeleteUser(u.id)}>Delete Account</button>
-                    )}
+                    <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setEditUser({ ...u, password: '' }); setShowAdd(false); }}>Edit</button>
+                      {u.username !== 'admin' && (
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteUser(u.id)}>Delete</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
