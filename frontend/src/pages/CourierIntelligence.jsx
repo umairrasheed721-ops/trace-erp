@@ -166,6 +166,7 @@ export default function CourierIntelligence() {
               const totalDispatched = c.total_orders;
               const delRate = totalDispatched > 0 ? ((c.delivered / totalDispatched) * 100).toFixed(1) : 0
               const retRate = totalDispatched > 0 ? ((c.returned / totalDispatched) * 100).toFixed(1) : 0
+              const firstAttemptRate = c.delivered > 0 ? (((c.first_attempt_delivered || 0) / c.delivered) * 100).toFixed(1) : 0;
               const score = Math.round(parseFloat(delRate) - (parseFloat(retRate) * 0.4))
 
               return (
@@ -223,14 +224,18 @@ export default function CourierIntelligence() {
                   </div>
 
                   {/* Secondary Metrics */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                     <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
                       <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>AVG. FEE</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>Rs {Math.round(c.avg_fee || 0)}</div>
                     </div>
                     <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
                       <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>DELIVERY TIME</div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.8rem', opacity: 0.3 }}>days</span></div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.8rem', opacity: 0.3 }}>d</span></div>
+                    </div>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>1ST ATTEMPT %</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: firstAttemptRate > 80 ? 'var(--green)' : 'var(--orange)' }}>{firstAttemptRate}%</div>
                     </div>
                   </div>
 

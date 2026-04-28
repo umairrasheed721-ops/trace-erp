@@ -299,6 +299,8 @@ router.get('/courier-comparison', (req, res) => {
         END as courier_name,
         COUNT(id) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts, 0) = 0 THEN 1 ELSE 0 END) as first_attempt_delivered,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts, 0) > 0 THEN 1 ELSE 0 END) as multiple_attempt_delivered,
         SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received') THEN 1 ELSE 0 END) as returned,
         SUM(CASE WHEN delivery_status IN ('Pending', 'In Transit', 'Out for Delivery', 'Booked') THEN 1 ELSE 0 END) as in_transit,
         AVG(price) as avg_price,

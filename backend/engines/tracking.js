@@ -4,6 +4,7 @@ const db = require('../db');
 
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
+const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'delivery unsuccessful', 'shipper advice'];
 const CONCURRENT = 10;   // How many requests to fire at once
 const SLEEP_MS = 800;
 
@@ -107,7 +108,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
       if (r.status === 'fulfilled' && r.value) {
         const { id, status, oldStatus } = r.value;
         if (status && status.toLowerCase() !== (oldStatus || '').toLowerCase()) {
-          updatesToApply.push({ id, status });
+          const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(status.toLowerCase());
+          updatesToApply.push({ id, status, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
         }
       }
     }
@@ -119,9 +121,9 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   }
 
   // Safe bulk write
-  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE id=?");
+  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
   const updateMany = db.transaction(items => {
-    for (const u of items) updateStmt.run(u.status, u.id);
+    for (const u of items) updateStmt.run(u.status, u.failed_attempt_increment || 0, u.id);
   });
   updateMany(updatesToApply);
 
@@ -245,7 +247,13 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       if (r.status === 200 && r.newStatus) {
         const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
         if (changedStatus || r.courierName) {
-          updatesToApply.push({ id: r.order.id, status: r.newStatus || r.order.delivery_status, courier: r.courierName });
+          const isAttemptFailure = changedStatus && ATTEMPT_FAILURE_STATUSES.includes(String(r.newStatus).toLowerCase());
+          updatesToApply.push({ 
+            id: r.order.id, 
+            status: r.newStatus || r.order.delivery_status, 
+            courier: r.courierName,
+            failed_attempt_increment: isAttemptFailure ? 1 : 0
+          });
         }
       } else if (r.status !== 404 && apiKeys[1]) {
         retryOrders.push(r.order);
@@ -259,7 +267,13 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         if (r.status === 200 && r.newStatus) {
           const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
           if (changedStatus || r.courierName) {
-            updatesToApply.push({ id: r.order.id, status: r.newStatus || r.order.delivery_status, courier: r.courierName });
+            const isAttemptFailure = changedStatus && ATTEMPT_FAILURE_STATUSES.includes(String(r.newStatus).toLowerCase());
+            updatesToApply.push({ 
+              id: r.order.id, 
+              status: r.newStatus || r.order.delivery_status, 
+              courier: r.courierName,
+              failed_attempt_increment: isAttemptFailure ? 1 : 0
+            });
           }
         }
       }
@@ -277,9 +291,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
 
   // Safe bulk write
-  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, courier=COALESCE(?, courier), status_date=datetime('now') WHERE id=?");
+  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, courier=COALESCE(?, courier), status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
   const updateMany = db.transaction(items => {
-    for (const u of items) updateStmt.run(u.status, u.courier || null, u.id);
+    for (const u of items) updateStmt.run(u.status, u.courier || null, u.failed_attempt_increment || 0, u.id);
   });
   updateMany(updatesToApply);
 
