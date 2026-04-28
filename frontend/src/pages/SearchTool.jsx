@@ -930,22 +930,27 @@ export default function SearchTool() {
                       )
                       if (col.id === 'delivery_status') return <td key={col.id}><span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span></td>
                       if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
-                      if (col.id === 'tracking_number') return (
-                        <td key={col.id} style={{ fontSize: '0.75rem' }}>
-                          {o.tracking_number ? (
-                            <a 
-                              href={(o.courier||'').toLowerCase().includes('insta') 
-                                ? `https://instaworld.pk/tracking?tracking_number=${o.tracking_number}` 
-                                : `https://postex.pk/tracking?trackingId=${o.tracking_number}`} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              style={{ color: 'var(--blue)', textDecoration: 'none' }}
-                            >
-                              🚚 {o.tracking_number}
-                            </a>
-                          ) : '—'}
-                        </td>
-                      )
+                      if (col.id === 'tracking_number') {
+                        const courierStr = (o.courier || '').toLowerCase();
+                        const isInstaPortal = courierStr.includes('insta') || courierStr.includes('lcs') || courierStr.includes('leopard') || courierStr.includes('tcs') || courierStr.includes('private rider');
+                        
+                        return (
+                          <td key={col.id} style={{ fontSize: '0.75rem' }}>
+                            {o.tracking_number ? (
+                              <a 
+                                href={isInstaPortal 
+                                  ? `https://instaworld.pk/tracking?tracking_number=${o.tracking_number}` 
+                                  : `https://postex.pk/tracking?trackingId=${o.tracking_number}`} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                style={{ color: 'var(--blue)', textDecoration: 'none' }}
+                              >
+                                🚚 {o.tracking_number}
+                              </a>
+                            ) : '—'}
+                          </td>
+                        )
+                      }
                       if (col.id === 'courier_fee') return <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td>
                       if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
                       if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
