@@ -982,12 +982,12 @@ export default function SearchTool() {
                       
                       if (col.id === 'edit') return (
                         <td key={col.id}>
-                          <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || ''} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
+                          <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || 'Pending'} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
                             {[
                               'Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered',
                               'Attempted','Refused','Arrived at Warehouse','Not Available',
                               'Return Initiated','Return Received','Cancelled'
-                            ].map(st => <option key={st} value={st}>{st}</option>)}
+                            ].concat(o.delivery_status && !['Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered','Attempted','Refused','Arrived at Warehouse','Not Available','Return Initiated','Return Received','Cancelled'].includes(o.delivery_status) ? [o.delivery_status] : []).map(st => <option key={st} value={st}>{st}</option>)}
                           </select>
                         </td>
                       )
