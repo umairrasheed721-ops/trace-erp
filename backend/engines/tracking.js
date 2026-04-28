@@ -77,13 +77,23 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             const data = await res.json();
 
             // PostEx v1 individual response format
-            const newStatus = data?.dist?.transactionStatus
+            let rawStatus = data?.dist?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
               || data?.statusDescription
               || null;
 
-            if (!newStatus) return null;
+            if (!rawStatus) return null;
+            
+            const POSTEX_STATUS_MAP = {
+              'postex warehouse': 'In Transit',
+              'out for return': 'Return Initiated',
+              'inroute': 'In Transit',
+              'intransit': 'In Transit'
+            };
+            
+            const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
+
             return { id: order.id, oldStatus: order.delivery_status, status: newStatus };
           } catch (err) {
             await sleep(1000);
