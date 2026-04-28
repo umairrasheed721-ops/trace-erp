@@ -47,9 +47,12 @@ function matchesSearch(order, keyword) {
   if (!keyword) return true
   const kw = keyword.toLowerCase().trim()
   
-  // 1. Handle Bulk OR Search (Comma or Newline separated)
-  if (kw.includes(',') || kw.includes('\n')) {
-    const terms = kw.split(/[\n,]+/).map(t => t.trim()).filter(Boolean)
+  // 1. Handle Bulk OR Search (Comma, Newline, or Pasted Space-separated IDs)
+  const spaceTokens = kw.split(/\s+/).filter(Boolean);
+  const isBulkSpacePasted = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{4,}$/.test(t) && /\d/.test(t));
+
+  if (kw.includes(',') || kw.includes('\n') || isBulkSpacePasted) {
+    const terms = kw.split(/[\n,\s]+/).map(t => t.trim()).filter(Boolean)
     const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.tracking_number||''} ${order.phone||''}`.toLowerCase()
     return terms.some(t => searchable.includes(t))
   }
