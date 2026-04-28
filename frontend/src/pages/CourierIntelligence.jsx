@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../context/AppContext'
 
-const DATE_PRESETS = ['Last 7 Days', 'Last 30 Days', 'This Month', 'Last Month', 'All Time']
+const DATE_PRESETS = ['Last 7 Days', 'Last 30 Days', 'This Month', 'Last Month', 'All Time', 'Custom']
 
 export default function CourierIntelligence() {
   const { activeStoreId } = useApp()
   const [data, setData] = useState({ comparison: [], cities: [] })
   const [loading, setLoading] = useState(true)
   const [preset, setPreset] = useState('Last 30 Days')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
 
   const fetchData = useCallback(async () => {
     if (!activeStoreId) return
@@ -27,6 +29,9 @@ export default function CourierIntelligence() {
     } else if (preset === 'Last Month') {
       start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]
       end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]
+    } else if (preset === 'Custom') {
+      start = customStart
+      end = customEnd
     }
 
     try {
@@ -47,7 +52,7 @@ export default function CourierIntelligence() {
     } finally {
       setLoading(false)
     }
-  }, [activeStoreId, preset])
+  }, [activeStoreId, preset, customStart, customEnd])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -75,6 +80,37 @@ export default function CourierIntelligence() {
         </div>
         
         <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          {preset === 'Custom' && (
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input 
+                type="date" 
+                value={customStart} 
+                onChange={e => setCustomStart(e.target.value)}
+                style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '12px', 
+                  padding: '12px 15px', 
+                  color: '#fff',
+                  colorScheme: 'dark'
+                }}
+              />
+              <span style={{ opacity: 0.5, fontWeight: 700 }}>to</span>
+              <input 
+                type="date" 
+                value={customEnd} 
+                onChange={e => setCustomEnd(e.target.value)}
+                style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid var(--border)', 
+                  borderRadius: '12px', 
+                  padding: '12px 15px', 
+                  color: '#fff',
+                  colorScheme: 'dark'
+                }}
+              />
+            </div>
+          )}
           <div style={{ position: 'relative' }}>
             <select 
               value={preset} 
