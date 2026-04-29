@@ -222,7 +222,8 @@ export default function SearchTool() {
 
   const handleConfirmOrder = async (orderId) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' })
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/confirm`, { method: 'POST' })
       if (res.ok) {
         addToast('✅ Order Confirmed!', 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed' } : o))
@@ -234,7 +235,8 @@ export default function SearchTool() {
     if (!confirm('🛑 Cancel this courier booking?')) return
     setBookingId(orderId)
     try {
-      const res = await fetch(`/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
       const data = await res.json()
       if (data.success) {
         addToast('✅ Booking Cancelled', 'info')
@@ -250,7 +252,8 @@ export default function SearchTool() {
     if (!confirm(`🌐 Book this order with ${courier}?`)) return
     setBookingId(orderId)
     try {
-      const res = await fetch(`/api/orders/${orderId}/book-instaworld`, {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-instaworld`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courier_name: courier })
@@ -270,7 +273,8 @@ export default function SearchTool() {
     if (!confirm('🚀 Book this order with PostEx? This will generate a real tracking number.')) return
     setBookingId(orderId)
     try {
-      const res = await fetch(`/api/orders/${orderId}/book-postex`, { method: 'POST' })
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-postex`, { method: 'POST' })
       const data = await res.json()
       if (data.success) {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
