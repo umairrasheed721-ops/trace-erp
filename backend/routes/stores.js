@@ -62,6 +62,27 @@ router.post('/:id/deep-sync', async (req, res) => {
   }
 });
 
+// POST /api/stores/:id/register-webhooks - Set up real-time sync
+router.post('/:id/register-webhooks', async (req, res) => {
+  const { registerShopifyWebhooks } = require('../engines/shopify');
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+  
+  const { appUrl } = req.body;
+  if (!appUrl) return res.status(400).json({ error: 'appUrl required' });
+
+  try {
+    const success = await registerShopifyWebhooks(store, appUrl);
+    if (success) {
+      res.json({ success: true, message: 'Webhooks registered successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to register one or more webhooks' });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE /api/stores/:id - Disconnect a store (deletes all its data)
 router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM stores WHERE id = ?').run(req.params.id);

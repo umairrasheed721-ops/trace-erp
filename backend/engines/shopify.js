@@ -408,6 +408,121 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
   });
 
   return costMap;
+async function syncSingleShopifyOrder(store, shopifyOrderId) {
+  const { id: storeId, shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') return null;
+
+  try {
+    const res = await fetch(`https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`, {
+      headers: { 'X-Shopify-Access-Token': access_token }
+    });
+    if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
+    const data = await res.json();
+    const order = data.order;
+    if (!order) return null;
+
+    const variantIds = [];
+    order.line_items.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
+    const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
+
+    const addr = order.shipping_address || {};
+    const customer = order.customer || {};
+    const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+
+    let totalCost = 0, productTitles = [], activeCount = 0;
+    const isCancelled = order.cancelled_at !== null;
+    
+    const existing = db.prepare('SELECT id, delivery_status FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
+    const dbStatus = (existing?.delivery_status || '').trim().toLowerCase();
+    const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
+    const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
+
+    if (!isCancelled && !isReturned) {
+      order.line_items.forEach(item => {
+        const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+        if (qty === 0) return;
+        totalCost += (costMap[String(item.variant_id)] || 0) * qty;
+        productTitles.push(`${item.name} (x${qty})`);
+        activeCount++;
+      });
+    }
+
+    const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+    const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+    const tracking = ful?.tracking_number || '';
+    const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
+    const source = detectOrderSource(order);
+
+    let newDeliveryStatus = existing ? existing.delivery_status : 'Pending';
+    if (order.cancelled_at && !isProtected) newDeliveryStatus = 'Cancelled';
+
+    if (existing) {
+      db.prepare(`
+        UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
+        payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
+        WHERE id=?
+      `).run(
+        finalPrice, activeCount, order.note || '', productTitles.join(', '),
+        order.financial_status === 'paid' ? 'Paid' : 'Pending',
+        totalCost, tracking, courier, newDeliveryStatus, existing.id
+      );
+      console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
+    } else {
+      db.prepare(`
+        INSERT INTO orders (
+          store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
+          address, city, price, tracking_number, items_count, notes, product_titles,
+          delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      `).run(
+        storeId, String(order.id), order.name,
+        `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || ''),
+        (order.created_at || '').split('T')[0],
+        addr.phone || customer.phone || '',
+        `${addr.address1 || ''} ${addr.city || ''}`.trim(),
+        addr.city || '',
+        finalPrice, tracking, activeCount, order.note || '', productTitles.join(', '),
+        newDeliveryStatus,
+        order.financial_status === 'paid' ? 'Paid' : 'Pending',
+        0.5, courier, totalCost, source
+      );
+      console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
+    }
+    return true;
+  } catch (err) {
+    console.error(`Hybrid Sync Error for ${shopifyOrderId}:`, err.message);
+    return false;
+  }
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts };
+async function registerShopifyWebhooks(store, appUrl) {
+  const { shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') throw new Error('No valid token');
+  
+  const topics = ['orders/create', 'orders/updated'];
+  let successCount = 0;
+
+  for (const topic of topics) {
+    const res = await fetch(`https://${shop_domain}/admin/api/2024-10/webhooks.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        webhook: {
+          topic,
+          address: `${appUrl}/api/webhooks/shopify`,
+          format: "json"
+        }
+      })
+    });
+    
+    // 422 means it's likely already registered for this address
+    if (res.ok || res.status === 422) successCount++;
+  }
+  
+  return successCount === topics.length;
+}
+
+module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks };

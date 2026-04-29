@@ -94,6 +94,21 @@ export default function Connect() {
     }
   }
 
+  const handleEnableRealTimeSync = async (storeId, name) => {
+    try {
+      addToast(`Registering webhooks for ${name}...`, 'info');
+      const res = await fetch(`/api/stores/${storeId}/register-webhooks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appUrl: window.location.origin })
+      });
+      if (res.ok) addToast(`✅ Real-time sync enabled for ${name}!`, 'success');
+      else addToast(`❌ Failed to enable real-time sync for ${name}.`, 'error');
+    } catch {
+      addToast('Network error', 'error');
+    }
+  }
+
   return (
     <div style={{ maxWidth: 700 }}>
       <div className="page-header">
@@ -175,6 +190,7 @@ export default function Connect() {
                 onSave={handleUpdateCreds}
                 onDeepSync={() => handleDeepSync(store.id, store.store_name || store.shop_domain)}
                 onDisconnect={() => handleDisconnect(store.id, store.store_name || store.shop_domain)}
+                onEnableRealTime={() => handleEnableRealTimeSync(store.id, store.store_name || store.shop_domain)}
               />
             ))}
           </div>
@@ -184,7 +200,7 @@ export default function Connect() {
   )
 }
 
-function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDisconnect }) {
+function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDisconnect, onEnableRealTime }) {
   const [local, setLocal] = useState({ ...store })
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
@@ -204,6 +220,7 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
           <span className="badge badge-delivered">● Connected</span>
         )}
         <button className="btn btn-secondary btn-sm" onClick={onDeepSync} disabled={store.sync_status === 'syncing'}>🔍 Pull Historical Data</button>
+        <button className="btn btn-primary btn-sm" style={{ backgroundColor: 'var(--brand)', color: 'black', fontWeight: 600 }} onClick={onEnableRealTime}>⚡ Enable Real-Time Sync</button>
         <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : '✏️ Edit Keys'}</button>
         <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>

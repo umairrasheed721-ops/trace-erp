@@ -51,4 +51,33 @@ router.post('/postex', (req, res) => {
   }
 });
 
+// POST /api/webhooks/shopify
+router.post('/shopify', (req, res) => {
+  // Shopify sends X-Shopify-Shop-Domain and X-Shopify-Topic headers
+  const shopDomain = req.headers['x-shopify-shop-domain'];
+  const topic = req.headers['x-shopify-topic'];
+  const orderId = req.body?.id;
+
+  // Immediate 200 OK so Shopify doesn't timeout
+  res.status(200).send('OK');
+
+  if (!shopDomain || !orderId) return;
+
+  console.log(`⚡ [Shopify Webhook] Received ${topic} for Order ${orderId} from ${shopDomain}`);
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE shop_domain = ?').get(shopDomain);
+    if (!store) {
+      console.log(`[Shopify Webhook] Store not found: ${shopDomain}`);
+      return;
+    }
+
+    const { syncSingleShopifyOrder } = require('../engines/shopify');
+    // Fire and forget
+    syncSingleShopifyOrder(store, orderId).catch(err => console.error(err));
+  } catch (err) {
+    console.error('Webhook processing error:', err.message);
+  }
+});
+
 module.exports = router;
