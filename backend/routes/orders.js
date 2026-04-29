@@ -151,6 +151,26 @@ router.get('/:id/details', async (req, res) => {
   }
 });
 
+// POST /api/orders/:id/address - Update order address locally and on Shopify
+router.post('/:id/address', async (req, res) => {
+  const { address } = req.body;
+  const { updateShopifyAddress } = require('../engines/shopify');
+  try {
+    const order = db.prepare('SELECT o.shopify_order_id, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // 1. Update Shopify
+    await updateShopifyAddress(order, order.shopify_order_id, address);
+
+    // 2. Update local DB
+    db.prepare('UPDATE orders SET address = ? WHERE id = ?').run(address, req.params.id);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/orders/:id/address - Live Update Address in Shopify
 router.put('/:id/address', async (req, res) => {
   const { first_name, last_name, address1, address2, city, phone } = req.body;

@@ -247,6 +247,36 @@ export default function SearchTool() {
     } catch { addToast('Network error', 'error') }
   }
 
+  const handleUpdateNotes = async (orderId, notes) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes })
+      })
+      if (res.ok) {
+        addToast('📝 Notes synced to Shopify', 'success')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes } : o))
+      }
+    } catch { addToast('Sync error', 'error') }
+  }
+
+  const handleUpdateAddress = async (orderId, address) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/address`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      })
+      if (res.ok) {
+        addToast('🏠 Address synced to Shopify', 'success')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, address } : o))
+      }
+    } catch { addToast('Sync error', 'error') }
+  }
+
   const handleBulkConfirm = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
@@ -1295,6 +1325,11 @@ export default function SearchTool() {
                         </td>
                       )
                       if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
+                      if (col.id === 'address') return (
+                        <td key={col.id}>
+                          <AddressCell order={o} onSave={updateOrderField} />
+                        </td>
+                      )
                       if (col.id === 'items') return (
                         <td key={col.id} title={o.product_titles}>
                           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1590,12 +1625,24 @@ function PaidAmountCell({ order, onSave }) {
 function NoteCell({ order, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(order.notes || '')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => { setVal(order.notes || '') }, [order.notes])
 
-  const commit = () => {
+  const commit = async () => {
     if (val !== (order.notes || '')) {
-      onSave(order.id, 'notes', val)
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/orders/${order.id}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes: val })
+        })
+        if (res.ok) {
+          onSave(order.id, 'notes', val)
+        }
+      } catch (e) { console.error('Note sync failed', e) }
+      finally { setLoading(false) }
     }
     setEditing(false)
   }

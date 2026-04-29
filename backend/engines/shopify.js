@@ -582,4 +582,33 @@ async function fulfillShopifyOrder(store, shopifyOrderId, trackingNumber, courie
   return true;
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks, fulfillShopifyOrder };
+async function updateShopifyAddress(store, shopifyOrderId, newAddress) {
+  const { shop_domain, access_token } = store;
+  const url = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`;
+  
+  const payload = {
+    order: {
+      id: shopifyOrderId,
+      shipping_address: {
+        address1: newAddress
+      }
+    }
+  };
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'X-Shopify-Access-Token': access_token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(JSON.stringify(errorData.errors) || 'Failed to update Shopify address');
+  }
+  return true;
+}
+
+module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks, fulfillShopifyOrder, updateShopifyAddress };
