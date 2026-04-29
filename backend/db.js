@@ -178,6 +178,7 @@ function initDb() {
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE orders ADD COLUMN line_items TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE orders ADD COLUMN failed_attempts INTEGER DEFAULT 0;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
