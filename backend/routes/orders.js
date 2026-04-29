@@ -269,6 +269,19 @@ router.post('/bulk-book-instaworld', async (req, res) => {
   res.json({ success: true, count: success, failed });
 });
 
+// POST /api/orders/:id/revert-confirm - Move back to Pending (CS side)
+router.post('/:id/revert-confirm', (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?")
+      .run(orderId);
+    broadcast('message', { type: 'order_updated', orderId: orderId });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/:id/confirm - Mark as ready for booking (CS side)
 router.post('/:id/confirm', (req, res) => {
   try {

@@ -233,6 +233,17 @@ export default function SearchTool() {
     } catch { addToast('Network error', 'error') }
   }
 
+  const handleRevertConfirm = async (orderId) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/revert-confirm`, { method: 'POST' })
+      if (res.ok) {
+        addToast('↩️ Order reverted to Pending', 'info')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending' } : o))
+      }
+    } catch { addToast('Network error', 'error') }
+  }
+
   const handleBulkConfirm = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
@@ -1186,6 +1197,7 @@ export default function SearchTool() {
                                   e.stopPropagation();
                                   const action = e.target.value;
                                   if (action === 'confirm') handleConfirmOrder(o.id);
+                                  else if (action === 'revert') handleRevertConfirm(o.id);
                                   else if (action === 'postex') handleBookPostEx(o.id);
                                   else if (action === 'cancel') handleCancelBooking(o.id);
                                   else if (action.startsWith('insta:')) handleBookInstaworld(o.id, action.split(':')[1]);
@@ -1195,6 +1207,10 @@ export default function SearchTool() {
                                 {/* CS: Confirm */}
                                 {!o.tracking_number && s !== 'confirmed' && (
                                   <option value="confirm">✅ Confirm Order</option>
+                                )}
+                                {/* CS: Revert */}
+                                {!o.tracking_number && s === 'confirmed' && (
+                                  <option value="revert">↩️ Revert to Pending</option>
                                 )}
                                 {/* Ops: Book */}
                                 {!o.tracking_number && s === 'confirmed' && (
