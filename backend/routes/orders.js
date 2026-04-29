@@ -197,10 +197,18 @@ router.get('/by-shopify/:id', (req, res) => {
   res.json(order);
 });
 
+// POST /api/orders/:id/confirm - Mark as ready for booking (CS side)
+router.post('/:id/confirm', (req, res) => {
+  db.prepare('UPDATE orders SET delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
+    .run(req.params.id);
+  res.json({ success: true });
+});
+
 // POST /api/orders/:id/book-postex - Create a real booking in PostEx
 router.post('/:id/book-postex', async (req, res) => {
   const { createPostExOrder } = require('../engines/postex');
   const { fulfillShopifyOrder } = require('../engines/shopify');
+  const { getBestMatch } = require('../engines/logistics');
   
   try {
     const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
@@ -209,24 +217,124 @@ router.post('/:id/book-postex', async (req, res) => {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
 
+    // Smart City Mapping
+    const matchedCity = getBestMatch(order.city, 'PostEx');
+    if (matchedCity) order.city = matchedCity;
+
     // 1. Create booking in PostEx
     const trackingNumber = await createPostExOrder(order, order);
     
     // 2. Update local database
-    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = ?, status_date = datetime("now") WHERE id = ?')
-      .run(trackingNumber, 'PostEx', 'Booked', req.params.id);
+    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = "Booked", status_date = datetime("now") WHERE id = ?')
+      .run(trackingNumber, 'PostEx', req.params.id);
 
     // 3. Fulfill in Shopify
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
     } catch (shopifyErr) {
       console.warn('PostEx Booked but Shopify Fulfillment Failed:', shopifyErr.message);
-      // We don't fail the whole request because the booking is already done in PostEx
     }
 
     res.json({ success: true, tracking_number: trackingNumber });
   } catch (err) {
     console.error('PostEx Booking Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/:id/book-instaworld - Create a real booking in Instaworld
+router.post('/:id/book-instaworld', async (req, res) => {
+  const { createInstaworldOrder } = require('../engines/instaworld');
+  const { fulfillShopifyOrder } = require('../engines/shopify');
+  const { getBestMatch } = require('../engines/logistics');
+  const { courier_name } = req.body; // TCS, LCS, Leopards
+  
+  try {
+    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.store_name FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.tracking_number && order.tracking_number.trim() !== '') {
+      return res.status(400).json({ error: 'Order already has a tracking number' });
+    }
+
+    // Smart City Mapping
+    const matchedCity = getBestMatch(order.city, 'Instaworld');
+    if (matchedCity) order.city = matchedCity;
+
+    // 1. Create booking
+    const trackingNumber = await createInstaworldOrder(order, order, courier_name || 'TCS');
+    
+    // 2. Update local database
+    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = "Booked", status_date = datetime("now") WHERE id = ?')
+      .run(trackingNumber, courier_name || 'Instaworld', req.params.id);
+
+    // 3. Fulfill in Shopify
+    try {
+      await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name || 'Instaworld');
+    } catch (shopifyErr) {
+      console.warn('Instaworld Booked but Shopify Fulfillment Failed:', shopifyErr.message);
+    }
+
+    res.json({ success: true, tracking_number: trackingNumber });
+  } catch (err) {
+    console.error('Instaworld Booking Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/:id/cancel-booking - Cancel a booking and clear tracking
+router.post('/:id/cancel-booking', async (req, res) => {
+  const { cancelPostExOrder } = require('../engines/postex');
+  const { cancelInstaworldOrder } = require('../engines/instaworld');
+  
+  try {
+    const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    if (!order || !order.tracking_number) return res.status(404).json({ error: 'Order has no booking to cancel' });
+
+    const courier = (order.courier || '').toLowerCase();
+    let success = false;
+
+    if (courier.includes('postex')) {
+      success = await cancelPostExOrder(order, order.tracking_number);
+    } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
+      success = await cancelInstaworldOrder(order, order.tracking_number);
+    } else {
+      // Manual cancellation for others
+      success = true;
+    }
+
+    if (success) {
+      db.prepare('UPDATE orders SET tracking_number = NULL, delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
+        .run(req.params.id);
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: 'Courier API rejected cancellation' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/logistics/cities - Fetch valid cities for a courier
+router.get('/logistics/cities', (req, res) => {
+  const { courier } = req.query;
+  const cities = db.prepare('SELECT city_name FROM courier_cities WHERE courier = ? ORDER BY city_name ASC').all(courier || 'PostEx');
+  res.json(cities.map(c => c.city_name));
+});
+
+// POST /api/logistics/sync-cities - Force sync cities from courier APIs
+router.post('/logistics/sync-cities', async (req, res) => {
+  const { fetchPostExCities } = require('../engines/postex');
+  const { fetchInstaworldCities } = require('../engines/instaworld');
+  const { syncCourierCities } = require('../engines/logistics');
+  
+  try {
+    const stores = db.prepare('SELECT id, postex_token, instaworld_key FROM stores').all();
+    for (const store of stores) {
+      if (store.postex_token) await syncCourierCities('PostEx', fetchPostExCities, store.postex_token);
+      if (store.instaworld_key) await syncCourierCities('Instaworld', fetchInstaworldCities, store.instaworld_key);
+    }
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

@@ -56,4 +56,22 @@ async function fetchPostExCities(token) {
   return data.dist || []; // Returns array of city names
 }
 
-module.exports = { createPostExOrder, fetchPostExCities };
+/**
+ * Cancel a booking in PostEx
+ */
+async function cancelPostExOrder(store, trackingNumber) {
+  const { postex_token } = store;
+  if (!postex_token) throw new Error('PostEx Token missing');
+
+  const url = 'https://api.postex.pk/services/integration/api/order/v1/cancel-order';
+  const response = await fetch(`${url}?trackingNumber=${trackingNumber}`, {
+    method: 'POST',
+    headers: { 'token': postex_token }
+  });
+
+  const data = await response.json();
+  // If statusCode is 200, it's successful
+  return data.statusCode === '200';
+}
+
+module.exports = { createPostExOrder, fetchPostExCities, cancelPostExOrder };

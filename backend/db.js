@@ -182,6 +182,16 @@ function initDb() {
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
+  
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS courier_cities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      courier TEXT,
+      city_name TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(courier, city_name)
+    )
+  `);
 
   // Initial Admin User
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;

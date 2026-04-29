@@ -12,7 +12,7 @@ const CITY_ALIASES = {
   faisalabad: ['fsd','faisalabd']
 }
 
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function getDateRange(preset, customStart, customEnd) {
@@ -130,6 +130,7 @@ function applySpecialMode(order, mode, today) {
   const daysOld = statusDate ? Math.floor((today - statusDate) / 86400000) : 999
 
   if (mode === '[ACTIVE PIPELINE]') return !['delivered','return received','cancelled','returned'].includes(s)
+  if (mode === '[READY TO BOOK]') return s === 'confirmed' && (!order.tracking_number || order.tracking_number === '')
   if (mode === '[GHOST PIPELINE]') return (s.includes('pending')||s===''||s.includes('unbooked')||s.includes('returned')) && daysOld > 3
   if (mode === '[NEEDS ADJUSTMENT]') {
     const delivered = s.includes('delivered')
@@ -190,6 +191,20 @@ export default function SearchTool() {
   const [editingOrder, setEditingOrder] = useState(null)
   const [editorLoading, setEditorLoading] = useState(false)
   const [bookingId, setBookingId] = useState(null)
+  const [validCities, setValidCities] = useState([])
+
+  useEffect(() => {
+    if (editingOrder) {
+      fetch(`/api/orders/logistics/cities?courier=PostEx`)
+        .then(res => res.json())
+        .then(setValidCities)
+        .catch(console.error)
+    }
+  }, [editingOrder])
+
+  const isCityValid = editingOrder && validCities.length > 0 
+    ? validCities.some(v => v.toLowerCase() === (editingOrder.city || '').toLowerCase())
+    : true
 
   const fetchOrderDetails = async (orderId) => {
     setEditorLoading(true)
@@ -203,6 +218,52 @@ export default function SearchTool() {
     } finally {
       setEditorLoading(false)
     }
+  }
+
+  const handleConfirmOrder = async (orderId) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' })
+      if (res.ok) {
+        addToast('✅ Order Confirmed!', 'success')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed' } : o))
+      }
+    } catch { addToast('Network error', 'error') }
+  }
+
+  const handleCancelBooking = async (orderId) => {
+    if (!confirm('🛑 Cancel this courier booking?')) return
+    setBookingId(orderId)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/cancel-booking`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        addToast('✅ Booking Cancelled', 'info')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, delivery_status: 'Confirmed' } : o))
+      } else {
+        addToast(`❌ Cancel Failed: ${data.error}`, 'error')
+      }
+    } catch { addToast('Network error', 'error') }
+    finally { setBookingId(null) }
+  }
+
+  const handleBookInstaworld = async (orderId, courier = 'TCS') => {
+    if (!confirm(`🌐 Book this order with ${courier}?`)) return
+    setBookingId(orderId)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/book-instaworld`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courier_name: courier })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: courier, delivery_status: 'Booked' } : o))
+      } else {
+        addToast(`❌ Booking Failed: ${data.error}`, 'error')
+      }
+    } catch { addToast('Network error', 'error') }
+    finally { setBookingId(null) }
   }
 
   const handleBookPostEx = async (orderId) => {
@@ -963,17 +1024,59 @@ export default function SearchTool() {
                             >
                               ✏️ EDIT
                             </button>
-                            {!o.tracking_number && (
+
+                            {/* CS Confirmation */}
+                            {o.delivery_status !== 'Confirmed' && !o.tracking_number && (
                               <button 
-                                onClick={(e) => { e.stopPropagation(); handleBookPostEx(o.id); }}
-                                className="btn btn-primary btn-sm"
-                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--brand)', color: 'black' }}
-                                disabled={bookingId === o.id}
-                                title="Book with PostEx"
+                                onClick={(e) => { e.stopPropagation(); handleConfirmOrder(o.id); }}
+                                className="btn btn-delivered btn-sm"
+                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--green-dim)', color: 'var(--green)' }}
+                                title="CS Confirmation"
                               >
-                                {bookingId === o.id ? '⌛...' : '⚡ BOOK'}
+                                ✅ CONFIRM
                               </button>
                             )}
+
+                            {/* Booking Actions */}
+                            {o.delivery_status === 'Confirmed' && !o.tracking_number && (
+                              <div className="flex gap-1">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleBookPostEx(o.id); }}
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--brand)', color: 'black' }}
+                                  disabled={bookingId === o.id}
+                                  title="Book with PostEx"
+                                >
+                                  {bookingId === o.id ? '⌛...' : '⚡ POSTEX'}
+                                </button>
+                                <select 
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '2px', fontSize: '0.65rem', background: 'var(--brand)', color: 'black' }}
+                                  onChange={(e) => { e.stopPropagation(); handleBookInstaworld(o.id, e.target.value); }}
+                                  value=""
+                                >
+                                  <option value="" disabled>🌐 BOOK...</option>
+                                  <option value="TCS">TCS</option>
+                                  <option value="LCS">LCS</option>
+                                  <option value="Leopards">Leopards</option>
+                                  <option value="InstaLogicstics">Insta</option>
+                                </select>
+                              </div>
+                            )}
+
+                            {/* Cancellation */}
+                            {!!o.tracking_number && (['booked','pending','confirmed'].includes(s)) && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleCancelBooking(o.id); }}
+                                className="btn btn-danger btn-sm"
+                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+                                title="Cancel Courier Booking"
+                                disabled={bookingId === o.id}
+                              >
+                                {bookingId === o.id ? '⌛' : '🛑 CANCEL'}
+                              </button>
+                            )}
+
                             <a href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
                               {o.ref_number || o.shopify_order_id}
                             </a>
@@ -1200,6 +1303,28 @@ export default function SearchTool() {
                       onBlur={() => updateOrderField(editingOrder.id, 'address', editingOrder.address)}
                       style={{ fontSize: '0.8rem' }}
                     />
+                  </div>
+
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>City</label>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        className="form-input" 
+                        value={editingOrder.city || ''} 
+                        onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
+                        onBlur={() => updateOrderField(editingOrder.id, 'city', editingOrder.city)}
+                        style={{ 
+                          height: 32, 
+                          fontSize: '0.8rem',
+                          borderColor: !isCityValid ? 'var(--red)' : 'var(--border)'
+                        }}
+                      />
+                      {!isCityValid && (
+                        <div style={{ color: 'var(--red)', fontSize: '0.65rem', marginTop: 4 }}>
+                          ⚠️ Unmapped City. Might fail booking.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
