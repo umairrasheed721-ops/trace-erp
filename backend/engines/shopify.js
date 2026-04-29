@@ -469,7 +469,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         totalCost, tracking, courier, newDeliveryStatus, existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
-      try { require('../sse').broadcast('order_updated', { storeId, shopifyOrderId }); } catch(e) {}
+      try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
     } else {
       db.prepare(`
         INSERT INTO orders (
@@ -490,7 +490,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         0.5, courier, totalCost, source
       );
       console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
-      try { require('../sse').broadcast('order_updated', { storeId, shopifyOrderId }); } catch(e) {}
+      try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
     }
     return true;
   } catch (err) {

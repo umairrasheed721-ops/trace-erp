@@ -203,8 +203,8 @@ router.post('/:id/confirm', (req, res) => {
   db.prepare('UPDATE orders SET delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
     .run(req.params.id);
     
-  // Broadcast update for real-time UI refresh
-  broadcast({ type: 'order_updated', orderId: req.params.id });
+  // Broadcast update for real-time UI refresh (using 'message' event for onmessage listener)
+  broadcast('message', { type: 'order_updated', orderId: req.params.id });
   
   res.json({ success: true });
 });
