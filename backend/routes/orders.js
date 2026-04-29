@@ -200,13 +200,21 @@ router.get('/by-shopify/:id', (req, res) => {
 
 // POST /api/orders/:id/confirm - Mark as ready for booking (CS side)
 router.post('/:id/confirm', (req, res) => {
-  db.prepare('UPDATE orders SET delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
-    .run(req.params.id);
+  try {
+    const orderId = parseInt(req.params.id);
+    const result = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?")
+      .run(orderId);
+      
+    console.log(`✅ Order ${orderId} confirmed. Rows affected: ${result.changes}`);
+      
+    // Broadcast update for real-time UI refresh
+    broadcast('message', { type: 'order_updated', orderId: orderId });
     
-  // Broadcast update for real-time UI refresh (using 'message' event for onmessage listener)
-  broadcast('message', { type: 'order_updated', orderId: req.params.id });
-  
-  res.json({ success: true });
+    res.json({ success: true, changes: result.changes });
+  } catch (err) {
+    console.error('Confirmation Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/orders/:id/book-postex - Create a real booking in PostEx
