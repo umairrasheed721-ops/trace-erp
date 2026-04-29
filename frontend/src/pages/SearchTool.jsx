@@ -1015,69 +1015,71 @@ export default function SearchTool() {
                     {cols.map(col => {
                       if (col.id === 'ref_number') return (
                         <td key={col.id}>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+                            {/* Edit button always visible */}
                             <button 
                               onClick={() => fetchOrderDetails(o.id)}
                               className="btn btn-primary btn-sm"
-                              style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
+                              style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
                               title="Edit Full Order"
                             >
-                              ✏️ EDIT
+                              ✏️
                             </button>
 
-                            {/* CS Confirmation */}
-                            {o.delivery_status !== 'Confirmed' && !o.tracking_number && (
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleConfirmOrder(o.id); }}
-                                className="btn btn-delivered btn-sm"
-                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--green-dim)', color: 'var(--green)' }}
-                                title="CS Confirmation"
+                            {/* Actions dropdown */}
+                            {bookingId === o.id ? (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>⌛ Working...</span>
+                            ) : (
+                              <select
+                                className="btn btn-sm"
+                                style={{ 
+                                  padding: '2px 4px', 
+                                  fontSize: '0.65rem', 
+                                  flexShrink: 0,
+                                  background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
+                                  color: s === 'confirmed' ? 'black' : 'var(--text-muted)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 4,
+                                  cursor: 'pointer'
+                                }}
+                                value=""
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const action = e.target.value;
+                                  if (action === 'confirm') handleConfirmOrder(o.id);
+                                  else if (action === 'postex') handleBookPostEx(o.id);
+                                  else if (action === 'cancel') handleCancelBooking(o.id);
+                                  else if (action.startsWith('insta:')) handleBookInstaworld(o.id, action.split(':')[1]);
+                                }}
                               >
-                                ✅ CONFIRM
-                              </button>
+                                <option value="" disabled>⚡ Action</option>
+                                {/* CS: Confirm */}
+                                {!o.tracking_number && s !== 'confirmed' && (
+                                  <option value="confirm">✅ Confirm Order</option>
+                                )}
+                                {/* Ops: Book */}
+                                {!o.tracking_number && s === 'confirmed' && (
+                                  <>
+                                    <option value="postex">⚡ Book PostEx</option>
+                                    <option value="insta:TCS">🌐 Book TCS</option>
+                                    <option value="insta:LCS">🌐 Book LCS</option>
+                                    <option value="insta:Leopards">🌐 Book Leopards</option>
+                                    <option value="insta:InstaLogicstics">🌐 Book InstaLog</option>
+                                  </>
+                                )}
+                                {/* Cancel booking */}
+                                {!!o.tracking_number && ['booked','pending','confirmed'].includes(s) && (
+                                  <option value="cancel">🛑 Cancel Booking</option>
+                                )}
+                              </select>
                             )}
 
-                            {/* Booking Actions */}
-                            {o.delivery_status === 'Confirmed' && !o.tracking_number && (
-                              <div className="flex gap-1">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleBookPostEx(o.id); }}
-                                  className="btn btn-primary btn-sm"
-                                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--brand)', color: 'black' }}
-                                  disabled={bookingId === o.id}
-                                  title="Book with PostEx"
-                                >
-                                  {bookingId === o.id ? '⌛...' : '⚡ POSTEX'}
-                                </button>
-                                <select 
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '2px', fontSize: '0.65rem', background: 'var(--brand)', color: 'black' }}
-                                  onChange={(e) => { e.stopPropagation(); handleBookInstaworld(o.id, e.target.value); }}
-                                  value=""
-                                >
-                                  <option value="" disabled>🌐 BOOK...</option>
-                                  <option value="TCS">TCS</option>
-                                  <option value="LCS">LCS</option>
-                                  <option value="Leopards">Leopards</option>
-                                  <option value="InstaLogicstics">Insta</option>
-                                </select>
-                              </div>
-                            )}
-
-                            {/* Cancellation */}
-                            {!!o.tracking_number && (['booked','pending','confirmed'].includes(s)) && (
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); handleCancelBooking(o.id); }}
-                                className="btn btn-danger btn-sm"
-                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
-                                title="Cancel Courier Booking"
-                                disabled={bookingId === o.id}
-                              >
-                                {bookingId === o.id ? '⌛' : '🛑 CANCEL'}
-                              </button>
-                            )}
-
-                            <a href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
+                            <a 
+                              href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+                            >
                               {o.ref_number || o.shopify_order_id}
                             </a>
                           </div>

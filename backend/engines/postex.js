@@ -45,15 +45,30 @@ async function createPostExOrder(store, order) {
 }
 
 /**
- * Fetch official PostEx city list for mapping
+ * Returns the official PostEx city list (hardcoded from PostEx documentation)
+ * PostEx does not have a public /get-cities API endpoint.
  */
 async function fetchPostExCities(token) {
-  const url = 'https://api.postex.pk/services/integration/api/order/v1/get-cities';
-  const response = await fetch(url, {
-    headers: { 'token': token }
-  });
-  const data = await response.json();
-  return data.dist || []; // Returns array of city names
+  // This is the authoritative list of cities supported by PostEx in Pakistan
+  return [
+    "Abbottabad","Adezai","Ali Bandar","Arifwala","Attock","Badin","Bahawalnagar",
+    "Bahawalpur","Bannu","Batkhela","Bela","Bhakkar","Bhalwal","Bhimber","Burewala",
+    "Chakwal","Chaman","Charsadda","Chichawatni","Chiniot","Chishtian","Dadu",
+    "Daska","Daud Khel","Dera Ghazi Khan","Dera Ismail Khan","Dina","Dinga","Dipalpur",
+    "Dunyapur","Faisalabad","Fateh Jang","Ghotki","Gilgit","Gojra","Gujar Khan",
+    "Gujranwala","Gujrat","Guranwala","Hafizabad","Haripur","Haroonabad","Hasilpur",
+    "Haveli Lakha","Hub","Hyderabad","Islamabad","Jacobabad","Jahania","Jampur",
+    "Jamshoro","Jaranwala","Jatoi","Jauharabad","Jhelum","Jhang","Kamalia","Kamber",
+    "Kamoke","Karachi","Kasur","Khairpur","Khanewal","Kharian","Khushab","Kohat",
+    "Kotli","Kotri","Lahore","Layyah","Larkana","Lalamusa","Lodhran","Loralai",
+    "Mandi Bahauddin","Mansehra","Mardan","Matiari","Mianwali","Mirpur","Mirpur Khas",
+    "Mirpur Mathelo","Multan","Muridke","Muzaffarabad","Muzaffargarh","Narowal",
+    "Nawabshah","Nowshera","Nankana Sahib","Okara","Pakpattan","Pasrur","Pattoki",
+    "Peshawar","Quetta","Rahim Yar Khan","Rawalpindi","Sadiqabad","Sahiwal","Sambrial",
+    "Sanghar","Sargodha","Sheikhupura","Shikarpur","Sialkot","Sillanwali","Sibi",
+    "Sukkur","Swabi","Talagang","Taxila","Toba Tek Singh","Turbat","Umerkot","Vehari",
+    "Wazirabad","Zhob"
+  ];
 }
 
 /**
