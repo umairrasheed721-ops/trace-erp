@@ -408,6 +408,8 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
   });
 
   return costMap;
+}
+
 async function syncSingleShopifyOrder(store, shopifyOrderId) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return null;
