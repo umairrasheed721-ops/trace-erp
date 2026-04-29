@@ -1076,7 +1076,7 @@ export default function SearchTool() {
             disabled={bulkActionLoading}
             onClick={handleBulkRevert}
             className="btn btn-sm" 
-            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+            style={{ background: 'black', color: '#ff4444', fontWeight: 700 }}
           >
             {bulkActionLoading ? '⌛...' : '↩️ BULK REVERT'}
           </button>
