@@ -536,6 +536,7 @@ export default function SearchTool() {
     { id: 'order_date', label: 'Date' },
     { id: 'customer_name', label: 'Customer' },
     { id: 'phone', label: 'Phone' },
+    { id: 'address', label: 'Shipping Address' },
     { id: 'city', label: 'City' },
     { id: 'items', label: 'Line Items' },
     { id: 'tracking_number', label: 'Tracking #' },
@@ -561,7 +562,7 @@ export default function SearchTool() {
 
   // Force inject missing columns for existing users
   useEffect(() => {
-    if (!cols.find(c => c.id === 'profit') || !cols.find(c => c.id === 'paid_amount')) {
+    if (!cols.find(c => c.id === 'profit') || !cols.find(c => c.id === 'paid_amount') || !cols.find(c => c.id === 'address')) {
       setCols(DEFAULT_COLS)
       localStorage.setItem('trace_search_cols', JSON.stringify(DEFAULT_COLS))
     }
