@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function Connect() {
@@ -39,23 +39,22 @@ export default function Connect() {
     setLoading(false)
   }
 
+  // Poll while any store is syncing
   useEffect(() => {
-    const anySyncing = stores.some(s => s.sync_status === 'syncing');
+    const anySyncing = stores.some(s => s.sync_status === 'syncing')
     if (anySyncing) {
-      const timer = setInterval(refreshStores, 3000);
-      return () => clearInterval(timer);
+      const timer = setInterval(() => refreshStores(true), 2500)
+      return () => clearInterval(timer)
     }
-  }, [stores]);
+  }, [stores])
 
-  const refreshStores = async () => {
+  const refreshStores = async (silent = false) => {
     const res = await fetch('/api/stores')
     const data = await res.json()
     const connected = data.filter(s => s.is_connected)
     setStores(connected)
-    if (connected.length > 0) {
-      setActiveStoreId(connected[0].id)
-      addToast('✅ Stores refreshed!', 'success')
-    }
+    if (connected.length > 0) setActiveStoreId(connected[0].id)
+    if (!silent) addToast('✅ Stores refreshed!', 'success')
   }
 
   const handleDisconnect = async (storeId, name) => {
@@ -79,16 +78,23 @@ export default function Connect() {
         instaworld_track_url: store.instaworld_track_url || ''
       })
     })
-    if (res.ok) { addToast('✅ Credentials updated', 'success'); setEditingStore(null); refreshStores() }
+    if (res.ok) { addToast('✅ Credentials updated', 'success'); setEditingStore(null); refreshStores(true) }
     else addToast('❌ Failed to update', 'error')
   }
 
-  const handleDeepSync = async (storeId, name) => {
-    if (!confirm(`🚀 Start deep historical sync for "${name}"?\nThis will scan back to your chosen Start Date and fill any missing gaps.`)) return
+  const handleDeepSync = async (storeId, startDate) => {
     try {
-      const res = await fetch(`/api/stores/${storeId}/deep-sync`, { method: 'POST' })
-      if (res.ok) addToast('🔍 Historical sync started in background', 'success')
-      else addToast('❌ Failed to start sync', 'error')
+      const res = await fetch(`/api/stores/${storeId}/deep-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate })
+      })
+      if (res.ok) {
+        addToast('🗄️ Historical sync started! Progress shown below.', 'success')
+        refreshStores(true)
+      } else {
+        addToast('❌ Failed to start sync', 'error')
+      }
     } catch {
       addToast('Network error', 'error')
     }
@@ -96,27 +102,27 @@ export default function Connect() {
 
   const handleEnableRealTimeSync = async (storeId, name) => {
     try {
-      addToast(`Registering webhooks for ${name}...`, 'info');
+      addToast(`Registering webhooks for ${name}...`, 'info')
       const res = await fetch(`/api/stores/${storeId}/register-webhooks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appUrl: window.location.origin })
-      });
-      if (res.ok) addToast(`✅ Real-time sync enabled for ${name}!`, 'success');
-      else addToast(`❌ Failed to enable real-time sync for ${name}.`, 'error');
+      })
+      if (res.ok) addToast(`✅ Real-time sync enabled for ${name}!`, 'success')
+      else addToast(`❌ Failed to enable real-time sync for ${name}.`, 'error')
     } catch {
-      addToast('Network error', 'error');
+      addToast('Network error', 'error')
     }
   }
 
   return (
-    <div style={{ maxWidth: 700 }}>
+    <div style={{ maxWidth: 760 }}>
       <div className="page-header">
         <div>
           <h2>🔌 Connect Store</h2>
           <p>Add a new Shopify store to TRACE ERP</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={refreshStores}>🔄 Refresh Stores</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => refreshStores()}>🔄 Refresh Stores</button>
       </div>
 
       {/* Connect New Store */}
@@ -179,7 +185,7 @@ export default function Connect() {
       {stores.length > 0 && (
         <div className="card">
           <div className="card-title">Connected Stores ({stores.length})</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {stores.map(store => (
               <StoreCard
                 key={store.id}
@@ -188,7 +194,7 @@ export default function Connect() {
                 onEdit={() => setEditingStore(store.id)}
                 onCancel={() => setEditingStore(null)}
                 onSave={handleUpdateCreds}
-                onDeepSync={() => handleDeepSync(store.id, store.store_name || store.shop_domain)}
+                onDeepSync={handleDeepSync}
                 onDisconnect={() => handleDisconnect(store.id, store.store_name || store.shop_domain)}
                 onEnableRealTime={() => handleEnableRealTimeSync(store.id, store.store_name || store.shop_domain)}
               />
@@ -204,51 +210,215 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
   const [local, setLocal] = useState({ ...store })
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
+  // Historical sync state
+  const [showSyncPanel, setShowSyncPanel] = useState(false)
+  const [syncStartDate, setSyncStartDate] = useState(store.sync_start_date || '2023-01-01')
+
+  const isSyncing = store.sync_status === 'syncing'
+  const progressPct = store.sync_total > 0
+    ? Math.min(Math.round((store.sync_processed / store.sync_total) * 100), 99)
+    : null
+
+  const handleStartSync = async () => {
+    if (!syncStartDate) {
+      alert('Please select a start date.')
+      return
+    }
+    const orderCount = confirm(
+      `⚠️ This will pull ALL orders from ${syncStartDate} to today.\n\nDepending on how many orders you have, this can take 5–30 minutes.\n\nStart Historical Sync?`
+    )
+    if (!orderCount) return
+    setShowSyncPanel(false)
+    onDeepSync(store.id, syncStartDate)
+  }
+
   return (
-    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 14 }}>
-      <div className="flex items-center gap-2" style={{ marginBottom: (editing || store.sync_status === 'syncing') ? 14 : 0 }}>
-        <span style={{ fontSize: '1.1rem' }}>🏪</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{store.store_name || store.shop_domain}</div>
+    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 16 }}>
+
+      {/* Store Header Row */}
+      <div className="flex items-center gap-2" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <span style={{ fontSize: '1.2rem' }}>🏪</span>
+        <div style={{ flex: 1, minWidth: 120 }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{store.store_name || store.shop_domain}</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
+          {store.last_synced_at && (
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
+              Last synced: {new Date(store.last_synced_at).toLocaleString()}
+            </div>
+          )}
         </div>
-        {store.sync_status === 'syncing' ? (
+
+        {/* Status badge */}
+        {isSyncing ? (
           <span className="badge badge-pending">⏳ Syncing...</span>
         ) : store.sync_status === 'error' ? (
           <span className="badge badge-danger" title={store.sync_progress}>❌ Error</span>
         ) : (
           <span className="badge badge-delivered">● Connected</span>
         )}
-        <button className="btn btn-secondary btn-sm" onClick={onDeepSync} disabled={store.sync_status === 'syncing'}>🔍 Pull Historical Data</button>
-        <button className="btn btn-primary btn-sm" style={{ backgroundColor: 'var(--brand)', color: 'black', fontWeight: 600 }} onClick={onEnableRealTime}>⚡ Enable Real-Time Sync</button>
-        <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>{editing ? 'Cancel' : '✏️ Edit Keys'}</button>
+
+        <button
+          className="btn btn-primary btn-sm"
+          style={{ backgroundColor: 'var(--brand)', color: 'black', fontWeight: 700 }}
+          onClick={onEnableRealTime}
+          title="Register Shopify webhooks for real-time order creation/updates"
+        >
+          ⚡ Real-Time Sync
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>
+          {editing ? 'Cancel' : '✏️ Edit Keys'}
+        </button>
         <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>
 
-      {store.sync_status === 'syncing' && (
-        <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.05)', padding: '10px 14px', borderRadius: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: 5 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Historical Sync Progress</span>
-            <span style={{ color: '#60a5fa', fontWeight: 600 }}>{store.sync_progress}</span>
+      {/* ─── Historical Sync Section ─────────────────────────────── */}
+      {isSyncing ? (
+        /* Active sync progress bar */
+        <div style={{
+          marginTop: 14,
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(99,102,241,0.03))',
+          border: '1px solid rgba(99,102,241,0.2)',
+          borderRadius: 10,
+          padding: '14px 16px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: '0.8rem' }}>🗄️</span>
+            <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)' }}>Historical Sync In Progress</span>
+            <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {store.sync_processed > 0 && `${store.sync_processed.toLocaleString()} scanned`}
+            </span>
           </div>
-          <div className="progress-bar">
-            <div 
-              className={`progress-bar-fill ${!store.sync_total ? 'progress-bar-animated' : ''}`} 
-              style={{ width: store.sync_total ? `${Math.round((store.sync_processed / store.sync_total) * 100)}%` : '100%' }} 
-            />
+
+          {/* Animated message */}
+          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 8, minHeight: 16 }}>
+            {store.sync_progress || 'Initializing...'}
           </div>
+
+          {/* Progress bar */}
+          <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 10 }}>
+            <div style={{
+              height: '100%',
+              background: 'linear-gradient(90deg, var(--brand), #818cf8)',
+              borderRadius: 6,
+              width: progressPct !== null ? `${progressPct}%` : '100%',
+              transition: 'width 0.5s ease',
+              animation: progressPct === null ? 'progressPulse 1.5s infinite' : 'none'
+            }} />
+          </div>
+
+          {progressPct !== null && (
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>
+              {progressPct}% complete
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Sync trigger panel */
+        <div style={{ marginTop: 12 }}>
+          {!showSyncPanel ? (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowSyncPanel(true)}
+              style={{ width: '100%', justifyContent: 'center', padding: '9px 16px', border: '1px dashed var(--border)', borderRadius: 8, fontSize: '0.82rem' }}
+            >
+              🗄️ Sync All Historical Orders
+            </button>
+          ) : (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(99,102,241,0.03))',
+              border: '1px solid rgba(99,102,241,0.25)',
+              borderRadius: 10,
+              padding: '16px',
+              animation: 'slideUp 0.2s ease-out'
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>🗄️ Historical Order Sync</div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+                Pull ALL orders from Shopify from your selected date to today. This runs in the background and may take 5–30 minutes depending on order volume.
+              </p>
+
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    📅 Sync From Date
+                  </label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={syncStartDate}
+                    onChange={e => setSyncStartDate(e.target.value)}
+                    style={{ height: 36, fontSize: '0.82rem' }}
+                  />
+                </div>
+
+                {/* Quick preset buttons */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[
+                    { label: '1 Year', date: new Date(Date.now() - 365*86400000).toISOString().split('T')[0] },
+                    { label: '2 Years', date: new Date(Date.now() - 2*365*86400000).toISOString().split('T')[0] },
+                    { label: '3 Years', date: new Date(Date.now() - 3*365*86400000).toISOString().split('T')[0] },
+                    { label: 'All Time', date: '2020-01-01' },
+                  ].map(p => (
+                    <button
+                      key={p.label}
+                      onClick={() => setSyncStartDate(p.date)}
+                      className="btn btn-sm"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.7rem',
+                        background: syncStartDate === p.date ? 'var(--brand)' : 'var(--bg-elevated)',
+                        color: syncStartDate === p.date ? 'black' : 'var(--text-muted)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 6,
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Warning note */}
+              <div style={{
+                marginTop: 12,
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                borderRadius: 6,
+                padding: '8px 12px',
+                fontSize: '0.72rem',
+                color: 'var(--orange)'
+              }}>
+                ⚠️ Existing orders will <strong>not</strong> be overwritten. Only missing orders will be added. Safe to run at any time.
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleStartSync}
+                  style={{ flex: 1, justifyContent: 'center', fontWeight: 700 }}
+                >
+                  🚀 Start Historical Sync from {syncStartDate}
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowSyncPanel(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* Edit Credentials Panel */}
       {editing && (
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Store Name</label>
               <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
             </div>
             <div className="form-group">
-              <label className="form-label">Sync Start Date (Authority)</label>
+              <label className="form-label">Default Sync Start Date</label>
               <input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} />
             </div>
           </div>
@@ -271,7 +441,7 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Instaworld Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional, only if different from default)</span></label>
+            <label className="form-label">Instaworld Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional)</span></label>
             <input className="form-input font-mono" value={local.instaworld_track_url || ''} onChange={setL('instaworld_track_url')} placeholder="https://app.instaworld.pk/api/track-order" />
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
