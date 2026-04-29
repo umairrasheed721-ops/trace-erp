@@ -1500,6 +1500,7 @@ export default function SearchTool() {
                     value={editingOrder.notes || ''} 
                     onChange={e => setEditingOrder({ ...editingOrder, notes: e.target.value })}
                     onBlur={() => updateOrderField(editingOrder.id, 'notes', editingOrder.notes)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
                     style={{ fontSize: '0.8rem' }}
                     placeholder="Enter customer notes..."
                   />
@@ -1542,6 +1543,7 @@ export default function SearchTool() {
                       value={editingOrder.address || ''} 
                       onChange={e => setEditingOrder({ ...editingOrder, address: e.target.value })}
                       onBlur={() => updateOrderField(editingOrder.id, 'address', editingOrder.address)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
                       style={{ fontSize: '0.8rem' }}
                     />
                   </div>
@@ -1667,7 +1669,10 @@ function NoteCell({ order, onSave }) {
         autoFocus
         onChange={e => setVal(e.target.value)}
         onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Escape') setEditing(false) }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') setEditing(false);
+        }}
       />
     )
   }
@@ -1727,6 +1732,10 @@ function AddressCell({ order, onSave }) {
         autoFocus
         onChange={e => setVal(e.target.value)}
         onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') setEditing(false);
+        }}
       />
     )
   }
