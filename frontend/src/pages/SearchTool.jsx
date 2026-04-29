@@ -1746,7 +1746,7 @@ function NoteCell({ order, onSave }) {
     >
       {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
       {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
-      {order.notes || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
+      {val || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
     </div>
   )
 }
