@@ -198,6 +198,77 @@ router.get('/by-shopify/:id', (req, res) => {
   res.json(order);
 });
 
+// POST /api/orders/bulk-confirm - Bulk mark as ready for booking
+router.post('/bulk-confirm', (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+
+  try {
+    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?");
+    for (const id of ids) {
+      stmt.run(id);
+      broadcast('message', { type: 'order_updated', orderId: id });
+    }
+    res.json({ success: true, count: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders/bulk-book-postex
+router.post('/bulk-book-postex', async (req, res) => {
+  const { ids } = req.body;
+  const { createPostExOrder } = require('../engines/postex');
+  const { fulfillShopifyOrder } = require('../engines/shopify');
+  const { getBestMatch } = require('../engines/logistics');
+
+  let success = 0, failed = 0;
+  for (const id of ids) {
+    try {
+      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
+      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) continue;
+
+      const matchedCity = getBestMatch(order.city, 'PostEx');
+      if (matchedCity) order.city = matchedCity;
+
+      const trackingNumber = await createPostExOrder(order, order);
+      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, 'PostEx', id);
+      
+      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
+      broadcast('message', { type: 'order_updated', orderId: id });
+      success++;
+    } catch (e) { failed++; }
+  }
+  res.json({ success: true, count: success, failed });
+});
+
+// POST /api/orders/bulk-book-instaworld
+router.post('/bulk-book-instaworld', async (req, res) => {
+  const { ids, courier_name } = req.body;
+  const { createInstaworldOrder } = require('../engines/instaworld');
+  const { fulfillShopifyOrder } = require('../engines/shopify');
+  const { getBestMatch } = require('../engines/logistics');
+
+  let success = 0, failed = 0;
+  for (const id of ids) {
+    try {
+      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
+      if (!order || (order.tracking_number && order.tracking_number.trim() !== '')) continue;
+
+      const matchedCity = getBestMatch(order.city, 'Instaworld');
+      if (matchedCity) order.city = matchedCity;
+
+      const trackingNumber = await createInstaworldOrder(order, order, courier_name);
+      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, id);
+      
+      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name); } catch(e) {}
+      broadcast('message', { type: 'order_updated', orderId: id });
+      success++;
+    } catch (e) { failed++; }
+  }
+  res.json({ success: true, count: success, failed });
+});
+
 // POST /api/orders/:id/confirm - Mark as ready for booking (CS side)
 router.post('/:id/confirm', (req, res) => {
   try {

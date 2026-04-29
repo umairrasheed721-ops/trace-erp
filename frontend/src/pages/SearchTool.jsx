@@ -192,6 +192,8 @@ export default function SearchTool() {
   const [editorLoading, setEditorLoading] = useState(false)
   const [bookingId, setBookingId] = useState(null)
   const [validCities, setValidCities] = useState([])
+  const [selectedIds, setSelectedIds] = useState([])
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
   useEffect(() => {
     if (editingOrder) {
@@ -229,6 +231,62 @@ export default function SearchTool() {
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed' } : o))
       }
     } catch { addToast('Network error', 'error') }
+  }
+
+  const handleBulkConfirm = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      if (res.ok) {
+        addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
+        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
+        setSelectedIds([])
+      }
+    } catch { addToast('Bulk error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
+  const handleBulkBookPostEx = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-book-postex`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      const data = await res.json()
+      addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
+      setSelectedIds([])
+    } catch { addToast('Bulk booking error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
+  const handleBulkBookInstaworld = async (courier) => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`🌐 Book ${selectedIds.length} orders with ${courier}?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-book-instaworld`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, courier_name: courier })
+      })
+      const data = await res.json()
+      addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
+      setSelectedIds([])
+    } catch { addToast('Bulk booking error', 'error') }
+    finally { setBulkActionLoading(false) }
   }
 
   const handleCancelBooking = async (orderId) => {
@@ -952,6 +1010,62 @@ export default function SearchTool() {
         </div>
       )}
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-4" style={{ 
+          background: 'var(--brand)', 
+          color: 'black', 
+          padding: '8px 16px', 
+          borderRadius: 8, 
+          marginBottom: 12,
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+        }}>
+          <div className="font-bold">📦 {selectedIds.length} selected</div>
+          <button 
+            disabled={bulkActionLoading}
+            onClick={handleBulkConfirm}
+            className="btn btn-sm" 
+            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+          >
+            {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
+          </button>
+          
+          <button 
+            disabled={bulkActionLoading}
+            onClick={handleBulkBookPostEx}
+            className="btn btn-sm" 
+            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+          >
+            {bulkActionLoading ? '⌛...' : '⚡ BULK POSTEX'}
+          </button>
+
+          <select 
+            disabled={bulkActionLoading}
+            className="btn btn-sm"
+            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+            onChange={(e) => handleBulkBookInstaworld(e.target.value)}
+            value=""
+          >
+            <option value="" disabled>🌐 BULK BOOK...</option>
+            <option value="TCS">TCS</option>
+            <option value="LCS">LCS</option>
+            <option value="Leopards">Leopards</option>
+            <option value="InstaLogicstics">Insta</option>
+          </select>
+
+          <button 
+            onClick={() => setSelectedIds([])}
+            className="btn btn-sm" 
+            style={{ background: 'rgba(0,0,0,0.1)', color: 'black' }}
+          >
+            CANCEL
+          </button>
+        </div>
+      )}
+
       {/* Results Table */}
       {loading ? (
         <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
@@ -962,6 +1076,16 @@ export default function SearchTool() {
           <table className="draggable-table">
             <thead>
               <tr>
+                <th style={{ width: 40, textAlign: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={results.length > 0 && selectedIds.length === results.length}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedIds(results.map(o => o.id))
+                      else setSelectedIds([])
+                    }}
+                  />
+                </th>
                 {cols.map((col, idx) => (
                   <th 
                     key={col.id}
@@ -985,6 +1109,7 @@ export default function SearchTool() {
                 ))}
               </tr>
               <tr className="header-search-row">
+                <th style={{ padding: '4px 8px' }}></th>
                 {cols.map(col => {
                   const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
                   return (
@@ -1015,7 +1140,17 @@ export default function SearchTool() {
                 const dateAged = isPending && daysOld >= 5
 
                 return (
-                  <tr key={o.id}>
+                  <tr key={o.id} className={selectedIds.includes(o.id) ? 'row-selected' : ''}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.includes(o.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(prev => [...prev, o.id])
+                          else setSelectedIds(prev => prev.filter(id => id !== o.id))
+                        }}
+                      />
+                    </td>
                     {cols.map(col => {
                       if (col.id === 'ref_number') return (
                         <td key={col.id}>
