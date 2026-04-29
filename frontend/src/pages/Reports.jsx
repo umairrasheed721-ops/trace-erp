@@ -21,7 +21,45 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState([]);
   const [view, setView] = useState('daily'); // 'daily' or 'monthly'
-  const [monthFilter, setMonthFilter] = useState('all');
+
+  // ─── Date Range Filter ───────────────────────────────────────────
+  const getPresetRange = (preset) => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    switch (preset) {
+      case 'This Month':   return { start: `${y}-${pad(m+1)}-01`, end: fmt(now) };
+      case 'Last Month': {
+        const lm = new Date(y, m, 0);
+        return { start: `${lm.getFullYear()}-${pad(lm.getMonth()+1)}-01`, end: fmt(lm) };
+      }
+      case 'This Quarter': {
+        const qStart = new Date(y, Math.floor(m/3)*3, 1);
+        return { start: fmt(qStart), end: fmt(now) };
+      }
+      case 'This Year':  return { start: `${y}-01-01`, end: fmt(now) };
+      case 'Last Year':  return { start: `${y-1}-01-01`, end: `${y-1}-12-31` };
+      case 'All Time':   return { start: '2020-01-01', end: fmt(now) };
+      default:           return { start: '', end: '' };
+    }
+  };
+  const [datePreset, setDatePreset] = useState('This Year');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+
+  const activeDateRange = datePreset === 'Custom'
+    ? { start: customStart, end: customEnd }
+    : getPresetRange(datePreset);
+
+  const isInRange = (dateStr) => {
+    if (!activeDateRange.start && !activeDateRange.end) return true;
+    if (activeDateRange.start && dateStr < activeDateRange.start) return false;
+    if (activeDateRange.end && dateStr > activeDateRange.end) return false;
+    return true;
+  };
   
   const handleDrilldown = (row, colId) => {
     const isMonthly = !!row.month;
@@ -245,7 +283,8 @@ export default function Reports() {
   };
 
   const monthlyData = useMemo(() => {
-    const rawMonthly = Object.values(dailyData.reduce((acc, row) => {
+    const sourceData = dailyData.filter(r => isInRange(r.date));
+    const rawMonthly = Object.values(sourceData.reduce((acc, row) => {
       const month = row.date.substring(0, 7);
       if (!acc[month]) {
         acc[month] = {
@@ -308,9 +347,9 @@ export default function Reports() {
   }, [dailyData, sortConfig]);
 
   const filteredDaily = useMemo(() => {
-    let data = monthFilter === 'all' ? dailyData : dailyData.filter(r => r.date.startsWith(monthFilter));
+    let data = dailyData.filter(r => isInRange(r.date));
     return sortData(data, sortConfig);
-  }, [dailyData, monthFilter, sortConfig]);
+  }, [dailyData, activeDateRange.start, activeDateRange.end, sortConfig]);
 
   const requestSort = (key) => {
     let direction = 'desc';
@@ -396,6 +435,55 @@ export default function Reports() {
         <h1 className="page-title">📈 Profit & Loss Command Center</h1>
       </header>
 
+      {/* ─── Date Range Filter Bar ─── */}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.06em' }}>DATE RANGE</span>
+        {['This Month', 'Last Month', 'This Quarter', 'This Year', 'Last Year', 'All Time', 'Custom'].map(p => (
+          <button
+            key={p}
+            onClick={() => { setDatePreset(p); if (p === 'Custom') setShowCustom(true); else setShowCustom(false); }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: 20,
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: '1px solid',
+              transition: 'all 0.15s',
+              borderColor: datePreset === p ? 'var(--brand)' : 'rgba(255,255,255,0.15)',
+              background: datePreset === p ? 'var(--brand-glow)' : 'transparent',
+              color: datePreset === p ? 'var(--brand)' : 'rgba(255,255,255,0.5)',
+            }}
+          >
+            {p}
+          </button>
+        ))}
+        {(datePreset === 'Custom' || showCustom) && (
+          <>
+            <input
+              type="date"
+              value={customStart}
+              onChange={e => setCustomStart(e.target.value)}
+              className="editable-input"
+              style={{ width: 140, fontSize: '0.75rem' }}
+            />
+            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem' }}>→</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={e => setCustomEnd(e.target.value)}
+              className="editable-input"
+              style={{ width: 140, fontSize: '0.75rem' }}
+            />
+          </>
+        )}
+        {activeDateRange.start && (
+          <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>
+            {activeDateRange.start} → {activeDateRange.end}
+          </span>
+        )}
+      </div>
+
       <div className="view-controls">
         <div style={{ position: 'relative' }}>
           <button className="btn" onClick={() => setShowColPicker(!showColPicker)} style={{ background: 'rgba(255,255,255,0.1)' }}>⚙️ Columns</button>
@@ -411,13 +499,15 @@ export default function Reports() {
           )}
         </div>
 
-        {view === 'daily' && (
-          <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className="editable-input" style={{ width: 'auto' }}>
-            <option value="all">All Months</option>
-            {Array.from(new Set(dailyData.map(r => r.date.substring(0, 7)))).sort((a,b)=>b.localeCompare(a)).map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+        {view === 'daily' && filteredDaily.length > 0 && (
+          <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+            {filteredDaily.length} days
+          </span>
+        )}
+        {view === 'monthly' && monthlyData.length > 0 && (
+          <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+            {monthlyData.length} months
+          </span>
         )}
 
         <div style={{ display: 'flex', gap: 8, background: 'rgba(0,0,0,0.3)', padding: 6, borderRadius: 10 }}>
