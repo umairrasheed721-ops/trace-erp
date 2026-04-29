@@ -1186,6 +1186,7 @@ export default function SearchTool() {
                                   padding: '2px 4px', 
                                   fontSize: '0.65rem', 
                                   flexShrink: 0,
+                                  width: '110px',
                                   background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
                                   color: s === 'confirmed' ? 'black' : 'var(--text-muted)',
                                   border: '1px solid var(--border)',
