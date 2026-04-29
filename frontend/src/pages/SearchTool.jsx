@@ -1676,7 +1676,59 @@ function NoteCell({ order, onSave }) {
       }}
       title={order.notes || 'Click to edit Shopify Note'}
     >
+      {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
       {order.notes || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
+    </div>
+  )
+}
+
+// ─── Inline Address Cell ───────────────────────────────────────────────────
+function AddressCell({ order, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(order.address || '')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { setVal(order.address || '') }, [order.address])
+
+  const commit = async () => {
+    if (val !== (order.address || '')) {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/orders/${order.id}/address`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: val })
+        })
+        if (res.ok) {
+          onSave(order.id, 'address', val)
+        }
+      } catch (e) { console.error('Address sync failed', e) }
+      finally { setLoading(false) }
+    }
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        className="form-input"
+        style={{ width: 220, height: 70, fontSize: '0.72rem', padding: '4px' }}
+        value={val}
+        autoFocus
+        onChange={e => setVal(e.target.value)}
+        onBlur={commit}
+      />
+    )
+  }
+
+  return (
+    <div 
+      onClick={() => setEditing(true)} 
+      style={{ cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text-muted)', position: 'relative', minWidth: 150 }}
+      title="Click to edit Shipping Address"
+    >
+      {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
+      {val || <span style={{ opacity: 0.3 }}>+ Add address</span>}
     </div>
   )
 }
