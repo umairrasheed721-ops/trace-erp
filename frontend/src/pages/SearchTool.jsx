@@ -560,13 +560,19 @@ export default function SearchTool() {
     return saved ? JSON.parse(saved) : DEFAULT_COLS
   })
 
-  // Force inject missing columns for existing users
+  // Force inject missing columns for existing users once on mount
   useEffect(() => {
-    if (!cols.find(c => c.id === 'profit') || !cols.find(c => c.id === 'paid_amount') || !cols.find(c => c.id === 'address')) {
+    const currentIds = cols.map(c => c.id)
+    const essentials = ['profit', 'paid_amount', 'address']
+    const missing = essentials.filter(id => !currentIds.includes(id))
+    
+    if (missing.length > 0) {
+      // Only reset if they are actually missing from the layout (initial migration)
       setCols(DEFAULT_COLS)
       localStorage.setItem('trace_search_cols', JSON.stringify(DEFAULT_COLS))
     }
-  }, [cols, DEFAULT_COLS])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [draggedIdx, setDraggedIdx] = useState(null)
 
   const onDragStart = (idx) => setDraggedIdx(idx)
