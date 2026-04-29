@@ -1332,7 +1332,13 @@ export default function SearchTool() {
                       )
                       if (col.id === 'phone') return (
                         <td key={col.id} style={{ fontSize: '0.75rem' }}>
-                          {o.phone ? <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }}>💬 {o.phone}</a> : '—'}
+                          {o.phone ? (
+                            <div className="flex items-center gap-2">
+                              <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none' }} title="Call via SIM">📞</a>
+                              <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }} title="WhatsApp Chat">💬</a>
+                              <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
+                            </div>
+                          ) : '—'}
                         </td>
                       )
                       if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
@@ -1525,7 +1531,12 @@ export default function SearchTool() {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Phone</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Phone</label>
+                      {editingOrder.phone && (
+                        <a href={`tel:${editingOrder.phone}`} style={{ fontSize: '0.75rem', textDecoration: 'none' }} title="Call via SIM">📞 Call</a>
+                      )}
+                    </div>
                     <input 
                       className="form-input" 
                       value={editingOrder.phone || ''} 
