@@ -197,4 +197,38 @@ router.get('/by-shopify/:id', (req, res) => {
   res.json(order);
 });
 
+// POST /api/orders/:id/book-postex - Create a real booking in PostEx
+router.post('/:id/book-postex', async (req, res) => {
+  const { createPostExOrder } = require('../engines/postex');
+  const { fulfillShopifyOrder } = require('../engines/shopify');
+  
+  try {
+    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.tracking_number && order.tracking_number.trim() !== '') {
+      return res.status(400).json({ error: 'Order already has a tracking number' });
+    }
+
+    // 1. Create booking in PostEx
+    const trackingNumber = await createPostExOrder(order, order);
+    
+    // 2. Update local database
+    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = ?, status_date = datetime("now") WHERE id = ?')
+      .run(trackingNumber, 'PostEx', 'Booked', req.params.id);
+
+    // 3. Fulfill in Shopify
+    try {
+      await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
+    } catch (shopifyErr) {
+      console.warn('PostEx Booked but Shopify Fulfillment Failed:', shopifyErr.message);
+      // We don't fail the whole request because the booking is already done in PostEx
+    }
+
+    res.json({ success: true, tracking_number: trackingNumber });
+  } catch (err) {
+    console.error('PostEx Booking Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

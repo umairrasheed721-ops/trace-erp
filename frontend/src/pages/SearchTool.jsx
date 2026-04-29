@@ -189,6 +189,7 @@ export default function SearchTool() {
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('search_compact') === 'true')
   const [editingOrder, setEditingOrder] = useState(null)
   const [editorLoading, setEditorLoading] = useState(false)
+  const [bookingId, setBookingId] = useState(null)
 
   const fetchOrderDetails = async (orderId) => {
     setEditorLoading(true)
@@ -201,6 +202,25 @@ export default function SearchTool() {
       addToast('Failed to fetch order details', 'error')
     } finally {
       setEditorLoading(false)
+    }
+  }
+
+  const handleBookPostEx = async (orderId) => {
+    if (!confirm('🚀 Book this order with PostEx? This will generate a real tracking number.')) return
+    setBookingId(orderId)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/book-postex`, { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
+      } else {
+        addToast(`❌ Booking Failed: ${data.error}`, 'error')
+      }
+    } catch (e) {
+      addToast('Network error while booking', 'error')
+    } finally {
+      setBookingId(null)
     }
   }
 
@@ -943,6 +963,17 @@ export default function SearchTool() {
                             >
                               ✏️ EDIT
                             </button>
+                            {!o.tracking_number && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleBookPostEx(o.id); }}
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', backgroundColor: 'var(--brand)', color: 'black' }}
+                                disabled={bookingId === o.id}
+                                title="Book with PostEx"
+                              >
+                                {bookingId === o.id ? '⌛...' : '⚡ BOOK'}
+                              </button>
+                            )}
                             <a href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} target="_blank" rel="noreferrer" style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600 }}>
                               {o.ref_number || o.shopify_order_id}
                             </a>

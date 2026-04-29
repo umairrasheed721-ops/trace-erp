@@ -529,4 +529,57 @@ async function registerShopifyWebhooks(store, appUrl) {
   return successCount === topics.length;
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks };
+async function fulfillShopifyOrder(store, shopifyOrderId, trackingNumber, courierName) {
+  const { shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') throw new Error('No valid token');
+
+  // Step 1: Fetch fulfillment orders to get the fulfillment_order_id
+  const foUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}/fulfillment_orders.json`;
+  const foRes = await fetch(foUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
+  const foData = await foRes.json();
+  
+  if (!foData.fulfillment_orders || !foData.fulfillment_orders.length) {
+     throw new Error('No fulfillable orders found in Shopify');
+  }
+
+  // Find the first "open" fulfillment order
+  const openFO = foData.fulfillment_orders.find(fo => fo.status === 'open') || foData.fulfillment_orders[0];
+  const fulfillmentOrderId = openFO.id;
+
+  // Step 2: Create the fulfillment
+  const fUrl = `https://${shop_domain}/admin/api/2024-10/fulfillments.json`;
+  const payload = {
+    fulfillment: {
+      line_items_by_fulfillment_order: [
+        {
+          fulfillment_order_id: fulfillmentOrderId,
+          fulfillment_order_line_items: openFO.line_items.map(li => ({ id: li.id, quantity: li.quantity }))
+        }
+      ],
+      tracking_info: {
+        number: trackingNumber,
+        company: courierName,
+        url: courierName === 'PostEx' ? `https://postex.pk/tracking?tracking_number=${trackingNumber}` : ''
+      },
+      notify_customer: true
+    }
+  };
+
+  const fRes = await fetch(fUrl, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': access_token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!fRes.ok) {
+    const errorData = await fRes.json();
+    throw new Error(JSON.stringify(errorData.errors) || 'Shopify Fulfillment Failed');
+  }
+
+  return true;
+}
+
+module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks, fulfillShopifyOrder };
