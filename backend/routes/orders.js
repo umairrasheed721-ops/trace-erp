@@ -215,6 +215,23 @@ router.post('/bulk-confirm', (req, res) => {
   }
 });
 
+// POST /api/orders/bulk-revert - Bulk move back to Pending
+router.post('/bulk-revert', (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+
+  try {
+    const stmt = db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?");
+    for (const id of ids) {
+      stmt.run(id);
+      broadcast('message', { type: 'order_updated', orderId: id });
+    }
+    res.json({ success: true, count: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/bulk-book-postex
 router.post('/bulk-book-postex', async (req, res) => {
   const { ids } = req.body;

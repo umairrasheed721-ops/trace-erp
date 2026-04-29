@@ -267,6 +267,26 @@ export default function SearchTool() {
     finally { setBulkActionLoading(false) }
   }
 
+  const handleBulkRevert = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`↩️ Revert ${selectedIds.length} orders to Pending?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-revert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      if (res.ok) {
+        addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
+        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending' } : o))
+        setSelectedIds([])
+      }
+    } catch { addToast('Bulk error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
   const handleBulkBookPostEx = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx?`)) return
@@ -1050,6 +1070,15 @@ export default function SearchTool() {
             style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
           >
             {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
+          </button>
+
+          <button 
+            disabled={bulkActionLoading}
+            onClick={handleBulkRevert}
+            className="btn btn-sm" 
+            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+          >
+            {bulkActionLoading ? '⌛...' : '↩️ BULK REVERT'}
           </button>
           
           <button 
