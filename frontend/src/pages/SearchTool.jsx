@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
@@ -1650,10 +1650,17 @@ function NoteCell({ order, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(order.notes || '')
   const [loading, setLoading] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const committedRef = useRef(false)
 
   useEffect(() => { setVal(order.notes || '') }, [order.notes])
 
   const commit = async () => {
+    // Guard against double-commit (onBlur fires when textarea unmounts after Enter)
+    if (committedRef.current) return
+    committedRef.current = true
+    setEditing(false)
+
     if (val !== (order.notes || '')) {
       setLoading(true)
       try {
@@ -1664,11 +1671,12 @@ function NoteCell({ order, onSave }) {
         })
         if (res.ok) {
           onSave(order.id, 'notes', val)
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
         }
       } catch (e) { console.error('Note sync failed', e) }
       finally { setLoading(false) }
     }
-    setEditing(false)
   }
 
   if (editing) {
@@ -1679,10 +1687,11 @@ function NoteCell({ order, onSave }) {
         value={val}
         autoFocus
         onChange={e => setVal(e.target.value)}
+        onFocus={() => { committedRef.current = false }}
         onBlur={commit}
         onKeyDown={e => {
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') setEditing(false);
+          if (e.key === 'Escape') { committedRef.current = true; setEditing(false); }
         }}
       />
     )
@@ -1698,11 +1707,13 @@ function NoteCell({ order, onSave }) {
         maxWidth: 180,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
-        textOverflow: 'ellipsis'
+        textOverflow: 'ellipsis',
+        position: 'relative'
       }}
       title={order.notes || 'Click to edit Shopify Note'}
     >
       {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
+      {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
       {order.notes || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
     </div>
   )
@@ -1713,10 +1724,17 @@ function AddressCell({ order, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(order.address || '')
   const [loading, setLoading] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const committedRef = useRef(false)
 
   useEffect(() => { setVal(order.address || '') }, [order.address])
 
   const commit = async () => {
+    // Guard against double-commit (onBlur fires when textarea unmounts after Enter)
+    if (committedRef.current) return
+    committedRef.current = true
+    setEditing(false)
+
     if (val !== (order.address || '')) {
       setLoading(true)
       try {
@@ -1727,11 +1745,12 @@ function AddressCell({ order, onSave }) {
         })
         if (res.ok) {
           onSave(order.id, 'address', val)
+          setSaved(true)
+          setTimeout(() => setSaved(false), 2000)
         }
       } catch (e) { console.error('Address sync failed', e) }
       finally { setLoading(false) }
     }
-    setEditing(false)
   }
 
   if (editing) {
@@ -1742,10 +1761,11 @@ function AddressCell({ order, onSave }) {
         value={val}
         autoFocus
         onChange={e => setVal(e.target.value)}
+        onFocus={() => { committedRef.current = false }}
         onBlur={commit}
         onKeyDown={e => {
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') setEditing(false);
+          if (e.key === 'Escape') { committedRef.current = true; setEditing(false); }
         }}
       />
     )
@@ -1757,6 +1777,7 @@ function AddressCell({ order, onSave }) {
       style={{ cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text-muted)', position: 'relative', minWidth: 150 }}
       title="Click to edit Shipping Address"
     >
+      {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
       {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
       {val || <span style={{ opacity: 0.3 }}>+ Add address</span>}
     </div>
