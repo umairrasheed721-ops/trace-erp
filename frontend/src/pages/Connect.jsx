@@ -282,35 +282,65 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
           padding: '14px 16px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: '0.8rem' }}>🗄️</span>
+            {/* Pulsing dot — always visible while syncing */}
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--brand)',
+              boxShadow: '0 0 8px var(--brand)',
+              animation: 'pulse 1.5s ease-in-out infinite',
+              flexShrink: 0
+            }} />
             <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)' }}>Historical Sync In Progress</span>
             <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               {store.sync_processed > 0 && `${store.sync_processed.toLocaleString()} scanned`}
             </span>
           </div>
 
-          {/* Animated message */}
-          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 8, minHeight: 16 }}>
+          {/* Live message from backend */}
+          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 10, minHeight: 16 }}>
             {store.sync_progress || 'Initializing...'}
           </div>
 
-          {/* Progress bar */}
-          <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 10 }}>
-            <div style={{
-              height: '100%',
-              background: 'linear-gradient(90deg, var(--brand), #818cf8)',
-              borderRadius: 6,
-              width: progressPct !== null ? `${progressPct}%` : '100%',
-              transition: 'width 0.5s ease',
-              animation: progressPct === null ? 'progressPulse 1.5s infinite' : 'none'
-            }} />
-          </div>
-
-          {progressPct !== null && (
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4, textAlign: 'right' }}>
-              {progressPct}% complete
+          {/* Determinate bar — shows scan progress when available */}
+          {progressPct !== null && progressPct < 95 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 3 }}>
+                <span>Scanning orders</span>
+                <span>{progressPct}%</span>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 6 }}>
+                <div style={{
+                  height: '100%',
+                  background: 'linear-gradient(90deg, var(--brand), #818cf8)',
+                  borderRadius: 6,
+                  width: `${progressPct}%`,
+                  transition: 'width 0.5s ease'
+                }} />
+              </div>
             </div>
           )}
+
+          {/* Indeterminate shimmer bar — always visible, signals background work */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 3 }}>
+              {progressPct !== null && progressPct >= 95 ? 'Fetching costs & saving orders...' : 'Background processing'}
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 8, position: 'relative' }}>
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: 'linear-gradient(90deg, transparent 0%, var(--brand) 40%, #818cf8 60%, transparent 100%)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 1.8s linear infinite',
+                borderRadius: 6
+              }} />
+            </div>
+          </div>
+
+          {/* Footer note */}
+          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>⏱️</span>
+            <span>Running in background — this can take 10–30 min depending on order volume. You can navigate away safely.</span>
+          </div>
         </div>
       ) : (
         /* Sync trigger panel */
