@@ -37,6 +37,18 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/webhooks/')) return next();
   if (req.path === '/health') return next();
   
+  // Live SSE Endpoint handles its own token from query
+  if (req.path === '/api/live') {
+    const token = req.query.token;
+    if (!token) return res.status(401).json({ error: 'Token missing' });
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+      return next();
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  }
+  
   // Allow all non-API requests (static files, frontend routes)
   if (!req.path.startsWith('/api/')) return next();
 
@@ -69,6 +81,13 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+
+const { addClient } = require('./sse');
+
+// Live Real-Time Events endpoint
+app.get('/api/live', (req, res) => {
+  addClient(req, res);
+});
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));

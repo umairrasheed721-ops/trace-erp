@@ -186,4 +186,15 @@ router.get('/export', (req, res) => {
   res.json(orders);
 });
 
+// GET /api/orders/by-shopify/:id - Fetch single order quickly by shopify ID for live UI updates
+router.get('/by-shopify/:id', (req, res) => {
+  const order = db.prepare(`
+    SELECT o.*, s.shop_domain 
+    FROM orders o 
+    JOIN stores s ON o.store_id = s.id 
+    WHERE o.shopify_order_id = ?
+  `).get(req.params.id);
+  res.json(order);
+});
+
 module.exports = router;

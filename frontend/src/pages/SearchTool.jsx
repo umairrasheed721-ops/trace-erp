@@ -418,6 +418,45 @@ export default function SearchTool() {
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
   }, [activeStoreId])
 
+  // Live Updates Connection (SSE)
+  useEffect(() => {
+    if (!activeStoreId) return;
+    
+    const token = localStorage.getItem('trace_token');
+    if (!token) return;
+
+    const source = new EventSource(`/api/live?token=${token}`);
+    
+    source.addEventListener('order_updated', async (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (String(data.storeId) === String(activeStoreId)) {
+          // Fetch the specifically updated row silently
+          const res = await fetch(`/api/orders/by-shopify/${data.shopifyOrderId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) return;
+          const updatedOrder = await res.json();
+          if (updatedOrder && updatedOrder.id) {
+            setAllOrders(prev => {
+              const idx = prev.findIndex(o => String(o.shopify_order_id) === String(data.shopifyOrderId));
+              if (idx > -1) {
+                const newOrders = [...prev];
+                newOrders[idx] = updatedOrder;
+                return newOrders;
+              } else {
+                return [updatedOrder, ...prev];
+              }
+            });
+            console.log(`[Live UI] Silently updated order ${data.shopifyOrderId}`);
+          }
+        }
+      } catch (err) { console.error('Live update failed', err) }
+    });
+
+    return () => source.close();
+  }, [activeStoreId]);
+
   const runSearch = useCallback(() => {
     const today = new Date(); today.setHours(0,0,0,0)
     const dateRange = getDateRange(preset, customStart, customEnd)
