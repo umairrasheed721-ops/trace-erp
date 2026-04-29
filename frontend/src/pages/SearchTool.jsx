@@ -130,7 +130,10 @@ function applySpecialMode(order, mode, today) {
   const daysOld = statusDate ? Math.floor((today - statusDate) / 86400000) : 999
 
   if (mode === '[ACTIVE PIPELINE]') return !['delivered','return received','cancelled','returned'].includes(s)
-  if (mode === '[READY TO BOOK]') return s === 'confirmed' && (!order.tracking_number || order.tracking_number === '')
+  if (mode === '[READY TO BOOK]') {
+    const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
+    return s === 'confirmed' && !hasTracking
+  }
   if (mode === '[GHOST PIPELINE]') return (s.includes('pending')||s===''||s.includes('unbooked')||s.includes('returned')) && daysOld > 3
   if (mode === '[NEEDS ADJUSTMENT]') {
     const delivered = s.includes('delivered')
@@ -566,11 +569,16 @@ export default function SearchTool() {
   useEffect(() => {
     if (!activeStoreId) return
     setLoading(true)
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&t=${Date.now()}`)
+    
+    // If it's a special mode (in brackets), fetch everything to filter locally
+    const isSpecial = status && status.startsWith('[')
+    const queryStatus = isSpecial ? '' : (status === 'All Statuses' ? '' : status)
+    
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&status=${queryStatus||''}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
-  }, [activeStoreId])
+  }, [activeStoreId, status])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
