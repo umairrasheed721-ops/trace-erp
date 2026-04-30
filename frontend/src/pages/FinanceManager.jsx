@@ -11,10 +11,51 @@ export default function FinanceManager() {
   const [summary, setSummary] = useState(null)
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  
+  // Repair Legacy State
+  const [couriers, setCouriers] = useState([])
+  const [selectedCourier, setSelectedCourier] = useState('All Inactive')
+  const [daysOld, setDaysOld] = useState(60)
+  const [isRepairing, setIsRepairing] = useState(false)
+  const [repairResult, setRepairResult] = useState(null)
 
   useEffect(() => {
-    if (activeStoreId) fetchHistory()
+    if (activeStoreId) {
+      fetchHistory()
+      fetchCouriers()
+    }
   }, [activeStoreId])
+
+  const fetchCouriers = async () => {
+    try {
+      const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
+      const data = await res.json()
+      setCouriers(data || [])
+    } catch (e) { console.error('Failed to fetch couriers', e) }
+  }
+
+  const handleRepair = async () => {
+    if (!activeStoreId) return
+    if (!window.confirm(`🚨 Are you sure? This will scan orders older than ${daysOld} days for '${selectedCourier}' and update their status by checking Shopify. This process might take a few minutes.`)) return
+    
+    setIsRepairing(true)
+    setRepairResult(null)
+    try {
+      const res = await fetch(`/api/finance/repair-legacy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, courier: selectedCourier, daysOld })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setRepairResult(data)
+        fetchHistory() // Refresh history to show the repair session
+      } else {
+        alert('❌ Repair Failed: ' + data.error)
+      }
+    } catch (e) { alert('Network Error: ' + e.message) }
+    finally { setIsRepairing(false) }
+  }
 
   const fetchHistory = async () => {
     setLoadingHistory(true)
@@ -315,6 +356,70 @@ export default function FinanceManager() {
                     </button>
                   </div>
                 ))}
+             </div>
+          </div>
+          
+          {/* 🛠️ Legacy Data Repair Card */}
+          <div className="stat-card" style={{ marginTop: 24, border: '1px solid rgba(96, 165, 250, 0.2)', backgroundColor: 'rgba(96, 165, 250, 0.05)' }}>
+             <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#60a5fa' }}>🛠️ Legacy Data Repair</h3>
+             <p style={{ fontSize: '0.75rem', opacity: 0.7, margin: '8px 0 16px 0' }}>
+               Heal statuses for orders from <b>inactive courier accounts</b> by cross-referencing Shopify records.
+             </p>
+
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: '0.75rem', fontWeight: 600 }}>Courier to Repair</label>
+                  <select 
+                    value={selectedCourier} 
+                    onChange={e => setSelectedCourier(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 6, fontSize: '0.8rem' }}
+                  >
+                    <option value="All Inactive">All Inactive Couriers</option>
+                    {couriers.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: '0.75rem', fontWeight: 600 }}>Order Age Threshold</label>
+                  <select 
+                    value={daysOld} 
+                    onChange={e => setDaysOld(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 6, fontSize: '0.8rem' }}
+                  >
+                    <option value="7">Older than 7 days</option>
+                    <option value="30">Older than 30 days</option>
+                    <option value="60">Older than 60 days</option>
+                    <option value="90">Older than 90 days</option>
+                    <option value="365">Older than 1 year</option>
+                  </select>
+                </div>
+
+                <button 
+                  className="btn" 
+                  onClick={handleRepair} 
+                  disabled={isRepairing || isProcessing}
+                  style={{ 
+                    width: '100%', 
+                    padding: '12px', 
+                    backgroundColor: 'rgba(96, 165, 250, 0.2)', 
+                    color: '#60a5fa', 
+                    border: '1px solid rgba(96, 165, 250, 0.4)',
+                    fontWeight: 700,
+                    marginTop: 4
+                  }}
+                >
+                  {isRepairing ? '⏳ Healing Data...' : '🚀 Start Repair Process'}
+                </button>
+
+                {repairResult && (
+                  <div style={{ marginTop: 12, padding: 12, backgroundColor: 'rgba(52, 211, 153, 0.1)', borderRadius: 8, border: '1px solid #34d399' }}>
+                    <div style={{ fontWeight: 700, color: '#34d399', fontSize: '0.85rem' }}>✅ Repair Complete!</div>
+                    <div style={{ fontSize: '0.75rem', marginTop: 4 }}>
+                      Checked: <b>{repairResult.totalChecked}</b> | 
+                      Healed: <b style={{ color: '#34d399' }}>{repairResult.count}</b>
+                    </div>
+                  </div>
+                )}
              </div>
           </div>
         </div>

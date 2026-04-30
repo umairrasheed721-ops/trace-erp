@@ -202,6 +202,17 @@ async function captureShopifyPayment(store, orderId, amount) {
   }
 }
 
+async function getShopifyOrderStatus(store, orderId) {
+  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,fulfillment_status,financial_status,cancelled_at`);
+  if (!res.ok) throw new Error(`Shopify Fetch Failed: ${res.status}`);
+  const order = (await res.json()).order;
+  return {
+    fulfillment_status: order.fulfillment_status, // null, 'partial', 'fulfilled'
+    financial_status: order.financial_status, // 'pending', 'paid', 'refunded', 'partially_refunded'
+    is_cancelled: order.cancelled_at !== null
+  };
+}
+
 module.exports = {
   getPrimaryLocationId,
   processSmartRestock,
@@ -209,5 +220,6 @@ module.exports = {
   removeShopifyNoteLine,
   addShopifyTag,
   getShopifyFinancials,
-  captureShopifyPayment
+  captureShopifyPayment,
+  getShopifyOrderStatus
 };
