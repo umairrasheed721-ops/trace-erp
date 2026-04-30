@@ -1098,6 +1098,29 @@ export default function SearchTool() {
                 {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
               </select>
             </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setPreset('All Time')
+                  setStatus('All Statuses')
+                  setKeyword('')
+                  setColFilters({ ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' })
+                  setActiveAgingBucket(null)
+                  addToast('Filters cleared', 'info')
+                }}
+                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                🧹 Clear
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => runSearch()}
+                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600 }}
+              >
+                🔄 Refresh
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1421,7 +1444,7 @@ export default function SearchTool() {
                         </td>
                       )
                       if (col.id === 'delivery_status') {
-                        const isExchange = s.includes('delivered') && parseInt(o.items_count) === 0;
+                        const isExchange = (s.includes('delivered') || s.includes('transit')) && parseInt(o.items_count) === 0;
                         return (
                           <td key={col.id}>
                             <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
@@ -1511,7 +1534,7 @@ export default function SearchTool() {
                   <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Order {editingOrder.ref_number || editingOrder.shopify_order_id}</h2>
                   <span className="badge" style={{ background: 'var(--yellow-dim)', color: 'var(--yellow)' }}>{editingOrder.payment_status || 'Pending'}</span>
                   <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>{editingOrder.delivery_status || 'Unfulfilled'}</span>
-                  { (editingOrder.delivery_status || '').toLowerCase().includes('delivered') && parseInt(editingOrder.items_count) === 0 && (
+                  { ((editingOrder.delivery_status || '').toLowerCase().includes('delivered') || (editingOrder.delivery_status || '').toLowerCase().includes('transit')) && parseInt(editingOrder.items_count) === 0 && (
                     <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.7rem', border: '1px solid var(--blue)' }}>🔄 EXCHANGE / RESTOCKED</span>
                   )}
                 </div>

@@ -86,12 +86,14 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const lastName = (addr.last_name || '').trim();
         const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim()) || (customer.first_name || '');
 
+        const addressStr = [addr.address1, addr.address2].filter(Boolean).join(' ').trim();
+
         insertOrder.run(
           storeId, String(order.id), order.name,
           fullName,
           (order.created_at || '').split('T')[0],
           addr.phone || customer.phone || '',
-          `${addr.address1 || ''} ${addr.city || ''}`.trim(),
+          addressStr || '—',
           addr.city || '',
           finalPrice, tracking, activeCount, order.note || '',
           productTitles.join(', '),
@@ -289,7 +291,7 @@ async function refreshShopifyUpdates(store, onProgress) {
         const isProtected = currentStatus === 'return received' || currentStatus === 'delivered';
 
         const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
-        let totalCost = 0, productTitles = [];
+        let totalCost = 0, productTitles = [], activeCount = 0;
 
         const isCancelled = fresh.cancelled_at !== null;
         const dbStatus = (row.delivery_status || '').trim().toLowerCase();
@@ -301,6 +303,7 @@ async function refreshShopifyUpdates(store, onProgress) {
             if (qty === 0) return;
             totalCost += (costMap[String(item.variant_id)] || 0) * qty;
             productTitles.push(`${item.name} (x${qty})`);
+            activeCount++;
           });
         }
 
@@ -313,7 +316,7 @@ async function refreshShopifyUpdates(store, onProgress) {
         if (fresh.cancelled_at && !isProtected) newDeliveryStatus = 'Cancelled';
 
         updateStmt.run(
-          finalPrice, productTitles.length, fresh.note || '',
+          finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
           fresh.financial_status === 'paid' ? 'Paid' : 'Pending',
           row.cost_locked ? row.cost : totalCost, 
