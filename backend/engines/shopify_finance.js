@@ -219,6 +219,9 @@ async function getShopifyInventoryCosts(store) {
       productVariants(first: 250) {
         edges {
           node {
+            id
+            title
+            price
             product {
               title
             }
@@ -261,6 +264,7 @@ async function getShopifyInventoryCosts(store) {
     if (!parentName) return;
 
     const cost = parseFloat(node.inventoryItem?.unitCost?.amount || 0);
+    const sellingPrice = parseFloat(node.price || 0);
     const qty = node.inventoryItem?.inventoryLevels?.edges[0]?.node?.quantities[0]?.quantity || 0;
     
     // We now return flat variant-level data
@@ -270,6 +274,7 @@ async function getShopifyInventoryCosts(store) {
         parent_name: parentName, 
         variant_name: variantName, 
         shopify_cost: cost, 
+        selling_price: sellingPrice,
         qty: qty 
       };
     } else {

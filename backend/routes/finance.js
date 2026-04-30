@@ -671,13 +671,14 @@ router.post('/sync-shopify-costs', async (req, res) => {
     db.transaction(() => {
       for (const p of products) {
         db.prepare(`
-          INSERT INTO product_master_costs (store_id, parent_title, variant_title, shopify_cost, inventory_qty, updated_at)
-          VALUES (?, ?, ?, ?, ?, datetime('now'))
+          INSERT INTO product_master_costs (store_id, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
           ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
             shopify_cost = excluded.shopify_cost,
+            selling_price = excluded.selling_price,
             inventory_qty = excluded.inventory_qty,
             updated_at = datetime('now')
-        `).run(Number(store_id), p.parent_name, p.variant_name, p.shopify_cost, p.qty);
+        `).run(Number(store_id), p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
       }
     })();
 
@@ -700,6 +701,18 @@ router.post('/accept-shopify-cost', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND variant_title = ?
     `).run(Number(store_id), parent_title, variant_title || '');
+// POST /api/finance/bulk-sync-parent-costs
+router.post('/bulk-sync-parent-costs', (req, res) => {
+  const { store_id, parent_title, unit_cost, packaging_cost } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
+    db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = ?, packaging_cost = ?, landed_cost = ?, updated_at = datetime('now')
+      WHERE store_id = ? AND parent_title = ?
+    `).run(unit_cost || 0, packaging_cost || 0, landed_cost, Number(store_id), parent_title);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

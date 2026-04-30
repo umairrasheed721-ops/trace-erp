@@ -177,6 +177,7 @@ function initDb() {
 
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
+  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0;"); } catch(e) {}
   
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
@@ -189,6 +190,7 @@ function initDb() {
       landed_cost REAL DEFAULT 0,
       inventory_qty INTEGER DEFAULT 0,
       shopify_cost REAL DEFAULT 0,
+      selling_price REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, parent_title, variant_title)

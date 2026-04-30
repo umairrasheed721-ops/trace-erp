@@ -10,10 +10,13 @@ export default function CostManager() {
   const [isSyncing, setIsSyncing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
   
-  // Modal State
+  // Modal States
   const [showModal, setShowModal] = useState(false)
+  const [showBulkModal, setShowBulkModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
+  const [bulkItem, setBulkItem] = useState(null)
   const [form, setForm] = useState({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 })
+  const [bulkForm, setBulkForm] = useState({ unit_cost: 0, packaging_cost: 0 })
 
   useEffect(() => {
     if (activeStoreId) fetchCosts()
@@ -43,7 +46,7 @@ export default function CostManager() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`Synced ${data.count} product variants from Shopify`, 'success')
+        addToast(`Synced ${data.count} product variants and prices from Shopify`, 'success')
         fetchCosts()
       } else {
         addToast(data.error || 'Sync failed', 'error')
@@ -64,7 +67,7 @@ export default function CostManager() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`Price accepted for ${variantTitle || 'parent'}`, 'success')
+        addToast(`Price accepted`, 'success')
         fetchCosts()
       }
     } catch (e) {
@@ -85,38 +88,35 @@ export default function CostManager() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast('Cost saved successfully', 'success')
+        addToast('Variant cost saved', 'success')
         setShowModal(false)
         fetchCosts()
-      } else {
-        addToast(data.error || 'Failed to save', 'error')
       }
     } catch (e) {
       addToast('Save error: ' + e.message, 'error')
     }
   }
 
-  const handleAutoHeal = async () => {
-    if (!window.confirm('🚨 This will scan ALL historical zero-cost orders and apply the costs from this registry. Continue?')) return
-    
-    setIsHealing(true)
+  const handleBulkSync = async (e) => {
+    e.preventDefault()
     try {
-      const res = await fetch('/api/finance/auto-heal-all', {
+      const res = await fetch('/api/finance/bulk-sync-parent-costs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId })
+        body: JSON.stringify({ 
+          store_id: activeStoreId, 
+          parent_title: bulkItem.name,
+          ...bulkForm 
+        })
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`Successfully healed ${data.count} orders!`, 'success')
-      } else {
-        addToast(data.error || 'Healing failed', 'error')
+        addToast(`Applied to all ${bulkItem.variants.length} variants!`, 'success')
+        setShowBulkModal(false)
+        fetchCosts()
       }
     } catch (e) {
-      addToast('Healing error: ' + e.message, 'error')
-    } finally {
-      setIsHealing(true)
-      setTimeout(() => setIsHealing(false), 2000)
+      addToast('Bulk sync error: ' + e.message, 'error')
     }
   }
 
@@ -139,12 +139,23 @@ export default function CostManager() {
         totalQty: 0, 
         totalAssetValue: 0,
         hasConflict: false,
-        avgLandedCost: 0
+        maxPrice: 0,
+        minMargin: 100
       }
     }
     acc[item.parent_title].variants.push(item)
     acc[item.parent_title].totalQty += item.inventory_qty
     acc[item.parent_title].totalAssetValue += item.landed_cost * item.inventory_qty
+    
+    if (item.selling_price > acc[item.parent_title].maxPrice) {
+      acc[item.parent_title].maxPrice = item.selling_price
+    }
+
+    const margin = item.selling_price > 0 ? ((item.selling_price - item.landed_cost) / item.selling_price) * 100 : 0
+    if (margin < acc[item.parent_title].minMargin && item.selling_price > 0) {
+      acc[item.parent_title].minMargin = margin
+    }
+
     if (item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1) {
       acc[item.parent_title].hasConflict = true
     }
@@ -168,12 +179,27 @@ export default function CostManager() {
     setShowModal(true)
   }
 
+  const openBulkModal = (parent) => {
+    setBulkItem(parent)
+    // Pre-fill with first variant's cost if available
+    const first = parent.variants[0]
+    setBulkForm({ unit_cost: first?.unit_cost || 0, packaging_cost: first?.packaging_cost || 0 })
+    setShowBulkModal(true)
+  }
+
+  const getMarginColor = (margin) => {
+    if (margin <= 0) return '#ef4444'
+    if (margin < 20) return '#f97316'
+    if (margin < 40) return '#f59e0b'
+    return '#10b981'
+  }
+
   return (
     <div className="page-container" style={{ maxWidth: 1400 }}>
       <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 className="page-title">💎 Master Cost Manager</h1>
-          <p className="page-subtitle">Variant-aware registry for precision product costing and inventory valuation.</p>
+          <h1 className="page-title">📈 Pro Cost & Margin Manager</h1>
+          <p className="page-subtitle">Variant-level profitability analysis with automated Shopify sync.</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <button 
@@ -181,124 +207,165 @@ export default function CostManager() {
             onClick={handleSyncShopify}
             disabled={isSyncing}
           >
-            {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify'}
+            {isSyncing ? '⌛ Syncing Prices...' : '🔄 Sync from Shopify'}
           </button>
           <button className="btn btn-primary" onClick={() => openModal()}>+ Add New Product</button>
         </div>
       </header>
 
       <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
-        <div className="stat-card" style={{ flex: 1.5, backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ margin: 0, color: '#10b981' }}>🚀 Global Auto-Healer</h3>
-              <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: '4px 0 16px 0' }}>Fix historical zero-cost orders using exact variant matches.</p>
-            </div>
-            <button 
-              className="btn" 
-              onClick={handleAutoHeal}
-              disabled={isHealing || costs.length === 0}
-              style={{ background: '#10b981', color: '#fff', border: 'none', padding: '12px 24px', fontWeight: 700 }}
-            >
-              {isHealing ? '⌛ Healing...' : '⚡ Heal All Orders'}
-            </button>
-          </div>
-        </div>
-        
-        <div className="stat-card" style={{ flex: 1 }}>
+        <div className="stat-card" style={{ flex: 1.2 }}>
           <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Total Asset Value</h3>
           <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#10b981' }}>
             Rs. {totalAssetValue.toLocaleString()}
           </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Individual Landed Costs × Stock Qty</div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Landed Cost × In-Stock Units</div>
         </div>
 
-        <div className="stat-card" style={{ flex: 0.7 }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Catalog Depth</h3>
-          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0' }}>{costs.length}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Unique Product Variants</div>
+        <div className="stat-card" style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem', color: '#10b981' }}>Catalog Health</h3>
+          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0' }}>
+            {sortedParents.filter(p => !p.hasConflict).length} / {sortedParents.length}
+          </div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Synced Parent Products</div>
+        </div>
+
+        <div className="stat-card" style={{ flex: 1 }}>
+          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Profit Opportunity</h3>
+          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#f59e0b' }}>
+            {costs.filter(c => c.selling_price > 0 && ((c.selling_price - c.landed_cost) / c.selling_price) < 0.2).length}
+          </div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Variants with Margin &lt; 20%</div>
         </div>
       </div>
 
-      <div className="stat-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div className="stat-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <input 
             type="text" 
             className="form-input" 
-            placeholder="🔍 Search products or parents..." 
+            placeholder="🔍 Search by product name..." 
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ maxWidth: 400 }}
           />
-          <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
-             💡 <span style={{ color: '#f59e0b' }}>Amber</span> parents contain variants with cost conflicts in Shopify.
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.75rem', opacity: 0.6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444' }}></div> Loss</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#f59e0b' }}></div> Low Margin</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#10b981' }}></div> Healthy</div>
           </div>
         </div>
 
         <div className="table-responsive">
-          <table className="data-table">
-            <thead>
+          <table className="data-table" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#111' }}>
               <tr>
                 <th style={{ width: 40 }}></th>
-                <th>Product Name</th>
-                <th style={{ textAlign: 'right' }}>Total Qty</th>
-                <th style={{ textAlign: 'right' }}>Asset Value</th>
-                <th style={{ textAlign: 'right' }}>Status</th>
+                <th>Product / Variant</th>
+                <th style={{ textAlign: 'right' }}>Price (Shopify)</th>
+                <th style={{ textAlign: 'right' }}>Landed Cost</th>
+                <th style={{ textAlign: 'right' }}>Profit/Unit</th>
+                <th style={{ textAlign: 'right' }}>Margin %</th>
+                <th style={{ textAlign: 'right' }}>Stock Qty</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading registry...</td></tr>
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading financials...</td></tr>
               ) : sortedParents.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No products found.</td></tr>
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No data found.</td></tr>
               ) : sortedParents.map(parent => (
                 <React.Fragment key={parent.name}>
                   {/* Parent Row */}
-                  <tr style={{ cursor: 'pointer', borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none' }} onClick={() => toggleParent(parent.name)}>
-                    <td style={{ textAlign: 'center', fontSize: 12 }}>{expandedParents.has(parent.name) ? '▼' : '▶'}</td>
-                    <td style={{ fontWeight: 700 }}>{parent.name}</td>
-                    <td style={{ textAlign: 'right' }}>{parent.totalQty.toLocaleString()} units</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#10b981' }}>Rs. {parent.totalAssetValue.toLocaleString()}</td>
+                  <tr 
+                    style={{ 
+                      cursor: 'pointer', 
+                      background: 'rgba(255,255,255,0.03)',
+                      borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none'
+                    }} 
+                    onClick={() => toggleParent(parent.name)}
+                  >
+                    <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>{expandedParents.has(parent.name) ? '▼' : '▶'}</td>
+                    <td style={{ fontWeight: 700, padding: '16px 8px' }}>{parent.name}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>Rs. {parent.maxPrice.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right', opacity: 0.5 }}>--</td>
+                    <td style={{ textAlign: 'right', opacity: 0.5 }}>--</td>
                     <td style={{ textAlign: 'right' }}>
-                      {parent.hasConflict ? (
-                        <span style={{ color: '#f59e0b', fontSize: '0.75rem', fontWeight: 600 }}>⚠️ MIXED COSTS</span>
-                      ) : (
-                        <span style={{ opacity: 0.5, fontSize: '0.75rem' }}>✅ ALL SYNCED</span>
-                      )}
+                      <span style={{ 
+                        background: getMarginColor(parent.minMargin), 
+                        color: '#000', 
+                        padding: '2px 8px', 
+                        borderRadius: 4, 
+                        fontSize: '0.7rem', 
+                        fontWeight: 700 
+                      }}>
+                        {parent.minMargin.toFixed(0)}% Min
+                      </span>
                     </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{parent.totalQty.toLocaleString()} units</td>
                     <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); openModal(null, parent.name); }}>+ Add Variant</button>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button 
+                          className="btn btn-sm" 
+                          style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
+                          onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
+                        >
+                          ⚡ Bulk Sync
+                        </button>
+                      </div>
                     </td>
                   </tr>
 
-                  {/* Variant Rows (Hidden/Shown) */}
+                  {/* Variant Rows */}
                   {expandedParents.has(parent.name) && parent.variants.map(v => {
+                    const margin = v.selling_price > 0 ? ((v.selling_price - v.landed_cost) / v.selling_price) * 100 : 0
+                    const profit = v.selling_price - v.landed_cost
                     const isConflicted = v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1;
+                    
                     return (
-                      <tr key={v.id} style={{ backgroundColor: 'rgba(255,255,255,0.02)', fontSize: '0.85rem' }}>
+                      <tr key={v.id} style={{ fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
                         <td></td>
-                        <td style={{ paddingLeft: 20, opacity: 0.7 }}>↳ {v.variant_title || 'Generic / Default'}</td>
-                        <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty} units</td>
-                        <td style={{ textAlign: 'right' }}>Rs. {(v.landed_cost * v.inventory_qty).toLocaleString()}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          {isConflicted ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                              <span style={{ color: '#f59e0b', fontSize: 10 }}>Shopify: Rs. {v.shopify_cost}</span>
-                              <button 
-                                className="btn btn-sm" 
-                                style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '1px 6px', fontSize: 9, marginTop: 4 }}
-                                onClick={(e) => { e.stopPropagation(); handleAcceptCost(v.parent_title, v.variant_title); }}
-                              >
-                                Accept Shopify Cost
-                              </button>
-                            </div>
-                          ) : (
-                            <span style={{ opacity: 0.4 }}>Synced (Rs. {v.unit_cost})</span>
-                          )}
+                        <td style={{ paddingLeft: 20, opacity: 0.8 }}>
+                          <span style={{ opacity: 0.4, marginRight: 8 }}>↳</span>
+                          {v.variant_title || 'Default Variant'}
+                        </td>
+                        <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {v.selling_price.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 500 }}>Rs. {v.landed_cost.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', color: profit > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                          Rs. {profit.toLocaleString()}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <button className="btn btn-sm" style={{ padding: '2px 8px', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); openModal(v); }}>Edit</button>
+                          <div style={{ 
+                            display: 'inline-block', 
+                            width: 50, 
+                            textAlign: 'right', 
+                            color: getMarginColor(margin),
+                            fontWeight: 700
+                          }}>
+                            {margin.toFixed(1)}%
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {isConflicted && (
+                              <button 
+                                className="btn btn-sm" 
+                                style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10, padding: '2px 6px' }}
+                                onClick={() => handleAcceptCost(v.parent_title, v.variant_title)}
+                              >
+                                Accept Shopify Cost (Rs. {v.shopify_cost})
+                              </button>
+                            )}
+                            <button 
+                              className="btn btn-sm" 
+                              style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 
+                              onClick={() => openModal(v)}
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -310,78 +377,110 @@ export default function CostManager() {
         </div>
       </div>
 
-      {/* Modal for Add/Edit */}
+      {/* 🛠️ PRO VARIANT EDITOR MODAL */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 500 }}>
-            <h2 style={{ marginBottom: 20 }}>{editingItem ? '✏️ Edit Variant Cost' : '➕ Add New Variant'}</h2>
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label className="form-label">Parent Product Title</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  required 
-                  disabled={!!editingItem}
-                  value={form.parent_title}
-                  onChange={e => setForm({...form, parent_title: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="form-label">Variant Title (Size / Color)</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  value={form.variant_title}
-                  disabled={!!editingItem}
-                  onChange={e => setForm({...form, variant_title: e.target.value})}
-                  placeholder="e.g. XL / Blue"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="modal-content" style={{ maxWidth: 550, padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '24px 32px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{editingItem ? '✏️ Edit Variant Intelligence' : '➕ Add New Variant'}</h2>
+              <p style={{ margin: '4px 0 0 0', opacity: 0.5, fontSize: '0.8rem' }}>{form.parent_title} {form.variant_title && `• ${form.variant_title}`}</p>
+            </div>
+            
+            <form onSubmit={handleSave} style={{ padding: 32 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
                 <div>
-                  <label className="form-label">Base Unit Cost</label>
+                  <label className="form-label" style={{ opacity: 0.6, marginBottom: 8, display: 'block' }}>Base Unit Cost (Rs)</label>
                   <input 
                     type="number" 
                     className="form-input" 
+                    style={{ fontSize: '1.1rem', padding: '12px 16px' }}
                     required 
                     value={form.unit_cost}
-                    onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})}
+                    onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value) || 0})}
                   />
                 </div>
                 <div>
-                  <label className="form-label">Packaging Cost</label>
+                  <label className="form-label" style={{ opacity: 0.6, marginBottom: 8, display: 'block' }}>Packaging Cost (Rs)</label>
                   <input 
                     type="number" 
                     className="form-input" 
+                    style={{ fontSize: '1.1rem', padding: '12px 16px' }}
                     required 
                     value={form.packaging_cost}
-                    onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value)})}
+                    onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value) || 0})}
                   />
                 </div>
               </div>
 
               <div style={{ 
-                marginTop: 8, 
-                padding: 16, 
-                backgroundColor: 'rgba(16, 185, 129, 0.1)', 
-                borderRadius: 8, 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                border: '1px solid rgba(16, 185, 129, 0.2)'
+                background: 'rgba(16, 185, 129, 0.05)', 
+                border: '1px solid rgba(16, 185, 129, 0.1)', 
+                borderRadius: 12, 
+                padding: 20,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}>
-                <span style={{ fontWeight: 600 }}>Landed Cost:</span>
-                <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981' }}>
-                  Rs. {((form.unit_cost || 0) + (form.packaging_cost || 0)).toLocaleString()}
-                </span>
+                <div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Total Landed Cost</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981' }}>Rs. {(form.unit_cost + form.packaging_cost).toLocaleString()}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  {editingItem?.selling_price > 0 && (
+                    <>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Est. Margin</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: getMarginColor(((editingItem.selling_price - (form.unit_cost + form.packaging_cost)) / editingItem.selling_price) * 100) }}>
+                        {(((editingItem.selling_price - (form.unit_cost + form.packaging_cost)) / editingItem.selling_price) * 100).toFixed(1)}%
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Save Cost</button>
+              <div style={{ display: 'flex', gap: 16, marginTop: 32 }}>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1, padding: 14 }} onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: 14, background: '#3b82f6' }}>Save Intelligence</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ BULK SYNC MODAL */}
+      {showBulkModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 450 }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 16px' }}>⚡</div>
+              <h2 style={{ margin: 0 }}>Bulk Sync Variants</h2>
+              <p style={{ opacity: 0.6, fontSize: '0.9rem', marginTop: 8 }}>Apply these costs to all <b>{bulkItem?.variants.length}</b> variants of "{bulkItem?.name}"</p>
+            </div>
+
+            <form onSubmit={handleBulkSync}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                <div>
+                  <label className="form-label">Unit Cost (Rs)</label>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    value={bulkForm.unit_cost}
+                    onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value) || 0})}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Packaging (Rs)</label>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    value={bulkForm.packaging_cost}
+                    onChange={e => setBulkForm({...bulkForm, packaging_cost: parseFloat(e.target.value) || 0})}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowBulkModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, background: '#3b82f6' }}>Sync All Variants</button>
               </div>
             </form>
           </div>
@@ -395,21 +494,26 @@ export default function CostManager() {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0,0,0,0.8);
+          background: rgba(0,0,0,0.85);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 1000;
-          backdrop-filter: blur(4px);
+          backdrop-filter: blur(8px);
         }
         .modal-content {
-          background: #1a1a1a;
-          padding: 32px;
-          border-radius: 16px;
+          background: #111;
+          border-radius: 20px;
           width: 90%;
-          border: 1px solid rgba(255,255,255,0.1);
-          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: 0 30px 60px rgba(0,0,0,0.8);
+          animation: modalSlide 0.3s ease-out;
         }
+        @keyframes modalSlide {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .btn-sm { padding: 4px 12px; font-size: 0.75rem; border-radius: 6px; }
       `}</style>
     </div>
   )
