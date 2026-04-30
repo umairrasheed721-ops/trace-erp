@@ -37,7 +37,7 @@ router.get('/', (req, res) => {
 
 // PUT /api/orders/:id - Update a single order field (for manual edits)
 router.put('/:id', (req, res) => {
-  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status'];
+  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost'];
   const updates = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields to update' });
 

@@ -12,7 +12,7 @@ const CITY_ALIASES = {
   faisalabad: ['fsd','faisalabd']
 }
 
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function getDateRange(preset, customStart, customEnd) {
@@ -159,6 +159,9 @@ function applySpecialMode(order, mode, today) {
   if (mode === '[UNPAID DELIVERED]') {
     return s.includes('delivered') && paid < 1
   }
+  if (mode === '[MISSING COST]') {
+    return s.includes('delivered') && (!order.cost || order.cost === 0)
+  }
   if (mode === '[AUDIT: MISSING CHARGES]') {
     const fee = parseFloat(order.courier_fee) || 0
     return fee < 1 && !['pending','cancelled'].includes(s) && !!order.tracking_number
@@ -179,6 +182,9 @@ export default function SearchTool() {
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
   const [results, setResults] = useState([])
+  const missingCostCount = useMemo(() => {
+    return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || o.cost === 0)).length
+  }, [allOrders])
   const [loading, setLoading] = useState(false)
 
   const [preset, setPreset] = useState('Last Month')
@@ -1022,6 +1028,34 @@ export default function SearchTool() {
           )}
         </div>
 
+        {missingCostCount > 0 && (
+          <div 
+            onClick={() => { setStatus('[MISSING COST]'); setPreset('All Time'); }}
+            style={{ 
+              background: 'linear-gradient(90deg, #c53030 0%, #742a2a 100%)', 
+              color: 'white', 
+              padding: '12px 20px', 
+              borderRadius: 12, 
+              marginBottom: 16, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              boxShadow: '0 8px 16px rgba(197, 48, 48, 0.2)',
+              animation: 'pulse 2s infinite'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{missingCostCount} Delivered Orders Missing Cost</div>
+                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>This will make your P&L inaccurate. Click here to fix them now.</div>
+              </div>
+            </div>
+            <button className="btn btn-sm" style={{ background: 'white', color: '#c53030', fontWeight: 800, borderRadius: 20 }}>FIX NOW</button>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
@@ -1412,7 +1446,7 @@ export default function SearchTool() {
                       if (col.id === 'courier_fee') return <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td>
                       if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
                       if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-                      if (col.id === 'cost') return <td key={col.id} style={{ opacity: 0.8 }}>Rs {Math.round(parseFloat(o.cost)||0).toLocaleString()}</td>
+                      if (col.id === 'cost') return <td key={col.id}><CostCell order={o} onSave={updateOrderField} /></td>
                       if (col.id === 'profit') {
                         const fee = parseFloat(o.courier_fee) || 0
                         const cost = parseFloat(o.cost) || 0
@@ -1512,9 +1546,62 @@ export default function SearchTool() {
                      <span>Shipping</span>
                      <span>Rs 250</span>
                    </div>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                     <span>Total</span>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', borderTop: '1px solid var(--border)', paddingTop: 8, marginBottom: 16 }}>
+                     <span>Total Revenue</span>
                      <span>Rs {Math.round(editingOrder.price).toLocaleString()}</span>
+                   </div>
+
+                   <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>📦 Product Cost</span>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Rs</span>
+                         <input 
+                           type="number" 
+                           className="form-input" 
+                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'rgba(255,255,255,0.05)' }}
+                           value={editingOrder.cost || ''} 
+                           onChange={e => setEditingOrder({ ...editingOrder, cost: e.target.value })}
+                           onBlur={() => updateOrderField(editingOrder.id, 'cost', editingOrder.cost)}
+                           placeholder="0"
+                         />
+                       </div>
+                     </div>
+
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>🚚 Courier Fee</span>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Rs</span>
+                         <input 
+                           type="number" 
+                           className="form-input" 
+                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'rgba(255,255,255,0.05)' }}
+                           value={editingOrder.courier_fee || ''} 
+                           onChange={e => setEditingOrder({ ...editingOrder, courier_fee: e.target.value })}
+                           onBlur={() => updateOrderField(editingOrder.id, 'courier_fee', editingOrder.courier_fee)}
+                           placeholder="0"
+                         />
+                       </div>
+                     </div>
+
+                     <div style={{ 
+                       marginTop: 8, 
+                       padding: '12px 16px', 
+                       borderRadius: 8, 
+                       background: (editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)) > 0 ? 'rgba(52, 211, 153, 0.1)' : 'rgba(248, 113, 113, 0.1)',
+                       display: 'flex', 
+                       justifyContent: 'space-between', 
+                       alignItems: 'center' 
+                     }}>
+                       <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>✨ Net Profit</span>
+                       <span style={{ 
+                         fontWeight: 800, 
+                         fontSize: '1.1rem', 
+                         color: (editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)) > 0 ? '#34d399' : '#f87171' 
+                       }}>
+                         Rs {Math.round(editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)).toLocaleString()}
+                       </span>
+                     </div>
                    </div>
                 </div>
               </div>
@@ -1749,6 +1836,58 @@ function NoteCell({ order, onSave }) {
       {val || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
     </div>
   )
+}
+
+// ─── Editable Cost Cell ──────────────────────────────────────────────────────────
+function CostCell({ order, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(order.cost || 0);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { setVal(order.cost || 0); }, [order.cost]);
+
+  const handleSave = async () => {
+    if (parseFloat(val) === parseFloat(order.cost)) return setEditing(false);
+    setLoading(true);
+    await onSave(order.id, 'cost', parseFloat(val) || 0);
+    setLoading(false);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input 
+          autoFocus
+          className="form-input" 
+          style={{ width: 70, height: 24, fontSize: '0.75rem', padding: '2px 4px', textAlign: 'right' }} 
+          type="number" 
+          value={val} 
+          onChange={e => setVal(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      style={{ 
+        cursor: 'pointer', 
+        padding: '2px 4px', 
+        borderRadius: 4, 
+        border: (order.cost === 0 || !order.cost) ? '1px dashed #f87171' : '1px solid transparent',
+        background: (order.cost === 0 || !order.cost) ? 'rgba(248, 113, 113, 0.1)' : 'transparent',
+        textAlign: 'right',
+        minWidth: 60
+      }}
+      title="Click to edit cost"
+    >
+      {loading ? '...' : `Rs ${Math.round(parseFloat(order.cost)||0).toLocaleString()}`}
+    </div>
+  );
 }
 
 // ─── Inline Address Cell ───────────────────────────────────────────────────

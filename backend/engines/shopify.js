@@ -82,9 +82,13 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
         const source = detectOrderSource(order);
 
+        const firstName = (addr.first_name || '').trim();
+        const lastName = (addr.last_name || '').trim();
+        const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim()) || (customer.first_name || '');
+
         insertOrder.run(
           storeId, String(order.id), order.name,
-          `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || ''),
+          fullName,
           (order.created_at || '').split('T')[0],
           addr.phone || customer.phone || '',
           `${addr.address1 || ''} ${addr.city || ''}`.trim(),
