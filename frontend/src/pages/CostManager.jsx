@@ -275,103 +275,141 @@ export default function CostManager() {
                 <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading financials...</td></tr>
               ) : sortedParents.length === 0 ? (
                 <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No data found.</td></tr>
-              ) : sortedParents.map(parent => (
-                <React.Fragment key={parent.name}>
-                  {/* Parent Row */}
-                  <tr 
-                    style={{ 
-                      cursor: 'pointer', 
-                      background: 'rgba(255,255,255,0.03)',
-                      borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none'
-                    }} 
-                    onClick={() => toggleParent(parent.name)}
-                  >
-                    <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>{expandedParents.has(parent.name) ? '▼' : '▶'}</td>
-                    <td style={{ fontWeight: 700, padding: '16px 8px' }}>{parent.name}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>Rs. {parent.maxPrice.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right', opacity: 0.5 }}>--</td>
-                    <td style={{ textAlign: 'right', opacity: 0.5 }}>--</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{ 
-                        background: getMarginColor(parent.minMargin), 
-                        color: '#000', 
-                        padding: '2px 8px', 
-                        borderRadius: 4, 
-                        fontSize: '0.7rem', 
-                        fontWeight: 700 
-                      }}>
-                        {parent.minMargin.toFixed(0)}% Min
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{parent.totalQty.toLocaleString()} units</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                        <button 
-                          className="btn btn-sm" 
-                          style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
-                          onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
-                        >
-                          ⚡ Bulk Sync
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Variant Rows */}
-                  {expandedParents.has(parent.name) && parent.variants.map(v => {
-                    const margin = v.selling_price > 0 ? ((v.selling_price - v.landed_cost) / v.selling_price) * 100 : 0
-                    const profit = v.selling_price - v.landed_cost
-                    const isConflicted = v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1;
-                    
-                    return (
-                      <tr key={v.id} style={{ fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                        <td></td>
-                        <td style={{ paddingLeft: 20, opacity: 0.8 }}>
-                          <span style={{ opacity: 0.4, marginRight: 8 }}>↳</span>
-                          {v.variant_title || 'Default Variant'}
-                        </td>
-                        <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {v.selling_price.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 500 }}>Rs. {v.landed_cost.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right', color: profit > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                          Rs. {profit.toLocaleString()}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ 
-                            display: 'inline-block', 
-                            width: 50, 
-                            textAlign: 'right', 
-                            color: getMarginColor(margin),
-                            fontWeight: 700
-                          }}>
-                            {margin.toFixed(1)}%
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                            {isConflicted && (
+              ) : sortedParents.map(parent => {
+                const isSingleDefault = parent.variants.length === 1 && (!parent.variants[0].variant_title || parent.variants[0].variant_title === 'Default Title');
+                const mainVariant = parent.variants[0];
+                
+                return (
+                  <React.Fragment key={parent.name}>
+                    {/* Parent Row */}
+                    <tr 
+                      style={{ 
+                        cursor: isSingleDefault ? 'default' : 'pointer', 
+                        background: 'rgba(255,255,255,0.03)',
+                        borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none'
+                      }} 
+                      onClick={() => !isSingleDefault && toggleParent(parent.name)}
+                    >
+                      <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>
+                        {!isSingleDefault && (expandedParents.has(parent.name) ? '▼' : '▶')}
+                      </td>
+                      <td style={{ fontWeight: 700, padding: '16px 8px' }}>{parent.name}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {isSingleDefault ? `Rs. ${mainVariant.selling_price.toLocaleString()}` : `Rs. ${parent.maxPrice.toLocaleString()}`}
+                      </td>
+                      <td style={{ textAlign: 'right', opacity: isSingleDefault ? 1 : 0.5 }}>
+                        {isSingleDefault ? `Rs. ${mainVariant.landed_cost.toLocaleString()}` : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right', opacity: isSingleDefault ? 1 : 0.5 }}>
+                        {isSingleDefault ? (
+                          <span style={{ color: (mainVariant.selling_price - mainVariant.landed_cost) > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                            Rs. {(mainVariant.selling_price - mainVariant.landed_cost).toLocaleString()}
+                          </span>
+                        ) : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{ 
+                          background: getMarginColor(parent.minMargin), 
+                          color: '#000', 
+                          padding: '2px 8px', 
+                          borderRadius: 4, 
+                          fontSize: '0.7rem', 
+                          fontWeight: 700 
+                        }}>
+                          {parent.minMargin.toFixed(0)}% {isSingleDefault ? '' : 'Min'}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{parent.totalQty.toLocaleString()} units</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          {isSingleDefault ? (
+                            <>
+                              {mainVariant.shopify_cost > 0 && Math.abs(mainVariant.shopify_cost - mainVariant.unit_cost) > 1 && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10 }}
+                                  onClick={(e) => { e.stopPropagation(); handleAcceptCost(mainVariant.parent_title, mainVariant.variant_title); }}
+                                >
+                                  Accept Rs. {mainVariant.shopify_cost}
+                                </button>
+                              )}
                               <button 
                                 className="btn btn-sm" 
-                                style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10, padding: '2px 6px' }}
-                                onClick={() => handleAcceptCost(v.parent_title, v.variant_title)}
+                                style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }} 
+                                onClick={(e) => { e.stopPropagation(); openModal(mainVariant); }}
                               >
-                                Accept Shopify Cost (Rs. {v.shopify_cost})
+                                Edit
                               </button>
-                            )}
+                            </>
+                          ) : (
                             <button 
                               className="btn btn-sm" 
-                              style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 
-                              onClick={() => openModal(v)}
+                              style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
+                              onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
                             >
-                              Edit
+                              ⚡ Bulk Sync
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </React.Fragment>
-              ))}
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Variant Rows (Only for true multi-variant products) */}
+                    {!isSingleDefault && expandedParents.has(parent.name) && parent.variants.map(v => {
+                      const margin = v.selling_price > 0 ? ((v.selling_price - v.landed_cost) / v.selling_price) * 100 : 0
+                      const profit = v.selling_price - v.landed_cost
+                      const isConflicted = v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1;
+                      
+                      return (
+                        <tr key={v.id} style={{ fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                          <td></td>
+                          <td style={{ paddingLeft: 20, opacity: 0.8 }}>
+                            <span style={{ opacity: 0.4, marginRight: 8 }}>↳</span>
+                            {v.variant_title || 'Default Variant'}
+                          </td>
+                          <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {v.selling_price.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 500 }}>Rs. {v.landed_cost.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: profit > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                            Rs. {profit.toLocaleString()}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ 
+                              display: 'inline-block', 
+                              width: 50, 
+                              textAlign: 'right', 
+                              color: getMarginColor(margin),
+                              fontWeight: 700
+                            }}>
+                              {margin.toFixed(1)}%
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                              {isConflicted && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10, padding: '2px 6px' }}
+                                  onClick={() => handleAcceptCost(v.parent_title, v.variant_title)}
+                                >
+                                  Accept Rs. {v.shopify_cost}
+                                </button>
+                              )}
+                              <button 
+                                className="btn btn-sm" 
+                                style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 
+                                onClick={() => openModal(v)}
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </React.Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
