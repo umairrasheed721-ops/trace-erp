@@ -117,9 +117,12 @@ router.get('/missing-product-list', (req, res) => {
       let match;
       regex.lastIndex = 0; 
       while ((match = regex.exec(itemsStr)) !== null) {
-        const name = match[1].trim();
-        if (!name) continue;
-        productCounts[name] = (productCounts[name] || 0) + 1;
+        const fullName = match[1].trim();
+        if (!fullName) continue;
+        
+        // Extract Parent Name (everything before the first " - ")
+        const parentName = fullName.split(' - ')[0].trim();
+        productCounts[parentName] = (productCounts[parentName] || 0) + 1;
       }
     });
 
@@ -159,10 +162,14 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
         regex.lastIndex = 0;
         
         while ((match = regex.exec(itemsStr)) !== null) {
-          const name = match[1].trim();
+          const fullName = match[1].trim();
           const qty = parseInt(match[2]) || 0;
-          if (mappings[name] !== undefined) {
-            totalCost += mappings[name] * qty;
+          
+          // Match by Parent Name
+          const parentName = fullName.split(' - ')[0].trim();
+          
+          if (mappings[parentName] !== undefined) {
+            totalCost += mappings[parentName] * qty;
             matched = true;
           }
         }
