@@ -179,6 +179,49 @@ function initDb() {
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0;"); } catch(e) {}
   
+  // 🔥 FORCE REPAIR: Ensure the UNIQUE constraint is (store_id, parent_title, variant_title)
+  // This fix solves the "ON CONFLICT clause does not match" error in production
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS product_master_costs_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        parent_title TEXT NOT NULL,
+        variant_title TEXT NOT NULL DEFAULT '',
+        unit_cost REAL DEFAULT 0,
+        packaging_cost REAL DEFAULT 0,
+        landed_cost REAL DEFAULT 0,
+        inventory_qty INTEGER DEFAULT 0,
+        shopify_cost REAL DEFAULT 0,
+        selling_price REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(store_id, parent_title, variant_title)
+      );
+    `);
+    
+    // Copy data from v1 to v2 if v1 exists
+    try {
+      db.exec(`
+        INSERT OR IGNORE INTO product_master_costs_v2 (
+          store_id, parent_title, variant_title, unit_cost, packaging_cost, 
+          landed_cost, inventory_qty, shopify_cost, selling_price
+        )
+        SELECT 
+          store_id, parent_title, variant_title, unit_cost, packaging_cost, 
+          landed_cost, inventory_qty, shopify_cost, selling_price 
+        FROM product_master_costs;
+      `);
+      db.exec("DROP TABLE product_master_costs;");
+      db.exec("ALTER TABLE product_master_costs_v2 RENAME TO product_master_costs;");
+      console.log("✅ Database Schema Repaired: product_master_costs upgraded to v2");
+    } catch(copyErr) {
+      // If table doesn't exist or is already upgraded, this might fail, which is fine
+    }
+  } catch(repairErr) {
+    console.error("❌ Database Repair Failed:", repairErr.message);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
