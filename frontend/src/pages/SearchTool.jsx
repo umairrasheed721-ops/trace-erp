@@ -160,7 +160,7 @@ function applySpecialMode(order, mode, today) {
     return s.includes('delivered') && paid < 1
   }
   if (mode === '[MISSING COST]') {
-    return s.includes('delivered') && (!order.cost || order.cost === 0)
+    return s.includes('delivered') && (!order.cost || parseFloat(order.cost) === 0) && (parseInt(order.items_count) > 0)
   }
   if (mode === '[AUDIT: MISSING CHARGES]') {
     const fee = parseFloat(order.courier_fee) || 0
@@ -183,7 +183,7 @@ export default function SearchTool() {
   const [allOrders, setAllOrders] = useState([])
   const [results, setResults] = useState([])
   const missingCostCount = useMemo(() => {
-    return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || o.cost === 0)).length
+    return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
   const [loading, setLoading] = useState(false)
 
