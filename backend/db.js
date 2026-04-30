@@ -215,11 +215,23 @@ function initDb() {
       db.exec("DROP TABLE product_master_costs;");
       db.exec("ALTER TABLE product_master_costs_v2 RENAME TO product_master_costs;");
       console.log("✅ Database Schema Repaired: product_master_costs upgraded to v2");
-    } catch(copyErr) {
-      // If table doesn't exist or is already upgraded, this might fail, which is fine
-    }
-  } catch(repairErr) {
-    console.error("❌ Database Repair Failed:", repairErr.message);
+    } catch(copyErr) {}
+  } catch(repairErr) {}
+
+  // 🔥 DEDUPLICATION CLEANUP: Remove "Default Title" rows now that we use "" (empty string)
+  try {
+    // 1. Copy costs from "Default Title" to "" if "" exists
+    db.exec(`
+      UPDATE product_master_costs 
+      SET unit_cost = (SELECT unit_cost FROM product_master_costs p2 WHERE p2.store_id = product_master_costs.store_id AND p2.parent_title = product_master_costs.parent_title AND p2.variant_title = 'Default Title'),
+          packaging_cost = (SELECT packaging_cost FROM product_master_costs p2 WHERE p2.store_id = product_master_costs.store_id AND p2.parent_title = product_master_costs.parent_title AND p2.variant_title = 'Default Title')
+      WHERE variant_title = '' AND EXISTS (SELECT 1 FROM product_master_costs p3 WHERE p3.store_id = product_master_costs.store_id AND p3.parent_title = product_master_costs.parent_title AND p3.variant_title = 'Default Title');
+    `);
+    // 2. Delete the redundant "Default Title" rows
+    db.exec("DELETE FROM product_master_costs WHERE variant_title = 'Default Title';");
+    console.log("✅ Database Deduplicated: Merged 'Default Title' variants into clean records.");
+  } catch(dedupeErr) {
+    console.error("❌ Deduplication failed:", dedupeErr.message);
   }
 
   db.exec(`
