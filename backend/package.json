@@ -16,6 +16,9 @@
     "node-fetch": "^2.7.0",
     "nodemailer": "^8.0.5"
   },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "devDependencies": {
     "nodemon": "^3.1.0"
   }
