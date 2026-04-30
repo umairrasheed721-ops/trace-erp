@@ -263,9 +263,10 @@ async function getShopifyInventoryCosts(store) {
     const variantName = node.title === 'Default Title' ? '' : node.title;
     if (!parentName) return;
 
-    const cost = parseFloat(node.inventoryItem?.unitCost?.amount || 0);
+    const rawCost = node.inventoryItem?.unitCost?.amount;
+    const cost = rawCost ? parseFloat(rawCost) : 0;
     const sellingPrice = parseFloat(node.price || 0);
-    const qty = node.inventoryItem?.inventoryLevels?.edges[0]?.node?.quantities[0]?.quantity || 0;
+    const qty = node.inventoryItem?.inventoryLevels?.edges?.[0]?.node?.quantities?.[0]?.quantity || 0;
     
     // We now return flat variant-level data
     const key = `${parentName}@@@${variantName}`;
