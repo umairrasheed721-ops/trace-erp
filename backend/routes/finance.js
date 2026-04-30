@@ -701,6 +701,10 @@ router.post('/accept-shopify-cost', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND variant_title = ?
     `).run(Number(store_id), parent_title, variant_title || '');
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/finance/bulk-sync-parent-costs
 router.post('/bulk-sync-parent-costs', (req, res) => {
   const { store_id, parent_title, unit_cost, packaging_cost } = req.body;
