@@ -363,7 +363,7 @@ export default function CostManager() {
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                           {isSingleDefault ? (
                             <>
-                              {mainVariant.shopify_cost > 0 && Math.abs(mainVariant.shopify_cost - mainVariant.unit_cost) > 1 && (
+                              {mainVariant.shopify_cost > 0 && Math.abs(mainVariant.shopify_cost - mainVariant.unit_cost) > 1 ? (
                                 <button 
                                   className="btn btn-sm" 
                                   style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10 }}
@@ -371,7 +371,14 @@ export default function CostManager() {
                                 >
                                   Accept Rs. {mainVariant.shopify_cost}
                                 </button>
-                              )}
+                              ) : mainVariant.unit_cost > 0 ? (
+                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                  </svg>
+                                  Verified
+                                </span>
+                              ) : null}
                               <button 
                                 className="btn btn-sm" 
                                 style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }} 
@@ -381,8 +388,15 @@ export default function CostManager() {
                               </button>
                             </>
                           ) : (
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              {parent.hasConflict && (
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              {!parent.hasConflict ? (
+                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                  </svg>
+                                  All Verified
+                                </span>
+                              ) : (
                                 <button 
                                   className="btn btn-sm" 
                                   style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '4px 10px', fontSize: 10 }}
@@ -436,7 +450,7 @@ export default function CostManager() {
                           <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty}</td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                              {isConflicted && (
+                              {isConflicted ? (
                                 <button 
                                   className="btn btn-sm" 
                                   style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10, padding: '2px 6px' }}
@@ -444,7 +458,14 @@ export default function CostManager() {
                                 >
                                   Accept Rs. {v.shopify_cost}
                                 </button>
-                              )}
+                              ) : v.unit_cost > 0 ? (
+                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M20 6L9 17l-5-5"/>
+                                  </svg>
+                                  Verified
+                                </span>
+                              ) : null}
                               <button 
                                 className="btn btn-sm" 
                                 style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 
