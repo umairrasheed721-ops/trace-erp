@@ -218,18 +218,34 @@ function initDb() {
     } catch(copyErr) {}
   } catch(repairErr) {}
 
-  // 🔥 DEDUPLICATION CLEANUP: Remove "Default Title" rows now that we use "" (empty string)
+  // 🔥 ROBUST DEDUPLICATION: Rename "Default Title" to "" or merge if "" already exists
   try {
-    // 1. Copy costs from "Default Title" to "" if "" exists
+    // 1. Rename 'Default Title' to '' if the '' variant doesn't exist yet
     db.exec(`
       UPDATE product_master_costs 
-      SET unit_cost = (SELECT unit_cost FROM product_master_costs p2 WHERE p2.store_id = product_master_costs.store_id AND p2.parent_title = product_master_costs.parent_title AND p2.variant_title = 'Default Title'),
-          packaging_cost = (SELECT packaging_cost FROM product_master_costs p2 WHERE p2.store_id = product_master_costs.store_id AND p2.parent_title = product_master_costs.parent_title AND p2.variant_title = 'Default Title')
-      WHERE variant_title = '' AND EXISTS (SELECT 1 FROM product_master_costs p3 WHERE p3.store_id = product_master_costs.store_id AND p3.parent_title = product_master_costs.parent_title AND p3.variant_title = 'Default Title');
+      SET variant_title = ''
+      WHERE variant_title = 'Default Title'
+        AND NOT EXISTS (
+          SELECT 1 FROM product_master_costs p2 
+          WHERE p2.store_id = product_master_costs.store_id 
+            AND p2.parent_title = product_master_costs.parent_title 
+            AND p2.variant_title = ''
+        );
     `);
-    // 2. Delete the redundant "Default Title" rows
+
+    // 2. For items where BOTH '' and 'Default Title' exist, copy costs to '' then delete 'Default Title'
+    db.exec(`
+      UPDATE product_master_costs
+      SET unit_cost = COALESCE(unit_cost, (SELECT unit_cost FROM product_master_costs p3 WHERE p3.store_id = product_master_costs.store_id AND p3.parent_title = product_master_costs.parent_title AND p3.variant_title = 'Default Title')),
+          packaging_cost = COALESCE(packaging_cost, (SELECT packaging_cost FROM product_master_costs p4 WHERE p4.store_id = product_master_costs.store_id AND p4.parent_title = product_master_costs.parent_title AND p4.variant_title = 'Default Title'))
+      WHERE variant_title = '' 
+        AND EXISTS (SELECT 1 FROM product_master_costs p5 WHERE p5.store_id = product_master_costs.store_id AND p5.parent_title = product_master_costs.parent_title AND p5.variant_title = 'Default Title');
+    `);
+
+    // 3. Final purge of any remaining 'Default Title' rows
     db.exec("DELETE FROM product_master_costs WHERE variant_title = 'Default Title';");
-    console.log("✅ Database Deduplicated: Merged 'Default Title' variants into clean records.");
+    
+    console.log("✅ Database Deduplicated: All 'Default Title' records merged and purged.");
   } catch(dedupeErr) {
     console.error("❌ Deduplication failed:", dedupeErr.message);
   }
