@@ -72,10 +72,18 @@ export default function FinanceManager() {
     try {
       const res = await fetch(`/api/finance/missing-product-list?store_id=${activeStoreId}`);
       const data = await res.json();
-      setGhostProducts(data || []);
-      if (data.length === 0) addToast('No products with missing costs found!', 'info');
+      if (Array.isArray(data)) {
+        setGhostProducts(data);
+        if (data.length === 0) addToast('No products with missing costs found!', 'info');
+      } else {
+        console.error('Ghost products response not an array:', data);
+        setGhostProducts([]);
+        addToast(data.error || 'Failed to scan products', 'error');
+      }
     } catch (e) {
+      console.error('Failed to fetch missing products', e);
       addToast('Failed to fetch product list', 'error');
+      setGhostProducts([]);
     } finally {
       setIsScanning(false);
     }

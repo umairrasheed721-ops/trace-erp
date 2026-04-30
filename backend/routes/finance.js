@@ -108,6 +108,8 @@ router.get('/missing-product-list', (req, res) => {
     const productCounts = {};
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
 
+    console.log(`🔍 Scanning missing costs for Store ${store_id}. Orders found: ${orders.length}`);
+    
     orders.forEach(o => {
       const itemsStr = o.line_items || o.product_titles;
       if (!itemsStr) return;
@@ -125,6 +127,7 @@ router.get('/missing-product-list', (req, res) => {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
+    console.log(`✅ Scan finished. Unique products: ${list.length}`);
     res.json(list);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -140,6 +143,8 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
     const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
+
+    console.log(`🚀 Healing costs for Store ${store_id}. Orders to check: ${orders.length}`);
 
     const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
     
