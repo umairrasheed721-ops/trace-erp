@@ -176,6 +176,7 @@ function initDb() {
   `);
 
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
   
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
