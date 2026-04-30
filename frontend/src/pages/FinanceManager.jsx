@@ -34,8 +34,12 @@ export default function FinanceManager() {
     try {
       const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
       const data = await res.json()
-      setCouriers(data || [])
-    } catch (e) { console.error('Failed to fetch couriers', e) }
+      if (Array.isArray(data)) setCouriers(data)
+      else {
+        console.error('Couriers response not an array:', data)
+        setCouriers([])
+      }
+    } catch (e) { console.error('Failed to fetch couriers', e); setCouriers([]) }
   }
 
   const handleRepair = async () => {

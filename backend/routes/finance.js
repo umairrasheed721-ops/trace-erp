@@ -28,7 +28,10 @@ router.get('/couriers', (req, res) => {
   try {
     const couriers = db.prepare('SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ""').all(store_id);
     res.json(couriers.map(c => c.courier));
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+    console.error('❌ GET /api/finance/couriers error:', e);
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 // POST /api/finance/repair-legacy
