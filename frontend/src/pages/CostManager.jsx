@@ -131,36 +131,58 @@ export default function CostManager() {
   }
 
   // Grouping Logic
-  const groupedCosts = costs.reduce((acc, item) => {
+  const rawGrouped = costs.reduce((acc, item) => {
     if (!acc[item.parent_title]) {
       acc[item.parent_title] = { 
         name: item.parent_title, 
         variants: [], 
-        totalQty: 0, 
-        totalAssetValue: 0,
-        hasConflict: false,
-        maxPrice: 0,
-        minMargin: 100
       }
     }
     acc[item.parent_title].variants.push(item)
-    acc[item.parent_title].totalQty += item.inventory_qty
-    acc[item.parent_title].totalAssetValue += item.landed_cost * item.inventory_qty
-    
-    if (item.selling_price > acc[item.parent_title].maxPrice) {
-      acc[item.parent_title].maxPrice = item.selling_price
-    }
-
-    const margin = item.selling_price > 0 ? ((item.selling_price - item.landed_cost) / item.selling_price) * 100 : 0
-    if (margin < acc[item.parent_title].minMargin && item.selling_price > 0) {
-      acc[item.parent_title].minMargin = margin
-    }
-
-    if (item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1) {
-      acc[item.parent_title].hasConflict = true
-    }
     return acc
   }, {})
+
+  const groupedCosts = {}
+  Object.keys(rawGrouped).forEach(parentName => {
+    let groupVariants = rawGrouped[parentName].variants
+    
+    // 🔥 Ghost Variant Filtering: If we have real variants (sizes/colors), 
+    // ignore the "Default Title" or "" placeholder.
+    const hasRealVariants = groupVariants.some(v => v.variant_title && v.variant_title !== 'Default Title' && v.variant_title !== '')
+    if (hasRealVariants) {
+      groupVariants = groupVariants.filter(v => v.variant_title && v.variant_title !== 'Default Title' && v.variant_title !== '')
+    }
+
+    const group = {
+      name: parentName,
+      variants: groupVariants,
+      totalQty: 0,
+      totalAssetValue: 0,
+      hasConflict: false,
+      maxPrice: 0,
+      minMargin: 100
+    }
+
+    groupVariants.forEach(item => {
+      group.totalQty += item.inventory_qty
+      group.totalAssetValue += item.landed_cost * item.inventory_qty
+      
+      if (item.selling_price > group.maxPrice) {
+        group.maxPrice = item.selling_price
+      }
+
+      const margin = item.selling_price > 0 ? ((item.selling_price - item.landed_cost) / item.selling_price) * 100 : 0
+      if (margin < group.minMargin && item.selling_price > 0) {
+        group.minMargin = margin
+      }
+
+      if (item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1) {
+        group.hasConflict = true
+      }
+    })
+
+    groupedCosts[parentName] = group
+  })
 
   const sortedParents = Object.values(groupedCosts)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
