@@ -213,6 +213,66 @@ async function getShopifyOrderStatus(store, orderId) {
   };
 }
 
+async function getShopifyInventoryCosts(store) {
+  const query = `
+    query {
+      productVariants(first: 250) {
+        edges {
+          node {
+            product {
+              title
+            }
+            inventoryItem {
+              unitCost {
+                amount
+              }
+              inventoryLevels(first: 1) {
+                edges {
+                  node {
+                    quantities(names: ["available"]) {
+                      quantity
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const res = await shopifyFetch(store, 'graphql.json', {
+    method: 'POST',
+    body: JSON.stringify({ query })
+  });
+  
+  if (!res.ok) throw new Error(`GraphQL Sync Failed: ${res.status}`);
+  
+  const json = await res.json();
+  if (json.errors) throw new Error(`Shopify GraphQL Error: ${JSON.stringify(json.errors)}`);
+
+  const aggregated = {};
+  const edges = json.data?.productVariants?.edges || [];
+  
+  edges.forEach(({ node }) => {
+    const parentName = node.product?.title;
+    if (!parentName) return;
+
+    const cost = parseFloat(node.inventoryItem?.unitCost?.amount || 0);
+    const qty = node.inventoryItem?.inventoryLevels?.edges[0]?.node?.quantities[0]?.quantity || 0;
+    
+    if (!aggregated[parentName]) {
+      aggregated[parentName] = { name: parentName, shopify_cost: cost, qty: 0 };
+    }
+    aggregated[parentName].qty += qty;
+    // If variants have different costs, we'll keep the highest one as the reference for now
+    if (cost > aggregated[parentName].shopify_cost) aggregated[parentName].shopify_cost = cost; 
+  });
+  
+  return Object.values(aggregated);
+}
+
 module.exports = {
   getPrimaryLocationId,
   processSmartRestock,
@@ -221,5 +281,6 @@ module.exports = {
   addShopifyTag,
   getShopifyFinancials,
   captureShopifyPayment,
-  getShopifyOrderStatus
+  getShopifyOrderStatus,
+  getShopifyInventoryCosts
 };

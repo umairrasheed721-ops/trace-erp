@@ -584,4 +584,52 @@ router.post('/auto-heal-all', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/finance/sync-shopify-costs
+router.post('/sync-shopify-costs', async (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    const { getShopifyInventoryCosts } = require('../engines/shopify_finance');
+    const products = await getShopifyInventoryCosts(store);
+
+    db.transaction(() => {
+      for (const p of products) {
+        db.prepare(`
+          INSERT INTO product_master_costs (store_id, parent_title, shopify_cost, inventory_qty, updated_at)
+          VALUES (?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(store_id, parent_title) DO UPDATE SET
+            shopify_cost = excluded.shopify_cost,
+            inventory_qty = excluded.inventory_qty,
+            updated_at = datetime('now')
+        `).run(Number(store_id), p.name, p.shopify_cost, p.qty);
+      }
+    })();
+
+    res.json({ success: true, count: products.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/accept-shopify-cost
+router.post('/accept-shopify-cost', (req, res) => {
+  const { store_id, parent_title } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = shopify_cost, 
+          landed_cost = shopify_cost + packaging_cost,
+          updated_at = datetime('now')
+      WHERE store_id = ? AND parent_title = ?
+    `).run(Number(store_id), parent_title);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

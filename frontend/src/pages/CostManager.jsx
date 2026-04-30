@@ -7,6 +7,7 @@ export default function CostManager() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [isHealing, setIsHealing] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   
   // Modal State
   const [showModal, setShowModal] = useState(false)
@@ -28,6 +29,45 @@ export default function CostManager() {
       addToast('Failed to load cost registry', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSyncShopify = async () => {
+    setIsSyncing(true)
+    try {
+      const res = await fetch('/api/finance/sync-shopify-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Synced ${data.count} products from Shopify`, 'success')
+        fetchCosts()
+      } else {
+        addToast(data.error || 'Sync failed', 'error')
+      }
+    } catch (e) {
+      addToast('Sync error: ' + e.message, 'error')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  const handleAcceptCost = async (parentTitle) => {
+    try {
+      const res = await fetch('/api/finance/accept-shopify-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast('Price accepted', 'success')
+        fetchCosts()
+      }
+    } catch (e) {
+      addToast('Accept error: ' + e.message, 'error')
     }
   }
 
@@ -74,7 +114,7 @@ export default function CostManager() {
     } catch (e) {
       addToast('Healing error: ' + e.message, 'error')
     } finally {
-      setIsHealing(true) // Keep state for a bit for visual feedback
+      setIsHealing(true)
       setTimeout(() => setIsHealing(false), 2000)
     }
   }
@@ -82,6 +122,8 @@ export default function CostManager() {
   const filteredCosts = costs.filter(c => 
     c.parent_title.toLowerCase().includes(search.toLowerCase())
   )
+
+  const totalAssetValue = costs.reduce((sum, item) => sum + (item.landed_cost * (item.inventory_qty || 0)), 0)
 
   const openModal = (item = null) => {
     if (item) {
@@ -95,17 +137,26 @@ export default function CostManager() {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: 1200 }}>
+    <div className="page-container" style={{ maxWidth: 1400 }}>
       <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">💎 Master Cost Manager</h1>
-          <p className="page-subtitle">Central registry for product costs. These costs are used to auto-calculate P&L for all orders.</p>
+          <p className="page-subtitle">Central registry for product costs and inventory asset valuation.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => openModal()}>+ Add New Product</button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button 
+            className="btn btn-secondary" 
+            onClick={handleSyncShopify}
+            disabled={isSyncing}
+          >
+            {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify'}
+          </button>
+          <button className="btn btn-primary" onClick={() => openModal()}>+ Add New Product</button>
+        </div>
       </header>
 
       <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
-        <div className="stat-card" style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+        <div className="stat-card" style={{ flex: 1.5, backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ margin: 0, color: '#10b981' }}>🚀 Global Auto-Healer</h3>
@@ -122,15 +173,23 @@ export default function CostManager() {
           </div>
         </div>
         
-        <div className="stat-card" style={{ flex: '0 0 300px' }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Registry Health</h3>
-          <div style={{ fontSize: 32, fontWeight: 'bold', margin: '8px 0' }}>{costs.length}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Active Products in Catalog</div>
+        <div className="stat-card" style={{ flex: 1 }}>
+          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Total Asset Value</h3>
+          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#10b981' }}>
+            Rs. {totalAssetValue.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Landed Cost × In-Stock Qty</div>
+        </div>
+
+        <div className="stat-card" style={{ flex: 0.7 }}>
+          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Catalog Size</h3>
+          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0' }}>{costs.length}</div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Active Product Lines</div>
         </div>
       </div>
 
       <div className="stat-card">
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <input 
             type="text" 
             className="form-input" 
@@ -139,6 +198,9 @@ export default function CostManager() {
             onChange={e => setSearch(e.target.value)}
             style={{ maxWidth: 400 }}
           />
+          <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
+            💡 <span style={{ color: '#f59e0b' }}>Amber</span> landed costs indicate a conflict with Shopify prices.
+          </div>
         </div>
 
         <div className="table-responsive">
@@ -146,30 +208,57 @@ export default function CostManager() {
             <thead>
               <tr>
                 <th>Parent Product Title</th>
-                <th style={{ textAlign: 'right' }}>Base Unit Cost</th>
+                <th style={{ textAlign: 'right' }}>Shopify Price</th>
+                <th style={{ textAlign: 'right' }}>Base Cost</th>
                 <th style={{ textAlign: 'right' }}>Packaging</th>
                 <th style={{ textAlign: 'right' }}>Landed Cost</th>
-                <th>Last Updated</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th style={{ textAlign: 'right' }}>Stock Qty</th>
+                <th style={{ textAlign: 'right' }}>Stock Value</th>
+                <th style={{ textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading registry...</td></tr>
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading registry...</td></tr>
               ) : filteredCosts.length === 0 ? (
-                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No products found in catalog.</td></tr>
-              ) : filteredCosts.map(item => (
-                <tr key={item.id}>
-                  <td style={{ fontWeight: 600 }}>{item.parent_title}</td>
-                  <td style={{ textAlign: 'right' }}>Rs. {item.unit_cost.toLocaleString()}</td>
-                  <td style={{ textAlign: 'right' }}>Rs. {item.packaging_cost.toLocaleString()}</td>
-                  <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 700 }}>Rs. {item.landed_cost.toLocaleString()}</td>
-                  <td style={{ fontSize: '0.8rem', opacity: 0.6 }}>{new Date(item.updated_at).toLocaleDateString()}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-sm btn-secondary" onClick={() => openModal(item)}>Edit</button>
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No products found in catalog.</td></tr>
+              ) : filteredCosts.map(item => {
+                const hasConflict = item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1;
+                return (
+                  <tr key={item.id} style={hasConflict ? { backgroundColor: 'rgba(245, 158, 11, 0.03)' } : {}}>
+                    <td style={{ fontWeight: 600 }}>{item.parent_title}</td>
+                    <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {item.shopify_cost?.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right' }}>Rs. {item.unit_cost.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right' }}>Rs. {item.packaging_cost.toLocaleString()}</td>
+                    <td style={{ 
+                      textAlign: 'right', 
+                      color: hasConflict ? '#f59e0b' : '#10b981', 
+                      fontWeight: 700 
+                    }}>
+                      Rs. {item.landed_cost.toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{item.inventory_qty || 0}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                      Rs. {(item.landed_cost * (item.inventory_qty || 0)).toLocaleString()}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        {hasConflict && (
+                          <button 
+                            className="btn btn-sm" 
+                            style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '2px 8px' }}
+                            onClick={() => handleAcceptCost(item.parent_title)}
+                            title="Accept Shopify Price"
+                          >
+                            Accept
+                          </button>
+                        )}
+                        <button className="btn btn-sm btn-secondary" onClick={() => openModal(item)}>Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -192,7 +281,6 @@ export default function CostManager() {
                   onChange={e => setForm({...form, parent_title: e.target.value})}
                   placeholder="e.g. Cotton Lycra T-Shirt"
                 />
-                <p style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: 4 }}>Must match the Shopify title part before " - ".</p>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

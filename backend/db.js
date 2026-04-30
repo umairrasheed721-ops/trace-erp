@@ -181,6 +181,8 @@ function initDb() {
       unit_cost REAL DEFAULT 0,
       packaging_cost REAL DEFAULT 0,
       landed_cost REAL DEFAULT 0,
+      inventory_qty INTEGER DEFAULT 0,
+      shopify_cost REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, parent_title)
@@ -196,6 +198,8 @@ function initDb() {
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
+  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN inventory_qty INTEGER DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shopify_cost REAL DEFAULT 0;"); } catch(e) {}
   
   db.exec(`
     CREATE TABLE IF NOT EXISTS courier_cities (
