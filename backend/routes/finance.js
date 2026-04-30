@@ -502,6 +502,69 @@ router.post('/create-ghost-order', async (req, res) => {
   }
 });
 
+// POST /api/finance/apply-bulk-product-costs
+router.post('/apply-bulk-product-costs', async (req, res) => {
+  const { store_id, mappings } = req.body; // mappings: { "Product Name": 1200, ... }
+  if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
+
+  try {
+    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
+    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+    let healedCount = 0;
+
+    console.log(`🚀 Healing costs for Store ${store_id}. Orders to check: ${orders.length}`);
+
+    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
+    
+    db.transaction(() => {
+      // 1. SYNC TO MASTER REGISTRY (Auto-learn)
+      for (const [pName, pCost] of Object.entries(mappings)) {
+        db.prepare(`
+          INSERT INTO product_master_costs (store_id, parent_title, variant_title, unit_cost, landed_cost, updated_at)
+          VALUES (?, ?, '', ?, ?, datetime('now'))
+          ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
+            unit_cost = excluded.unit_cost,
+            landed_cost = excluded.landed_cost,
+            updated_at = datetime('now')
+        `).run(Number(store_id), pName, pCost, pCost);
+      }
+
+      // 2. Apply to zero-cost orders
+      for (const order of orders) {
+        const itemsStr = order.line_items || order.product_titles;
+        if (!itemsStr) continue;
+
+        let totalCost = 0;
+        let matched = false;
+        let match;
+        regex.lastIndex = 0;
+        
+        while ((match = regex.exec(itemsStr)) !== null) {
+          const fullName = match[1].trim();
+          const qty = parseInt(match[2]) || 0;
+          
+          // Match by Parent Name
+          const parentName = fullName.split(' - ')[0].trim();
+          
+          if (mappings[parentName] !== undefined) {
+            totalCost += mappings[parentName] * qty;
+            matched = true;
+          }
+        }
+
+        if (matched) {
+          updateStmt.run(totalCost, order.id);
+          healedCount++;
+        }
+      }
+    })();
+
+    res.json({ success: true, count: healedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // 💎 MASTER COST MANAGER
 // ==========================================
@@ -511,27 +574,27 @@ router.get('/master-costs', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   try {
-    const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC').all(Number(store_id));
+    const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC, variant_title ASC').all(Number(store_id));
     res.json(costs);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/finance/master-costs
 router.post('/master-costs', (req, res) => {
-  const { store_id, parent_title, unit_cost, packaging_cost } = req.body;
+  const { store_id, parent_title, variant_title, unit_cost, packaging_cost } = req.body;
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
 
   try {
     const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
     db.prepare(`
-      INSERT INTO product_master_costs (store_id, parent_title, unit_cost, packaging_cost, landed_cost, updated_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(store_id, parent_title) DO UPDATE SET
+      INSERT INTO product_master_costs (store_id, parent_title, variant_title, unit_cost, packaging_cost, landed_cost, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
         unit_cost = excluded.unit_cost,
         packaging_cost = excluded.packaging_cost,
         landed_cost = excluded.landed_cost,
         updated_at = datetime('now')
-    `).run(Number(store_id), parent_title, unit_cost || 0, packaging_cost || 0, landed_cost);
+    `).run(Number(store_id), parent_title, variant_title || '', unit_cost || 0, packaging_cost || 0, landed_cost);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -542,10 +605,8 @@ router.post('/auto-heal-all', (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const catalog = db.prepare('SELECT parent_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
-    const costMap = {};
-    catalog.forEach(c => costMap[c.parent_title] = c.landed_cost);
-
+    const catalog = db.prepare('SELECT parent_title, variant_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+    
     const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
@@ -565,10 +626,21 @@ router.post('/auto-heal-all', (req, res) => {
         while ((match = regex.exec(itemsStr)) !== null) {
           const fullName = match[1].trim();
           const qty = parseInt(match[2]) || 0;
-          const parentName = fullName.split(' - ')[0].trim();
           
-          if (costMap[parentName] !== undefined) {
-            totalCost += costMap[parentName] * qty;
+          const parts = fullName.split(' - ');
+          const pName = parts[0].trim();
+          const vName = parts.length > 1 ? parts[1].trim() : '';
+          
+          // 1. Try Exact Match (Parent + Variant)
+          let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
+          
+          // 2. Fallback to Parent (empty variant) or any variant of that parent
+          if (!matchRow) {
+            matchRow = catalog.find(c => c.parent_title === pName);
+          }
+          
+          if (matchRow) {
+            totalCost += matchRow.landed_cost * qty;
             matched = true;
           }
         }
@@ -599,13 +671,13 @@ router.post('/sync-shopify-costs', async (req, res) => {
     db.transaction(() => {
       for (const p of products) {
         db.prepare(`
-          INSERT INTO product_master_costs (store_id, parent_title, shopify_cost, inventory_qty, updated_at)
-          VALUES (?, ?, ?, ?, datetime('now'))
-          ON CONFLICT(store_id, parent_title) DO UPDATE SET
+          INSERT INTO product_master_costs (store_id, parent_title, variant_title, shopify_cost, inventory_qty, updated_at)
+          VALUES (?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
             shopify_cost = excluded.shopify_cost,
             inventory_qty = excluded.inventory_qty,
             updated_at = datetime('now')
-        `).run(Number(store_id), p.name, p.shopify_cost, p.qty);
+        `).run(Number(store_id), p.parent_name, p.variant_name, p.shopify_cost, p.qty);
       }
     })();
 
@@ -617,7 +689,7 @@ router.post('/sync-shopify-costs', async (req, res) => {
 
 // POST /api/finance/accept-shopify-cost
 router.post('/accept-shopify-cost', (req, res) => {
-  const { store_id, parent_title } = req.body;
+  const { store_id, parent_title, variant_title } = req.body;
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
 
   try {
@@ -626,8 +698,8 @@ router.post('/accept-shopify-cost', (req, res) => {
       SET unit_cost = shopify_cost, 
           landed_cost = shopify_cost + packaging_cost,
           updated_at = datetime('now')
-      WHERE store_id = ? AND parent_title = ?
-    `).run(Number(store_id), parent_title);
+      WHERE store_id = ? AND parent_title = ? AND variant_title = ?
+    `).run(Number(store_id), parent_title, variant_title || '');
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

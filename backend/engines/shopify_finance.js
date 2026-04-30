@@ -257,17 +257,24 @@ async function getShopifyInventoryCosts(store) {
   
   edges.forEach(({ node }) => {
     const parentName = node.product?.title;
+    const variantName = node.title === 'Default Title' ? '' : node.title;
     if (!parentName) return;
 
     const cost = parseFloat(node.inventoryItem?.unitCost?.amount || 0);
     const qty = node.inventoryItem?.inventoryLevels?.edges[0]?.node?.quantities[0]?.quantity || 0;
     
-    if (!aggregated[parentName]) {
-      aggregated[parentName] = { name: parentName, shopify_cost: cost, qty: 0 };
+    // We now return flat variant-level data
+    const key = `${parentName}@@@${variantName}`;
+    if (!aggregated[key]) {
+      aggregated[key] = { 
+        parent_name: parentName, 
+        variant_name: variantName, 
+        shopify_cost: cost, 
+        qty: qty 
+      };
+    } else {
+      aggregated[key].qty += qty;
     }
-    aggregated[parentName].qty += qty;
-    // If variants have different costs, we'll keep the highest one as the reference for now
-    if (cost > aggregated[parentName].shopify_cost) aggregated[parentName].shopify_cost = cost; 
   });
   
   return Object.values(aggregated);

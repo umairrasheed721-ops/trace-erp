@@ -174,10 +174,14 @@ function initDb() {
       UNIQUE(store_id, view_name)
     );
 
+  try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
+  
+  db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
       parent_title TEXT NOT NULL,
+      variant_title TEXT NOT NULL DEFAULT '',
       unit_cost REAL DEFAULT 0,
       packaging_cost REAL DEFAULT 0,
       landed_cost REAL DEFAULT 0,
@@ -185,22 +189,10 @@ function initDb() {
       shopify_cost REAL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, parent_title)
+      UNIQUE(store_id, parent_title, variant_title)
     );
   `);
 
-  // MIGRATION: Update Instaworld URL if it's the old one
-  db.exec(`UPDATE stores SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment' WHERE instaworld_track_url LIKE '%app.instaworld.pk%'`);
-  try { db.exec("ALTER TABLE daily_metrics ADD COLUMN tiktok_marketing REAL DEFAULT 0;"); } catch(e) {}
-  try { db.exec("ALTER TABLE daily_metrics ADD COLUMN diff_correction REAL DEFAULT 0;"); } catch(e) {}
-  try { db.exec("ALTER TABLE orders ADD COLUMN line_items TEXT;"); } catch(e) {}
-  try { db.exec("ALTER TABLE orders ADD COLUMN failed_attempts INTEGER DEFAULT 0;"); } catch(e) {}
-  try { db.exec("ALTER TABLE stores ADD COLUMN sync_start_date TEXT;"); } catch(e) {}
-  try { db.exec("ALTER TABLE stores ADD COLUMN sync_status TEXT DEFAULT 'idle';"); } catch(e) {}
-  try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
-  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN inventory_qty INTEGER DEFAULT 0;"); } catch(e) {}
-  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shopify_cost REAL DEFAULT 0;"); } catch(e) {}
-  
   db.exec(`
     CREATE TABLE IF NOT EXISTS courier_cities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

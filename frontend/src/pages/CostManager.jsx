@@ -8,11 +8,12 @@ export default function CostManager() {
   const [loading, setLoading] = useState(false)
   const [isHealing, setIsHealing] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [expandedParents, setExpandedParents] = useState(new Set())
   
   // Modal State
   const [showModal, setShowModal] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
-  const [form, setForm] = useState({ parent_title: '', unit_cost: 0, packaging_cost: 0 })
+  const [form, setForm] = useState({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 })
 
   useEffect(() => {
     if (activeStoreId) fetchCosts()
@@ -42,7 +43,7 @@ export default function CostManager() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`Synced ${data.count} products from Shopify`, 'success')
+        addToast(`Synced ${data.count} product variants from Shopify`, 'success')
         fetchCosts()
       } else {
         addToast(data.error || 'Sync failed', 'error')
@@ -54,16 +55,16 @@ export default function CostManager() {
     }
   }
 
-  const handleAcceptCost = async (parentTitle) => {
+  const handleAcceptCost = async (parentTitle, variantTitle) => {
     try {
       const res = await fetch('/api/finance/accept-shopify-cost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle, variant_title: variantTitle })
       })
       const data = await res.json()
       if (data.success) {
-        addToast('Price accepted', 'success')
+        addToast(`Price accepted for ${variantTitle || 'parent'}`, 'success')
         fetchCosts()
       }
     } catch (e) {
@@ -119,19 +120,50 @@ export default function CostManager() {
     }
   }
 
-  const filteredCosts = costs.filter(c => 
-    c.parent_title.toLowerCase().includes(search.toLowerCase())
-  )
+  const toggleParent = (parentName) => {
+    const newExpanded = new Set(expandedParents)
+    if (newExpanded.has(parentName)) {
+      newExpanded.delete(parentName)
+    } else {
+      newExpanded.add(parentName)
+    }
+    setExpandedParents(newExpanded)
+  }
 
-  const totalAssetValue = costs.reduce((sum, item) => sum + (item.landed_cost * (item.inventory_qty || 0)), 0)
+  // Grouping Logic
+  const groupedCosts = costs.reduce((acc, item) => {
+    if (!acc[item.parent_title]) {
+      acc[item.parent_title] = { 
+        name: item.parent_title, 
+        variants: [], 
+        totalQty: 0, 
+        totalAssetValue: 0,
+        hasConflict: false,
+        avgLandedCost: 0
+      }
+    }
+    acc[item.parent_title].variants.push(item)
+    acc[item.parent_title].totalQty += item.inventory_qty
+    acc[item.parent_title].totalAssetValue += item.landed_cost * item.inventory_qty
+    if (item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1) {
+      acc[item.parent_title].hasConflict = true
+    }
+    return acc
+  }, {})
 
-  const openModal = (item = null) => {
+  const sortedParents = Object.values(groupedCosts)
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => b.totalAssetValue - a.totalAssetValue)
+
+  const totalAssetValue = sortedParents.reduce((sum, p) => sum + p.totalAssetValue, 0)
+
+  const openModal = (item = null, parentName = '') => {
     if (item) {
       setEditingItem(item)
-      setForm({ parent_title: item.parent_title, unit_cost: item.unit_cost, packaging_cost: item.packaging_cost })
+      setForm({ parent_title: item.parent_title, variant_title: item.variant_title, unit_cost: item.unit_cost, packaging_cost: item.packaging_cost })
     } else {
       setEditingItem(null)
-      setForm({ parent_title: '', unit_cost: 0, packaging_cost: 0 })
+      setForm({ parent_title: parentName, variant_title: '', unit_cost: 0, packaging_cost: 0 })
     }
     setShowModal(true)
   }
@@ -141,7 +173,7 @@ export default function CostManager() {
       <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">💎 Master Cost Manager</h1>
-          <p className="page-subtitle">Central registry for product costs and inventory asset valuation.</p>
+          <p className="page-subtitle">Variant-aware registry for precision product costing and inventory valuation.</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <button 
@@ -160,7 +192,7 @@ export default function CostManager() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ margin: 0, color: '#10b981' }}>🚀 Global Auto-Healer</h3>
-              <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: '4px 0 16px 0' }}>Fix all zero-cost historical orders using the registry below.</p>
+              <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: '4px 0 16px 0' }}>Fix historical zero-cost orders using exact variant matches.</p>
             </div>
             <button 
               className="btn" 
@@ -178,13 +210,13 @@ export default function CostManager() {
           <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#10b981' }}>
             Rs. {totalAssetValue.toLocaleString()}
           </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Landed Cost × In-Stock Qty</div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Individual Landed Costs × Stock Qty</div>
         </div>
 
         <div className="stat-card" style={{ flex: 0.7 }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Catalog Size</h3>
+          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Catalog Depth</h3>
           <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0' }}>{costs.length}</div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Active Product Lines</div>
+          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Unique Product Variants</div>
         </div>
       </div>
 
@@ -193,13 +225,13 @@ export default function CostManager() {
           <input 
             type="text" 
             className="form-input" 
-            placeholder="🔍 Search product catalog..." 
+            placeholder="🔍 Search products or parents..." 
             value={search}
             onChange={e => setSearch(e.target.value)}
             style={{ maxWidth: 400 }}
           />
           <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>
-            💡 <span style={{ color: '#f59e0b' }}>Amber</span> landed costs indicate a conflict with Shopify prices.
+             💡 <span style={{ color: '#f59e0b' }}>Amber</span> parents contain variants with cost conflicts in Shopify.
           </div>
         </div>
 
@@ -207,58 +239,72 @@ export default function CostManager() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Parent Product Title</th>
-                <th style={{ textAlign: 'right' }}>Shopify Price</th>
-                <th style={{ textAlign: 'right' }}>Base Cost</th>
-                <th style={{ textAlign: 'right' }}>Packaging</th>
-                <th style={{ textAlign: 'right' }}>Landed Cost</th>
-                <th style={{ textAlign: 'right' }}>Stock Qty</th>
-                <th style={{ textAlign: 'right' }}>Stock Value</th>
-                <th style={{ textAlign: 'center' }}>Action</th>
+                <th style={{ width: 40 }}></th>
+                <th>Product Name</th>
+                <th style={{ textAlign: 'right' }}>Total Qty</th>
+                <th style={{ textAlign: 'right' }}>Asset Value</th>
+                <th style={{ textAlign: 'right' }}>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading registry...</td></tr>
-              ) : filteredCosts.length === 0 ? (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No products found in catalog.</td></tr>
-              ) : filteredCosts.map(item => {
-                const hasConflict = item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1;
-                return (
-                  <tr key={item.id} style={hasConflict ? { backgroundColor: 'rgba(245, 158, 11, 0.03)' } : {}}>
-                    <td style={{ fontWeight: 600 }}>{item.parent_title}</td>
-                    <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {item.shopify_cost?.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right' }}>Rs. {item.unit_cost.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right' }}>Rs. {item.packaging_cost.toLocaleString()}</td>
-                    <td style={{ 
-                      textAlign: 'right', 
-                      color: hasConflict ? '#f59e0b' : '#10b981', 
-                      fontWeight: 700 
-                    }}>
-                      Rs. {item.landed_cost.toLocaleString()}
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading registry...</td></tr>
+              ) : sortedParents.length === 0 ? (
+                <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No products found.</td></tr>
+              ) : sortedParents.map(parent => (
+                <React.Fragment key={parent.name}>
+                  {/* Parent Row */}
+                  <tr style={{ cursor: 'pointer', borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none' }} onClick={() => toggleParent(parent.name)}>
+                    <td style={{ textAlign: 'center', fontSize: 12 }}>{expandedParents.has(parent.name) ? '▼' : '▶'}</td>
+                    <td style={{ fontWeight: 700 }}>{parent.name}</td>
+                    <td style={{ textAlign: 'right' }}>{parent.totalQty.toLocaleString()} units</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#10b981' }}>Rs. {parent.totalAssetValue.toLocaleString()}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      {parent.hasConflict ? (
+                        <span style={{ color: '#f59e0b', fontSize: '0.75rem', fontWeight: 600 }}>⚠️ MIXED COSTS</span>
+                      ) : (
+                        <span style={{ opacity: 0.5, fontSize: '0.75rem' }}>✅ ALL SYNCED</span>
+                      )}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{item.inventory_qty || 0}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                      Rs. {(item.landed_cost * (item.inventory_qty || 0)).toLocaleString()}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                        {hasConflict && (
-                          <button 
-                            className="btn btn-sm" 
-                            style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '2px 8px' }}
-                            onClick={() => handleAcceptCost(item.parent_title)}
-                            title="Accept Shopify Price"
-                          >
-                            Accept
-                          </button>
-                        )}
-                        <button className="btn btn-sm btn-secondary" onClick={() => openModal(item)}>Edit</button>
-                      </div>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-sm btn-secondary" onClick={(e) => { e.stopPropagation(); openModal(null, parent.name); }}>+ Add Variant</button>
                     </td>
                   </tr>
-                )
-              })}
+
+                  {/* Variant Rows (Hidden/Shown) */}
+                  {expandedParents.has(parent.name) && parent.variants.map(v => {
+                    const isConflicted = v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1;
+                    return (
+                      <tr key={v.id} style={{ backgroundColor: 'rgba(255,255,255,0.02)', fontSize: '0.85rem' }}>
+                        <td></td>
+                        <td style={{ paddingLeft: 20, opacity: 0.7 }}>↳ {v.variant_title || 'Generic / Default'}</td>
+                        <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty} units</td>
+                        <td style={{ textAlign: 'right' }}>Rs. {(v.landed_cost * v.inventory_qty).toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          {isConflicted ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                              <span style={{ color: '#f59e0b', fontSize: 10 }}>Shopify: Rs. {v.shopify_cost}</span>
+                              <button 
+                                className="btn btn-sm" 
+                                style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '1px 6px', fontSize: 9, marginTop: 4 }}
+                                onClick={(e) => { e.stopPropagation(); handleAcceptCost(v.parent_title, v.variant_title); }}
+                              >
+                                Accept Shopify Cost
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ opacity: 0.4 }}>Synced (Rs. {v.unit_cost})</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="btn btn-sm" style={{ padding: '2px 8px', opacity: 0.6 }} onClick={(e) => { e.stopPropagation(); openModal(v); }}>Edit</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>
@@ -268,7 +314,7 @@ export default function CostManager() {
       {showModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 500 }}>
-            <h2 style={{ marginBottom: 20 }}>{editingItem ? '✏️ Edit Product Cost' : '➕ Add New Product'}</h2>
+            <h2 style={{ marginBottom: 20 }}>{editingItem ? '✏️ Edit Variant Cost' : '➕ Add New Variant'}</h2>
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label className="form-label">Parent Product Title</label>
@@ -279,7 +325,18 @@ export default function CostManager() {
                   disabled={!!editingItem}
                   value={form.parent_title}
                   onChange={e => setForm({...form, parent_title: e.target.value})}
-                  placeholder="e.g. Cotton Lycra T-Shirt"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">Variant Title (Size / Color)</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={form.variant_title}
+                  disabled={!!editingItem}
+                  onChange={e => setForm({...form, variant_title: e.target.value})}
+                  placeholder="e.g. XL / Blue"
                 />
               </div>
 
@@ -316,7 +373,7 @@ export default function CostManager() {
                 alignItems: 'center',
                 border: '1px solid rgba(16, 185, 129, 0.2)'
               }}>
-                <span style={{ fontWeight: 600 }}>Total Landed Cost:</span>
+                <span style={{ fontWeight: 600 }}>Landed Cost:</span>
                 <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981' }}>
                   Rs. {((form.unit_cost || 0) + (form.packaging_cost || 0)).toLocaleString()}
                 </span>
