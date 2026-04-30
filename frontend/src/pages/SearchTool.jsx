@@ -1421,7 +1421,7 @@ export default function SearchTool() {
                         </td>
                       )
                       if (col.id === 'delivery_status') {
-                        const isExchange = s.includes('delivered') && (parseInt(o.items_count) === 0 || !o.cost || parseFloat(o.cost) === 0);
+                        const isExchange = s.includes('delivered') && parseInt(o.items_count) === 0;
                         return (
                           <td key={col.id}>
                             <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
@@ -1511,7 +1511,7 @@ export default function SearchTool() {
                   <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Order {editingOrder.ref_number || editingOrder.shopify_order_id}</h2>
                   <span className="badge" style={{ background: 'var(--yellow-dim)', color: 'var(--yellow)' }}>{editingOrder.payment_status || 'Pending'}</span>
                   <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>{editingOrder.delivery_status || 'Unfulfilled'}</span>
-                  { (editingOrder.delivery_status || '').toLowerCase().includes('delivered') && (parseInt(editingOrder.items_count) === 0 || !editingOrder.cost || parseFloat(editingOrder.cost) === 0) && (
+                  { (editingOrder.delivery_status || '').toLowerCase().includes('delivered') && parseInt(editingOrder.items_count) === 0 && (
                     <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.7rem', border: '1px solid var(--blue)' }}>🔄 EXCHANGE / RESTOCKED</span>
                   )}
                 </div>
