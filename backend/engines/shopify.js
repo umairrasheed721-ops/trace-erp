@@ -271,7 +271,7 @@ async function refreshShopifyUpdates(store, onProgress) {
       updateStatus('syncing', msg, 50, 100);
     });
 
-    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status FROM orders WHERE store_id = ?').all(storeId);
+    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
 
     let count = 0;
     const updateStmt = db.prepare(`
@@ -316,7 +316,11 @@ async function refreshShopifyUpdates(store, onProgress) {
           finalPrice, productTitles.length, fresh.note || '',
           productTitles.join(', '),
           fresh.financial_status === 'paid' ? 'Paid' : 'Pending',
-          totalCost, tracking, courier, newDeliveryStatus, row.id
+          row.cost_locked ? row.cost : totalCost, 
+          tracking, 
+          row.courier_fee_locked ? row.courier_fee : courier, 
+          newDeliveryStatus, 
+          row.id
         );
         count++;
       }

@@ -70,6 +70,8 @@ function initDb() {
       status_date TEXT,
       created_timestamp TEXT DEFAULT (datetime('now')),
       order_source TEXT DEFAULT 'Direct / Web',
+      cost_locked INTEGER DEFAULT 0,
+      courier_fee_locked INTEGER DEFAULT 0,
       UNIQUE(store_id, shopify_order_id)
     );
 
@@ -251,3 +253,5 @@ module.exports = { prepare, transaction, exec: (sql) => db.exec(sql) };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch(e) {}

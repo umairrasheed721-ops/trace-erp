@@ -43,6 +43,16 @@ router.put('/:id', (req, res) => {
 
   const extraSets = [];
   const extraValues = [];
+
+  if (req.body.cost !== undefined) {
+    extraSets.push('cost_locked = ?');
+    extraValues.push(1);
+  }
+  if (req.body.courier_fee !== undefined) {
+    extraSets.push('courier_fee_locked = ?');
+    extraValues.push(1);
+  }
+
   const today = new Date().toISOString().split('T')[0];
 
   // 4. P&L LOGIC: Auto-stamp payment_date when status flips to Delivered
