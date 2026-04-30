@@ -26,7 +26,7 @@ router.get('/couriers', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   try {
-    const couriers = db.prepare('SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ""').all(store_id);
+    const couriers = db.prepare('SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ""').all(Number(store_id));
     res.json(couriers.map(c => c.courier));
   } catch (e) { 
     console.error('❌ GET /api/finance/couriers error:', e);
@@ -40,7 +40,7 @@ router.post('/repair-legacy', async (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
     if (!store) return res.status(404).json({ error: 'Store not found' });
 
     const dateLimit = new Date();
@@ -54,7 +54,7 @@ router.post('/repair-legacy', async (req, res) => {
       AND order_date <= ? 
       AND delivery_status NOT IN ('Delivered', 'Cancelled', 'Returned', 'Return Received', 'RTO')
     `;
-    const params = [store_id, dateStr];
+    const params = [Number(store_id), dateStr];
 
     if (courier && courier !== 'All Inactive') {
       query += " AND courier = ?";
@@ -104,7 +104,7 @@ router.get('/missing-product-list', (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const orders = db.prepare('SELECT line_items FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
+    const orders = db.prepare('SELECT line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
     const productCounts = {};
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
 
@@ -137,7 +137,7 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
   if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
 
   try {
-    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
+    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
 
