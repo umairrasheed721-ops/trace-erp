@@ -152,6 +152,19 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
     const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
     
     db.transaction(() => {
+      // 1. SYNC TO MASTER REGISTRY (Auto-learn)
+      for (const [pName, pCost] of Object.entries(mappings)) {
+        db.prepare(`
+          INSERT INTO product_master_costs (store_id, parent_title, unit_cost, landed_cost, updated_at)
+          VALUES (?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(store_id, parent_title) DO UPDATE SET
+            unit_cost = excluded.unit_cost,
+            landed_cost = excluded.landed_cost,
+            updated_at = datetime('now')
+        `).run(Number(store_id), pName, pCost, pCost);
+      }
+
+      // 2. Apply to zero-cost orders
       for (const order of orders) {
         const itemsStr = order.line_items || order.product_titles;
         if (!itemsStr) continue;
@@ -487,6 +500,88 @@ router.post('/create-ghost-order', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ==========================================
+// 💎 MASTER COST MANAGER
+// ==========================================
+
+// GET /api/finance/master-costs?store_id=1
+router.get('/master-costs', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  try {
+    const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC').all(Number(store_id));
+    res.json(costs);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/finance/master-costs
+router.post('/master-costs', (req, res) => {
+  const { store_id, parent_title, unit_cost, packaging_cost } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
+    db.prepare(`
+      INSERT INTO product_master_costs (store_id, parent_title, unit_cost, packaging_cost, landed_cost, updated_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(store_id, parent_title) DO UPDATE SET
+        unit_cost = excluded.unit_cost,
+        packaging_cost = excluded.packaging_cost,
+        landed_cost = excluded.landed_cost,
+        updated_at = datetime('now')
+    `).run(Number(store_id), parent_title, unit_cost || 0, packaging_cost || 0, landed_cost);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/finance/auto-heal-all
+router.post('/auto-heal-all', (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const catalog = db.prepare('SELECT parent_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+    const costMap = {};
+    catalog.forEach(c => costMap[c.parent_title] = c.landed_cost);
+
+    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
+    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+    let healedCount = 0;
+
+    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
+    
+    db.transaction(() => {
+      for (const order of orders) {
+        const itemsStr = order.line_items || order.product_titles;
+        if (!itemsStr) continue;
+
+        let totalCost = 0;
+        let matched = false;
+        let match;
+        regex.lastIndex = 0;
+        
+        while ((match = regex.exec(itemsStr)) !== null) {
+          const fullName = match[1].trim();
+          const qty = parseInt(match[2]) || 0;
+          const parentName = fullName.split(' - ')[0].trim();
+          
+          if (costMap[parentName] !== undefined) {
+            totalCost += costMap[parentName] * qty;
+            matched = true;
+          }
+        }
+
+        if (matched) {
+          updateStmt.run(totalCost, order.id);
+          healedCount++;
+        }
+      }
+    })();
+
+    res.json({ success: true, count: healedCount });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

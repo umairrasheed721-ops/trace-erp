@@ -173,6 +173,18 @@ function initDb() {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, view_name)
     );
+
+    CREATE TABLE IF NOT EXISTS product_master_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      parent_title TEXT NOT NULL,
+      unit_cost REAL DEFAULT 0,
+      packaging_cost REAL DEFAULT 0,
+      landed_cost REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(store_id, parent_title)
+    );
   `);
 
   // MIGRATION: Update Instaworld URL if it's the old one

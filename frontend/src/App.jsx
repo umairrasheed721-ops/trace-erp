@@ -21,6 +21,7 @@ const Connect = lazy(() => import('./pages/Connect'))
 const Login = lazy(() => import('./pages/Login'))
 const Users = lazy(() => import('./pages/Users'))
 const Profile = lazy(() => import('./pages/Profile'))
+const CostManager = lazy(() => import('./pages/CostManager'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -58,6 +59,7 @@ function AppContent() {
                 <Route path="/connect" element={<Connect />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/costing" element={<CostManager />} />
               </Routes>
             </Suspense>
           </div>

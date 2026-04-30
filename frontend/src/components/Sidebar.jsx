@@ -11,6 +11,7 @@ export default function Sidebar() {
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'view_finance' },
+    { to: '/costing', icon: '💎', label: 'Master Costing', permission: 'view_finance' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'view_reports' },
     { to: '/intelligence', icon: '🧠', label: 'Courier Intelligence', permission: 'view_reports' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
