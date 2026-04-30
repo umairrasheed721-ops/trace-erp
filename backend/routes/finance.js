@@ -726,7 +726,6 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
     const { store_id, parent_title } = req.body;
     if (!store_id || !parent_title) return res.status(400).json({ error: "Missing required fields" });
 
-    const db = getDb();
     const result = db.prepare(`
       UPDATE product_master_costs 
       SET unit_cost = shopify_cost,
