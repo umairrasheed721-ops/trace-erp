@@ -109,11 +109,12 @@ router.get('/missing-product-list', (req, res) => {
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
 
     orders.forEach(o => {
-      if (!o.line_items) return;
+      const itemsStr = o.line_items || o.product_titles;
+      if (!itemsStr) return;
+      
       let match;
-      // Reset regex index for each string
       regex.lastIndex = 0; 
-      while ((match = regex.exec(o.line_items)) !== null) {
+      while ((match = regex.exec(itemsStr)) !== null) {
         const name = match[1].trim();
         if (!name) continue;
         productCounts[name] = (productCounts[name] || 0) + 1;
@@ -136,7 +137,7 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
   if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
 
   try {
-    const orders = db.prepare('SELECT id, line_items FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
+    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
 
@@ -144,12 +145,15 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
     
     db.transaction(() => {
       for (const order of orders) {
+        const itemsStr = order.line_items || order.product_titles;
+        if (!itemsStr) continue;
+
         let totalCost = 0;
         let matched = false;
         let match;
         regex.lastIndex = 0;
         
-        while ((match = regex.exec(order.line_items)) !== null) {
+        while ((match = regex.exec(itemsStr)) !== null) {
           const name = match[1].trim();
           const qty = parseInt(match[2]) || 0;
           if (mappings[name] !== undefined) {
