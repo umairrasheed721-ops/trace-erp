@@ -49,6 +49,60 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     if (onProgress) onProgress(status, progress, processed, total);
   };
 
+  const CHUNK_SIZE = 500; // Process and insert 500 orders at a time
+
+  const insertOrder = db.prepare(`
+    INSERT OR IGNORE INTO orders (
+      store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
+      address, city, price, tracking_number, items_count, notes, product_titles,
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+  `);
+
+  const insertChunk = db.transaction((orders, costMap) => {
+    let count = 0;
+    for (const order of orders) {
+      try {
+        const addr = order.shipping_address || {};
+        const customer = order.customer || {};
+        const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+
+        let totalCost = 0, productTitles = [], activeCount = 0;
+        order.line_items.forEach(item => {
+          const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+          if (qty === 0) return;
+          totalCost += (costMap[String(item.variant_id)] || 0) * qty;
+          productTitles.push(`${item.name} (x${qty})`);
+          activeCount++;
+        });
+
+        const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+        const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+        const tracking = ful?.tracking_number || '';
+        const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
+        const source = detectOrderSource(order);
+
+        insertOrder.run(
+          storeId, String(order.id), order.name,
+          `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || ''),
+          (order.created_at || '').split('T')[0],
+          addr.phone || customer.phone || '',
+          `${addr.address1 || ''} ${addr.city || ''}`.trim(),
+          addr.city || '',
+          finalPrice, tracking, activeCount, order.note || '',
+          productTitles.join(', '),
+          order.cancelled_at ? 'Cancelled' : 'Pending',
+          order.financial_status === 'paid' ? 'Paid' : 'Pending',
+          0.5, courier, totalCost, source
+        );
+        count++;
+      } catch (e) {
+        console.error(`Skip order ${order.id}: ${e.message}`);
+      }
+    }
+    return count;
+  });
+
   try {
     updateStatus('syncing', 'Initializing sync...');
     const { forceDeepSync = false } = options;
@@ -62,6 +116,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     let totalScanned = 0;
     let keepFetching = true;
 
+    // ── Phase 1: Scan all pages ──────────────────────────────────────
     while (nextUrl && keepFetching) {
       const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
 
@@ -79,7 +134,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
       const newlyFoundInBatch = batch.filter(o => !existingIds.has(String(o.id)));
       newOrdersFound.push(...newlyFoundInBatch);
 
-      updateStatus('syncing', `Scanning batch... Scanned ${totalScanned} orders. Found ${newOrdersFound.length} new.`, totalScanned, totalScanned + 100);
+      updateStatus('syncing', `Phase 1/2 — Scanning... ${totalScanned} scanned, ${newOrdersFound.length} new found.`, totalScanned, totalScanned + 100);
       console.log(`[ShopifySync] ${shop_domain}: Scanned ${totalScanned}, New ${newOrdersFound.length}`);
 
       if (!forceDeepSync && newlyFoundInBatch.length < batch.length) {
@@ -96,72 +151,50 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
       return { added: 0 };
     }
 
-    const allVariantIds = [...new Set(
-      newOrdersFound.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
-    )];
-    
-    updateStatus('syncing', `Fetching costs for ${allVariantIds.length} variants...`, totalScanned, totalScanned + 50);
-    const costMap = await getLiveShopifyCosts(shop_domain, access_token, allVariantIds, (msg) => updateStatus('syncing', msg, totalScanned, totalScanned + 50));
+    // ── Phase 2: Process in chunks of CHUNK_SIZE ─────────────────────
+    // Reverse so oldest orders are inserted first (chronological)
+    const ordersToInsert = newOrdersFound.reverse();
+    const totalNew = ordersToInsert.length;
+    let totalAdded = 0;
+    const numChunks = Math.ceil(totalNew / CHUNK_SIZE);
 
-    const insertOrder = db.prepare(`
-      INSERT OR IGNORE INTO orders (
-        store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
-        address, city, price, tracking_number, items_count, notes, product_titles,
-        delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
-    `);
+    for (let c = 0; c < numChunks; c++) {
+      const chunk = ordersToInsert.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
+      const chunkNum = c + 1;
 
-    const insertMany = db.transaction(orders => {
-      let count = 0;
-      for (const order of orders) {
-        try {
-          const addr = order.shipping_address || {};
-          const customer = order.customer || {};
-          const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+      updateStatus(
+        'syncing',
+        `Phase 2/2 — Chunk ${chunkNum}/${numChunks}: Fetching costs for ${chunk.length} orders...`,
+        totalAdded, totalNew
+      );
 
-          let totalCost = 0, productTitles = [], activeCount = 0;
-          order.line_items.forEach(item => {
-            const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-            if (qty === 0) return;
-            totalCost += (costMap[String(item.variant_id)] || 0) * qty;
-            productTitles.push(`${item.name} (x${qty})`);
-            activeCount++;
-          });
+      // Fetch costs only for this chunk's variants
+      const chunkVariantIds = [...new Set(
+        chunk.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
+      )];
 
-          const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
-          const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
-          const tracking = ful?.tracking_number || '';
-          const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
-          const source = detectOrderSource(order);
+      const costMap = await getLiveShopifyCosts(
+        shop_domain, access_token, chunkVariantIds,
+        (msg) => updateStatus('syncing', `Chunk ${chunkNum}/${numChunks} — ${msg}`, totalAdded, totalNew)
+      );
 
-          insertOrder.run(
-            storeId, String(order.id), order.name,
-            `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || ''),
-            (order.created_at || '').split('T')[0],
-            addr.phone || customer.phone || '',
-            `${addr.address1 || ''} ${addr.city || ''}`.trim(),
-            addr.city || '',
-            finalPrice, tracking, activeCount, order.note || '',
-            productTitles.join(', '),
-            order.cancelled_at ? 'Cancelled' : 'Pending',
-            order.financial_status === 'paid' ? 'Paid' : 'Pending',
-            0.5, courier, totalCost, source
-          );
-          count++;
-        } catch (e) {
-          console.error(`Skip order ${order.id}: ${e.message}`);
-        }
-      }
-      return count;
-    });
+      // Insert this chunk immediately — saved even if server crashes after
+      const added = insertChunk(chunk, costMap);
+      totalAdded += added;
 
-    updateStatus('syncing', `Saving ${newOrdersFound.length} orders...`, 95, 100);
-    const added = insertMany(newOrdersFound.reverse());
+      db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
+      console.log(`✅ [ShopifySync] Chunk ${chunkNum}/${numChunks} done — inserted ${added}. Total so far: ${totalAdded}/${totalNew}`);
 
-    db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
-    console.log(`✅ Shopify Fetch [${shop_domain}]: Added ${added} new orders`);
-    updateStatus('idle', `Finished. Added ${added} orders.`);
-    return { added };
+      updateStatus(
+        'syncing',
+        `Phase 2/2 — Chunk ${chunkNum}/${numChunks} saved ✓ (${totalAdded}/${totalNew} inserted so far)`,
+        totalAdded, totalNew
+      );
+    }
+
+    console.log(`✅ Shopify Fetch [${shop_domain}]: Added ${totalAdded} new orders`);
+    updateStatus('idle', `Finished. Added ${totalAdded} of ${totalNew} orders.`);
+    return { added: totalAdded };
   } catch (err) {
     console.error(`Sync error for ${shop_domain}:`, err.message);
     updateStatus('error', `Sync failed: ${err.message}`);
