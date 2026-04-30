@@ -97,6 +97,23 @@ export default function CostManager() {
     }
   }
 
+  const handleBulkAcceptShopify = async (parentTitle) => {
+    try {
+      const res = await fetch('/api/finance/bulk-accept-shopify-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast("All variants accepted!", 'success');
+        fetchCosts();
+      }
+    } catch (e) {
+      addToast("Failed to accept costs: " + e.message, 'error');
+    }
+  }
+
   const handleBulkSync = async (e) => {
     e.preventDefault()
     try {
@@ -364,13 +381,24 @@ export default function CostManager() {
                               </button>
                             </>
                           ) : (
-                            <button 
-                              className="btn btn-sm" 
-                              style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
-                              onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
-                            >
-                              ⚡ Bulk Sync
-                            </button>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {parent.hasConflict && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '4px 10px', fontSize: 10 }}
+                                  onClick={(e) => { e.stopPropagation(); handleBulkAcceptShopify(parent.name); }}
+                                >
+                                  Accept All
+                                </button>
+                              )}
+                              <button 
+                                className="btn btn-sm" 
+                                style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
+                                onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
+                              >
+                                ⚡ Bulk Sync
+                              </button>
+                            </div>
                           )}
                         </div>
                       </td>

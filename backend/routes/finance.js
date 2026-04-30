@@ -721,4 +721,26 @@ router.post('/bulk-sync-parent-costs', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/bulk-accept-shopify-costs', (req, res) => {
+  try {
+    const { store_id, parent_title } = req.body;
+    if (!store_id || !parent_title) return res.status(400).json({ error: "Missing required fields" });
+
+    const db = getDb();
+    const result = db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = shopify_cost,
+          packaging_cost = 0,
+          landed_cost = shopify_cost,
+          updated_at = datetime('now')
+      WHERE store_id = ? AND parent_title = ? AND shopify_cost > 0
+    `).run(Number(store_id), parent_title);
+
+    res.json({ success: true, message: `Accepted costs for ${result.changes} variants` });
+  } catch (error) {
+    console.error("Bulk Accept Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
