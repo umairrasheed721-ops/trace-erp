@@ -642,7 +642,7 @@ export default function SearchTool() {
     const isSpecial = status && status.startsWith('[')
     const queryStatus = isSpecial ? '' : (status === 'All Statuses' ? '' : status)
     
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&status=${queryStatus||''}&t=${Date.now()}`)
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=100000&status=${queryStatus||''}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
@@ -1220,6 +1220,11 @@ export default function SearchTool() {
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
         <div className="table-wrapper">
+          {results.length > 1000 && (
+            <div style={{ background: 'rgba(251, 191, 36, 0.1)', borderBottom: '1px solid #fbbf24', color: '#fbbf24', padding: '10px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span>💡 <b>Showing first 1,000 of {results.length.toLocaleString()} matching orders.</b> Use filters to narrow down the list.</span>
+            </div>
+          )}
           <table className="draggable-table">
             <thead>
               <tr>
@@ -1275,7 +1280,7 @@ export default function SearchTool() {
               </tr>
             </thead>
             <tbody>
-              {results.map(o => {
+              {results.slice(0, 1000).map(o => {
                 const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
                 const isClear = Math.abs(diff) <= 1
                 const { bg, color } = getStatusColor(o.delivery_status)
