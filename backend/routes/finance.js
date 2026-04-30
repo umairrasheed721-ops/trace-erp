@@ -95,6 +95,79 @@ router.post('/repair-legacy', async (req, res) => {
   }
 });
 
+// GET /api/finance/missing-product-list?store_id=1
+router.get('/missing-product-list', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const orders = db.prepare('SELECT line_items FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
+    const productCounts = {};
+    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+
+    orders.forEach(o => {
+      if (!o.line_items) return;
+      let match;
+      // Reset regex index for each string
+      regex.lastIndex = 0; 
+      while ((match = regex.exec(o.line_items)) !== null) {
+        const name = match[1].trim();
+        if (!name) continue;
+        productCounts[name] = (productCounts[name] || 0) + 1;
+      }
+    });
+
+    const list = Object.entries(productCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/apply-bulk-product-costs
+router.post('/apply-bulk-product-costs', async (req, res) => {
+  const { store_id, mappings } = req.body; // mappings: { "Product Name": 1200, ... }
+  if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
+
+  try {
+    const orders = db.prepare('SELECT id, line_items FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(store_id);
+    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+    let healedCount = 0;
+
+    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
+    
+    db.transaction(() => {
+      for (const order of orders) {
+        let totalCost = 0;
+        let matched = false;
+        let match;
+        regex.lastIndex = 0;
+        
+        while ((match = regex.exec(order.line_items)) !== null) {
+          const name = match[1].trim();
+          const qty = parseInt(match[2]) || 0;
+          if (mappings[name] !== undefined) {
+            totalCost += mappings[name] * qty;
+            matched = true;
+          }
+        }
+
+        if (matched) {
+          updateStmt.run(totalCost, order.id);
+          healedCount++;
+        }
+      }
+    })();
+
+    res.json({ success: true, count: healedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // 📦 UNIFIED RETURNS MANAGER
 // ==========================================

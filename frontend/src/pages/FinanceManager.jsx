@@ -17,7 +17,11 @@ export default function FinanceManager() {
   const [selectedCourier, setSelectedCourier] = useState('All Inactive')
   const [daysOld, setDaysOld] = useState(60)
   const [isRepairing, setIsRepairing] = useState(false)
-  const [repairResult, setRepairResult] = useState(null)
+  const [repairResult, setRepairResult] = useState(null);
+  const [ghostProducts, setGhostProducts] = useState([]);
+  const [productCosts, setProductCosts] = useState({});
+  const [isScanning, setIsScanning] = useState(false);
+  const [isHealing, setIsHealing] = useState(false);
 
   useEffect(() => {
     if (activeStoreId) {
@@ -35,27 +39,67 @@ export default function FinanceManager() {
   }
 
   const handleRepair = async () => {
-    if (!activeStoreId) return
-    if (!window.confirm(`🚨 Are you sure? This will scan orders older than ${daysOld} days for '${selectedCourier}' and update their status by checking Shopify. This process might take a few minutes.`)) return
-    
-    setIsRepairing(true)
-    setRepairResult(null)
+    if (!activeStoreId) return;
+    setIsRepairing(true);
+    setRepairResult(null);
     try {
-      const res = await fetch(`/api/finance/repair-legacy`, {
+      const res = await fetch('/api/finance/repair-legacy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId, courier: selectedCourier, daysOld })
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (data.success) {
-        setRepairResult(data)
-        fetchHistory() // Refresh history to show the repair session
+        setRepairResult(data);
+        addToast(`Repair complete! Healed ${data.count} orders.`, 'success');
       } else {
-        alert('❌ Repair Failed: ' + data.error)
+        addToast(data.error || 'Repair failed', 'error');
       }
-    } catch (e) { alert('Network Error: ' + e.message) }
-    finally { setIsRepairing(false) }
-  }
+    } catch (e) {
+      addToast('Repair failed: ' + e.message, 'error');
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
+  const fetchMissingProducts = async () => {
+    if (!activeStoreId) return;
+    setIsScanning(true);
+    try {
+      const res = await fetch(`/api/finance/missing-product-list?store_id=${activeStoreId}`);
+      const data = await res.json();
+      setGhostProducts(data || []);
+      if (data.length === 0) addToast('No products with missing costs found!', 'info');
+    } catch (e) {
+      addToast('Failed to fetch product list', 'error');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const applyBulkCosts = async () => {
+    if (!activeStoreId || Object.keys(productCosts).length === 0) return;
+    setIsHealing(true);
+    try {
+      const res = await fetch('/api/finance/apply-bulk-product-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, mappings: productCosts })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast(`Successfully healed ${data.count} orders!`, 'success');
+        setGhostProducts([]);
+        setProductCosts({});
+      } else {
+        addToast(data.error || 'Healing failed', 'error');
+      }
+    } catch (e) {
+      addToast('Healing error: ' + e.message, 'error');
+    } finally {
+      setIsHealing(false);
+    }
+  };
 
   const fetchHistory = async () => {
     setLoadingHistory(true)
@@ -421,6 +465,69 @@ export default function FinanceManager() {
                   </div>
                 )}
              </div>
+          </div>
+
+          {/* 💰 Product Cost Recovery Tool */}
+          <div className="stat-card" style={{ marginTop: 24, border: '1px solid rgba(16, 185, 129, 0.2)', backgroundColor: 'rgba(16, 185, 129, 0.05)' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#10b981' }}>💰 Product Cost Recovery</h3>
+            <p style={{ fontSize: '0.75rem', opacity: 0.7, margin: '8px 0 16px 0' }}>
+              Assign costs to "Ghost Products" (deleted from Shopify) to fix P&L for historical orders.
+            </p>
+
+            {ghostProducts.length === 0 ? (
+              <button 
+                className="btn" 
+                onClick={fetchMissingProducts} 
+                disabled={isScanning || isProcessing}
+                style={{ width: '100%', padding: '12px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontWeight: 700 }}
+              >
+                {isScanning ? '🔍 Scanning Orders...' : '🔍 Find Missing Costs'}
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: 8 }}>
+                  <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                        <th style={{ padding: '8px 4px' }}>Product Title</th>
+                        <th style={{ padding: '8px 4px', width: 60 }}>Orders</th>
+                        <th style={{ padding: '8px 4px', width: 100 }}>Unit Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ghostProducts.map(p => (
+                        <tr key={p.name} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '8px 4px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</td>
+                          <td style={{ padding: '8px 4px' }}>{p.count}</td>
+                          <td style={{ padding: '8px 4px' }}>
+                            <input 
+                              type="number" 
+                              className="form-input" 
+                              placeholder="0"
+                              value={productCosts[p.name] || ''}
+                              onChange={e => setProductCosts(prev => ({ ...prev, [p.name]: parseFloat(e.target.value) }))}
+                              style={{ padding: '4px 8px', fontSize: '0.75rem', height: 28, background: 'rgba(0,0,0,0.3)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex gap-2">
+                  <button className="btn btn-secondary" onClick={() => setGhostProducts([])} style={{ flex: 1 }}>Cancel</button>
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={applyBulkCosts} 
+                    disabled={isHealing || Object.keys(productCosts).length === 0}
+                    style={{ flex: 2, background: '#10b981', color: 'white', border: 'none', fontWeight: 700 }}
+                  >
+                    {isHealing ? '⌛ Healing...' : `🚀 Apply to ${ghostProducts.length} Products`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
