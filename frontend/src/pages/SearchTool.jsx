@@ -1420,7 +1420,25 @@ export default function SearchTool() {
                           {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
                         </td>
                       )
-                      if (col.id === 'delivery_status') return <td key={col.id}><span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span></td>
+                      if (col.id === 'delivery_status') {
+                        const isExchange = s.includes('delivered') && (parseInt(o.items_count) === 0 || !o.cost || parseFloat(o.cost) === 0);
+                        return (
+                          <td key={col.id}>
+                            <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+                              <span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span>
+                              {isExchange && (
+                                <span 
+                                  className="badge" 
+                                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.55rem', border: '1px solid var(--blue)' }}
+                                  title="Inventory was restocked/removed after delivery (likely an Exchange)"
+                                >
+                                  🔄 EXCHANGE
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      }
                       if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
                       if (col.id === 'tracking_number') {
                         const courierStr = (o.courier || '').toLowerCase();
@@ -1493,6 +1511,9 @@ export default function SearchTool() {
                   <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Order {editingOrder.ref_number || editingOrder.shopify_order_id}</h2>
                   <span className="badge" style={{ background: 'var(--yellow-dim)', color: 'var(--yellow)' }}>{editingOrder.payment_status || 'Pending'}</span>
                   <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>{editingOrder.delivery_status || 'Unfulfilled'}</span>
+                  { (editingOrder.delivery_status || '').toLowerCase().includes('delivered') && (parseInt(editingOrder.items_count) === 0 || !editingOrder.cost || parseFloat(editingOrder.cost) === 0) && (
+                    <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.7rem', border: '1px solid var(--blue)' }}>🔄 EXCHANGE / RESTOCKED</span>
+                  )}
                 </div>
                 <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(editingOrder.order_date).toLocaleString()}</p>
               </div>
