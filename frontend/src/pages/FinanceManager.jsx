@@ -516,8 +516,11 @@ export default function FinanceManager() {
                               type="number" 
                               className="form-input" 
                               placeholder="0"
-                              value={productCosts[p.name] || ''}
-                              onChange={e => setProductCosts(prev => ({ ...prev, [p.name]: parseFloat(e.target.value) }))}
+                              value={productCosts[p.name] ?? ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setProductCosts(prev => ({ ...prev, [p.name]: val === '' ? '' : parseFloat(val) }));
+                              }}
                               style={{ padding: '4px 8px', fontSize: '0.75rem', height: 28, background: 'rgba(0,0,0,0.3)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
                             />
                           </td>
