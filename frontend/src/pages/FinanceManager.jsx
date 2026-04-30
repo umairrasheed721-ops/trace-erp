@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function FinanceManager() {
-  const { activeStoreId } = useApp()
+  const { activeStoreId, addToast } = useApp()
   const [pasteData, setPasteData] = useState('')
   const [masterKey, setMasterKey] = useState('Match by Tracking Number')
   const [syncToShopify, setSyncToShopify] = useState(true)
