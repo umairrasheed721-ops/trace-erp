@@ -258,6 +258,10 @@ export default function CostManager() {
     
     grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
     if (landed > 0) grouped[c.parent_title].hasCost = true
+    
+    // Track unique costs for the hint
+    if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
+    grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
   })
 
   const sorted = Object.values(grouped)
@@ -381,8 +385,21 @@ export default function CostManager() {
                         />
                       </td>
                       <td style={{ padding: 15, fontWeight: 'bold' }}>
-                        {expandedParents.has(p.name) ? '▼' : '▶'} {p.name}
-                        {p.hasCost && <span style={{ marginLeft: 10, fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</span>
+                          {p.hasCost && <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', marginTop: 4, opacity: 0.6, fontWeight: 'normal' }}>
+                          {(() => {
+                            const costs = Array.from(p.uniqueCosts).sort((a,b) => a-b)
+                            const hasZero = costs.includes(0)
+                            return (
+                              <span style={{ color: hasZero ? '#f87171' : 'inherit' }}>
+                                {hasZero ? '⚠️ Needs Costing (Contains Rs. 0)' : `Price range: Rs ${costs.join(', Rs ')}`}
+                              </span>
+                            )
+                          })()}
+                        </div>
                       </td>
                       <td style={{ textAlign: 'right' }}>—</td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? '#34d399' : 'inherit' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0 (No Stock)') : '—'}</td>
