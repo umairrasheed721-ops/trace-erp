@@ -17,10 +17,65 @@ export default function CostManager() {
   const [bulkItem, setBulkItem] = useState(null)
   const [form, setForm] = useState({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 })
   const [bulkForm, setBulkForm] = useState({ unit_cost: 0, packaging_cost: 0 })
+  const [activeTab, setActiveTab] = useState('master')
+  
+  // Ghost Listing States
+  const [ghosts, setGhosts] = useState([])
+  const [showGhostModal, setShowGhostModal] = useState(false)
+  const [inspectingGhost, setInspectingGhost] = useState(null)
+  const [ghostOrders, setGhostOrders] = useState([])
+  const [loadingGhostOrders, setLoadingGhostOrders] = useState(false)
+  const [ghostCosts, setGhostCosts] = useState({}) // { productName: cost }
 
   useEffect(() => {
-    if (activeStoreId) fetchCosts()
+    if (activeStoreId) {
+      fetchCosts()
+      fetchGhosts()
+    }
   }, [activeStoreId])
+
+  const fetchGhosts = async () => {
+    try {
+      const res = await fetch(`/api/finance/missing-product-list?store_id=${activeStoreId}`)
+      const data = await res.json()
+      setGhosts(data)
+    } catch (e) { console.error('Failed to fetch ghosts', e) }
+  }
+
+  const handleInspectGhost = async (name) => {
+    setInspectingGhost(name)
+    setShowGhostModal(true)
+    setLoadingGhostOrders(true)
+    try {
+      const res = await fetch(`/api/finance/ghost-product-orders?store_id=${activeStoreId}&name=${encodeURIComponent(name)}`)
+      const data = await res.json()
+      setGhostOrders(data)
+    } catch (e) { addToast('Failed to load orders', 'error') }
+    finally { setLoadingGhostOrders(false) }
+  }
+
+  const handleApplyGhostCosts = async () => {
+    const mappings = {}
+    Object.entries(ghostCosts).forEach(([name, cost]) => {
+      if (parseFloat(cost) > 0) mappings[name] = parseFloat(cost)
+    })
+    if (Object.keys(mappings).length === 0) return addToast('Please enter at least one cost', 'warning')
+
+    try {
+      const res = await fetch('/api/finance/apply-bulk-product-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, mappings })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Healed ${data.count} orders!`, 'success')
+        fetchGhosts()
+        fetchCosts()
+        setGhostCosts({})
+      }
+    } catch (e) { addToast('Failed to apply costs', 'error') }
+  }
 
   const fetchCosts = async () => {
     setLoading(true)
@@ -690,6 +745,43 @@ export default function CostManager() {
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, background: '#3b82f6' }}>Sync All Variants</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 👻 GHOST REGISTRY MODAL */}
+      {showGhostModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 700 }}>
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ margin: 0 }}>🔍 Inspecting: {inspectingGhost}</h2>
+              <p style={{ opacity: 0.6, fontSize: '0.9rem' }}>Reviewing historical orders associated with this ghost listing.</p>
+            </div>
+            
+            <div style={{ maxHeight: 400, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12 }}>
+              <table style={{ width: '100%', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ opacity: 0.5, textAlign: 'left' }}>
+                    <th style={{ padding: 8 }}>Date</th>
+                    <th style={{ padding: 8 }}>Order #</th>
+                    <th style={{ padding: 8, textAlign: 'right' }}>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ghostOrders.map((o, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: 8 }}>{o.date}</td>
+                      <td style={{ padding: 8 }}>{o.order_number}</td>
+                      <td style={{ padding: 8, textAlign: 'right' }}>Rs. {o.price.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: 24, textAlign: 'right' }}>
+              <button className="btn btn-secondary" onClick={() => setShowGhostModal(false)}>Close Inspector</button>
+            </div>
           </div>
         </div>
       )}

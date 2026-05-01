@@ -137,6 +137,30 @@ router.get('/missing-product-list', (req, res) => {
   }
 });
 
+// GET /api/finance/ghost-product-orders?store_id=1&name=Product%20Name
+router.get('/ghost-product-orders', (req, res) => {
+  const { store_id, name } = req.query;
+  if (!store_id || !name) return res.status(400).json({ error: 'store_id and name required' });
+
+  try {
+    // We search for orders where the product name appears in line_items or product_titles
+    // and the cost is 0 (unhealed)
+    const orders = db.prepare(`
+      SELECT id, shopify_order_id, ref_number, customer_name, order_date, price, delivery_status, product_titles
+      FROM orders 
+      WHERE store_id = ? 
+      AND (cost = 0 OR cost IS NULL)
+      AND (line_items LIKE ? OR product_titles LIKE ?)
+      ORDER BY order_date DESC
+      LIMIT 100
+    `).all(Number(store_id), `%${name}%`, `%${name}%`);
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // 📦 UNIFIED RETURNS MANAGER
 // ==========================================
