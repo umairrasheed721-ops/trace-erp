@@ -324,6 +324,30 @@ export default function SearchTool() {
     finally { setBulkActionLoading(false) }
   }
 
+  const handleBulkSyncStatus = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`🔄 Sync status for ${selectedIds.length} orders from Shopify?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-sync-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`✅ Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
+        setSelectedIds([])
+        // We could manually update local state, but a refresh is safer for bulk
+        window.location.reload()
+      } else {
+        addToast(`❌ Sync Failed: ${data.error}`, 'error')
+      }
+    } catch { addToast('Network error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
   const handleBulkBookPostEx = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx?`)) return
@@ -1169,6 +1193,15 @@ export default function SearchTool() {
             style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
           >
             {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
+          </button>
+
+          <button 
+            disabled={bulkActionLoading}
+            onClick={handleBulkSyncStatus}
+            className="btn btn-sm" 
+            style={{ background: 'black', color: 'white', fontWeight: 700 }}
+          >
+            {bulkActionLoading ? '⌛...' : '🔄 SYNC STATUS (FORCE)'}
           </button>
 
           <button 

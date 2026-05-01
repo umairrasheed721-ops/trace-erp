@@ -706,4 +706,67 @@ async function syncOrderByNumber(store, orderName) {
   }
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, syncOrderByNumber, registerShopifyWebhooks, fulfillShopifyOrder, updateShopifyAddress };
+async function syncSpecificOrders(store, shopifyIds) {
+  const { shop_domain, access_token } = store;
+  if (!shopifyIds.length) return 0;
+  
+  let updatedCount = 0;
+  const idsParam = shopifyIds.join(',');
+  const url = `https://${shop_domain}/admin/api/2024-10/orders.json?ids=${idsParam}&status=any`;
+
+  try {
+    const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': access_token } });
+    const data = await res.json();
+    const shopifyOrders = data.orders || [];
+
+    const updateStmt = db.prepare(`
+      UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
+      payment_status=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
+      WHERE shopify_order_id=? AND store_id=?
+    `);
+
+    for (const fresh of shopifyOrders) {
+      const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
+      let productTitles = [];
+      fresh.line_items.forEach(item => {
+        const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+        if (qty > 0) productTitles.push(`${item.name} (x${qty})`);
+      });
+
+      const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
+      const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+      const tracking = ful?.tracking_number || '';
+      const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
+
+      let newStatus = 'Pending';
+      if (fresh.cancelled_at) newStatus = 'Cancelled';
+      else if (fresh.financial_status === 'voided') newStatus = 'Voided';
+      else if (fresh.return_status === 'returned') newStatus = 'Returned';
+      else if (fresh.fulfillment_status === 'fulfilled') newStatus = 'Booked';
+
+      updateStmt.run(
+        finalPrice, fresh.line_items.length, fresh.note || '',
+        productTitles.join(', '),
+        fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
+        tracking, courier, newStatus,
+        String(fresh.id), store.id
+      );
+      updatedCount++;
+    }
+  } catch (e) {
+    console.error('Bulk Specific Sync Error:', e.message);
+  }
+  return updatedCount;
+}
+
+module.exports = { 
+  fetchShopifyOrders, 
+  refreshShopifyUpdates, 
+  getLiveShopifyCosts, 
+  syncSingleShopifyOrder, 
+  syncOrderByNumber, 
+  registerShopifyWebhooks, 
+  fulfillShopifyOrder, 
+  updateShopifyAddress,
+  syncSpecificOrders 
+};

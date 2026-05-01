@@ -289,6 +289,41 @@ router.post('/bulk-book-postex', async (req, res) => {
   res.json({ success: true, count: success, failed });
 });
 
+// POST /api/orders/bulk-sync-status
+router.post('/bulk-sync-status', async (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+
+  const { refreshShopifyUpdates } = require('../engines/shopify');
+  
+  try {
+    // We fetch the store for the first order
+    const firstOrder = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
+    if (!firstOrder) throw new Error('No orders found');
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(firstOrder.store_id);
+
+    // Instead of a full scan, we refresh specific orders
+    // We'll process them in small batches to avoid timeouts
+    let updatedCount = 0;
+    const batchSize = 50;
+    
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batchIds = ids.slice(i, i + batchSize);
+      const ordersToSync = db.prepare(`SELECT shopify_order_id FROM orders WHERE id IN (${batchIds.map(() => '?').join(',')})`).all(...batchIds);
+      const shopifyIds = ordersToSync.map(o => o.shopify_order_id);
+      
+      // We pass specific IDs to a new optimized engine function
+      const { syncSpecificOrders } = require('../engines/shopify');
+      const count = await syncSpecificOrders(store, shopifyIds);
+      updatedCount += count;
+    }
+
+    res.json({ success: true, count: updatedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/bulk-book-instaworld
 router.post('/bulk-book-instaworld', async (req, res) => {
   const { ids, courier_name } = req.body;
