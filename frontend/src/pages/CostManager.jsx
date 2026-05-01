@@ -27,6 +27,7 @@ export default function CostManager() {
   const [ghostOrders, setGhostOrders] = useState([])
   const [loadingGhostOrders, setLoadingGhostOrders] = useState(false)
   const [ghostCosts, setGhostCosts] = useState({})
+  const [ghostSearch, setGhostSearch] = useState('')
 
   useEffect(() => {
     if (activeStoreId) {
@@ -459,6 +460,23 @@ export default function CostManager() {
 
       {activeTab === 'ghosts' && (
         <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 20 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Search ghost products..." 
+                style={{ paddingLeft: 35, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(0,242,254,0.2)' }}
+                value={ghostSearch}
+                onChange={e => setGhostSearch(e.target.value)}
+              />
+            </div>
+            <div style={{ color: '#00f2fe', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+              <strong>{ghosts.length}</strong> items found
+            </div>
+          </div>
+
           <div style={{ background: 'rgba(0,242,254,0.05)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid rgba(0,242,254,0.2)' }}>
             <p style={{ margin: 0, color: '#00f2fe' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
           </div>
@@ -474,7 +492,7 @@ export default function CostManager() {
                 </tr>
               </thead>
               <tbody>
-                {ghosts.map(p => (
+                {ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => (
                   <React.Fragment key={p.name}>
                     <tr 
                       style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid #222' }} 
