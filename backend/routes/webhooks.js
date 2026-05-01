@@ -5,9 +5,9 @@ const db = require('../db');
 // POST /api/webhooks/postex
 router.post('/postex', (req, res) => {
   // 1. Security Check
-  const authHeader = req.headers.auth;
+  const authHeader = req.headers.auth || req.query.token;
   if (authHeader !== 'tracepk') {
-    console.warn('⚠️ Unauthorized PostEx Webhook Attempt');
+    console.warn('⚠️ Unauthorized PostEx Webhook Attempt (Token Mismatch)');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -29,7 +29,7 @@ router.post('/postex', (req, res) => {
 
   try {
     // Find order
-    const order = db.prepare('SELECT id, delivery_status FROM orders WHERE tracking_number = ?').get(trackingNumber);
+    const order = db.prepare('SELECT id, store_id, shopify_order_id, delivery_status FROM orders WHERE tracking_number = ?').get(trackingNumber);
     if (!order) {
       console.log(`👻 Webhook order not found: ${trackingNumber}`);
       return res.json({ success: true, message: 'Order not in ERP' });
@@ -42,6 +42,19 @@ router.post('/postex', (req, res) => {
       statusDateTime || new Date().toISOString(),
       order.id
     );
+
+    // 🚀 PUSH TO SHOPIFY IN REAL-TIME
+    if (['Delivered', 'Returned', 'Return Received', 'Cancelled'].includes(transactionStatus)) {
+      const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+      if (store) {
+        const { fulfillShopifyOrder } = require('../engines/shopify');
+        // If it's delivered, mark as paid too
+        const isPaid = (transactionStatus === 'Delivered');
+        fulfillShopifyOrder(store, order.shopify_order_id, trackingNumber, 'PostEx', isPaid)
+          .then(() => console.log(`[Webhook] Shopify updated for ${trackingNumber}`))
+          .catch(err => console.error(`[Webhook] Shopify update failed for ${trackingNumber}:`, err.message));
+      }
+    }
 
     console.log(`✅ Webhook update success: ${trackingNumber} -> ${transactionStatus}`);
     res.json({ success: true });
