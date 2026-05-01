@@ -95,6 +95,7 @@ export default function CostManager() {
   const handleDeleteParent = async (parentTitle) => {
     if (!window.confirm(`Are you sure you want to remove "${parentTitle}" and all its variants from the registry?`)) return
     try {
+      console.log(`Attempting to delete parent: ${parentTitle} for store: ${activeStoreId}`);
       const res = await fetch('/api/finance/delete-master-cost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,8 +105,12 @@ export default function CostManager() {
       if (data.success) {
         addToast(`Removed "${parentTitle}" from registry`, 'success')
         fetchCosts()
+      } else {
+        console.error('Delete failed:', data);
+        addToast(data.error || 'Delete failed', 'error')
       }
     } catch (e) {
+      console.error('Delete error:', e);
       addToast('Delete error: ' + e.message, 'error')
     }
   }
@@ -384,15 +389,17 @@ export default function CostManager() {
                       <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>
                         {!isSingleDefault && (expandedParents.has(parent.name) ? '▼' : '▶')}
                       </td>
-                      <td style={{ fontWeight: 700, padding: '16px 8px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <button 
-                          className="btn btn-sm" 
-                          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', fontSize: 10, fontWeight: 'bold', borderRadius: 4, cursor: 'pointer' }}
-                          onClick={(e) => { e.stopPropagation(); handleDeleteParent(parent.name); }}
-                        >
-                          DELETE
-                        </button>
-                        {parent.name}
+                      <td style={{ fontWeight: 700, padding: '16px 8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <button 
+                            className="btn btn-sm" 
+                            style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', fontSize: 10, fontWeight: 'bold', borderRadius: 4, cursor: 'pointer' }}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteParent(parent.name); }}
+                          >
+                            DELETE
+                          </button>
+                          {parent.name}
+                        </div>
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {isSingleDefault ? `Rs. ${mainVariant.selling_price.toLocaleString()}` : `Rs. ${parent.maxPrice.toLocaleString()}`}
