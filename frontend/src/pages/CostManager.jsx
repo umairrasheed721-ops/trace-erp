@@ -6,8 +6,8 @@ export default function CostManager() {
   const [costs, setCosts] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isHealing, setIsHealing] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [activeTab, setActiveTab] = useState('master')
   const [expandedParents, setExpandedParents] = useState(new Set())
   
   // Modal States
@@ -17,15 +17,14 @@ export default function CostManager() {
   const [bulkItem, setBulkItem] = useState(null)
   const [form, setForm] = useState({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 })
   const [bulkForm, setBulkForm] = useState({ unit_cost: 0, packaging_cost: 0 })
-  const [activeTab, setActiveTab] = useState('master')
-  
+
   // Ghost Listing States
   const [ghosts, setGhosts] = useState([])
   const [showGhostModal, setShowGhostModal] = useState(false)
   const [inspectingGhost, setInspectingGhost] = useState(null)
   const [ghostOrders, setGhostOrders] = useState([])
   const [loadingGhostOrders, setLoadingGhostOrders] = useState(false)
-  const [ghostCosts, setGhostCosts] = useState({}) // { productName: cost }
+  const [ghostCosts, setGhostCosts] = useState({})
 
   useEffect(() => {
     if (activeStoreId) {
@@ -33,6 +32,19 @@ export default function CostManager() {
       fetchGhosts()
     }
   }, [activeStoreId])
+
+  const fetchCosts = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/finance/master-costs?store_id=${activeStoreId}`)
+      const data = await res.json()
+      setCosts(Array.isArray(data) ? data : [])
+    } catch (e) {
+      addToast('Failed to load cost registry', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const fetchGhosts = async () => {
     try {
@@ -42,16 +54,21 @@ export default function CostManager() {
     } catch (e) { console.error('Failed to fetch ghosts', e) }
   }
 
-  const handleInspectGhost = async (name) => {
-    setInspectingGhost(name)
-    setShowGhostModal(true)
-    setLoadingGhostOrders(true)
+  const handleSyncShopify = async () => {
+    setIsSyncing(true)
     try {
-      const res = await fetch(`/api/finance/ghost-product-orders?store_id=${activeStoreId}&name=${encodeURIComponent(name)}`)
+      const res = await fetch('/api/finance/sync-shopify-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId })
+      })
       const data = await res.json()
-      setGhostOrders(data)
-    } catch (e) { addToast('Failed to load orders', 'error') }
-    finally { setLoadingGhostOrders(false) }
+      if (data.success) {
+        addToast(`Synced ${data.count} variants from Shopify`, 'success')
+        fetchCosts()
+      }
+    } catch (e) { addToast('Sync error: ' + e.message, 'error') }
+    finally { setIsSyncing(false) }
   }
 
   const handleApplyGhostCosts = async () => {
@@ -77,117 +94,16 @@ export default function CostManager() {
     } catch (e) { addToast('Failed to apply costs', 'error') }
   }
 
-  const fetchCosts = async () => {
-    setLoading(true)
+  const handleInspectGhost = async (name) => {
+    setInspectingGhost(name)
+    setShowGhostModal(true)
+    setLoadingGhostOrders(true)
     try {
-      const res = await fetch(`/api/finance/master-costs?store_id=${activeStoreId}`)
+      const res = await fetch(`/api/finance/ghost-product-orders?store_id=${activeStoreId}&name=${encodeURIComponent(name)}`)
       const data = await res.json()
-      setCosts(Array.isArray(data) ? data : [])
-    } catch (e) {
-      console.error('Failed to fetch costs', e)
-      addToast('Failed to load cost registry', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSyncShopify = async () => {
-    setIsSyncing(true)
-    try {
-      const res = await fetch('/api/finance/sync-shopify-costs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId })
-      })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`Synced ${data.count} product variants and prices from Shopify`, 'success')
-        fetchCosts()
-      } else {
-        addToast(data.error || 'Sync failed', 'error')
-      }
-    } catch (e) {
-      addToast('Sync error: ' + e.message, 'error')
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
-  const handleAcceptCost = async (parentTitle, variantTitle) => {
-    try {
-      const res = await fetch('/api/finance/accept-shopify-cost', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle, variant_title: variantTitle })
-      })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`Price accepted`, 'success')
-        fetchCosts()
-      }
-    } catch (e) {
-      addToast('Accept error: ' + e.message, 'error')
-    }
-  }
-
-  const handleRevertCost = async (parentTitle, variantTitle) => {
-    try {
-      const res = await fetch('/api/finance/revert-cost', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle, variant_title: variantTitle })
-      })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`Cost reverted to previous manual value`, 'success')
-        fetchCosts()
-      }
-    } catch (e) {
-      addToast('Revert error: ' + e.message, 'error')
-    }
-  }
-
-  const handleDeleteParent = async (parentTitle) => {
-    if (!parentTitle) return;
-    if (!window.confirm(`Are you sure you want to remove "${parentTitle}" and all its variants from the registry?`)) return
-    
-    try {
-      const res = await fetch('/api/finance/delete-master-cost', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
-      })
-      
-      if (!res.ok) throw new Error('Server returned ' + res.status);
-      
-      const data = await res.json()
-      if (data && data.success) {
-        addToast(`Removed "${parentTitle}" from registry`, 'success')
-        await fetchCosts()
-      } else {
-        throw new Error(data?.error || 'Unknown error');
-      }
-    } catch (e) {
-      console.error('Delete error:', e);
-      addToast('Delete failed: ' + e.message, 'error')
-    }
-  }
-
-  const handleBulkRevertCost = async (parentTitle) => {
-    try {
-      const res = await fetch('/api/finance/bulk-revert-cost', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
-      })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`Reverted costs for ${data.count} variants`, 'success')
-        fetchCosts()
-      }
-    } catch (e) {
-      addToast('Bulk Revert error: ' + e.message, 'error')
-    }
+      setGhostOrders(data)
+    } catch (e) { addToast('Failed to load orders', 'error') }
+    finally { setLoadingGhostOrders(false) }
   }
 
   const handleSave = async (e) => {
@@ -196,37 +112,30 @@ export default function CostManager() {
       const res = await fetch('/api/finance/master-costs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          store_id: activeStoreId, 
-          ...form 
-        })
+        body: JSON.stringify({ store_id: activeStoreId, ...form })
       })
       const data = await res.json()
       if (data.success) {
-        addToast('Variant cost saved', 'success')
+        addToast('Saved successfully', 'success')
         setShowModal(false)
         fetchCosts()
       }
-    } catch (e) {
-      addToast('Save error: ' + e.message, 'error')
-    }
+    } catch (e) { addToast('Save error: ' + e.message, 'error') }
   }
 
-  const handleBulkAcceptShopify = async (parentTitle) => {
+  const handleDeleteParent = async (title) => {
+    if (!window.confirm(`Delete "${title}"?`)) return
     try {
-      const res = await fetch('/api/finance/bulk-accept-shopify-costs', {
+      const res = await fetch('/api/finance/delete-master-cost', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
-      });
-      const data = await res.json();
-      if (data.success) {
-        addToast("All variants accepted!", 'success');
-        fetchCosts();
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: title })
+      })
+      if (res.ok) {
+        addToast('Deleted', 'success')
+        fetchCosts()
       }
-    } catch (e) {
-      addToast("Failed to accept costs: " + e.message, 'error');
-    }
+    } catch (e) { addToast('Delete failed', 'error') }
   }
 
   const handleBulkSync = async (e) => {
@@ -235,584 +144,198 @@ export default function CostManager() {
       const res = await fetch('/api/finance/bulk-sync-parent-costs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          store_id: activeStoreId, 
-          parent_title: bulkItem.name,
-          ...bulkForm 
-        })
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: bulkItem.name, ...bulkForm })
       })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`Applied to all ${bulkItem.variants.length} variants!`, 'success')
+      if (res.ok) {
+        addToast('Applied to all variants', 'success')
         setShowBulkModal(false)
         fetchCosts()
       }
-    } catch (e) {
-      addToast('Bulk sync error: ' + e.message, 'error')
-    }
+    } catch (e) { addToast('Bulk error', 'error') }
   }
 
-  const toggleParent = (parentName) => {
-    const newExpanded = new Set(expandedParents)
-    if (newExpanded.has(parentName)) {
-      newExpanded.delete(parentName)
-    } else {
-      newExpanded.add(parentName)
-    }
-    setExpandedParents(newExpanded)
+  const toggleParent = (name) => {
+    const next = new Set(expandedParents)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    setExpandedParents(next)
   }
 
-  // Grouping Logic
-  const rawGrouped = costs.reduce((acc, item) => {
-    if (!acc[item.parent_title]) {
-      acc[item.parent_title] = { 
-        name: item.parent_title, 
-        variants: [], 
-      }
-    }
-    acc[item.parent_title].variants.push(item)
-    return acc
-  }, {})
-
-  const groupedCosts = {}
-  Object.keys(rawGrouped).forEach(parentName => {
-    let groupVariants = rawGrouped[parentName].variants
-    
-    // 🔥 Ghost Variant Filtering: If we have real variants (sizes/colors), 
-    // ignore the "Default Title" or "" placeholder.
-    const hasRealVariants = groupVariants.some(v => v.variant_title && v.variant_title !== 'Default Title' && v.variant_title !== '')
-    if (hasRealVariants) {
-      groupVariants = groupVariants.filter(v => v.variant_title && v.variant_title !== 'Default Title' && v.variant_title !== '')
-    }
-
-    const group = {
-      name: parentName,
-      variants: groupVariants,
-      totalQty: 0,
-      totalAssetValue: 0,
-      hasConflict: false,
-      maxPrice: 0,
-      minMargin: 100
-    }
-
-    groupVariants.forEach(item => {
-      group.totalQty += item.inventory_qty
-      group.totalAssetValue += item.landed_cost * item.inventory_qty
-      
-      if (item.selling_price > group.maxPrice) {
-        group.maxPrice = item.selling_price
-      }
-
-      const margin = item.selling_price > 0 ? ((item.selling_price - item.landed_cost) / item.selling_price) * 100 : 0
-      if (margin < group.minMargin && item.selling_price > 0) {
-        group.minMargin = margin
-      }
-
-      if (item.shopify_cost > 0 && Math.abs(item.shopify_cost - item.unit_cost) > 1) {
-        group.hasConflict = true
-      }
-    })
-
-    groupedCosts[parentName] = group
+  // Grouping
+  const grouped = {}
+  costs.forEach(c => {
+    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0 }
+    grouped[c.parent_title].variants.push(c)
+    grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
+    grouped[c.parent_title].totalValue += (c.landed_cost || 0) * (c.inventory_qty || 0)
   })
 
-  const sortedParents = Object.values(groupedCosts)
+  const sorted = Object.values(grouped)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b.totalAssetValue - a.totalAssetValue)
-
-  const totalAssetValue = sortedParents.reduce((sum, p) => sum + p.totalAssetValue, 0)
-
-  const openModal = (item = null, parentName = '') => {
-    if (item) {
-      setEditingItem(item)
-      setForm({ parent_title: item.parent_title, variant_title: item.variant_title, unit_cost: item.unit_cost, packaging_cost: item.packaging_cost })
-    } else {
-      setEditingItem(null)
-      setForm({ parent_title: parentName, variant_title: '', unit_cost: 0, packaging_cost: 0 })
-    }
-    setShowModal(true)
-  }
-
-  const openBulkModal = (parent) => {
-    setBulkItem(parent)
-    // Pre-fill with first variant's cost if available
-    const first = parent.variants[0]
-    setBulkForm({ unit_cost: first?.unit_cost || 0, packaging_cost: first?.packaging_cost || 0 })
-    setShowBulkModal(true)
-  }
-
-  const getMarginColor = (margin) => {
-    if (margin <= 0) return '#ef4444'
-    if (margin < 20) return '#f97316'
-    if (margin < 40) return '#f59e0b'
-    return '#10b981'
-  }
+    .sort((a,b) => b.totalValue - a.totalValue)
 
   return (
-    <div className="page-container" style={{ maxWidth: 1400 }}>
-      <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="page-container cost-manager" style={{ padding: 30 }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
         <div>
-          <h1 className="page-title">📈 Pro Cost & Margin Manager</h1>
-          <p className="page-subtitle">Variant-level profitability analysis with automated Shopify sync.</p>
+          <h1 style={{ margin: 0, color: '#00f2fe' }}>📈 Master Costing Registry</h1>
+          <p style={{ margin: '5px 0 0', opacity: 0.6 }}>Manage product costs and fix historical ghost listings.</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={handleSyncShopify}
-            disabled={isSyncing}
-          >
-            {isSyncing ? '⌛ Syncing Prices...' : '🔄 Sync from Shopify'}
+          <button className="btn btn-secondary" onClick={handleSyncShopify} disabled={isSyncing}>
+            {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify'}
           </button>
-          <button className="btn btn-primary" onClick={() => openModal()}>+ Add New Product</button>
+          <button className="btn btn-primary" onClick={() => { setEditingItem(null); setForm({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 }); setShowModal(true); }}>
+            + Add Manual
+          </button>
         </div>
       </header>
 
-      <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
-        <div className="stat-card" style={{ flex: 1.2 }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Total Asset Value</h3>
-          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#10b981' }}>
-            Rs. {totalAssetValue.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Landed Cost × In-Stock Units</div>
-        </div>
-
-        <div className="stat-card" style={{ flex: 1, backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem', color: '#10b981' }}>Catalog Health</h3>
-          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0' }}>
-            {sortedParents.filter(p => !p.hasConflict).length} / {sortedParents.length}
-          </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Synced Parent Products</div>
-        </div>
-
-        <div className="stat-card" style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, opacity: 0.6, fontSize: '0.9rem' }}>Profit Opportunity</h3>
-          <div style={{ fontSize: 28, fontWeight: 'bold', margin: '8px 0', color: '#f59e0b' }}>
-            {costs.filter(c => c.selling_price > 0 && ((c.selling_price - c.landed_cost) / c.selling_price) < 0.2).length}
-          </div>
-          <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>Variants with Margin &lt; 20%</div>
-        </div>
+      <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid #333' }}>
+        <button onClick={() => setActiveTab('master')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'master' ? '#00f2fe' : '#666', borderBottom: activeTab === 'master' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+          📦 Master Inventory
+        </button>
+        <button onClick={() => setActiveTab('ghosts')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'ghosts' ? '#00f2fe' : '#666', borderBottom: activeTab === 'ghosts' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+          👻 Ghost Listings ({ghosts.length})
+        </button>
       </div>
 
-      <div className="stat-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <input 
-            type="text" 
-            className="form-input" 
-            placeholder="🔍 Search by product name..." 
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ maxWidth: 400 }}
-          />
-          <div style={{ display: 'flex', gap: 16, fontSize: '0.75rem', opacity: 0.6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444' }}></div> Loss</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#f59e0b' }}></div> Low Margin</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#10b981' }}></div> Healthy</div>
+      {activeTab === 'master' && (
+        <>
+          <div style={{ marginBottom: 20 }}>
+            <input type="text" className="form-input" placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
           </div>
-        </div>
-
-        <div className="table-responsive">
-          <table className="data-table" style={{ borderCollapse: 'separate', borderSpacing: '0 4px' }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#111' }}>
-              <tr>
-                <th style={{ width: 40 }}></th>
-                <th>Product / Variant</th>
-                <th style={{ textAlign: 'right' }}>Price (Shopify)</th>
-                <th style={{ textAlign: 'right' }}>Landed Cost</th>
-                <th style={{ textAlign: 'right' }}>Profit/Unit</th>
-                <th style={{ textAlign: 'right' }}>Margin %</th>
-                <th style={{ textAlign: 'right' }}>Stock Qty</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>Loading financials...</td></tr>
-              ) : sortedParents.length === 0 ? (
-                <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>No data found.</td></tr>
-              ) : sortedParents.map(parent => {
-                const isSingleDefault = parent.variants.length === 1 && (!parent.variants[0].variant_title || parent.variants[0].variant_title === 'Default Title');
-                const mainVariant = parent.variants[0];
-                
-                return (
-                  <React.Fragment key={parent.name}>
-                    {/* Parent Row */}
-                    <tr 
-                      style={{ 
-                        cursor: isSingleDefault ? 'default' : 'pointer', 
-                        background: 'rgba(255,255,255,0.03)',
-                        borderLeft: parent.hasConflict ? '4px solid #f59e0b' : 'none'
-                      }} 
-                      onClick={() => !isSingleDefault && toggleParent(parent.name)}
-                    >
-                      <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>
-                        {!isSingleDefault && (expandedParents.has(parent.name) ? '▼' : '▶')}
-                      </td>
-                      <td style={{ fontWeight: 700, padding: '16px 8px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <button 
-                          className="btn btn-sm" 
-                          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', fontSize: 10, fontWeight: 'bold', borderRadius: 4, cursor: 'pointer' }}
-                          onClick={(e) => { e.stopPropagation(); handleDeleteParent(parent.name); }}
-                        >
-                          DELETE
-                        </button>
-                        {parent.name}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {isSingleDefault ? `Rs. ${mainVariant.selling_price.toLocaleString()}` : `Rs. ${parent.maxPrice.toLocaleString()}`}
-                      </td>
-                      <td style={{ textAlign: 'right', opacity: isSingleDefault ? 1 : 0.5 }}>
-                        {isSingleDefault ? `Rs. ${mainVariant.landed_cost.toLocaleString()}` : '--'}
-                      </td>
-                      <td style={{ textAlign: 'right', opacity: isSingleDefault ? 1 : 0.5 }}>
-                        {isSingleDefault ? (
-                          <span style={{ color: (mainVariant.selling_price - mainVariant.landed_cost) > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                            Rs. {(mainVariant.selling_price - mainVariant.landed_cost).toLocaleString()}
-                          </span>
-                        ) : '--'}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ 
-                          background: getMarginColor(parent.minMargin), 
-                          color: '#000', 
-                          padding: '2px 8px', 
-                          borderRadius: 4, 
-                          fontSize: '0.7rem', 
-                          fontWeight: 700 
-                        }}>
-                          {parent.minMargin.toFixed(0)}% {isSingleDefault ? '' : 'Min'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{parent.totalQty.toLocaleString()} units</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-                          {isSingleDefault ? (
-                            <>
-                              {mainVariant.shopify_cost > 0 && Math.abs(mainVariant.shopify_cost - mainVariant.unit_cost) > 1 ? (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10 }}
-                                  onClick={(e) => { e.stopPropagation(); handleAcceptCost(mainVariant.parent_title, mainVariant.variant_title); }}
-                                >
-                                  Accept Rs. {mainVariant.shopify_cost}
-                                </button>
-                              ) : mainVariant.unit_cost > 0 ? (
-                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M20 6L9 17l-5-5"/>
-                                  </svg>
-                                  Verified
-                                </span>
-                              ) : null}
-                              {mainVariant.previous_unit_cost > 0 && (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', fontSize: 10 }}
-                                  title={`Revert to Rs. ${mainVariant.previous_unit_cost}`}
-                                  onClick={(e) => { e.stopPropagation(); handleRevertCost(mainVariant.parent_title, mainVariant.variant_title); }}
-                                >
-                                  ↺ Revert
-                                </button>
-                              )}
-                              <button 
-                                className="btn btn-sm" 
-                                style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }} 
-                                onClick={(e) => { e.stopPropagation(); openModal(mainVariant); }}
-                              >
-                                Edit
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              {!parent.hasConflict ? (
-                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M20 6L9 17l-5-5"/>
-                                  </svg>
-                                  All Verified
-                                </span>
-                              ) : (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: '#f59e0b', color: '#000', border: 'none', padding: '4px 10px', fontSize: 10 }}
-                                  onClick={(e) => { e.stopPropagation(); handleBulkAcceptShopify(parent.name); }}
-                                >
-                                  Accept All
-                                </button>
-                              )}
-                              {parent.variants.some(v => v.previous_unit_cost > 0) && (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '4px 10px', fontSize: 10 }}
-                                  onClick={(e) => { e.stopPropagation(); handleBulkRevertCost(parent.name); }}
-                                >
-                                  ↺ Bulk Revert
-                                </button>
-                              )}
-                              <button 
-                                className="btn btn-sm" 
-                                style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
-                                onClick={(e) => { e.stopPropagation(); openBulkModal(parent); }}
-                              >
-                                ⚡ Bulk Sync
-                              </button>
-                            </>
-                          )}
-                        </div>
+          <div className="table-container" style={{ background: '#111', borderRadius: 12, border: '1px solid #222' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                  <th style={{ padding: 15 }}>Product / Variant</th>
+                  <th style={{ textAlign: 'right' }}>Shopify Cost</th>
+                  <th style={{ textAlign: 'right' }}>My Cost</th>
+                  <th style={{ textAlign: 'right' }}>Stock</th>
+                  <th style={{ textAlign: 'right', padding: 15 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(p => (
+                  <React.Fragment key={p.name}>
+                    <tr style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }} onClick={() => toggleParent(p.name)}>
+                      <td style={{ padding: 15, fontWeight: 'bold' }}>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right' }}>{p.totalQty}</td>
+                      <td style={{ textAlign: 'right', padding: 15 }}>
+                        <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); setBulkItem(p); setBulkForm({ unit_cost: 0, packaging_cost: 0 }); setShowBulkModal(true); }}>⚡</button>
+                        <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); handleDeleteParent(p.name); }}>🗑️</button>
                       </td>
                     </tr>
-
-                    {/* Variant Rows (Only for true multi-variant products) */}
-                    {!isSingleDefault && expandedParents.has(parent.name) && parent.variants.map(v => {
-                      const margin = v.selling_price > 0 ? ((v.selling_price - v.landed_cost) / v.selling_price) * 100 : 0
-                      const profit = v.selling_price - v.landed_cost
-                      const isConflicted = v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1;
-                      
-                      return (
-                        <tr key={v.id} style={{ fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                          <td></td>
-                          <td style={{ paddingLeft: 20, opacity: 0.8 }}>
-                            <span style={{ opacity: 0.4, marginRight: 8 }}>↳</span>
-                            {v.variant_title || 'Default Variant'}
-                          </td>
-                          <td style={{ textAlign: 'right', opacity: 0.6 }}>Rs. {v.selling_price.toLocaleString()}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 500 }}>Rs. {v.landed_cost.toLocaleString()}</td>
-                          <td style={{ textAlign: 'right', color: profit > 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                            Rs. {profit.toLocaleString()}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ 
-                              display: 'inline-block', 
-                              width: 50, 
-                              textAlign: 'right', 
-                              color: getMarginColor(margin),
-                              fontWeight: 700
-                            }}>
-                              {margin.toFixed(1)}%
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'right', opacity: 0.6 }}>{v.inventory_qty}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-                              {isConflicted ? (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: '#f59e0b', color: '#000', border: 'none', fontSize: 10, padding: '2px 6px' }}
-                                  onClick={() => handleAcceptCost(v.parent_title, v.variant_title)}
-                                >
-                                  Accept Rs. {v.shopify_cost}
-                                </button>
-                              ) : v.unit_cost > 0 ? (
-                                <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M20 6L9 17l-5-5"/>
-                                  </svg>
-                                  Verified
-                                </span>
-                              ) : null}
-                              {v.previous_unit_cost > 0 && (
-                                <button 
-                                  className="btn btn-sm" 
-                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', fontSize: 10, padding: '2px 6px' }}
-                                  title={`Revert to Rs. ${v.previous_unit_cost}`}
-                                  onClick={() => handleRevertCost(v.parent_title, v.variant_title)}
-                                >
-                                  ↺ Revert
-                                </button>
-                              )}
-                              <button 
-                                className="btn btn-sm" 
-                                style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 
-                                onClick={() => openModal(v)}
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    {expandedParents.has(p.name) && p.variants.map((v, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #222' }}>
+                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>{v.variant_title || 'Default'}</td>
+                        <td style={{ textAlign: 'right', color: '#00f2fe' }}>Rs {v.shopify_cost?.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>Rs {v.unit_cost?.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right' }}>{v.inventory_qty}</td>
+                        <td style={{ textAlign: 'right', padding: 15 }}>
+                          <button className="btn btn-icon" onClick={() => { setEditingItem(v); setForm(v); setShowModal(true); }}>✏️</button>
+                        </td>
+                      </tr>
+                    ))}
                   </React.Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
-      {/* 🛠️ PRO VARIANT EDITOR MODAL */}
+      {activeTab === 'ghosts' && (
+        <div>
+          <div style={{ background: 'rgba(0,242,254,0.05)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid rgba(0,242,254,0.2)' }}>
+            <p style={{ margin: 0, color: '#00f2fe' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
+          </div>
+          <div style={{ textAlign: 'right', marginBottom: 15 }}>
+            <button className="btn btn-success" onClick={handleApplyGhostCosts}>🚀 Apply All Costs</button>
+          </div>
+          <div className="table-container" style={{ background: '#111', borderRadius: 12, border: '1px solid #222' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                  <th style={{ padding: 15 }}>Product Name</th>
+                  <th style={{ textAlign: 'center' }}>Affected Orders</th>
+                  <th style={{ textAlign: 'right' }}>Unit Cost</th>
+                  <th style={{ textAlign: 'right', padding: 15 }}>Verify</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ghosts.map((g, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #222' }}>
+                    <td style={{ padding: 15, fontWeight: 'bold' }}>{g.name}</td>
+                    <td style={{ textAlign: 'center' }}><span className="badge-warning">{g.count} Orders</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <input type="number" className="form-input" style={{ width: 120, textAlign: 'right' }} value={ghostCosts[g.name] || ''} onChange={e => setGhostCosts({...ghostCosts, [g.name]: e.target.value})} />
+                    </td>
+                    <td style={{ textAlign: 'right', padding: 15 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => handleInspectGhost(g.name)}>🔍 Inspect</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 550, padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '24px 32px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{editingItem ? '✏️ Edit Variant Intelligence' : '➕ Add New Variant'}</h2>
-              <p style={{ margin: '4px 0 0 0', opacity: 0.5, fontSize: '0.8rem' }}>{form.parent_title} {form.variant_title && `• ${form.variant_title}`}</p>
-            </div>
-            
-            <form onSubmit={handleSave} style={{ padding: 32 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
-                <div>
-                  <label className="form-label" style={{ opacity: 0.6, marginBottom: 8, display: 'block' }}>Base Unit Cost (Rs)</label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    style={{ fontSize: '1.1rem', padding: '12px 16px' }}
-                    required 
-                    value={form.unit_cost}
-                    onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ opacity: 0.6, marginBottom: 8, display: 'block' }}>Packaging Cost (Rs)</label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    style={{ fontSize: '1.1rem', padding: '12px 16px' }}
-                    required 
-                    value={form.packaging_cost}
-                    onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value) || 0})}
-                  />
-                </div>
-              </div>
-
-              <div style={{ 
-                background: 'rgba(16, 185, 129, 0.05)', 
-                border: '1px solid rgba(16, 185, 129, 0.1)', 
-                borderRadius: 12, 
-                padding: 20,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Total Landed Cost</div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981' }}>Rs. {(form.unit_cost + form.packaging_cost).toLocaleString()}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  {editingItem?.selling_price > 0 && (
-                    <>
-                      <div style={{ fontSize: '0.75rem', opacity: 0.6, textTransform: 'uppercase', letterSpacing: 1 }}>Est. Margin</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: getMarginColor(((editingItem.selling_price - (form.unit_cost + form.packaging_cost)) / editingItem.selling_price) * 100) }}>
-                        {(((editingItem.selling_price - (form.unit_cost + form.packaging_cost)) / editingItem.selling_price) * 100).toFixed(1)}%
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 16, marginTop: 32 }}>
-                <button type="button" className="btn btn-secondary" style={{ flex: 1, padding: 14 }} onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: 14, background: '#3b82f6' }}>Save Intelligence</button>
-              </div>
+          <div className="modal-content">
+            <h3>{editingItem ? 'Edit Cost' : 'Add Cost'}</h3>
+            <form onSubmit={handleSave}>
+              <div className="form-group"><label>Product Title</label><input type="text" className="form-input" value={form.parent_title} onChange={e => setForm({...form, parent_title: e.target.value})} disabled={!!editingItem} /></div>
+              <div className="form-group"><label>Unit Cost</label><input type="number" className="form-input" value={form.unit_cost} onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})} /></div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Save</button></div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ⚡ BULK SYNC MODAL */}
       {showBulkModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 450 }}>
-            <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 16px' }}>⚡</div>
-              <h2 style={{ margin: 0 }}>Bulk Sync Variants</h2>
-              <p style={{ opacity: 0.6, fontSize: '0.9rem', marginTop: 8 }}>Apply these costs to all <b>{bulkItem?.variants.length}</b> variants of "{bulkItem?.name}"</p>
-            </div>
-
+          <div className="modal-content">
+            <h3>Bulk Update: {bulkItem.name}</h3>
             <form onSubmit={handleBulkSync}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-                <div>
-                  <label className="form-label">Unit Cost (Rs)</label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    value={bulkForm.unit_cost}
-                    onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <label className="form-label">Packaging (Rs)</label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    value={bulkForm.packaging_cost}
-                    onChange={e => setBulkForm({...bulkForm, packaging_cost: parseFloat(e.target.value) || 0})}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowBulkModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, background: '#3b82f6' }}>Sync All Variants</button>
-              </div>
+              <div className="form-group"><label>Unit Cost</label><input type="number" className="form-input" value={bulkForm.unit_cost} onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value)})} /></div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowBulkModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Apply All</button></div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 👻 GHOST REGISTRY MODAL */}
       {showGhostModal && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: 700 }}>
-            <div style={{ marginBottom: 24 }}>
-              <h2 style={{ margin: 0 }}>🔍 Inspecting: {inspectingGhost}</h2>
-              <p style={{ opacity: 0.6, fontSize: '0.9rem' }}>Reviewing historical orders associated with this ghost listing.</p>
+          <div className="modal-content" style={{ maxWidth: 800, width: '95%' }}>
+            <h3>🔍 Order Verification: {inspectingGhost}</h3>
+            <div style={{ maxHeight: 400, overflowY: 'auto', marginTop: 20 }}>
+              {loadingGhostOrders ? <p>Loading history...</p> : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}><th>Date</th><th>Ref #</th><th>Customer</th><th style={{ textAlign: 'right' }}>Price</th></tr></thead>
+                  <tbody>{ghostOrders.map((o,i) => (<tr key={i} style={{ borderBottom: '1px solid #222' }}><td style={{ padding: 10 }}>{o.order_date}</td><td style={{ padding: 10 }}>{o.ref_number}</td><td style={{ padding: 10 }}>{o.customer_name}</td><td style={{ textAlign: 'right', padding: 10 }}>Rs {o.price?.toLocaleString()}</td></tr>))}</tbody>
+                </table>
+              )}
             </div>
-            
-            <div style={{ maxHeight: 400, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 12 }}>
-              <table style={{ width: '100%', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ opacity: 0.5, textAlign: 'left' }}>
-                    <th style={{ padding: 8 }}>Date</th>
-                    <th style={{ padding: 8 }}>Order #</th>
-                    <th style={{ padding: 8, textAlign: 'right' }}>Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ghostOrders.map((o, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding: 8 }}>{o.date}</td>
-                      <td style={{ padding: 8 }}>{o.order_number}</td>
-                      <td style={{ padding: 8, textAlign: 'right' }}>Rs. {o.price.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ marginTop: 24, textAlign: 'right' }}>
-              <button className="btn btn-secondary" onClick={() => setShowGhostModal(false)}>Close Inspector</button>
-            </div>
+            <div style={{ marginTop: 20, textAlign: 'right' }}><button className="btn btn-secondary" onClick={() => setShowGhostModal(false)}>Close</button></div>
           </div>
         </div>
       )}
 
       <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.85);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(8px);
-        }
-        .modal-content {
-          background: #111;
-          border-radius: 20px;
-          width: 90%;
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: 0 30px 60px rgba(0,0,0,0.8);
-          animation: modalSlide 0.3s ease-out;
-        }
-        @keyframes modalSlide {
-          from { transform: translateY(20px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-        .btn-sm { padding: 4px 12px; font-size: 0.75rem; border-radius: 6px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: #111; padding: 30px; border-radius: 16px; border: 1px solid #333; width: 450px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; opacity: 0.6; font-size: 0.8rem; }
+        .btn-icon { background: none; border: none; cursor: pointer; opacity: 0.5; padding: 5px; }
+        .btn-icon:hover { opacity: 1; color: #00f2fe; }
+        .badge-warning { background: rgba(255, 193, 7, 0.1); color: #ffc107; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
       `}</style>
     </div>
   )
