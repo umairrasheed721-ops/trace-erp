@@ -53,18 +53,23 @@ router.post('/:id/deep-sync', async (req, res) => {
   const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  const { startDate } = req.body;
+  const { startDate, syncStatus = true, syncCosts = true } = req.body;
 
   // If a startDate is provided, temporarily override the store's sync_start_date
-  // so the engine uses the user-selected date for this particular sync run
   const storeForSync = startDate
     ? { ...store, sync_start_date: startDate }
     : store;
 
   try {
     // Run sync in background (fire and forget)
-    fetchShopifyOrders(storeForSync, null, { forceDeepSync: true });
-    res.json({ success: true, message: 'Historical sync started in background' });
+    // Deep sync now handles both new orders and updates
+    (async () => {
+      await fetchShopifyOrders(storeForSync, null, { forceDeepSync: true });
+      const { refreshShopifyUpdates } = require('../engines/shopify');
+      await refreshShopifyUpdates(storeForSync, null, { forceDeepSync: true, syncStatus, syncCosts });
+    })();
+
+    res.json({ success: true, message: 'Historical deep sync started in background' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -82,12 +82,12 @@ export default function Connect() {
     else addToast('❌ Failed to update', 'error')
   }
 
-  const handleDeepSync = async (storeId, startDate) => {
+  const handleDeepSync = async (storeId, startDate, syncStatus, syncCosts) => {
     try {
       const res = await fetch(`/api/stores/${storeId}/deep-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate })
+        body: JSON.stringify({ startDate, syncStatus, syncCosts })
       })
       if (res.ok) {
         addToast('🗄️ Historical sync started! Progress shown below.', 'success')
@@ -145,7 +145,6 @@ export default function Connect() {
         <button className="btn btn-secondary btn-sm" onClick={() => refreshStores()}>🔄 Refresh Stores</button>
       </div>
 
-      {/* Connect New Store */}
       <div className="card mb-4">
         <div className="card-title">Add New Shopify Store</div>
         <form onSubmit={handleConnect}>
@@ -178,7 +177,7 @@ export default function Connect() {
           </div>
 
           <div className="divider" />
-          <div className="card-title">Courier API Keys (Optional — can add later)</div>
+          <div className="card-title">Courier API Keys (Optional)</div>
 
           <div className="form-group">
             <label className="form-label">PostEx Token</label>
@@ -201,7 +200,6 @@ export default function Connect() {
         </form>
       </div>
 
-      {/* Connected Stores List */}
       {stores.length > 0 && (
         <div className="card">
           <div className="card-title">Connected Stores ({stores.length})</div>
@@ -231,9 +229,10 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
   const [local, setLocal] = useState({ ...store })
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
-  // Historical sync state
   const [showSyncPanel, setShowSyncPanel] = useState(false)
   const [syncStartDate, setSyncStartDate] = useState(store.sync_start_date || '2023-01-01')
+  const [syncStatus, setSyncStatus] = useState(true)
+  const [syncCosts, setSyncCosts] = useState(false)
   const [singleOrderNum, setSingleOrderNum] = useState('')
 
   const isSyncing = store.sync_status === 'syncing'
@@ -241,305 +240,96 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
     ? Math.min(Math.round((store.sync_processed / store.sync_total) * 100), 99)
     : null
 
-  const handleStartSync = async () => {
-    if (!syncStartDate) {
-      alert('Please select a start date.')
-      return
-    }
-    const orderCount = confirm(
-      `⚠️ This will pull ALL orders from ${syncStartDate} to today.\n\nDepending on how many orders you have, this can take 5–30 minutes.\n\nStart Historical Sync?`
-    )
-    if (!orderCount) return
+  const handleStartSync = () => {
+    if (!syncStartDate) return alert('Please select a start date.')
+    if (!confirm(`⚠️ This will pull ALL orders from ${syncStartDate}. Start Historical Sync?`)) return
     setShowSyncPanel(false)
-    onDeepSync(store.id, syncStartDate)
-  }
-
-  const handleSyncSingleOrder = async (storeId, orderName) => {
-    if (!orderName) return
-    try {
-      addToast(`🎯 Sniper Tool: Fetching order ${orderName}...`, 'info')
-      const res = await fetch(`/api/stores/${storeId}/sync-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderName })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addToast(`✅ ${data.message}`, 'success')
-      } else {
-        addToast(`❌ ${data.error}`, 'error')
-      }
-    } catch {
-      addToast('Network error', 'error')
-    }
+    onDeepSync(store.id, syncStartDate, syncStatus, syncCosts)
   }
 
   return (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 16 }}>
-
-      {/* Store Header Row */}
+      
       <div className="flex items-center gap-2" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <span style={{ fontSize: '1.2rem' }}>🏪</span>
         <div style={{ flex: 1, minWidth: 120 }}>
           <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{store.store_name || store.shop_domain}</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
-          {store.last_synced_at && (
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-              Last synced: {new Date(store.last_synced_at).toLocaleString()}
-            </div>
-          )}
         </div>
 
-        {/* Status badge */}
         {isSyncing ? (
           <span className="badge badge-pending">⏳ Syncing...</span>
-        ) : store.sync_status === 'error' ? (
-          <span className="badge badge-danger" title={store.sync_progress}>❌ Error</span>
         ) : (
           <span className="badge badge-delivered">● Connected</span>
         )}
 
-        <button
-          className="btn btn-primary btn-sm"
-          style={{ backgroundColor: 'var(--brand)', color: 'black', fontWeight: 700 }}
-          onClick={onEnableRealTime}
-          title="Register Shopify webhooks for real-time order creation/updates"
-        >
-          ⚡ Real-Time Sync
-        </button>
+        <button className="btn btn-primary btn-sm" onClick={onEnableRealTime}>⚡ Real-Time Sync</button>
         <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>
           {editing ? 'Cancel' : '✏️ Edit Keys'}
         </button>
         <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
       </div>
 
-      {/* ─── Historical Sync Section ─────────────────────────────── */}
       {isSyncing ? (
-        /* Active sync progress bar */
-        <div style={{
-          marginTop: 14,
-          background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(99,102,241,0.03))',
-          border: '1px solid rgba(99,102,241,0.2)',
-          borderRadius: 10,
-          padding: '14px 16px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            {/* Pulsing dot — always visible while syncing */}
-            <span style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: 'var(--brand)',
-              boxShadow: '0 0 8px var(--brand)',
-              animation: 'pulse 1.5s ease-in-out infinite',
-              flexShrink: 0
-            }} />
-            <span style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)' }}>Historical Sync In Progress</span>
-            <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {store.sync_processed > 0 && `${store.sync_processed.toLocaleString()} scanned`}
-            </span>
-          </div>
-
-          {/* Live message from backend */}
-          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 10, minHeight: 16 }}>
-            {store.sync_progress || 'Initializing...'}
-          </div>
-
-          {/* Determinate bar — shows scan progress when available */}
-          {progressPct !== null && progressPct < 95 && (
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 3 }}>
-                <span>Scanning orders</span>
-                <span>{progressPct}%</span>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 6 }}>
-                <div style={{
-                  height: '100%',
-                  background: 'linear-gradient(90deg, var(--brand), #818cf8)',
-                  borderRadius: 6,
-                  width: `${progressPct}%`,
-                  transition: 'width 0.5s ease'
-                }} />
-              </div>
+        <div style={{ marginTop: 14, background: 'rgba(99,102,241,0.05)', borderRadius: 10, padding: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)', marginBottom: 8 }}>Historical Sync In Progress</div>
+          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 10 }}>{store.sync_progress || 'Processing...'}</div>
+          {progressPct !== null && (
+            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 6 }}>
+              <div style={{ height: '100%', background: 'var(--brand)', width: `${progressPct}%` }} />
             </div>
           )}
-
-          {/* Indeterminate shimmer bar — always visible, signals background work */}
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 3 }}>
-              {progressPct !== null && progressPct >= 95 ? 'Fetching costs & saving orders...' : 'Background processing'}
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 8, position: 'relative' }}>
-              <div style={{
-                position: 'absolute', inset: 0,
-                background: 'linear-gradient(90deg, transparent 0%, var(--brand) 40%, #818cf8 60%, transparent 100%)',
-                backgroundSize: '200% 100%',
-                animation: 'shimmer 1.8s linear infinite',
-                borderRadius: 6
-              }} />
-            </div>
-          </div>
-
-          {/* Footer note */}
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>⏱️</span>
-            <span>Running in background — this can take 10–30 min depending on order volume. You can navigate away safely.</span>
-          </div>
         </div>
       ) : (
-        /* Sync trigger panel */
         <div style={{ marginTop: 12 }}>
           {!showSyncPanel ? (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => setShowSyncPanel(true)}
-              style={{ width: '100%', justifyContent: 'center', padding: '9px 16px', border: '1px dashed var(--border)', borderRadius: 8, fontSize: '0.82rem' }}
-            >
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowSyncPanel(true)} style={{ width: '100%', border: '1px dashed var(--border)' }}>
               🗄️ Sync All Historical Orders
             </button>
           ) : (
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.08), rgba(99,102,241,0.03))',
-              border: '1px solid rgba(99,102,241,0.25)',
-              borderRadius: 10,
-              padding: '16px',
-              animation: 'slideUp 0.2s ease-out'
-            }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 4 }}>🗄️ Historical Order Sync</div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 14 }}>
-                Pull ALL orders from Shopify from your selected date to today. This runs in the background and may take 5–30 minutes depending on order volume.
-              </p>
-
-              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 160 }}>
-                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                    📅 Sync From Date
-                  </label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={syncStartDate}
-                    onChange={e => setSyncStartDate(e.target.value)}
-                    style={{ height: 36, fontSize: '0.82rem' }}
-                  />
-                </div>
-
-                {/* Quick preset buttons */}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[
-                    { label: '1 Year', date: new Date(Date.now() - 365*86400000).toISOString().split('T')[0] },
-                    { label: '2 Years', date: new Date(Date.now() - 2*365*86400000).toISOString().split('T')[0] },
-                    { label: '3 Years', date: new Date(Date.now() - 3*365*86400000).toISOString().split('T')[0] },
-                    { label: 'All Time', date: '2020-01-01' },
-                  ].map(p => (
-                    <button
-                      key={p.label}
-                      onClick={() => setSyncStartDate(p.date)}
-                      className="btn btn-sm"
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '0.7rem',
-                        background: syncStartDate === p.date ? 'var(--brand)' : 'var(--bg-elevated)',
-                        color: syncStartDate === p.date ? 'black' : 'var(--text-muted)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 6,
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 12 }}>🗄️ Historical Sync Options</div>
+              
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>📅 Sync From Date</label>
+                <input type="date" className="form-input" value={syncStartDate} onChange={e => setSyncStartDate(e.target.value)} style={{ height: 36 }} />
               </div>
 
-              {/* Warning note */}
-              <div style={{
-                marginTop: 12,
-                background: 'rgba(245, 158, 11, 0.08)',
-                border: '1px solid rgba(245, 158, 11, 0.2)',
-                borderRadius: 6,
-                padding: '8px 12px',
-                fontSize: '0.72rem',
-                color: 'var(--orange)'
-              }}>
-                ⚠️ Existing orders will <strong>not</strong> be overwritten. Only missing orders will be added. Safe to run at any time.
+              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={syncStatus} onChange={e => setSyncStatus(e.target.checked)} /> Status (Fast)
+                 </label>
+                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={syncCosts} onChange={e => setSyncCosts(e.target.checked)} /> Costs (Slow)
+                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleStartSync}
-                  style={{ flex: 1, justifyContent: 'center', fontWeight: 700 }}
-                >
-                  🚀 Start Historical Sync from {syncStartDate}
-                </button>
-                <button className="btn btn-secondary" onClick={() => setShowSyncPanel(false)}>
-                  Cancel
-                </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={handleStartSync} style={{ flex: 1 }}>🚀 Start Sync</button>
+                <button className="btn btn-secondary" onClick={() => setShowSyncPanel(false)}>Cancel</button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ─── Sniper Tool: Single Order Sync ────────────────────────── */}
       {!isSyncing && (
         <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8 }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>🎯 Sniper Tool: Sync Specific Order</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input 
-              className="form-input" 
-              placeholder="Enter Order # (e.g. #16374)" 
-              value={singleOrderNum}
-              onChange={e => setSingleOrderNum(e.target.value)}
-              style={{ height: 32, fontSize: '0.8rem', flex: 1 }}
-            />
-            <button 
-              className="btn btn-primary btn-sm" 
-              onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}
-              style={{ height: 32, padding: '0 12px' }}
-            >
-              Sync Now
-            </button>
+            <input className="form-input" placeholder="Order # (e.g. #16374)" value={singleOrderNum} onChange={e => setSingleOrderNum(e.target.value)} style={{ height: 32, fontSize: '0.8rem', flex: 1 }} />
+            <button className="btn btn-primary btn-sm" onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}>Sync Now</button>
           </div>
         </div>
       )}
 
-
-      {/* Edit Credentials Panel */}
       {editing && (
         <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Store Name</label>
-              <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Default Sync Start Date</label>
-              <input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} />
-            </div>
+            <div className="form-group"><label className="form-label">Store Name</label><input className="form-input" value={local.store_name} onChange={setL('store_name')} /></div>
+            <div className="form-group"><label className="form-label">Start Date</label><input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} /></div>
           </div>
-          <div className="form-group">
-            <label className="form-label">PostEx Token</label>
-            <input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} placeholder="PostEx API token" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">PostEx Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(paste exact URL from your GAS config.gs)</span></label>
-            <input className="form-input font-mono" value={local.postex_track_url || ''} onChange={setL('postex_track_url')} placeholder="https://api.postex.pk/services/..." />
-          </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Instaworld Key</label>
-              <input className="form-input font-mono" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Instaworld Backup</label>
-              <input className="form-input font-mono" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Instaworld Track URL <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional)</span></label>
-            <input className="form-input font-mono" value={local.instaworld_track_url || ''} onChange={setL('instaworld_track_url')} placeholder="https://app.instaworld.pk/api/track-order" />
-          </div>
+          <div className="form-group"><label className="form-label">PostEx Token</label><input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} /></div>
           <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>
       )}
