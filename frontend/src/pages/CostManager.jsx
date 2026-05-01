@@ -7,7 +7,7 @@ export default function CostManager() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
-  const [activeTab, setActiveTab] = useState('master')
+  const [activeTab, setActiveTab] = useState('pending')
   const [selectedParents, setSelectedParents] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
@@ -264,6 +264,11 @@ export default function CostManager() {
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a,b) => b.totalValue - a.totalValue)
 
+  const pendingItems = sorted.filter(p => !p.hasCost)
+  const verifiedItems = sorted.filter(p => p.hasCost)
+
+  const currentList = activeTab === 'pending' ? pendingItems : activeTab === 'verified' ? verifiedItems : []
+  
   return (
     <div className="page-container cost-manager" style={{ padding: 30 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
@@ -326,15 +331,18 @@ export default function CostManager() {
       </div>
 
       <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid #333' }}>
-        <button onClick={() => setActiveTab('master')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'master' ? '#00f2fe' : '#666', borderBottom: activeTab === 'master' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-          📦 Master Inventory
+        <button onClick={() => setActiveTab('pending')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'pending' ? '#fcd34d' : '#666', borderBottom: activeTab === 'pending' ? '2px solid #fcd34d' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+          ⏳ Pending Registry ({pendingItems.length})
+        </button>
+        <button onClick={() => setActiveTab('verified')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'verified' ? '#34d399' : '#666', borderBottom: activeTab === 'verified' ? '2px solid #34d399' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+          ✅ Verified Registry ({verifiedItems.length})
         </button>
         <button onClick={() => setActiveTab('ghosts')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'ghosts' ? '#00f2fe' : '#666', borderBottom: activeTab === 'ghosts' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
           👻 Ghost Listings ({ghosts.length})
         </button>
       </div>
 
-      {activeTab === 'master' && (
+      {(activeTab === 'pending' || activeTab === 'verified') && (
         <>
           <div style={{ marginBottom: 20 }}>
             <input type="text" className="form-input" placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
@@ -346,8 +354,8 @@ export default function CostManager() {
                   <th style={{ width: 40, textAlign: 'center' }}>
                     <input 
                       type="checkbox" 
-                      checked={selectedParents.size === sorted.length && sorted.length > 0}
-                      onChange={() => toggleSelectAll(selectedParents.size === sorted.length)}
+                      checked={selectedParents.size === currentList.length && currentList.length > 0}
+                      onChange={() => toggleSelectAll(selectedParents.size === currentList.length)}
                     />
                   </th>
                   <th style={{ padding: 15 }}>Product / Variant</th>
@@ -358,7 +366,7 @@ export default function CostManager() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(p => (
+                {currentList.map(p => (
                   <React.Fragment key={p.name}>
                     <tr style={{ 
                       background: p.hasCost ? 'rgba(52, 211, 153, 0.05)' : 'rgba(255,255,255,0.02)', 
