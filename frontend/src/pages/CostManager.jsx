@@ -154,6 +154,38 @@ export default function CostManager() {
     } catch (e) { addToast('Bulk error', 'error') }
   }
 
+  const handleAcceptShopifyCost = async (v) => {
+    try {
+      const res = await fetch('/api/finance/accept-shopify-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: v.parent_title, variant_title: v.variant_title })
+      })
+      if (res.ok) {
+        addToast(`Accepted cost for ${v.variant_title || 'Default'}`, 'success')
+        fetchCosts()
+      }
+    } catch (e) { addToast('Accept failed', 'error') }
+  }
+
+  const handleBulkAccept = async (parentTitle) => {
+    if (!window.confirm(`Accept Shopify costs for ALL variants of "${parentTitle}"?`)) return
+    try {
+      const parent = grouped[parentTitle]
+      for (const v of parent.variants) {
+        if (v.shopify_cost > 0) {
+          await fetch('/api/finance/accept-shopify-cost', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ store_id: activeStoreId, parent_title: v.parent_title, variant_title: v.variant_title })
+          })
+        }
+      }
+      addToast(`Accepted all costs for ${parentTitle}`, 'success')
+      fetchCosts()
+    } catch (e) { addToast('Bulk accept failed', 'error') }
+  }
+
   const toggleParent = (name) => {
     const next = new Set(expandedParents)
     if (next.has(name)) next.delete(name)
@@ -225,8 +257,9 @@ export default function CostManager() {
                       <td style={{ textAlign: 'right' }}>—</td>
                       <td style={{ textAlign: 'right' }}>{p.totalQty}</td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
-                        <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); setBulkItem(p); setBulkForm({ unit_cost: 0, packaging_cost: 0 }); setShowBulkModal(true); }}>⚡</button>
-                        <button className="btn btn-icon" onClick={(e) => { e.stopPropagation(); handleDeleteParent(p.name); }}>🗑️</button>
+                        <button className="btn btn-icon" title="Accept All Shopify Costs" onClick={(e) => { e.stopPropagation(); handleBulkAccept(p.name); }}>✅</button>
+                        <button className="btn btn-icon" title="Bulk Set Cost/Pkg" onClick={(e) => { e.stopPropagation(); setBulkItem(p); setBulkForm({ unit_cost: 0, packaging_cost: 0 }); setShowBulkModal(true); }}>⚡</button>
+                        <button className="btn btn-icon" title="Delete Product" onClick={(e) => { e.stopPropagation(); handleDeleteParent(p.name); }}>🗑️</button>
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
@@ -236,7 +269,10 @@ export default function CostManager() {
                         <td style={{ textAlign: 'right' }}>Rs {v.unit_cost?.toLocaleString()}</td>
                         <td style={{ textAlign: 'right' }}>{v.inventory_qty}</td>
                         <td style={{ textAlign: 'right', padding: 15 }}>
-                          <button className="btn btn-icon" onClick={() => { setEditingItem(v); setForm(v); setShowModal(true); }}>✏️</button>
+                          {v.shopify_cost > 0 && (
+                            <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
+                          )}
+                          <button className="btn btn-icon" title="Edit" onClick={() => { setEditingItem(v); setForm(v); setShowModal(true); }}>✏️</button>
                         </td>
                       </tr>
                     ))}
@@ -292,7 +328,14 @@ export default function CostManager() {
             <h3>{editingItem ? 'Edit Cost' : 'Add Cost'}</h3>
             <form onSubmit={handleSave}>
               <div className="form-group"><label>Product Title</label><input type="text" className="form-input" value={form.parent_title} onChange={e => setForm({...form, parent_title: e.target.value})} disabled={!!editingItem} /></div>
-              <div className="form-group"><label>Unit Cost</label><input type="number" className="form-input" value={form.unit_cost} onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})} /></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div className="form-group" style={{ flex: 1 }}><label>Unit Cost (Rs)</label><input type="number" className="form-input" value={form.unit_cost} onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label>Packaging (Rs)</label><input type="number" className="form-input" value={form.packaging_cost} onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value)})} /></div>
+              </div>
+              <div style={{ background: 'rgba(0,242,254,0.05)', padding: 10, borderRadius: 8, textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Landed Cost</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00f2fe' }}>Rs {(form.unit_cost + form.packaging_cost).toLocaleString()}</div>
+              </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Save</button></div>
             </form>
           </div>
@@ -304,8 +347,11 @@ export default function CostManager() {
           <div className="modal-content">
             <h3>Bulk Update: {bulkItem.name}</h3>
             <form onSubmit={handleBulkSync}>
-              <div className="form-group"><label>Unit Cost</label><input type="number" className="form-input" value={bulkForm.unit_cost} onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value)})} /></div>
-              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowBulkModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Apply All</button></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div className="form-group" style={{ flex: 1 }}><label>Unit Cost</label><input type="number" className="form-input" value={bulkForm.unit_cost} onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label>Packaging</label><input type="number" className="form-input" value={bulkForm.packaging_cost} onChange={e => setBulkForm({...bulkForm, packaging_cost: parseFloat(e.target.value)})} /></div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowBulkModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Apply to All Variants</button></div>
             </form>
           </div>
         </div>
