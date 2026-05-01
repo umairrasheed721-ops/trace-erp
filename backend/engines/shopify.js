@@ -153,6 +153,10 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     const dateMin = forceDeepSync ? '2010-01-01T00:00:00Z' : (sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70));
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc&created_at_min=${dateMin}`;
 
+    console.log(`🚀 [ShopifySync] Starting sync for ${shop_domain}`);
+    console.log(`📅 [ShopifySync] Min Date: ${dateMin}, forceDeepSync: ${forceDeepSync}`);
+    console.log(`🔗 [ShopifySync] Initial URL: ${nextUrl}`);
+
     const existingRows = db.prepare('SELECT shopify_order_id FROM orders WHERE store_id = ?').all(storeId);
     const existingIds = new Set(existingRows.map(r => String(r.shopify_order_id)));
 
@@ -172,6 +176,12 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
       const data = await res.json();
       const batch = data.orders || [];
+      console.log(`📦 [ShopifySync] Batch received: ${batch.length} orders.`);
+      
+      if (!batch.length && totalScanned === 0) {
+        console.warn(`⚠️ [ShopifySync] ZERO orders found for ${shop_domain}. Check API scopes!`);
+      }
+
       if (!batch.length) break;
 
       totalScanned += batch.length;
