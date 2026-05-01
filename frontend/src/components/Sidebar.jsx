@@ -91,7 +91,7 @@ export default function Sidebar() {
         </button>
         {!sidebarCollapsed && (
           <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center' }}>
-            TRACE ERP v1.5.2
+            TRACE ERP v1.6.0
           </div>
         )}
       </div>
