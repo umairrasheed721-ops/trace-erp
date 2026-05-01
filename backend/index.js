@@ -15,6 +15,14 @@ const usersRoutes = require('./routes/users');
 const webhooksRoutes = require('./routes/webhooks');
 const schedulerInit = require('./scheduler');
 
+// Reset any stuck sync statuses on startup
+try {
+  db.prepare("UPDATE stores SET sync_status = 'idle', sync_progress = 'Ready' WHERE sync_status = 'syncing'").run();
+  console.log('✅ All stuck sync statuses reset to idle');
+} catch (e) {
+  console.error('Failed to reset sync statuses:', e.message);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
