@@ -55,14 +55,16 @@ function calculateOrderCost(storeId, lineItems, costMap) {
       const vName = parts.length > 1 ? parts[1].trim() : '';
 
       const registry = db.prepare(`
-        SELECT landed_cost FROM product_master_costs 
+        SELECT landed_cost, shopify_cost FROM product_master_costs 
         WHERE store_id = ? AND parent_title = ? 
         AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
         ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
         LIMIT 1
       `).get(storeId, pName, vName, vName);
 
-      if (registry) unitCost = registry.landed_cost || 0;
+      if (registry) {
+        unitCost = registry.landed_cost || registry.shopify_cost || 0;
+      }
     }
 
     totalCost += unitCost * qty;
@@ -128,7 +130,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           productTitles.join(', '),
           order.cancelled_at ? 'Cancelled' : 
           (order.financial_status === 'voided' ? 'Voided' : 
-          (order.return_status === 'returned' ? 'Returned' : 'Pending')),
+          (order.return_status === 'returned' ? 'Returned' : 
+          (order.financial_status === 'paid' && order.fulfillment_status === 'fulfilled' ? 'Delivered' : 'Pending'))),
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source
