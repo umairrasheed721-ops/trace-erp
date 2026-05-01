@@ -328,6 +328,16 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
             <div className="form-group"><label className="form-label">Start Date</label><input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} /></div>
           </div>
           <div className="form-group"><label className="form-label">PostEx Token</label><input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} /></div>
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Instaworld Primary Key</label>
+              <input className="form-input font-mono" placeholder="Primary API key" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Instaworld Backup Key</label>
+              <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
+            </div>
+          </div>
           <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>
       )}
