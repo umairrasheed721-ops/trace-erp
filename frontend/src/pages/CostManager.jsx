@@ -284,10 +284,17 @@ export default function CostManager() {
               <tbody>
                 {sorted.map(p => (
                   <React.Fragment key={p.name}>
-                    <tr style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }} onClick={() => toggleParent(p.name)}>
-                      <td style={{ padding: 15, fontWeight: 'bold' }}>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</td>
+                    <tr style={{ 
+                      background: p.totalValue > 0 ? 'rgba(52, 211, 153, 0.05)' : 'rgba(255,255,255,0.02)', 
+                      cursor: 'pointer',
+                      borderLeft: p.totalValue > 0 ? '4px solid #34d399' : '4px solid transparent'
+                    }} onClick={() => toggleParent(p.name)}>
+                      <td style={{ padding: 15, fontWeight: 'bold' }}>
+                        {expandedParents.has(p.name) ? '▼' : '▶'} {p.name}
+                        {p.totalValue > 0 && <span style={{ marginLeft: 10, fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                      </td>
                       <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right' }}>—</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.totalValue > 0 ? '#34d399' : 'inherit' }}>{p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : '—'}</td>
                       <td style={{ textAlign: 'right' }}>{p.totalQty}</td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
                         <button className="btn btn-icon" title="Accept All Shopify Costs" onClick={(e) => { e.stopPropagation(); handleBulkAccept(p.name); }}>✅</button>
@@ -296,13 +303,21 @@ export default function CostManager() {
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #222' }}>
-                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>{v.variant_title || 'Default'}</td>
-                        <td style={{ textAlign: 'right', color: '#00f2fe' }}>Rs {v.shopify_cost?.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right' }}>Rs {v.unit_cost?.toLocaleString()}</td>
-                        <td style={{ textAlign: 'right' }}>{v.inventory_qty}</td>
+                      <tr key={i} style={{ 
+                        borderBottom: '1px solid #222',
+                        backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'rgba(52, 211, 153, 0.02)' : 'transparent'
+                      }}>
+                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>
+                          {v.variant_title || 'Default'}
+                          {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ marginLeft: 8, color: '#34d399' }}>✓</span>}
+                        </td>
+                        <td style={{ textAlign: 'right', color: '#00f2fe', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? '#34d399' : '#666' }}>
+                          {(v.unit_cost + v.packaging_cost) > 0 ? `Rs ${(v.unit_cost + v.packaging_cost).toLocaleString()}` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', opacity: 0.8 }}>{v.inventory_qty}</td>
                         <td style={{ textAlign: 'right', padding: 15 }}>
-                          {v.shopify_cost > 0 && (
+                          {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
                             <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
                           )}
                           <button className="btn btn-icon" title="Edit" onClick={() => { setEditingItem(v); setForm(v); setShowModal(true); }}>✏️</button>
