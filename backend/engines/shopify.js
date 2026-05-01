@@ -225,7 +225,9 @@ async function refreshShopifyUpdates(store, onProgress) {
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
   
   try {
-    const dateMin = getDaysAgo(730); 
+    // By default, only look for status updates in the last 60 days (fast). 
+    // Deep sync will still use the 730 days we set earlier.
+    const dateMin = options.forceDeepSync ? getDaysAgo(730) : getDaysAgo(60);
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
     let updatedOrders = [];
@@ -272,10 +274,15 @@ async function refreshShopifyUpdates(store, onProgress) {
       }
     });
 
-    updateStatus('syncing', 'Fetching costs for updates...', 0, 0);
-    const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(allVariantIds)], (msg) => {
-      updateStatus('syncing', msg, 50, 100);
-    });
+    let costMap = {};
+    if (options.forceDeepSync || allVariantIds.length < 500) {
+      updateStatus('syncing', `Fetching costs for ${[...new Set(allVariantIds)].length} variants...`, 0, 0);
+      costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(allVariantIds)], (msg) => {
+        updateStatus('syncing', msg, 50, 100);
+      });
+    } else {
+      updateStatus('syncing', 'Skipping live costs for large batch (Status Sync only)...', 0, 0);
+    }
 
     const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
 
