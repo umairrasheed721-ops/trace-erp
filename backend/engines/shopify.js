@@ -129,7 +129,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           addressStr || '—',
           addr.city || '',
           finalPrice, tracking, activeCount, order.note || '',
-          productTitles.join(', '),
+          productTitles,
           order.cancelled_at ? 'Cancelled' : 
           (order.financial_status === 'voided' ? 'Voided' : 
           (order.return_status === 'returned' ? 'Returned' : 
