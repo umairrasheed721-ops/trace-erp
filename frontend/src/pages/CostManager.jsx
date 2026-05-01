@@ -514,16 +514,14 @@ export default function CostManager() {
                             style={{ width: 100, textAlign: 'right', height: 32 }} 
                             placeholder="Set All"
                             onClick={(e) => e.stopPropagation()}
-                            onBlur={(e) => {
+                            onChange={(e) => {
                               const val = e.target.value;
-                              if (val) {
-                                const next = {...ghostCosts};
-                                p.variants.forEach(v => {
-                                  next[`${p.name}@@@${v.name}`] = val;
-                                });
-                                setGhostCosts(next);
-                                addToast(`Applied Rs ${val} to all variants of ${p.name}`, 'success');
-                              }
+                              const next = {...ghostCosts};
+                              p.variants.forEach(v => {
+                                // Ensure we use the exact variant name from the backend structure
+                                next[`${p.name}@@@${v.name || ''}`] = val;
+                              });
+                              setGhostCosts(next);
                             }}
                           />
                         </div>
