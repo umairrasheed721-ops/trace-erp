@@ -1,6 +1,6 @@
 {
   "name": "trace-erp",
-  "version": "1.0.0",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
