@@ -754,10 +754,28 @@ export default function SearchTool() {
       return true
     })
 
-    if (sort === 'Newest First') filtered.sort((a,b) => new Date(b.order_date)-new Date(a.order_date))
-    else if (sort === 'Oldest First') filtered.sort((a,b) => new Date(a.order_date)-new Date(b.order_date))
-    else if (sort === 'Highest Price') filtered.sort((a,b) => (b.price||0)-(a.price||0))
-    else if (sort === 'Lowest Price') filtered.sort((a,b) => (a.price||0)-(b.price||0))
+    // Default Sort (apply relevance if searching)
+    if (keyword && keyword.trim().length > 2) {
+      const kwClean = keyword.trim().toLowerCase().replace(/^#/, '');
+      filtered.sort((a, b) => {
+        const aRef = (a.ref_number || '').toLowerCase().replace(/^#/, '');
+        const bRef = (b.ref_number || '').toLowerCase().replace(/^#/, '');
+        const aID = (a.shopify_order_id || '').toString();
+        const bID = (b.shopify_order_id || '').toString();
+        
+        const aExact = aRef === kwClean || aID === kwClean || aID.includes(kwClean);
+        const bExact = bRef === kwClean || bID === kwClean || bID.includes(kwClean);
+        
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        return new Date(b.order_date) - new Date(a.order_date);
+      });
+    } else {
+      if (sort === 'Newest First') filtered.sort((a,b) => new Date(b.order_date)-new Date(a.order_date))
+      else if (sort === 'Oldest First') filtered.sort((a,b) => new Date(a.order_date)-new Date(b.order_date))
+      else if (sort === 'Highest Price') filtered.sort((a,b) => (b.price||0)-(a.price||0))
+      else if (sort === 'Lowest Price') filtered.sort((a,b) => (a.price||0)-(b.price||0))
+    }
 
     let delivered=0, returned=0, pending=0, sum=0
     filtered.forEach(o => {
