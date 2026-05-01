@@ -16,8 +16,8 @@ router.get('/', (req, res) => {
   if (status) { conditions.push('LOWER(delivery_status) = ?'); params.push(status.toLowerCase()); }
   if (courier) { conditions.push('LOWER(courier) = ?'); params.push(courier.toLowerCase()); }
   if (search) {
-    conditions.push('(tracking_number LIKE ? OR customer_name LIKE ? OR ref_number LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    conditions.push('(tracking_number LIKE ? OR customer_name LIKE ? OR ref_number LIKE ? OR shopify_order_id LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const where = conditions.join(' AND ');
