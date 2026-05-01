@@ -195,6 +195,7 @@ export default function Connect() {
                 onCancel={() => setEditingStore(null)}
                 onSave={handleUpdateCreds}
                 onDeepSync={handleDeepSync}
+                onSyncSingleOrder={handleSyncSingleOrder}
                 onDisconnect={() => handleDisconnect(store.id, store.store_name || store.shop_domain)}
                 onEnableRealTime={() => handleEnableRealTimeSync(store.id, store.store_name || store.shop_domain)}
               />
@@ -206,13 +207,14 @@ export default function Connect() {
   )
 }
 
-function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDisconnect, onEnableRealTime }) {
+function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyncSingleOrder, onDisconnect, onEnableRealTime }) {
   const [local, setLocal] = useState({ ...store })
   const setL = (key) => (e) => setLocal(prev => ({ ...prev, [key]: e.target.value }))
 
   // Historical sync state
   const [showSyncPanel, setShowSyncPanel] = useState(false)
   const [syncStartDate, setSyncStartDate] = useState(store.sync_start_date || '2023-01-01')
+  const [singleOrderNum, setSingleOrderNum] = useState('')
 
   const isSyncing = store.sync_status === 'syncing'
   const progressPct = store.sync_total > 0
@@ -438,6 +440,30 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onDis
           )}
         </div>
       )}
+
+      {/* ─── Sniper Tool: Single Order Sync ────────────────────────── */}
+      {!isSyncing && (
+        <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>🎯 Sniper Tool: Sync Specific Order</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input 
+              className="form-input" 
+              placeholder="Enter Order # (e.g. #16374)" 
+              value={singleOrderNum}
+              onChange={e => setSingleOrderNum(e.target.value)}
+              style={{ height: 32, fontSize: '0.8rem', flex: 1 }}
+            />
+            <button 
+              className="btn btn-primary btn-sm" 
+              onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}
+              style={{ height: 32, padding: '0 12px' }}
+            >
+              Sync Now
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* Edit Credentials Panel */}
       {editing && (

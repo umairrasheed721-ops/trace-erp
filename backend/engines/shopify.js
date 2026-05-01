@@ -115,7 +115,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
   try {
     updateStatus('syncing', 'Initializing sync...');
     const { forceDeepSync = false } = options;
-    const dateMin = sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70);
+    // Deep Sync ignores the dateMin limit entirely
+    const dateMin = forceDeepSync ? '2010-01-01T00:00:00Z' : (sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70));
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc&created_at_min=${dateMin}`;
 
     const existingRows = db.prepare('SELECT shopify_order_id FROM orders WHERE store_id = ?').all(storeId);
@@ -670,4 +671,26 @@ async function updateShopifyAddress(store, shopifyOrderId, newAddress) {
   return true;
 }
 
-module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, registerShopifyWebhooks, fulfillShopifyOrder, updateShopifyAddress };
+async function syncOrderByNumber(store, orderName) {
+  const { shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') return null;
+
+  try {
+    // 1. Search for the order ID by its name (e.g. #16374)
+    const searchUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?name=${encodeURIComponent(orderName)}&status=any`;
+    const res = await fetch(searchUrl, {
+      headers: { 'X-Shopify-Access-Token': access_token }
+    });
+    const data = await res.json();
+    const order = data.orders?.[0];
+    if (!order) throw new Error(`Order ${orderName} not found in Shopify`);
+
+    // 2. Use the existing syncSingleShopifyOrder function with the found ID
+    return await syncSingleShopifyOrder(store, order.id);
+  } catch (err) {
+    console.error(`Error syncing order by number ${orderName}:`, err.message);
+    throw err;
+  }
+}
+
+module.exports = { fetchShopifyOrders, refreshShopifyUpdates, getLiveShopifyCosts, syncSingleShopifyOrder, syncOrderByNumber, registerShopifyWebhooks, fulfillShopifyOrder, updateShopifyAddress };

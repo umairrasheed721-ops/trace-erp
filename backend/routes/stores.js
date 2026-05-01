@@ -70,6 +70,27 @@ router.post('/:id/deep-sync', async (req, res) => {
   }
 });
 
+// POST /api/stores/:id/sync-order - Sync a single order by number (e.g. #16374)
+router.post('/:id/sync-order', async (req, res) => {
+  const { syncOrderByNumber } = require('../engines/shopify');
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(req.params.id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  const { orderName } = req.body;
+  if (!orderName) return res.status(400).json({ error: 'orderName required (e.g. #16374)' });
+
+  try {
+    const success = await syncOrderByNumber(store, orderName);
+    if (success) {
+      res.json({ success: true, message: `Order ${orderName} synced successfully` });
+    } else {
+      res.status(404).json({ error: `Order ${orderName} not found or failed to sync` });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/stores/:id/register-webhooks - Set up real-time sync
 router.post('/:id/register-webhooks', async (req, res) => {
   const { registerShopifyWebhooks } = require('../engines/shopify');
