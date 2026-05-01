@@ -41,7 +41,7 @@ export default function Reports() {
       }
       case 'This Year':  return { start: `${y}-01-01`, end: fmt(now) };
       case 'Last Year':  return { start: `${y-1}-01-01`, end: `${y-1}-12-31` };
-      case 'All Time':   return { start: '2020-01-01', end: fmt(now) };
+      case 'All Time':   return { start: '2010-01-01', end: fmt(now) };
       default:           return { start: '', end: '' };
     }
   };

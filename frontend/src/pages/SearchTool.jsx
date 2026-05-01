@@ -33,7 +33,7 @@ function getDateRange(preset, customStart, customEnd) {
     return { start: s, end: e }
   }
   if (preset === 'This Year') { const s = new Date(now); s.setMonth(0); s.setDate(1); return { start: s, end } }
-  if (preset === 'All Time') return { start: new Date('2020-01-01'), end }
+  if (preset === 'All Time') return { start: new Date('2010-01-01'), end }
   if (preset === 'Custom Range' && customStart) {
     const s = new Date(customStart); s.setHours(0,0,0,0)
     const e = customEnd ? new Date(customEnd) : new Date(s)

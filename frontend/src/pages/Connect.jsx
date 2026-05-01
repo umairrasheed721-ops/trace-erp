@@ -171,7 +171,10 @@ export default function Connect() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Initial Sync Start Date (Authority)</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label className="form-label" style={{ margin: 0 }}>Initial Sync Start Date (Authority)</label>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => set('sync_start_date')({ target: { value: '2010-01-01' } })} style={{ padding: '2px 8px', fontSize: '0.65rem' }}>📅 All Time</button>
+            </div>
             <input className="form-input" type="date" value={form.sync_start_date} onChange={set('sync_start_date')} />
             <small style={{ color: 'var(--text-muted)' }}>Orders before this date will never be pulled.</small>
           </div>
@@ -291,7 +294,10 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
               <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 12 }}>🗄️ Historical Sync Options</div>
               
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>📅 Sync From Date</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>📅 Sync From Date</label>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSyncStartDate('2010-01-01')} style={{ padding: '2px 6px', fontSize: '0.6rem' }}>All Time</button>
+                </div>
                 <input type="date" className="form-input" value={syncStartDate} onChange={e => setSyncStartDate(e.target.value)} style={{ height: 36 }} />
               </div>
 
