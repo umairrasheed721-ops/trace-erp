@@ -160,12 +160,11 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     const existingRows = db.prepare('SELECT shopify_order_id FROM orders WHERE store_id = ?').all(storeId);
     const existingIds = new Set(existingRows.map(r => String(r.shopify_order_id)));
 
-    let newOrdersFound = [];
+    let totalAdded = 0;
     let totalScanned = 0;
-    let keepFetching = true;
 
-    // ── Phase 1: Scan all pages ──────────────────────────────────────
-    while (nextUrl && keepFetching) {
+    // ── STREAMING SYNC: Process batch-by-batch to save memory ─────────
+    while (nextUrl) {
       const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
 
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
@@ -180,74 +179,52 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
       
       if (!batch.length && totalScanned === 0) {
         console.warn(`⚠️ [ShopifySync] ZERO orders found for ${shop_domain}. Check API scopes!`);
+        break;
       }
-
       if (!batch.length) break;
 
       totalScanned += batch.length;
+      
+      // Filter out what we already have
       const newlyFoundInBatch = batch.filter(o => !existingIds.has(String(o.id)));
-      newOrdersFound.push(...newlyFoundInBatch);
+      
+      if (newlyFoundInBatch.length > 0) {
+        updateStatus('syncing', `Processing batch... ${totalScanned} scanned, ${totalAdded + newlyFoundInBatch.length} saved.`, totalAdded, totalAdded + 500);
 
-      updateStatus('syncing', `Phase 1/2 — Scanning... ${totalScanned} scanned, ${newOrdersFound.length} new found.`, totalScanned, totalScanned + 100);
-      console.log(`[ShopifySync] ${shop_domain}: Scanned ${totalScanned}, New ${newOrdersFound.length}`);
+        // Fetch costs for JUST this batch (Efficient!)
+        const batchVariantIds = [...new Set(
+          newlyFoundInBatch.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
+        )];
 
+        const costMap = await getLiveShopifyCosts(
+          shop_domain, access_token, batchVariantIds,
+          (msg) => updateStatus('syncing', `Batch Progress: ${msg}`, totalAdded, totalAdded + 500)
+        );
+
+        // Insert immediately
+        const added = insertChunk(newlyFoundInBatch.reverse(), costMap);
+        totalAdded += added;
+        
+        // Add to our known set so we don't double-count if the loop repeats
+        newlyFoundInBatch.forEach(o => existingIds.add(String(o.id)));
+        
+        db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
+        console.log(`✅ [ShopifySync] Batch processed: ${added} added. Total so far: ${totalAdded}`);
+      }
+
+      // If we found duplicates in this batch and forceDeepSync is false, we can stop
       if (!forceDeepSync && newlyFoundInBatch.length < batch.length) {
-        keepFetching = false;
+        console.log(`🛑 [ShopifySync] Reached overlap with existing data. Stopping.`);
+        break;
       }
 
       const linkHeader = res.headers.get('Link') || '';
       const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      nextUrl = keepFetching && nextMatch ? nextMatch[1] : null;
+      nextUrl = nextMatch ? nextMatch[1] : null;
     }
 
-    if (!newOrdersFound.length) {
-      updateStatus('idle', 'Finished. No new orders found.');
-      return { added: 0 };
-    }
-
-    // ── Phase 2: Process in chunks of CHUNK_SIZE ─────────────────────
-    // Reverse so oldest orders are inserted first (chronological)
-    const ordersToInsert = newOrdersFound.reverse();
-    const totalNew = ordersToInsert.length;
-    let totalAdded = 0;
-    const numChunks = Math.ceil(totalNew / CHUNK_SIZE);
-
-    for (let c = 0; c < numChunks; c++) {
-      const chunk = ordersToInsert.slice(c * CHUNK_SIZE, (c + 1) * CHUNK_SIZE);
-      const chunkNum = c + 1;
-
-      updateStatus(
-        'syncing',
-        `Phase 2/2 — Chunk ${chunkNum}/${numChunks}: Fetching costs for ${chunk.length} orders...`,
-        totalAdded, totalNew
-      );
-
-      // Fetch costs only for this chunk's variants
-      const chunkVariantIds = [...new Set(
-        chunk.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
-      )];
-
-      const costMap = await getLiveShopifyCosts(
-        shop_domain, access_token, chunkVariantIds,
-        (msg) => updateStatus('syncing', `Chunk ${chunkNum}/${numChunks} — ${msg}`, totalAdded, totalNew)
-      );
-
-      // Insert this chunk immediately — saved even if server crashes after
-      const added = insertChunk(chunk, costMap);
-      totalAdded += added;
-
-      db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
-      console.log(`✅ [ShopifySync] Chunk ${chunkNum}/${numChunks} done — inserted ${added}. Total so far: ${totalAdded}/${totalNew}`);
-
-      updateStatus(
-        'syncing',
-        `Phase 2/2 — Chunk ${chunkNum}/${numChunks} saved ✓ (${totalAdded}/${totalNew} inserted so far)`,
-        totalAdded, totalNew
-      );
-    }
-
-    console.log(`✅ Shopify Fetch [${shop_domain}]: Added ${totalAdded} new orders`);
-    updateStatus('idle', `Finished. Added ${totalAdded} of ${totalNew} orders.`);
+    console.log(`✅ Shopify Fetch [${shop_domain}]: Finished. Total added: ${totalAdded}`);
+    updateStatus('idle', `Finished. Added ${totalAdded} orders.`);
     return { added: totalAdded };
   } catch (err) {
     console.error(`Sync error for ${shop_domain}:`, err.message);
