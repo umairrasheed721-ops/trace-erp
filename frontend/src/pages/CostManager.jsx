@@ -215,6 +215,7 @@ export default function CostManager() {
     }
     
     grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
+    if (landed > 0) grouped[c.parent_title].hasCost = true
   })
 
   const sorted = Object.values(grouped)
@@ -285,16 +286,16 @@ export default function CostManager() {
                 {sorted.map(p => (
                   <React.Fragment key={p.name}>
                     <tr style={{ 
-                      background: p.totalValue > 0 ? 'rgba(52, 211, 153, 0.05)' : 'rgba(255,255,255,0.02)', 
+                      background: p.hasCost ? 'rgba(52, 211, 153, 0.05)' : 'rgba(255,255,255,0.02)', 
                       cursor: 'pointer',
-                      borderLeft: p.totalValue > 0 ? '4px solid #34d399' : '4px solid transparent'
+                      borderLeft: p.hasCost ? '4px solid #34d399' : '4px solid transparent'
                     }} onClick={() => toggleParent(p.name)}>
                       <td style={{ padding: 15, fontWeight: 'bold' }}>
                         {expandedParents.has(p.name) ? '▼' : '▶'} {p.name}
-                        {p.totalValue > 0 && <span style={{ marginLeft: 10, fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                        {p.hasCost && <span style={{ marginLeft: 10, fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
                       </td>
                       <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.totalValue > 0 ? '#34d399' : 'inherit' }}>{p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? '#34d399' : 'inherit' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0 (No Stock)') : '—'}</td>
                       <td style={{ textAlign: 'right' }}>{p.totalQty}</td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
                         <button className="btn btn-icon" title="Accept All Shopify Costs" onClick={(e) => { e.stopPropagation(); handleBulkAccept(p.name); }}>✅</button>
