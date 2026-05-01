@@ -239,20 +239,20 @@ export default function CostManager() {
       </header>
 
       <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
-        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#000' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value</div>
-          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
+        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#000', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0, 242, 254, 0.2)' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value (Accepted)</div>
+          <div style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
           <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.8 }}>Asset worth of {totals.acceptedQty} items</div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', padding: '20px', borderRadius: '16px' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>⏳ Pending Acceptance</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: '#fcd34d' }}>Rs {totals.pendingValue.toLocaleString()}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Potential value from Shopify costs</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Value waiting in Shopify drafts</div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>📦 Registered Variants</div>
+        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', padding: '20px', borderRadius: '16px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>📦 Total variants</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5 }}>{totals.totalVariants}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Unique SKUs in Registry</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Active SKUs in Registry</div>
         </div>
       </div>
 
