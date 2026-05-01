@@ -193,13 +193,28 @@ export default function CostManager() {
     setExpandedParents(next)
   }
 
-  // Grouping
+  const totals = {
+    acceptedValue: 0,
+    acceptedQty: 0,
+    pendingValue: 0,
+    totalVariants: costs.length
+  }
+
   const grouped = {}
   costs.forEach(c => {
     if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0 }
     grouped[c.parent_title].variants.push(c)
     grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
-    grouped[c.parent_title].totalValue += (c.landed_cost || 0) * (c.inventory_qty || 0)
+    
+    const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
+    if (landed > 0) {
+      totals.acceptedValue += landed * (c.inventory_qty || 0)
+      totals.acceptedQty += (c.inventory_qty || 0)
+    } else if (c.shopify_cost > 0) {
+      totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
+    }
+    
+    grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
   })
 
   const sorted = Object.values(grouped)
@@ -222,6 +237,24 @@ export default function CostManager() {
           </button>
         </div>
       </header>
+
+      <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
+        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#000' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.8 }}>Asset worth of {totals.acceptedQty} items</div>
+        </div>
+        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>⏳ Pending Acceptance</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: '#fcd34d' }}>Rs {totals.pendingValue.toLocaleString()}</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Potential value from Shopify costs</div>
+        </div>
+        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>📦 Registered Variants</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5 }}>{totals.totalVariants}</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Unique SKUs in Registry</div>
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid #333' }}>
         <button onClick={() => setActiveTab('master')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'master' ? '#00f2fe' : '#666', borderBottom: activeTab === 'master' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
