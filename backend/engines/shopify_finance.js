@@ -214,26 +214,36 @@ async function getShopifyOrderStatus(store, orderId) {
 }
 
 async function getShopifyInventoryCosts(store) {
-  const query = `
-    query {
-      productVariants(first: 250) {
-        edges {
-          node {
-            id
-            title
-            price
-            product {
+  let allVariants = [];
+  let hasNextPage = true;
+  let cursor = null;
+
+  while (hasNextPage) {
+    const query = `
+      query($cursor: String) {
+        productVariants(first: 250, after: $cursor) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
               title
-            }
-            inventoryItem {
-              unitCost {
-                amount
+              price
+              product {
+                title
               }
-              inventoryLevels(first: 1) {
-                edges {
-                  node {
-                    quantities(names: ["available"]) {
-                      quantity
+              inventoryItem {
+                unitCost {
+                  amount
+                }
+                inventoryLevels(first: 1) {
+                  edges {
+                    node {
+                      quantities(names: ["available"]) {
+                        quantity
+                      }
                     }
                   }
                 }
@@ -242,23 +252,31 @@ async function getShopifyInventoryCosts(store) {
           }
         }
       }
-    }
-  `;
+    `;
 
-  const res = await shopifyFetch(store, 'graphql.json', {
-    method: 'POST',
-    body: JSON.stringify({ query })
-  });
-  
-  if (!res.ok) throw new Error(`GraphQL Sync Failed: ${res.status}`);
-  
-  const json = await res.json();
-  if (json.errors) throw new Error(`Shopify GraphQL Error: ${JSON.stringify(json.errors)}`);
+    const res = await shopifyFetch(store, 'graphql.json', {
+      method: 'POST',
+      body: JSON.stringify({ query, variables: { cursor } })
+    });
+    
+    if (!res.ok) throw new Error(`GraphQL Sync Failed: ${res.status}`);
+    
+    const json = await res.json();
+    if (json.errors) throw new Error(`Shopify GraphQL Error: ${JSON.stringify(json.errors)}`);
+
+    const pageInfo = json.data?.productVariants?.pageInfo;
+    const edges = json.data?.productVariants?.edges || [];
+    
+    allVariants = allVariants.concat(edges.map(e => e.node));
+    hasNextPage = pageInfo?.hasNextPage;
+    cursor = pageInfo?.endCursor;
+
+    if (hasNextPage) await sleep(200); // Respect rate limits
+  }
 
   const aggregated = {};
-  const edges = json.data?.productVariants?.edges || [];
   
-  edges.forEach(({ node }) => {
+  allVariants.forEach((node) => {
     const parentName = node.product?.title;
     const variantName = node.title === 'Default Title' ? '' : node.title;
     if (!parentName) return;
@@ -268,7 +286,6 @@ async function getShopifyInventoryCosts(store) {
     const sellingPrice = parseFloat(node.price || 0);
     const qty = node.inventoryItem?.inventoryLevels?.edges?.[0]?.node?.quantities?.[0]?.quantity || 0;
     
-    // We now return flat variant-level data
     const key = `${parentName}@@@${variantName}`;
     if (!aggregated[key]) {
       aggregated[key] = { 
