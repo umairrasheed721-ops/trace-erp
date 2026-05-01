@@ -75,8 +75,13 @@ export default function CostManager() {
 
   const handleApplyGhostCosts = async () => {
     const mappings = {}
-    Object.entries(ghostCosts).forEach(([name, cost]) => {
-      if (parseFloat(cost) > 0) mappings[name] = parseFloat(cost)
+    Object.entries(ghostCosts).forEach(([key, cost]) => {
+      if (parseFloat(cost) > 0) {
+        // key is "Parent@@@Variant" or just "Name"
+        const [pName, vName] = key.split('@@@');
+        const finalKey = vName ? `${pName} - ${vName}` : pName;
+        mappings[finalKey] = parseFloat(cost)
+      }
     })
     if (Object.keys(mappings).length === 0) return addToast('Please enter at least one cost', 'warning')
 
@@ -457,34 +462,100 @@ export default function CostManager() {
           <div style={{ background: 'rgba(0,242,254,0.05)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid rgba(0,242,254,0.2)' }}>
             <p style={{ margin: 0, color: '#00f2fe' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
           </div>
-          <div style={{ textAlign: 'right', marginBottom: 15 }}>
-            <button className="btn btn-success" onClick={handleApplyGhostCosts}>🚀 Apply All Costs</button>
-          </div>
+          
           <div className="table-container" style={{ background: '#111', borderRadius: 12, border: '1px solid #222' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
-                  <th style={{ padding: 15 }}>Product Name</th>
-                  <th style={{ textAlign: 'center' }}>Affected Orders</th>
-                  <th style={{ textAlign: 'right' }}>Unit Cost</th>
-                  <th style={{ textAlign: 'right', padding: 15 }}>Verify</th>
+                  <th style={{ padding: 15 }}>Product / Variant</th>
+                  <th style={{ textAlign: 'center' }}>Occurrences</th>
+                  <th style={{ textAlign: 'right' }}>Target Cost</th>
+                  <th style={{ textAlign: 'right', padding: 15 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {ghosts.map((g, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #222' }}>
-                    <td style={{ padding: 15, fontWeight: 'bold' }}>{g.name}</td>
-                    <td style={{ textAlign: 'center' }}><span className="badge-warning">{g.count} Orders</span></td>
-                    <td style={{ textAlign: 'right' }}>
-                      <input type="number" className="form-input" style={{ width: 120, textAlign: 'right' }} value={ghostCosts[g.name] || ''} onChange={e => setGhostCosts({...ghostCosts, [g.name]: e.target.value})} />
-                    </td>
-                    <td style={{ textAlign: 'right', padding: 15 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => handleInspectGhost(g.name)}>🔍 Inspect</button>
-                    </td>
-                  </tr>
+                {ghosts.map(p => (
+                  <React.Fragment key={p.name}>
+                    <tr 
+                      style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid #222' }} 
+                      onClick={() => toggleParent(p.name)}
+                    >
+                      <td style={{ padding: 15, fontWeight: 'bold' }}>
+                        <span style={{ marginRight: 10 }}>{expandedParents.has(p.name) ? '▼' : '▶'}</span>
+                        {p.name}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge-warning">{p.count} Orders</span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                          <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>Bulk:</span>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            style={{ width: 100, textAlign: 'right', height: 32 }} 
+                            placeholder="Set All"
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={(e) => {
+                              const val = e.target.value;
+                              if (val) {
+                                const next = {...ghostCosts};
+                                p.variants.forEach(v => {
+                                  next[`${p.name}@@@${v.name}`] = val;
+                                });
+                                setGhostCosts(next);
+                                addToast(`Applied Rs ${val} to all variants of ${p.name}`, 'success');
+                              }
+                            }}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', padding: 15 }}>
+                         <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleInspectGhost(p.name); }}>🔍 Orders</button>
+                      </td>
+                    </tr>
+                    {expandedParents.has(p.name) && p.variants.map((v, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #222', background: 'rgba(0,0,0,0.2)' }}>
+                        <td style={{ padding: '10px 15px 10px 45px', opacity: 0.8, fontSize: '0.9rem' }}>
+                          └─ {v.name || 'Default Variant'}
+                        </td>
+                        <td style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.85rem' }}>
+                          {v.count}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            style={{ width: 100, textAlign: 'right', height: 30, fontSize: '0.85rem' }} 
+                            value={ghostCosts[`${p.name}@@@${v.name}`] || ''} 
+                            onChange={e => setGhostCosts({...ghostCosts, [`${p.name}@@@${v.name}`]: e.target.value})} 
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right', padding: 15 }}>
+                           <button 
+                            className="btn btn-primary btn-sm" 
+                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            onClick={() => {
+                              setEditingItem({ parent_title: p.name, variant_title: v.name });
+                              setForm({ 
+                                parent_title: p.name, 
+                                variant_title: v.name, 
+                                unit_cost: parseFloat(ghostCosts[`${p.name}@@@${v.name}`]) || 0, 
+                                packaging_cost: 0 
+                              });
+                              setShowModal(true);
+                            }}
+                           >Fix This</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{ textAlign: 'right', marginTop: 20 }}>
+            <button className="btn btn-success btn-lg" onClick={handleApplyGhostCosts}>🚀 Save & Apply All Ghost Costs</button>
           </div>
         </div>
       )}

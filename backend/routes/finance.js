@@ -120,14 +120,28 @@ router.get('/missing-product-list', (req, res) => {
         const fullName = match[1].trim();
         if (!fullName) continue;
         
-        // Extract Parent Name (everything before the first " - ")
-        const parentName = fullName.split(' - ')[0].trim();
-        productCounts[parentName] = (productCounts[parentName] || 0) + 1;
+        const parts = fullName.split(' - ');
+        const parentName = parts[0].trim();
+        const variantName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
+        const qty = parseInt(match[2]) || 0;
+
+        if (!productCounts[parentName]) {
+          productCounts[parentName] = { name: parentName, count: 0, variants: {} };
+        }
+        productCounts[parentName].count += 1; // Number of orders
+        
+        if (!productCounts[parentName].variants[variantName]) {
+          productCounts[parentName].variants[variantName] = { name: variantName, count: 0 };
+        }
+        productCounts[parentName].variants[variantName].count += 1;
       }
     });
 
-    const list = Object.entries(productCounts)
-      .map(([name, count]) => ({ name, count }))
+    const list = Object.values(productCounts)
+      .map(p => ({
+        ...p,
+        variants: Object.values(p.variants).sort((a,b) => b.count - a.count)
+      }))
       .sort((a, b) => b.count - a.count);
 
     console.log(`✅ Scan finished. Unique products: ${list.length}`);
