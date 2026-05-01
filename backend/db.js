@@ -61,6 +61,7 @@ function initDb() {
       postex_weight REAL DEFAULT 0.5,
       courier TEXT,
       cost REAL DEFAULT 0,
+      packaging_cost REAL DEFAULT 0,
       courier_fee REAL DEFAULT 0,
       payment_ref TEXT,
       paid_amount REAL DEFAULT 0,
@@ -179,77 +180,7 @@ function initDb() {
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0;"); } catch(e) {}
   
-  // 🔥 FORCE REPAIR: Ensure the UNIQUE constraint is (store_id, parent_title, variant_title)
-  // This fix solves the "ON CONFLICT clause does not match" error in production
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS product_master_costs_v2 (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-        parent_title TEXT NOT NULL,
-        variant_title TEXT NOT NULL DEFAULT '',
-        unit_cost REAL DEFAULT 0,
-        packaging_cost REAL DEFAULT 0,
-        landed_cost REAL DEFAULT 0,
-        inventory_qty INTEGER DEFAULT 0,
-        shopify_cost REAL DEFAULT 0,
-        selling_price REAL DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(store_id, parent_title, variant_title)
-      );
-    `);
-    
-    // Copy data from v1 to v2 if v1 exists
-    try {
-      db.exec(`
-        INSERT OR IGNORE INTO product_master_costs_v2 (
-          store_id, parent_title, variant_title, unit_cost, packaging_cost, 
-          landed_cost, inventory_qty, shopify_cost, selling_price
-        )
-        SELECT 
-          store_id, parent_title, variant_title, unit_cost, packaging_cost, 
-          landed_cost, inventory_qty, shopify_cost, selling_price 
-        FROM product_master_costs;
-      `);
-      db.exec("DROP TABLE product_master_costs;");
-      db.exec("ALTER TABLE product_master_costs_v2 RENAME TO product_master_costs;");
-      console.log("✅ Database Schema Repaired: product_master_costs upgraded to v2");
-    } catch(copyErr) {}
-  } catch(repairErr) {}
-
-  // 🔥 ROBUST DEDUPLICATION: Rename "Default Title" to "" or merge if "" already exists
-  try {
-    // 1. Rename 'Default Title' to '' if the '' variant doesn't exist yet
-    db.exec(`
-      UPDATE product_master_costs 
-      SET variant_title = ''
-      WHERE variant_title = 'Default Title'
-        AND NOT EXISTS (
-          SELECT 1 FROM product_master_costs p2 
-          WHERE p2.store_id = product_master_costs.store_id 
-            AND p2.parent_title = product_master_costs.parent_title 
-            AND p2.variant_title = ''
-        );
-    `);
-
-    // 2. For items where BOTH '' and 'Default Title' exist, copy costs to '' then delete 'Default Title'
-    db.exec(`
-      UPDATE product_master_costs
-      SET unit_cost = COALESCE(unit_cost, (SELECT unit_cost FROM product_master_costs p3 WHERE p3.store_id = product_master_costs.store_id AND p3.parent_title = product_master_costs.parent_title AND p3.variant_title = 'Default Title')),
-          packaging_cost = COALESCE(packaging_cost, (SELECT packaging_cost FROM product_master_costs p4 WHERE p4.store_id = product_master_costs.store_id AND p4.parent_title = product_master_costs.parent_title AND p4.variant_title = 'Default Title'))
-      WHERE variant_title = '' 
-        AND EXISTS (SELECT 1 FROM product_master_costs p5 WHERE p5.store_id = product_master_costs.store_id AND p5.parent_title = product_master_costs.parent_title AND p5.variant_title = 'Default Title');
-    `);
-
-    // 3. Final purge of any remaining 'Default Title' rows
-    db.exec("DELETE FROM product_master_costs WHERE variant_title = 'Default Title';");
-    
-    console.log("✅ Database Deduplicated: All 'Default Title' records merged and purged.");
-  } catch(dedupeErr) {
-    console.error("❌ Deduplication failed:", dedupeErr.message);
-  }
-
+  // Legacy repair logic removed to prevent accidental data loss.
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,6 +188,7 @@ function initDb() {
       parent_title TEXT NOT NULL,
       variant_title TEXT NOT NULL DEFAULT '',
       unit_cost REAL DEFAULT 0,
+      previous_unit_cost REAL DEFAULT 0,
       packaging_cost REAL DEFAULT 0,
       landed_cost REAL DEFAULT 0,
       inventory_qty INTEGER DEFAULT 0,
@@ -267,6 +199,8 @@ function initDb() {
       UNIQUE(store_id, parent_title, variant_title)
     );
   `);
+
+
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS courier_cities (
@@ -338,3 +272,5 @@ try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE orders ADD COLUMN packaging_cost REAL DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE product_master_costs ADD COLUMN previous_unit_cost REAL DEFAULT 0").run(); } catch(e) {}

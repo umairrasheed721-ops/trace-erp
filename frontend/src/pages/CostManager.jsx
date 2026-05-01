@@ -75,6 +75,58 @@ export default function CostManager() {
     }
   }
 
+  const handleRevertCost = async (parentTitle, variantTitle) => {
+    try {
+      const res = await fetch('/api/finance/revert-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle, variant_title: variantTitle })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Cost reverted to previous manual value`, 'success')
+        fetchCosts()
+      }
+    } catch (e) {
+      addToast('Revert error: ' + e.message, 'error')
+    }
+  }
+
+  const handleDeleteParent = async (parentTitle) => {
+    if (!window.confirm(`Are you sure you want to remove "${parentTitle}" and all its variants from the registry?`)) return
+    try {
+      const res = await fetch('/api/finance/delete-master-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Removed "${parentTitle}" from registry`, 'success')
+        fetchCosts()
+      }
+    } catch (e) {
+      addToast('Delete error: ' + e.message, 'error')
+    }
+  }
+
+  const handleBulkRevertCost = async (parentTitle) => {
+    try {
+      const res = await fetch('/api/finance/bulk-revert-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Reverted costs for ${data.count} variants`, 'success')
+        fetchCosts()
+      }
+    } catch (e) {
+      addToast('Bulk Revert error: ' + e.message, 'error')
+    }
+  }
+
   const handleSave = async (e) => {
     e.preventDefault()
     try {
@@ -332,7 +384,16 @@ export default function CostManager() {
                       <td style={{ textAlign: 'center', fontSize: 10, opacity: 0.5 }}>
                         {!isSingleDefault && (expandedParents.has(parent.name) ? '▼' : '▶')}
                       </td>
-                      <td style={{ fontWeight: 700, padding: '16px 8px' }}>{parent.name}</td>
+                      <td style={{ fontWeight: 700, padding: '16px 8px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <button 
+                          className="btn btn-sm" 
+                          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '2px 8px', fontSize: 10, fontWeight: 'bold', borderRadius: 4, cursor: 'pointer' }}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteParent(parent.name); }}
+                        >
+                          DELETE
+                        </button>
+                        {parent.name}
+                      </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {isSingleDefault ? `Rs. ${mainVariant.selling_price.toLocaleString()}` : `Rs. ${parent.maxPrice.toLocaleString()}`}
                       </td>
@@ -360,7 +421,7 @@ export default function CostManager() {
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{parent.totalQty.toLocaleString()} units</td>
                       <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
                           {isSingleDefault ? (
                             <>
                               {mainVariant.shopify_cost > 0 && Math.abs(mainVariant.shopify_cost - mainVariant.unit_cost) > 1 ? (
@@ -379,6 +440,16 @@ export default function CostManager() {
                                   Verified
                                 </span>
                               ) : null}
+                              {mainVariant.previous_unit_cost > 0 && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', fontSize: 10 }}
+                                  title={`Revert to Rs. ${mainVariant.previous_unit_cost}`}
+                                  onClick={(e) => { e.stopPropagation(); handleRevertCost(mainVariant.parent_title, mainVariant.variant_title); }}
+                                >
+                                  ↺ Revert
+                                </button>
+                              )}
                               <button 
                                 className="btn btn-sm" 
                                 style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }} 
@@ -388,7 +459,7 @@ export default function CostManager() {
                               </button>
                             </>
                           ) : (
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <>
                               {!parent.hasConflict ? (
                                 <span style={{ color: '#10b981', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -405,6 +476,15 @@ export default function CostManager() {
                                   Accept All
                                 </button>
                               )}
+                              {parent.variants.some(v => v.previous_unit_cost > 0) && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '4px 10px', fontSize: 10 }}
+                                  onClick={(e) => { e.stopPropagation(); handleBulkRevertCost(parent.name); }}
+                                >
+                                  ↺ Bulk Revert
+                                </button>
+                              )}
                               <button 
                                 className="btn btn-sm" 
                                 style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '4px 10px' }}
@@ -412,7 +492,7 @@ export default function CostManager() {
                               >
                                 ⚡ Bulk Sync
                               </button>
-                            </div>
+                            </>
                           )}
                         </div>
                       </td>
@@ -466,6 +546,16 @@ export default function CostManager() {
                                   Verified
                                 </span>
                               ) : null}
+                              {v.previous_unit_cost > 0 && (
+                                <button 
+                                  className="btn btn-sm" 
+                                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', fontSize: 10, padding: '2px 6px' }}
+                                  title={`Revert to Rs. ${v.previous_unit_cost}`}
+                                  onClick={() => handleRevertCost(v.parent_title, v.variant_title)}
+                                >
+                                  ↺ Revert
+                                </button>
+                              )}
                               <button 
                                 className="btn btn-sm" 
                                 style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }} 

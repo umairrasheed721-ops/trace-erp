@@ -137,69 +137,6 @@ router.get('/missing-product-list', (req, res) => {
   }
 });
 
-// POST /api/finance/apply-bulk-product-costs
-router.post('/apply-bulk-product-costs', async (req, res) => {
-  const { store_id, mappings } = req.body; // mappings: { "Product Name": 1200, ... }
-  if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
-
-  try {
-    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
-    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
-    let healedCount = 0;
-
-    console.log(`🚀 Healing costs for Store ${store_id}. Orders to check: ${orders.length}`);
-
-    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
-    
-    db.transaction(() => {
-      // 1. SYNC TO MASTER REGISTRY (Auto-learn)
-      for (const [pName, pCost] of Object.entries(mappings)) {
-        db.prepare(`
-          INSERT INTO product_master_costs (store_id, parent_title, unit_cost, landed_cost, updated_at)
-          VALUES (?, ?, ?, ?, datetime('now'))
-          ON CONFLICT(store_id, parent_title) DO UPDATE SET
-            unit_cost = excluded.unit_cost,
-            landed_cost = excluded.landed_cost,
-            updated_at = datetime('now')
-        `).run(Number(store_id), pName, pCost, pCost);
-      }
-
-      // 2. Apply to zero-cost orders
-      for (const order of orders) {
-        const itemsStr = order.line_items || order.product_titles;
-        if (!itemsStr) continue;
-
-        let totalCost = 0;
-        let matched = false;
-        let match;
-        regex.lastIndex = 0;
-        
-        while ((match = regex.exec(itemsStr)) !== null) {
-          const fullName = match[1].trim();
-          const qty = parseInt(match[2]) || 0;
-          
-          // Match by Parent Name
-          const parentName = fullName.split(' - ')[0].trim();
-          
-          if (mappings[parentName] !== undefined) {
-            totalCost += mappings[parentName] * qty;
-            matched = true;
-          }
-        }
-
-        if (matched) {
-          updateStmt.run(totalCost, order.id);
-          healedCount++;
-        }
-      }
-    })();
-
-    res.json({ success: true, count: healedCount });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ==========================================
 // 📦 UNIFIED RETURNS MANAGER
 // ==========================================
@@ -361,7 +298,7 @@ router.post('/bulk-update', async (req, res) => {
               }
 
               // ALWAYS update internal ERP database with the actual settlement data
-              db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ? WHERE id = ?`)
+              db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ?, cost_locked = 1 WHERE id = ?`)
                 .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
                 
               const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
@@ -508,13 +445,13 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
   if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
 
   try {
-    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
+    const orders = db.prepare('SELECT id, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(store_id));
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
 
     console.log(`🚀 Healing costs for Store ${store_id}. Orders to check: ${orders.length}`);
 
-    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
+    const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
     
     db.transaction(() => {
       // 1. SYNC TO MASTER REGISTRY (Auto-learn)
@@ -534,7 +471,8 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
         const itemsStr = order.line_items || order.product_titles;
         if (!itemsStr) continue;
 
-        let totalCost = 0;
+        let totalLanded = 0;
+        let totalPackaging = 0;
         let matched = false;
         let match;
         regex.lastIndex = 0;
@@ -547,13 +485,19 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
           const parentName = fullName.split(' - ')[0].trim();
           
           if (mappings[parentName] !== undefined) {
-            totalCost += mappings[parentName] * qty;
+            totalLanded += mappings[parentName] * qty;
+            // Since mappings don't have separate packaging, we assume packaging is 0 for this bulk apply
+            // OR we could try to look up packaging from master registry if it already exists
+            const existing = db.prepare('SELECT packaging_cost FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = \'\'').get(Number(store_id), parentName);
+            if (existing) {
+               totalPackaging += (existing.packaging_cost || 0) * qty;
+            }
             matched = true;
           }
         }
 
         if (matched) {
-          updateStmt.run(totalCost, order.id);
+          updateStmt.run(totalLanded, totalPackaging, order.id);
           healedCount++;
         }
       }
@@ -605,20 +549,21 @@ router.post('/auto-heal-all', (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const catalog = db.prepare('SELECT parent_title, variant_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+    const catalog = db.prepare('SELECT parent_title, variant_title, unit_cost, packaging_cost, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
     
-    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(store_id));
+    const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(store_id));
     const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
 
-    const updateStmt = db.prepare('UPDATE orders SET cost = ?, cost_locked = 1 WHERE id = ?');
+    const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
     
     db.transaction(() => {
       for (const order of orders) {
         const itemsStr = order.line_items || order.product_titles;
         if (!itemsStr) continue;
 
-        let totalCost = 0;
+        let totalLanded = 0;
+        let totalPackaging = 0;
         let matched = false;
         let match;
         regex.lastIndex = 0;
@@ -640,13 +585,14 @@ router.post('/auto-heal-all', (req, res) => {
           }
           
           if (matchRow) {
-            totalCost += matchRow.landed_cost * qty;
+            totalLanded += matchRow.landed_cost * qty;
+            totalPackaging += (matchRow.packaging_cost || 0) * qty;
             matched = true;
           }
         }
 
         if (matched) {
-          updateStmt.run(totalCost, order.id);
+          updateStmt.run(totalLanded, totalPackaging, order.id);
           healedCount++;
         }
       }
@@ -696,7 +642,8 @@ router.post('/accept-shopify-cost', (req, res) => {
   try {
     db.prepare(`
       UPDATE product_master_costs 
-      SET unit_cost = shopify_cost, 
+      SET previous_unit_cost = unit_cost,
+          unit_cost = shopify_cost, 
           landed_cost = shopify_cost + packaging_cost,
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND variant_title = ?
@@ -728,9 +675,9 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
 
     const result = db.prepare(`
       UPDATE product_master_costs 
-      SET unit_cost = shopify_cost,
-          packaging_cost = 0,
-          landed_cost = shopify_cost,
+      SET previous_unit_cost = unit_cost,
+          unit_cost = shopify_cost,
+          landed_cost = shopify_cost + packaging_cost,
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND shopify_cost > 0
     `).run(Number(store_id), parent_title);
@@ -740,6 +687,49 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
     console.error("Bulk Accept Error:", error);
     res.status(500).json({ error: error.message });
   }
+});
+
+router.post('/revert-cost', (req, res) => {
+  const { store_id, parent_title, variant_title } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = previous_unit_cost,
+          landed_cost = previous_unit_cost + packaging_cost,
+          updated_at = datetime('now')
+      WHERE store_id = ? AND parent_title = ? AND variant_title = ?
+    `).run(Number(store_id), parent_title, variant_title || '');
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/bulk-revert-cost', (req, res) => {
+  const { store_id, parent_title } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    const result = db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = previous_unit_cost,
+          landed_cost = previous_unit_cost + packaging_cost,
+          updated_at = datetime('now')
+      WHERE store_id = ? AND parent_title = ? AND previous_unit_cost > 0
+    `).run(Number(store_id), parent_title);
+    res.json({ success: true, count: result.changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/delete-master-cost', (req, res) => {
+  const { store_id, parent_title } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    const result = db.prepare('DELETE FROM product_master_costs WHERE store_id = ? AND parent_title = ?')
+      .run(Number(store_id), parent_title);
+    res.json({ success: true, count: result.changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

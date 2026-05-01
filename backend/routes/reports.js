@@ -14,7 +14,8 @@ router.get('/daily', (req, res) => {
         COUNT(id) as landed_orders,
         SUM(price) as total_sale,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END) as delivered_sale,
-        SUM(CASE WHEN delivery_status = 'Delivered' THEN cost ELSE 0 END) as cgs,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN (cost - packaging_cost) ELSE 0 END) as pure_cgs,
+        SUM(CASE WHEN delivery_status NOT IN ('Pending', 'Cancelled', 'Booked') THEN packaging_cost ELSE 0 END) as total_packaging,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE 0 END) as delivered_courier_fee,
         SUM(courier_fee) as total_courier_fee,
         SUM(paid_amount) as payment_paid,
@@ -80,7 +81,8 @@ router.get('/daily', (req, res) => {
 
       const deliveredSale = day.delivered_sale || 0;
       const totalSale = day.total_sale || 0;
-      const cgs = day.cgs || 0;
+      const pureCgs = day.pure_cgs || 0;
+      const sunkPackaging = day.total_packaging || 0;
       const paymentPaid = day.payment_paid || 0;
 
       const marketingSpend = m.marketing_spend || 0;
@@ -92,10 +94,10 @@ router.get('/daily', (req, res) => {
       // Derived Metrics
       const delivered = day.delivered || 0;
       const aov = delivered > 0 ? (deliveredSale / delivered) : 0;
-      const cgsPercent = deliveredSale > 0 ? (cgs / deliveredSale) * 100 : 0;
+      const cgsPercent = deliveredSale > 0 ? ((pureCgs + sunkPackaging) / deliveredSale) * 100 : 0;
       const taxPaid = deliveredSale * 0.04;
       const netSales = deliveredSale - taxPaid;
-      const grossProfit = deliveredSale - cgs;
+      const grossProfit = deliveredSale - pureCgs - sunkPackaging;
       const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
       
       // 🚚 DYNAMIC COURIER LOGIC (PRE-AGGREGATED)
@@ -124,7 +126,9 @@ router.get('/daily', (req, res) => {
         date: dateStr,
         aov,
         deliveredSale,
-        cgs,
+        cgs: pureCgs + sunkPackaging,
+        pureCgs,
+        sunkPackaging,
         cgsPercent,
         netSales,
         taxPaid,
@@ -185,7 +189,7 @@ router.get('/daily', (req, res) => {
           const totalMarketing = marketingSpend + tiktokMarketing;
           
           backfilledResults.push({
-            date: dStr, aov: 0, deliveredSale: 0, cgs: 0, cgsPercent: 0, netSales: 0, taxPaid: 0, grossProfit: 0,
+            date: dStr, aov: 0, deliveredSale: 0, cgs: 0, pureCgs: 0, sunkPackaging: 0, cgsPercent: 0, netSales: 0, taxPaid: 0, grossProfit: 0,
             marPercent: 0, marketingSpend, tiktokMarketing, estCourier: 0, actualCourier: 0, courierDiff: 0,
             hybridCourier: 0, actualExp: m.actual_exp || 0, pnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
