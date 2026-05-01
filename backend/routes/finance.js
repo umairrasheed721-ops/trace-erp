@@ -519,14 +519,26 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
           const fullName = match[1].trim();
           const qty = parseInt(match[2]) || 0;
           
-          // Match by Parent Name
-          const parentName = fullName.split(' - ')[0].trim();
+          const parts = fullName.split(' - ');
+          const parentName = parts[0].trim();
+
+          // 1. Try Exact Match First (Full Name)
+          let matchPrice = mappings[fullName];
+
+          // 2. Try Parent Match (everything before first " - ")
+          if (matchPrice === undefined) {
+            matchPrice = mappings[parentName];
+          }
+
+          // 3. Try "Reverse" Match (maybe user mapping is more specific than order title?)
+          if (matchPrice === undefined) {
+             const foundKey = Object.keys(mappings).find(k => k.toLowerCase() === fullName.toLowerCase() || k.toLowerCase().startsWith(fullName.toLowerCase()));
+             if (foundKey) matchPrice = mappings[foundKey];
+          }
           
-          if (mappings[parentName] !== undefined) {
-            totalLanded += mappings[parentName] * qty;
-            // Since mappings don't have separate packaging, we assume packaging is 0 for this bulk apply
-            // OR we could try to look up packaging from master registry if it already exists
-            const existing = db.prepare('SELECT packaging_cost FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = \'\'').get(Number(store_id), parentName);
+          if (matchPrice !== undefined) {
+            totalLanded += matchPrice * qty;
+            const existing = db.prepare('SELECT packaging_cost FROM product_master_costs WHERE store_id = ? AND parent_title = ?').get(Number(store_id), parentName);
             if (existing) {
                totalPackaging += (existing.packaging_cost || 0) * qty;
             }
