@@ -313,15 +313,13 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
         </div>
       )}
 
-      {!isSyncing && (
-        <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8 }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>🎯 Sniper Tool: Sync Specific Order</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="form-input" placeholder="Order # (e.g. #16374)" value={singleOrderNum} onChange={e => setSingleOrderNum(e.target.value)} style={{ height: 32, fontSize: '0.8rem', flex: 1 }} />
-            <button className="btn btn-primary btn-sm" onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}>Sync Now</button>
-          </div>
+      <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8 }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>🎯 Sniper Tool: Sync Specific Order</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="form-input" placeholder="Order # (e.g. #16374)" value={singleOrderNum} onChange={e => setSingleOrderNum(e.target.value)} style={{ height: 32, fontSize: '0.8rem', flex: 1 }} />
+          <button className="btn btn-primary btn-sm" onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}>Sync Now</button>
         </div>
-      )}
+      </div>
 
       {editing && (
         <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
