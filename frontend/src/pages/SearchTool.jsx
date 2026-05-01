@@ -671,7 +671,7 @@ export default function SearchTool() {
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
-  }, [activeStoreId, status])
+  }, [activeStoreId, status, keyword])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
