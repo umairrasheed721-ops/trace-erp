@@ -28,6 +28,7 @@ export default function CostManager() {
   const [loadingGhostOrders, setLoadingGhostOrders] = useState(false)
   const [ghostCosts, setGhostCosts] = useState({})
   const [ghostSearch, setGhostSearch] = useState('')
+  const [selectedGhosts, setSelectedGhosts] = useState(new Set())
 
   useEffect(() => {
     if (activeStoreId) {
@@ -459,7 +460,50 @@ export default function CostManager() {
       )}
 
       {activeTab === 'ghosts' && (
-        <div>
+        <div style={{ position: 'relative' }}>
+          {selectedGhosts.size > 0 && (
+            <div style={{ 
+              position: 'sticky', top: 10, zIndex: 100, 
+              background: '#00f2fe', color: '#000', 
+              padding: '12px 20px', borderRadius: 12, 
+              marginBottom: 20, display: 'flex', 
+              justifyContent: 'space-between', alignItems: 'center',
+              boxShadow: '0 8px 32px rgba(0,242,254,0.3)'
+            }}>
+              <div style={{ fontWeight: 'bold' }}>⚡ {selectedGhosts.size} products selected</div>
+              <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
+                <input 
+                  type="number" 
+                  placeholder="Set Rs cost for all" 
+                  className="form-input"
+                  style={{ width: 160, background: '#fff', color: '#000', border: 'none', height: 35 }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const next = {...ghostCosts};
+                      selectedGhosts.forEach(pName => {
+                        const product = ghosts.find(g => g.name === pName);
+                        if (product) {
+                          product.variants.forEach(v => {
+                            next[`${pName}@@@${v.name || ''}`] = val;
+                          });
+                        }
+                      });
+                      setGhostCosts(next);
+                      setSelectedGhosts(new Set());
+                      addToast(`Applied Rs ${val} to ${selectedGhosts.size} products`, 'success');
+                    }
+                  }}
+                />
+                <button 
+                  className="btn btn-sm" 
+                  style={{ background: '#000', color: '#fff' }}
+                  onClick={() => setSelectedGhosts(new Set())}
+                >Cancel</button>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 20 }}>
             <div style={{ position: 'relative', flex: 1 }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
@@ -485,6 +529,20 @@ export default function CostManager() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                  <th style={{ padding: 15, width: 40 }}>
+                    <input 
+                      type="checkbox" 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const all = new Set(ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => p.name));
+                          setSelectedGhosts(all);
+                        } else {
+                          setSelectedGhosts(new Set());
+                        }
+                      }}
+                      checked={selectedGhosts.size > 0 && selectedGhosts.size === ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).length}
+                    />
+                  </th>
                   <th style={{ padding: 15 }}>Product / Variant</th>
                   <th style={{ textAlign: 'center' }}>Occurrences</th>
                   <th style={{ textAlign: 'right' }}>Target Cost</th>
@@ -495,9 +553,21 @@ export default function CostManager() {
                 {ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => (
                   <React.Fragment key={p.name}>
                     <tr 
-                      style={{ cursor: 'pointer', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid #222' }} 
+                      style={{ cursor: 'pointer', background: selectedGhosts.has(p.name) ? 'rgba(0,242,254,0.1)' : 'rgba(255,255,255,0.02)', borderBottom: '1px solid #222' }} 
                       onClick={() => toggleParent(p.name)}
                     >
+                      <td style={{ padding: 15 }} onClick={(e) => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedGhosts.has(p.name)} 
+                          onChange={() => {
+                            const next = new Set(selectedGhosts);
+                            if (next.has(p.name)) next.delete(p.name);
+                            else next.add(p.name);
+                            setSelectedGhosts(next);
+                          }}
+                        />
+                      </td>
                       <td style={{ padding: 15, fontWeight: 'bold' }}>
                         <span style={{ marginRight: 10 }}>{expandedParents.has(p.name) ? '▼' : '▶'}</span>
                         {p.name}
@@ -531,7 +601,8 @@ export default function CostManager() {
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #222', background: 'rgba(0,0,0,0.2)' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid #222', background: selectedGhosts.has(p.name) ? 'rgba(0,242,254,0.05)' : 'rgba(0,0,0,0.2)' }}>
+                        <td></td>
                         <td style={{ padding: '10px 15px 10px 45px', opacity: 0.8, fontSize: '0.9rem' }}>
                           └─ {v.name || 'Default Variant'}
                         </td>
