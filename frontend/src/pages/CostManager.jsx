@@ -8,6 +8,8 @@ export default function CostManager() {
   const [loading, setLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [activeTab, setActiveTab] = useState('master')
+  const [selectedParents, setSelectedParents] = useState(new Set())
+  const [bulkProcessing, setBulkProcessing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
   
   // Modal States
@@ -138,6 +140,46 @@ export default function CostManager() {
     } catch (e) { addToast('Delete failed', 'error') }
   }
 
+  const handleBulkAcceptSelected = async () => {
+    if (selectedParents.size === 0) return
+    setBulkProcessing(true)
+    try {
+      let totalUpdated = 0
+      for (const parentTitle of selectedParents) {
+        const res = await fetch('/api/finance/bulk-accept-shopify-costs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+        })
+        const data = await res.json()
+        totalUpdated += (data.changes || 0)
+      }
+      addToast(`Successfully accepted costs for ${selectedParents.size} products!`, 'success')
+      setSelectedParents(new Set())
+      fetchCosts()
+    } catch (e) {
+      addToast('Bulk acceptance failed', 'error')
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
+
+  const toggleSelectParent = (name) => {
+    const next = new Set(selectedParents)
+    if (next.has(name)) next.delete(name)
+    else next.add(name)
+    setSelectedParents(next)
+  }
+
+  const toggleSelectAll = (isAll) => {
+    if (isAll) {
+      setSelectedParents(new Set())
+    } else {
+      const allNames = sorted.map(p => p.name)
+      setSelectedParents(new Set(allNames))
+    }
+  }
+
   const handleBulkSync = async (e) => {
     e.preventDefault()
     try {
@@ -239,6 +281,32 @@ export default function CostManager() {
         </div>
       </header>
 
+      {selectedParents.size > 0 && (
+        <div style={{ 
+          background: 'rgba(52, 211, 153, 0.1)', 
+          border: '1px solid #34d399', 
+          padding: '15px 25px', 
+          borderRadius: 12, 
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ color: '#34d399', fontWeight: 'bold' }}>
+            ⚡ {selectedParents.size} Products Selected
+          </div>
+          <button 
+            className="btn btn-primary" 
+            style={{ background: '#34d399', color: '#000' }}
+            onClick={handleBulkAcceptSelected}
+            disabled={bulkProcessing}
+          >
+            {bulkProcessing ? '⌛ Processing...' : `✅ Accept All Selected Costs`}
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
         <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#000', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0, 242, 254, 0.2)' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value (Accepted)</div>
@@ -275,6 +343,13 @@ export default function CostManager() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                  <th style={{ width: 40, textAlign: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedParents.size === sorted.length && sorted.length > 0}
+                      onChange={() => toggleSelectAll(selectedParents.size === sorted.length)}
+                    />
+                  </th>
                   <th style={{ padding: 15 }}>Product / Variant</th>
                   <th style={{ textAlign: 'right' }}>Shopify Cost</th>
                   <th style={{ textAlign: 'right' }}>My Cost</th>
@@ -290,6 +365,13 @@ export default function CostManager() {
                       cursor: 'pointer',
                       borderLeft: p.hasCost ? '4px solid #34d399' : '4px solid transparent'
                     }} onClick={() => toggleParent(p.name)}>
+                      <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedParents.has(p.name)}
+                          onChange={() => toggleSelectParent(p.name)}
+                        />
+                      </td>
                       <td style={{ padding: 15, fontWeight: 'bold' }}>
                         {expandedParents.has(p.name) ? '▼' : '▶'} {p.name}
                         {p.hasCost && <span style={{ marginLeft: 10, fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
@@ -308,6 +390,7 @@ export default function CostManager() {
                         borderBottom: '1px solid #222',
                         backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'rgba(52, 211, 153, 0.02)' : 'transparent'
                       }}>
+                        <td></td>
                         <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>
                           {v.variant_title || 'Default'}
                           {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ marginLeft: 8, color: '#34d399' }}>✓</span>}
