@@ -115,6 +115,26 @@ export default function Connect() {
     }
   }
 
+  const handleSyncSingleOrder = async (storeId, orderName) => {
+    if (!orderName) return
+    try {
+      addToast(`🎯 Sniper Tool: Fetching order ${orderName}...`, 'info')
+      const res = await fetch(`/api/stores/${storeId}/sync-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderName })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`✅ ${data.message}`, 'success')
+      } else {
+        addToast(`❌ ${data.error}`, 'error')
+      }
+    } catch {
+      addToast('Network error', 'error')
+    }
+  }
+
   return (
     <div style={{ maxWidth: 760 }}>
       <div className="page-header">
@@ -232,6 +252,26 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
     if (!orderCount) return
     setShowSyncPanel(false)
     onDeepSync(store.id, syncStartDate)
+  }
+
+  const handleSyncSingleOrder = async (storeId, orderName) => {
+    if (!orderName) return
+    try {
+      addToast(`🎯 Sniper Tool: Fetching order ${orderName}...`, 'info')
+      const res = await fetch(`/api/stores/${storeId}/sync-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderName })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`✅ ${data.message}`, 'success')
+      } else {
+        addToast(`❌ ${data.error}`, 'error')
+      }
+    } catch {
+      addToast('Network error', 'error')
+    }
   }
 
   return (
