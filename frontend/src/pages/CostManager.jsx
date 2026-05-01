@@ -471,12 +471,13 @@ export default function CostManager() {
               boxShadow: '0 8px 32px rgba(0,242,254,0.3)'
             }}>
               <div style={{ fontWeight: 'bold' }}>⚡ {selectedGhosts.size} products selected</div>
-              <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input 
                   type="number" 
-                  placeholder="Set Rs cost for all" 
+                  id="ghost-bulk-input"
+                  placeholder="Enter Rs cost" 
                   className="form-input"
-                  style={{ width: 160, background: '#fff', color: '#000', border: 'none', height: 35 }}
+                  style={{ width: 140, background: '#fff', color: '#000', border: 'none', height: 35 }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const val = e.target.value;
@@ -497,8 +498,28 @@ export default function CostManager() {
                   }}
                 />
                 <button 
+                  className="btn btn-sm"
+                  style={{ background: '#000', color: '#fff', fontWeight: 'bold' }}
+                  onClick={() => {
+                    const val = document.getElementById('ghost-bulk-input').value;
+                    if (!val) return addToast('Please enter a cost first', 'warning');
+                    const next = {...ghostCosts};
+                    selectedGhosts.forEach(pName => {
+                      const product = ghosts.find(g => g.name === pName);
+                      if (product) {
+                        product.variants.forEach(v => {
+                          next[`${pName}@@@${v.name || ''}`] = val;
+                        });
+                      }
+                    });
+                    setGhostCosts(next);
+                    setSelectedGhosts(new Set());
+                    addToast(`Applied Rs ${val} to ${selectedGhosts.size} products`, 'success');
+                  }}
+                >Apply to Selected</button>
+                <button 
                   className="btn btn-sm" 
-                  style={{ background: '#000', color: '#fff' }}
+                  style={{ background: 'transparent', color: '#000', border: '1px solid #000' }}
                   onClick={() => setSelectedGhosts(new Set())}
                 >Cancel</button>
               </div>
