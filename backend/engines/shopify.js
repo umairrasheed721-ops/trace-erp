@@ -224,7 +224,7 @@ async function refreshShopifyUpdates(store, onProgress) {
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
   
   try {
-    const dateMin = getDaysAgo(180); 
+    const dateMin = getDaysAgo(730); 
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
     let updatedOrders = [];
