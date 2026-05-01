@@ -37,6 +37,42 @@ function detectOrderSource(order) {
   return order.source_name || 'Direct / Web';
 }
 
+function calculateOrderCost(storeId, lineItems, costMap) {
+  let totalCost = 0;
+  let activeCount = 0;
+  let productTitles = [];
+
+  for (const item of lineItems) {
+    const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+    if (qty === 0) continue;
+
+    let unitCost = costMap[String(item.variant_id)] || 0;
+
+    // 🛡️ COST SHIELD FALLBACK
+    if (unitCost === 0) {
+      const parts = item.name.split(' - ');
+      const pName = parts[0].trim();
+      const vName = parts.length > 1 ? parts[1].trim() : '';
+
+      const registry = db.prepare(`
+        SELECT landed_cost FROM product_master_costs 
+        WHERE store_id = ? AND parent_title = ? 
+        AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
+        ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+        LIMIT 1
+      `).get(storeId, pName, vName, vName);
+
+      if (registry) unitCost = registry.landed_cost || 0;
+    }
+
+    totalCost += unitCost * qty;
+    productTitles.push(`${item.name} (x${qty})`);
+    activeCount++;
+  }
+
+  return { totalCost, productTitles: productTitles.join(', '), activeCount };
+}
+
 async function fetchShopifyOrders(store, onProgress, options = {}) {
   const { id: storeId, shop_domain, access_token, sync_start_date } = store;
   if (!access_token || access_token === 'PENDING') return { added: 0 };
@@ -67,14 +103,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const customer = order.customer || {};
         const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
 
-        let totalCost = 0, productTitles = [], activeCount = 0;
-        order.line_items.forEach(item => {
-          const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-          if (qty === 0) return;
-          totalCost += (costMap[String(item.variant_id)] || 0) * qty;
-          productTitles.push(`${item.name} (x${qty})`);
-          activeCount++;
-        });
+        const { totalCost, productTitles, activeCount } = calculateOrderCost(storeId, order.line_items, costMap);
 
         const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
         const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
@@ -315,13 +344,33 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
 
         if (!isCancelled && !isReturned) {
-          fresh.line_items.forEach(item => {
+          for (const item of fresh.line_items) {
             const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-            if (qty === 0) return;
-            totalCost += (costMap[String(item.variant_id)] || 0) * qty;
+            if (qty === 0) continue;
+            
+            let unitCost = costMap[String(item.variant_id)] || 0;
+            
+            // 🛡️ FALLBACK: If Shopify returns 0, check our Master Cost Registry
+            if (unitCost === 0) {
+              const parts = item.name.split(' - ');
+              const pName = parts[0].trim();
+              const vName = parts.length > 1 ? parts[1].trim() : '';
+              
+              const registry = db.prepare(`
+                SELECT landed_cost FROM product_master_costs 
+                WHERE store_id = ? AND parent_title = ? 
+                AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
+                ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+                LIMIT 1
+              `).get(storeId, pName, vName, vName);
+              
+              if (registry) unitCost = registry.landed_cost || 0;
+            }
+
+            totalCost += unitCost * qty;
             productTitles.push(`${item.name} (x${qty})`);
             activeCount++;
-          });
+          }
         }
 
         const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
@@ -342,7 +391,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
           fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
-          row.cost_locked ? row.cost : totalCost, 
+          row.cost_locked ? row.cost : (totalCost > 0 ? totalCost : (row.cost || 0)), // 🛡️ Zero-Cost Lock
           tracking, 
           row.courier_fee_locked ? row.courier_fee : courier, 
           newDeliveryStatus, 
@@ -507,13 +556,36 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
 
     if (!isCancelled && !isReturned) {
-      order.line_items.forEach(item => {
+      for (const item of order.line_items) {
         const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-        if (qty === 0) return;
-        totalCost += (costMap[String(item.variant_id)] || 0) * qty;
+        if (qty === 0) continue;
+        
+        let unitCost = costMap[String(item.variant_id)] || 0;
+        
+        // 🛡️ FALLBACK: If Shopify returns 0, check our Master Cost Registry
+        if (unitCost === 0) {
+          const parts = item.name.split(' - ');
+          const pName = parts[0].trim();
+          const vName = parts.length > 1 ? parts[1].trim() : '';
+          
+          const registry = db.prepare(`
+            SELECT landed_cost FROM product_master_costs 
+            WHERE store_id = ? AND parent_title = ? 
+            AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
+            ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+            LIMIT 1
+          `).get(storeId, pName, vName, vName);
+          
+          if (registry) {
+            unitCost = registry.landed_cost || 0;
+            console.log(`🛡️ [CostShield] Fallback cost used for ${item.name}: Rs ${unitCost}`);
+          }
+        }
+
+        totalCost += unitCost * qty;
         productTitles.push(`${item.name} (x${qty})`);
         activeCount++;
-      });
+      }
     }
 
     const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
@@ -537,9 +609,10 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
         WHERE id=?
       `).run(
-        finalPrice, activeCount, order.note || '', productTitles.join(', '),
+        finalPrice, activeCount, order.note || '', productTitles,
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
-        totalCost, tracking, courier, newDeliveryStatus, existing.id
+        (totalCost > 0 ? totalCost : (existing.cost || 0)), // 🛡️ Zero-Cost Lock
+        tracking, courier, newDeliveryStatus, existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
