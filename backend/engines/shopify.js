@@ -97,8 +97,11 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           addr.city || '',
           finalPrice, tracking, activeCount, order.note || '',
           productTitles.join(', '),
-          order.cancelled_at ? 'Cancelled' : 'Pending',
-          order.financial_status === 'paid' ? 'Paid' : 'Pending',
+          order.cancelled_at ? 'Cancelled' : 
+          (order.financial_status === 'voided' ? 'Voided' : 
+          (order.return_status === 'returned' ? 'Returned' : 'Pending')),
+          order.financial_status === 'paid' ? 'Paid' : 
+          (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source
         );
         count++;
@@ -313,12 +316,18 @@ async function refreshShopifyUpdates(store, onProgress) {
         const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
 
         let newDeliveryStatus = row.delivery_status;
-        if (fresh.cancelled_at && !isProtected) newDeliveryStatus = 'Cancelled';
+        if (fresh.cancelled_at && !isProtected) {
+          newDeliveryStatus = 'Cancelled';
+        } else if (fresh.financial_status === 'voided' && !isProtected) {
+          newDeliveryStatus = 'Voided';
+        } else if (fresh.return_status === 'returned' && !isProtected) {
+          newDeliveryStatus = 'Returned';
+        }
 
         updateStmt.run(
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
-          fresh.financial_status === 'paid' ? 'Paid' : 'Pending',
+          fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
           row.cost_locked ? row.cost : totalCost, 
           tracking, 
           row.courier_fee_locked ? row.courier_fee : courier, 
@@ -500,7 +509,13 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const source = detectOrderSource(order);
 
     let newDeliveryStatus = existing ? existing.delivery_status : 'Pending';
-    if (order.cancelled_at && !isProtected) newDeliveryStatus = 'Cancelled';
+    if (order.cancelled_at && !isProtected) {
+      newDeliveryStatus = 'Cancelled';
+    } else if (order.financial_status === 'voided' && !isProtected) {
+      newDeliveryStatus = 'Voided';
+    } else if (order.return_status === 'returned' && !isProtected) {
+      newDeliveryStatus = 'Returned';
+    }
 
     if (existing) {
       db.prepare(`
@@ -509,7 +524,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         WHERE id=?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles.join(', '),
-        order.financial_status === 'paid' ? 'Paid' : 'Pending',
+        order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
         totalCost, tracking, courier, newDeliveryStatus, existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
