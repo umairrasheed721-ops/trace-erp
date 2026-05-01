@@ -8,6 +8,7 @@ const { broadcast } = require('../sse');
 router.get('/', (req, res) => {
   const { store_id, page = 1, limit = 100, status, search, courier } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  console.log(`🔍 Search request for store ${store_id}, status: ${status}, limit: ${limit}`);
 
   let conditions = ['store_id = ?'];
   let params = [store_id];
