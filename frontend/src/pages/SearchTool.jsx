@@ -583,6 +583,7 @@ export default function SearchTool() {
     { id: 'status_date', label: 'Last Update' },
     { id: 'payment_ref', label: 'Expense CPR Ref' },
     { id: 'payment_date', label: 'Payment Date' },
+    { id: 'postex_weight', label: 'Weight (kg)' },
     { id: 'edit', label: 'Action' },
     { id: 'notes', label: 'Shopify Note' }
   ]
