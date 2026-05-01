@@ -45,7 +45,7 @@ function getDateRange(preset, customStart, customEnd) {
 
 function matchesSearch(order, keyword) {
   if (!keyword) return true
-  const kw = keyword.toLowerCase().trim()
+  const kw = keyword.toLowerCase().trim().replace(/^#/, '')
   
   // 1. Handle Bulk OR Search (Comma, Newline, or Pasted Space-separated IDs)
   const spaceTokens = kw.split(/\s+/).filter(Boolean);
