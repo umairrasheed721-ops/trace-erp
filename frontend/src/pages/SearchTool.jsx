@@ -642,7 +642,7 @@ export default function SearchTool() {
     const isSpecial = status && status.startsWith('[')
     const queryStatus = isSpecial ? '' : (status === 'All Statuses' ? '' : status)
     
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=100000&status=${queryStatus||''}&t=${Date.now()}`)
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&status=${queryStatus||''}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
