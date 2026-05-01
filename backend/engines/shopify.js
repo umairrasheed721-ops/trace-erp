@@ -229,8 +229,11 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
   const syncCosts = options.syncCosts !== undefined ? options.syncCosts : (options.forceDeepSync ? true : false);
 
   try {
-    // Look-back window: Deep sync (730 days) vs Regular sync (60 days)
-    const dateMin = options.forceDeepSync ? getDaysAgo(730) : getDaysAgo(60);
+    // If deep sync, use the store's sync_start_date (allows 2020+). 
+    // Otherwise, use 60 days for a fast refresh.
+    const dateMin = options.forceDeepSync 
+      ? (store.sync_start_date ? store.sync_start_date + 'T00:00:00Z' : getDaysAgo(730))
+      : getDaysAgo(60);
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
     let updatedOrders = [];
