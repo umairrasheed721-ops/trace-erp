@@ -37,6 +37,14 @@ function detectOrderSource(order) {
   return order.source_name || 'Direct / Web';
 }
 
+const registryLookupStmt = db.prepare(`
+  SELECT landed_cost, shopify_cost FROM product_master_costs 
+  WHERE store_id = ? AND parent_title = ? 
+  AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
+  ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+  LIMIT 1
+`);
+
 function calculateOrderCost(storeId, lineItems, costMap) {
   let totalCost = 0;
   let activeCount = 0;
@@ -54,13 +62,7 @@ function calculateOrderCost(storeId, lineItems, costMap) {
       const pName = parts[0].trim();
       const vName = parts.length > 1 ? parts[1].trim() : '';
 
-      const registry = db.prepare(`
-        SELECT landed_cost, shopify_cost FROM product_master_costs 
-        WHERE store_id = ? AND parent_title = ? 
-        AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
-        ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
-        LIMIT 1
-      `).get(storeId, pName, vName, vName);
+      const registry = registryLookupStmt.get(storeId, pName, vName, vName);
 
       if (registry) {
         unitCost = registry.landed_cost || registry.shopify_cost || 0;
