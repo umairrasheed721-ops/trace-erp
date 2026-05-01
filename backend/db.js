@@ -179,12 +179,14 @@ function initDb() {
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
   try { db.exec("ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0;"); } catch(e) {}
+  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shopify_variant_id TEXT;"); } catch(e) {}
   
   // Legacy repair logic removed to prevent accidental data loss.
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      shopify_variant_id TEXT,
       parent_title TEXT NOT NULL,
       variant_title TEXT NOT NULL DEFAULT '',
       unit_cost REAL DEFAULT 0,
@@ -198,6 +200,7 @@ function initDb() {
       updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, parent_title, variant_title)
     );
+    CREATE INDEX IF NOT EXISTS idx_master_variant_id ON product_master_costs(shopify_variant_id);
   `);
 
 

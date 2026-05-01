@@ -259,6 +259,11 @@ export default function CostManager() {
     grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
     if (landed > 0) grouped[c.parent_title].hasCost = true
     
+    // Track Price Drift (Shopify Cost changed but we haven't accepted it)
+    if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
+      grouped[c.parent_title].hasDrift = true
+    }
+
     // Track unique costs for the hint
     if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
     grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
@@ -388,6 +393,7 @@ export default function CostManager() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</span>
                           {p.hasCost && <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                          {p.hasDrift && <span style={{ fontSize: '0.65rem', color: '#fcd34d', background: 'rgba(252, 211, 77, 0.1)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
                         </div>
                         <div style={{ fontSize: '0.7rem', marginTop: 4, opacity: 0.6, fontWeight: 'normal' }}>
                           {(() => {
@@ -417,8 +423,13 @@ export default function CostManager() {
                       }}>
                         <td></td>
                         <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>
-                          {v.variant_title || 'Default'}
-                          {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ marginLeft: 8, color: '#34d399' }}>✓</span>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {v.variant_title || 'Default'}
+                            {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: '#34d399' }}>✓</span>}
+                            {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                              <span style={{ fontSize: '0.6rem', color: '#fcd34d', background: 'rgba(252, 211, 77, 0.1)', padding: '1px 4px', borderRadius: 3 }}>DRIFT</span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right', color: '#00f2fe', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
                         <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? '#34d399' : '#666' }}>

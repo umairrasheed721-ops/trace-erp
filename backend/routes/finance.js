@@ -640,15 +640,37 @@ router.post('/sync-shopify-costs', async (req, res) => {
 
     db.transaction(() => {
       for (const p of products) {
-        db.prepare(`
-          INSERT INTO product_master_costs (store_id, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-          ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
-            shopify_cost = excluded.shopify_cost,
-            selling_price = excluded.selling_price,
-            inventory_qty = excluded.inventory_qty,
-            updated_at = datetime('now')
-        `).run(Number(store_id), p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
+        // 1. Try to find by shopify_variant_id first (Fixes Renames!)
+        let existing = null;
+        if (p.shopify_variant_id) {
+          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND shopify_variant_id = ?').get(Number(store_id), p.shopify_variant_id);
+        }
+
+        // 2. If not found by ID, try by name (Handles legacy data transition)
+        if (!existing) {
+          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store_id), p.parent_name, p.variant_name);
+        }
+
+        if (existing) {
+          // Update existing: Even if title changed, we update to latest title from Shopify
+          db.prepare(`
+            UPDATE product_master_costs SET
+              shopify_variant_id = ?,
+              parent_title = ?,
+              variant_title = ?,
+              shopify_cost = ?,
+              selling_price = ?,
+              inventory_qty = ?,
+              updated_at = datetime('now')
+            WHERE id = ?
+          `).run(p.shopify_variant_id, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
+        } else {
+          // Insert new record
+          db.prepare(`
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, parent_title, variant_title, shopify_cost, selling_price, inventory_qty)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(Number(store_id), p.shopify_variant_id, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
+        }
       }
     })();
 

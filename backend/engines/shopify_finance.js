@@ -279,6 +279,7 @@ async function getShopifyInventoryCosts(store) {
   allVariants.forEach((node) => {
     const parentName = node.product?.title;
     const variantName = node.title === 'Default Title' ? '' : node.title;
+    const variantId = node.id;
     if (!parentName) return;
 
     const rawCost = node.inventoryItem?.unitCost?.amount;
@@ -286,9 +287,10 @@ async function getShopifyInventoryCosts(store) {
     const sellingPrice = parseFloat(node.price || 0);
     const qty = node.inventoryItem?.inventoryLevels?.edges?.[0]?.node?.quantities?.[0]?.quantity || 0;
     
-    const key = `${parentName}@@@${variantName}`;
+    const key = variantId || `${parentName}@@@${variantName}`;
     if (!aggregated[key]) {
       aggregated[key] = { 
+        shopify_variant_id: variantId,
         parent_name: parentName, 
         variant_name: variantName, 
         shopify_cost: cost, 
