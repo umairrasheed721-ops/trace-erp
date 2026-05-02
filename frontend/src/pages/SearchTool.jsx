@@ -767,7 +767,7 @@ export default function SearchTool() {
     }
     const sCol = backendSortMap[sortKey] || 'created_timestamp'
 
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${queryStatus||''}&search=${kw}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`)
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { 
         setAllOrders(data.orders || []); 

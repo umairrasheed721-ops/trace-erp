@@ -55,6 +55,7 @@ router.get('/', (req, res) => {
   });
 
   const where = whereClauses.join(' AND ');
+  console.log(`DEBUG: WHERE clause: ${where} | PARAMS: ${JSON.stringify(queryParams)}`);
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   // Dynamic Sorting
