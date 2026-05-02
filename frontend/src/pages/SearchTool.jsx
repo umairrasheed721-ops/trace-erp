@@ -829,12 +829,25 @@ export default function SearchTool() {
   }, [activeStoreId]);
 
   const filteredOrders = useMemo(() => {
-    let sorted = [...allOrders];
+    let result = [...allOrders];
+
+    // Filter by Aging Bucket if one is selected
+    if (activeAgingBucket) {
+      const bucket = agingBuckets.find(b => b.label === activeAgingBucket);
+      if (bucket) {
+        result = result.filter(o => {
+          if (!o.order_date || !isBacklogOrder(o)) return false;
+          const d = new Date(o.order_date); d.setHours(0,0,0,0);
+          const diff = Math.floor((today - d) / 86400000);
+          return diff >= bucket.min && diff <= bucket.max;
+        });
+      }
+    }
 
     // Client-side Sort (only if Default or specific relevance is needed)
     if (debouncedKeyword && debouncedKeyword.trim().length > 2) {
       const kwClean = debouncedKeyword.trim().toLowerCase().replace(/^#/, '');
-      sorted.sort((a, b) => {
+      result.sort((a, b) => {
         const aRef = (a.ref_number || '').toLowerCase().replace(/^#/, '');
         const bRef = (b.ref_number || '').toLowerCase().replace(/^#/, '');
         const aID = (a.shopify_order_id || '').toString();
@@ -848,8 +861,8 @@ export default function SearchTool() {
         return 0;
       });
     }
-    return sorted;
-  }, [allOrders, debouncedKeyword]);
+    return result;
+  }, [allOrders, debouncedKeyword, activeAgingBucket, agingBuckets, today]);
 
   useEffect(() => {
     let delivered=0, returned=0, pending=0, sum=0
