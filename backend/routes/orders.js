@@ -54,7 +54,13 @@ router.get('/', (req, res) => {
     LIMIT ? OFFSET ?
   `).all(...queryParams, parseInt(limit), offset);
 
-  res.json({ orders, total: total.count, page: parseInt(page), limit: parseInt(limit) });
+  res.json({ 
+    orders, 
+    total: total.count, 
+    page: parseInt(page), 
+    limit: parseInt(limit),
+    debug: { start_date, end_date, where, queryParams }
+  });
 });
 
 // PUT /api/orders/:id - Update a single order field (for manual edits)

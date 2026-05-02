@@ -214,6 +214,7 @@ export default function SearchTool() {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
   const [loading, setLoading] = useState(false)
+  const [debugInfo, setDebugInfo] = useState(null)
 
   const [preset, setPreset] = useState('Last Month')
   const [customStart, setCustomStart] = useState('')
@@ -734,7 +735,11 @@ export default function SearchTool() {
 
     fetch(`/api/orders?store_id=${activeStoreId}&limit=15000&status=${queryStatus||''}&search=${kw}&start_date=${startDate}&end_date=${endDate}&t=${Date.now()}`)
       .then(r => r.json())
-      .then(data => { setAllOrders(data.orders || []); setLoading(false) })
+      .then(data => { 
+        setAllOrders(data.orders || []); 
+        setDebugInfo(data.debug);
+        setLoading(false) 
+      })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
   }, [activeStoreId, status, keyword, preset, customStart, customEnd])
 
@@ -1374,7 +1379,7 @@ export default function SearchTool() {
       ) : (
         <div className="table-wrapper">
           <div style={{ background: 'rgba(251, 191, 36, 0.1)', borderBottom: '1px solid #fbbf24', color: '#fbbf24', padding: '10px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>💡 <b>Showing {Math.min(results.length, 1000).toLocaleString()} of {results.length.toLocaleString()} matching orders.</b> (Total loaded: {allOrders.length.toLocaleString()})</span>
+            <span>💡 <b>Showing {results.length.toLocaleString()} of {allOrders.length.toLocaleString()} loaded orders.</b> (Backend Dates: {debugInfo?.start_date || 'ALL'} to {debugInfo?.end_date || 'ALL'})</span>
             {results.length !== allOrders.length && (
               <button 
                 onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
