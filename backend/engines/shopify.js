@@ -130,10 +130,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           addr.city || '',
           finalPrice, tracking, activeCount, order.note || '',
           productTitles,
-          order.cancelled_at ? 'Cancelled' : 
-          (order.financial_status === 'voided' ? 'Voided' : 
-          (order.return_status === 'returned' || order.financial_status === 'refunded' ? 'Returned' : 
-          (order.fulfillment_status === 'fulfilled' ? 'Booked' : 'Pending'))),
+          mapShopifyStatus(order),
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source
@@ -371,12 +368,12 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
 
         let newDeliveryStatus = row.delivery_status;
-        if (fresh.cancelled_at && !isProtected) {
-          newDeliveryStatus = 'Cancelled';
-        } else if (fresh.financial_status === 'voided' && !isProtected) {
-          newDeliveryStatus = 'Voided';
-        } else if ((fresh.return_status === 'returned' || fresh.financial_status === 'refunded') && !isProtected) {
-          newDeliveryStatus = 'Returned';
+        const mappedStatus = mapShopifyStatus(fresh);
+        
+        if (isProtected) {
+          // Stay protected
+        } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned') {
+          newDeliveryStatus = mappedStatus;
         } else if (fresh.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
           newDeliveryStatus = 'Booked';
         }
@@ -405,6 +402,14 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     updateStatus('error', `Refresh failed: ${err.message}`);
     throw err;
   }
+}
+
+function mapShopifyStatus(order) {
+  if (order.cancelled_at) return 'Cancelled';
+  if (order.financial_status === 'voided') return 'Voided';
+  if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') return 'Returned';
+  if (order.fulfillment_status === 'fulfilled') return 'Booked';
+  return 'Pending';
 }
 
 async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgress) {
@@ -589,12 +594,12 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const source = detectOrderSource(order);
 
     let newDeliveryStatus = existing ? existing.delivery_status : 'Pending';
-    if (order.cancelled_at && !isProtected) {
-      newDeliveryStatus = 'Cancelled';
-    } else if (order.financial_status === 'voided' && !isProtected) {
-      newDeliveryStatus = 'Voided';
-    } else if ((order.return_status === 'returned' || order.financial_status === 'refunded') && !isProtected) {
-      newDeliveryStatus = 'Returned';
+    const mappedStatus = mapShopifyStatus(order);
+
+    if (isProtected) {
+      // Stay protected
+    } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned') {
+      newDeliveryStatus = mappedStatus;
     } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
       newDeliveryStatus = 'Booked';
     }
@@ -807,11 +812,7 @@ async function syncSpecificOrders(store, shopifyIds) {
       const tracking = ful?.tracking_number || '';
       const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
 
-      let newStatus = 'Pending';
-      if (fresh.cancelled_at) newStatus = 'Cancelled';
-      else if (fresh.financial_status === 'voided') newStatus = 'Voided';
-      else if (fresh.return_status === 'returned' || fresh.financial_status === 'refunded') newStatus = 'Returned';
-      else if (fresh.fulfillment_status === 'fulfilled') newStatus = 'Booked';
+      let newStatus = mapShopifyStatus(fresh);
 
       updateStmt.run(
         finalPrice, fresh.line_items.length, fresh.note || '',
@@ -837,5 +838,6 @@ module.exports = {
   registerShopifyWebhooks, 
   fulfillShopifyOrder, 
   updateShopifyAddress,
-  syncSpecificOrders 
+  syncSpecificOrders,
+  mapShopifyStatus 
 };

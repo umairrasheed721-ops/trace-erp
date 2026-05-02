@@ -127,6 +127,17 @@ router.get('/:id/details', async (req, res) => {
     if (!sData.order) throw new Error('Shopify order not found');
 
     const shopifyOrder = sData.order;
+    const { mapShopifyStatus } = require('../engines/shopify');
+    const newStatus = mapShopifyStatus(shopifyOrder);
+    
+    // Check if we should update the status
+    const currentStatus = (order.delivery_status || '').toLowerCase();
+    const isProtected = currentStatus === 'return received' || currentStatus === 'delivered';
+    
+    if (!isProtected && newStatus !== order.delivery_status) {
+      db.prepare('UPDATE orders SET delivery_status = ?, status_date = datetime("now") WHERE id = ?').run(newStatus, order.id);
+      order.delivery_status = newStatus;
+    }
 
     // Fetch images for line items
     const lineItems = await Promise.all(shopifyOrder.line_items.map(async item => {
