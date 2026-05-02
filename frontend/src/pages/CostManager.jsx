@@ -289,8 +289,8 @@ export default function CostManager() {
     <div className="page-container cost-manager" style={{ padding: 30 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
         <div>
-          <h1 style={{ margin: 0, color: '#00f2fe' }}>📈 Master Costing Registry</h1>
-          <p style={{ margin: '5px 0 0', opacity: 0.6 }}>Manage product costs and fix historical ghost listings.</p>
+          <h1 style={{ margin: 0, color: 'var(--brand)' }}>📈 Master Costing Registry</h1>
+          <p style={{ margin: '5px 0 0', opacity: 0.6, color: 'var(--text-secondary)' }}>Manage product costs and fix historical ghost listings.</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <button className="btn btn-secondary" onClick={handleSyncShopify} disabled={isSyncing}>
@@ -304,8 +304,8 @@ export default function CostManager() {
 
       {selectedParents.size > 0 && (
         <div style={{ 
-          background: 'rgba(52, 211, 153, 0.1)', 
-          border: '1px solid #34d399', 
+          background: 'var(--green-dim)', 
+          border: '1px solid var(--green)', 
           padding: '15px 25px', 
           borderRadius: 12, 
           marginBottom: 20,
@@ -314,12 +314,12 @@ export default function CostManager() {
           alignItems: 'center',
           animation: 'slideDown 0.3s ease'
         }}>
-          <div style={{ color: '#34d399', fontWeight: 'bold' }}>
+          <div style={{ color: 'var(--green)', fontWeight: 'bold' }}>
             ⚡ {selectedParents.size} Products Selected
           </div>
           <button 
             className="btn btn-primary" 
-            style={{ background: '#34d399', color: '#000' }}
+            style={{ background: 'var(--green)', color: '#fff' }}
             onClick={handleBulkAcceptSelected}
             disabled={bulkProcessing}
           >
@@ -329,31 +329,31 @@ export default function CostManager() {
       )}
 
       <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
-        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #00f2fe 0%, #4facfe 100%)', color: '#000', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0, 242, 254, 0.2)' }}>
+        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, var(--brand) 0%, var(--brand-dim) 100%)', color: '#fff', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 30px var(--brand-glow)' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value (Accepted)</div>
           <div style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
           <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.8 }}>Asset worth of {totals.acceptedQty} items</div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', padding: '20px', borderRadius: '16px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>⏳ Pending Acceptance</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: '#fcd34d' }}>Rs {totals.pendingValue.toLocaleString()}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Value waiting in Shopify drafts</div>
+        <div className="stat-card" style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px', borderRadius: '16px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)' }}>⏳ Pending Acceptance</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: 'var(--yellow)' }}>Rs {totals.pendingValue.toLocaleString()}</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5, color: 'var(--text-muted)' }}>Value waiting in Shopify drafts</div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', padding: '20px', borderRadius: '16px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5 }}>📦 Total variants</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5 }}>{totals.totalVariants}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5 }}>Active SKUs in Registry</div>
+        <div className="stat-card" style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px', borderRadius: '16px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)' }}>📦 Total variants</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: 'var(--text-primary)' }}>{totals.totalVariants}</div>
+          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5, color: 'var(--text-muted)' }}>Active SKUs in Registry</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid #333' }}>
-        <button onClick={() => setActiveTab('pending')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'pending' ? '#fcd34d' : '#666', borderBottom: activeTab === 'pending' ? '2px solid #fcd34d' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+      <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid var(--border)' }}>
+        <button onClick={() => setActiveTab('pending')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'pending' ? 'var(--yellow)' : 'var(--text-muted)', borderBottom: activeTab === 'pending' ? '2px solid var(--yellow)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
           ⏳ Pending Registry ({pendingItems.length})
         </button>
-        <button onClick={() => setActiveTab('verified')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'verified' ? '#34d399' : '#666', borderBottom: activeTab === 'verified' ? '2px solid #34d399' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+        <button onClick={() => setActiveTab('verified')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'verified' ? 'var(--green)' : 'var(--text-muted)', borderBottom: activeTab === 'verified' ? '2px solid var(--green)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
           ✅ Verified Registry ({verifiedItems.length})
         </button>
-        <button onClick={() => setActiveTab('ghosts')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'ghosts' ? '#00f2fe' : '#666', borderBottom: activeTab === 'ghosts' ? '2px solid #00f2fe' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+        <button onClick={() => setActiveTab('ghosts')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'ghosts' ? 'var(--brand)' : 'var(--text-muted)', borderBottom: activeTab === 'ghosts' ? '2px solid var(--brand)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
           👻 Ghost Listings ({ghosts.length})
         </button>
       </div>
@@ -363,10 +363,10 @@ export default function CostManager() {
           <div style={{ marginBottom: 20 }}>
             <input type="text" className="form-input" placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
           </div>
-          <div className="table-container" style={{ background: '#111', borderRadius: 12, border: '1px solid #222' }}>
+          <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   <th style={{ width: 40, textAlign: 'center' }}>
                     <input 
                       type="checkbox" 
@@ -385,9 +385,10 @@ export default function CostManager() {
                 {currentList.map(p => (
                   <React.Fragment key={p.name}>
                     <tr style={{ 
-                      background: p.hasCost ? 'rgba(52, 211, 153, 0.05)' : 'rgba(255,255,255,0.02)', 
+                      background: p.hasCost ? 'var(--green-dim)' : 'transparent', 
                       cursor: 'pointer',
-                      borderLeft: p.hasCost ? '4px solid #34d399' : '4px solid transparent'
+                      borderLeft: p.hasCost ? '4px solid var(--green)' : '4px solid transparent',
+                      borderBottom: '1px solid var(--border)'
                     }} onClick={() => toggleParent(p.name)}>
                       <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                         <input 
@@ -396,27 +397,27 @@ export default function CostManager() {
                           onChange={() => toggleSelectParent(p.name)}
                         />
                       </td>
-                      <td style={{ padding: 15, fontWeight: 'bold' }}>
+                      <td style={{ padding: 15, fontWeight: 'bold', color: 'var(--text-primary)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</span>
-                          {p.hasCost && <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
-                          {p.hasDrift && <span style={{ fontSize: '0.65rem', color: '#fcd34d', background: 'rgba(252, 211, 77, 0.1)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
+                          <span style={{ color: 'var(--text-primary)' }}>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</span>
+                          {p.hasCost && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                          {p.hasDrift && <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
                         </div>
-                        <div style={{ fontSize: '0.7rem', marginTop: 4, opacity: 0.6, fontWeight: 'normal' }}>
+                        <div style={{ fontSize: '0.7rem', marginTop: 4, opacity: 0.6, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
                           {(() => {
                             const costs = Array.from(p.uniqueCosts).sort((a,b) => a-b)
                             const hasZero = costs.includes(0)
                             return (
-                              <span style={{ color: hasZero ? '#f87171' : 'inherit' }}>
+                              <span style={{ color: hasZero ? 'var(--red)' : 'inherit' }}>
                                 {hasZero ? '⚠️ Needs Costing (Contains Rs. 0)' : `Price range: Rs ${costs.join(', Rs ')}`}
                               </span>
                             )
                           })()}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right' }}>—</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? '#34d399' : 'inherit' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0 (No Stock)') : '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{p.totalQty}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>—</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? 'var(--green)' : 'var(--text-primary)' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0 (No Stock)') : '—'}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-primary)' }}>{p.totalQty}</td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
                         <button className="btn btn-icon" title="Accept All Shopify Costs" onClick={(e) => { e.stopPropagation(); handleBulkAccept(p.name); }}>✅</button>
                         <button className="btn btn-icon" title="Bulk Set Cost/Pkg" onClick={(e) => { e.stopPropagation(); setBulkItem(p); setBulkForm({ unit_cost: 0, packaging_cost: 0 }); setShowBulkModal(true); }}>⚡</button>
@@ -425,24 +426,24 @@ export default function CostManager() {
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
                       <tr key={i} style={{ 
-                        borderBottom: '1px solid #222',
-                        backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'rgba(52, 211, 153, 0.02)' : 'transparent'
+                        borderBottom: '1px solid var(--border)',
+                        backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
                       }}>
                         <td></td>
-                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7 }}>
+                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7, color: 'var(--text-secondary)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             {v.variant_title || 'Default'}
-                            {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: '#34d399' }}>✓</span>}
+                            {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
                             {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                              <span style={{ fontSize: '0.6rem', color: '#fcd34d', background: 'rgba(252, 211, 77, 0.1)', padding: '1px 4px', borderRadius: 3 }}>DRIFT</span>
+                              <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3 }}>DRIFT</span>
                             )}
                           </div>
                         </td>
-                        <td style={{ textAlign: 'right', color: '#00f2fe', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? '#34d399' : '#666' }}>
+                        <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
                           {(v.unit_cost + v.packaging_cost) > 0 ? `Rs ${(v.unit_cost + v.packaging_cost).toLocaleString()}` : '—'}
                         </td>
-                        <td style={{ textAlign: 'right', opacity: 0.8 }}>{v.inventory_qty}</td>
+                        <td style={{ textAlign: 'right', opacity: 0.8, color: 'var(--text-primary)' }}>{v.inventory_qty}</td>
                         <td style={{ textAlign: 'right', padding: 15 }}>
                           {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
                             <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
@@ -464,11 +465,11 @@ export default function CostManager() {
           {selectedGhosts.size > 0 && (
             <div style={{ 
               position: 'sticky', top: 10, zIndex: 100, 
-              background: '#00f2fe', color: '#000', 
+              background: 'var(--brand)', color: '#fff', 
               padding: '12px 20px', borderRadius: 12, 
               marginBottom: 20, display: 'flex', 
               justifyContent: 'space-between', alignItems: 'center',
-              boxShadow: '0 8px 32px rgba(0,242,254,0.3)'
+              boxShadow: '0 8px 32px var(--brand-glow)'
             }}>
               <div style={{ fontWeight: 'bold' }}>⚡ {selectedGhosts.size} products selected</div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -477,7 +478,7 @@ export default function CostManager() {
                   id="ghost-bulk-input"
                   placeholder="Enter Rs cost" 
                   className="form-input"
-                  style={{ width: 140, background: '#fff', color: '#000', border: 'none', height: 35 }}
+                  style={{ width: 140, background: 'var(--bg-surface)', color: 'var(--text-primary)', border: 'none', height: 35 }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const val = e.target.value;
@@ -519,7 +520,7 @@ export default function CostManager() {
                 >Apply to Selected</button>
                 <button 
                   className="btn btn-sm" 
-                  style={{ background: 'transparent', color: '#000', border: '1px solid #000' }}
+                  style={{ background: 'transparent', color: '#fff', border: '1px solid #fff' }}
                   onClick={() => setSelectedGhosts(new Set())}
                 >Cancel</button>
               </div>
@@ -527,29 +528,29 @@ export default function CostManager() {
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 20 }}>
             <div style={{ position: 'relative', flex: 1 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, color: 'var(--text-muted)' }}>🔍</span>
               <input 
                 type="text" 
                 className="form-input" 
                 placeholder="Search ghost products..." 
-                style={{ paddingLeft: 35, background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(0,242,254,0.2)' }}
+                style={{ paddingLeft: 35, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
                 value={ghostSearch}
                 onChange={e => setGhostSearch(e.target.value)}
               />
             </div>
-            <div style={{ color: '#00f2fe', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+            <div style={{ color: 'var(--brand)', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
               <strong>{ghosts.length}</strong> items found
             </div>
           </div>
 
-          <div style={{ background: 'rgba(0,242,254,0.05)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid rgba(0,242,254,0.2)' }}>
-            <p style={{ margin: 0, color: '#00f2fe' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
+          <div style={{ background: 'var(--brand-glow)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid var(--brand)' }}>
+            <p style={{ margin: 0, color: 'var(--brand)' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
           </div>
           
-          <div className="table-container" style={{ background: '#111', borderRadius: 12, border: '1px solid #222' }}>
+          <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}>
+                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   <th style={{ padding: 15, width: 40 }}>
                     <input 
                       type="checkbox" 
@@ -574,7 +575,7 @@ export default function CostManager() {
                 {ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => (
                   <React.Fragment key={p.name}>
                     <tr 
-                      style={{ cursor: 'pointer', background: selectedGhosts.has(p.name) ? 'rgba(0,242,254,0.1)' : 'rgba(255,255,255,0.02)', borderBottom: '1px solid #222' }} 
+                      style={{ cursor: 'pointer', background: selectedGhosts.has(p.name) ? 'var(--brand-glow)' : 'transparent', borderBottom: '1px solid var(--border)' }} 
                       onClick={() => toggleParent(p.name)}
                     >
                       <td style={{ padding: 15 }} onClick={(e) => e.stopPropagation()}>
@@ -589,7 +590,7 @@ export default function CostManager() {
                           }}
                         />
                       </td>
-                      <td style={{ padding: 15, fontWeight: 'bold' }}>
+                      <td style={{ padding: 15, fontWeight: 'bold', color: 'var(--text-primary)' }}>
                         <span style={{ marginRight: 10 }}>{expandedParents.has(p.name) ? '▼' : '▶'}</span>
                         {p.name}
                       </td>
@@ -598,7 +599,7 @@ export default function CostManager() {
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                          <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>Bulk:</span>
+                          <span style={{ fontSize: '0.7rem', opacity: 0.5, color: 'var(--text-muted)' }}>Bulk:</span>
                           <input 
                             type="number" 
                             className="form-input" 
@@ -622,12 +623,12 @@ export default function CostManager() {
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #222', background: selectedGhosts.has(p.name) ? 'rgba(0,242,254,0.05)' : 'rgba(0,0,0,0.2)' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: selectedGhosts.has(p.name) ? 'var(--brand-glow)' : 'var(--bg-elevated)' }}>
                         <td></td>
-                        <td style={{ padding: '10px 15px 10px 45px', opacity: 0.8, fontSize: '0.9rem' }}>
+                        <td style={{ padding: '10px 15px 10px 45px', opacity: 0.8, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
                           └─ {v.name || 'Default Variant'}
                         </td>
-                        <td style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.85rem' }}>
+                        <td style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                           {v.count}
                         </td>
                         <td style={{ textAlign: 'right' }}>
@@ -672,16 +673,16 @@ export default function CostManager() {
       {showModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>{editingItem ? 'Edit Cost' : 'Add Cost'}</h3>
+            <h3 style={{ color: 'var(--text-primary)' }}>{editingItem ? 'Edit Cost' : 'Add Cost'}</h3>
             <form onSubmit={handleSave}>
-              <div className="form-group"><label>Product Title</label><input type="text" className="form-input" value={form.parent_title} onChange={e => setForm({...form, parent_title: e.target.value})} disabled={!!editingItem} /></div>
+              <div className="form-group"><label style={{ color: 'var(--text-secondary)' }}>Product Title</label><input type="text" className="form-input" value={form.parent_title} onChange={e => setForm({...form, parent_title: e.target.value})} disabled={!!editingItem} /></div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <div className="form-group" style={{ flex: 1 }}><label>Unit Cost (Rs)</label><input type="number" className="form-input" value={form.unit_cost} onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})} /></div>
-                <div className="form-group" style={{ flex: 1 }}><label>Packaging (Rs)</label><input type="number" className="form-input" value={form.packaging_cost} onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label style={{ color: 'var(--text-secondary)' }}>Unit Cost (Rs)</label><input type="number" className="form-input" value={form.unit_cost} onChange={e => setForm({...form, unit_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label style={{ color: 'var(--text-secondary)' }}>Packaging (Rs)</label><input type="number" className="form-input" value={form.packaging_cost} onChange={e => setForm({...form, packaging_cost: parseFloat(e.target.value)})} /></div>
               </div>
-              <div style={{ background: 'rgba(0,242,254,0.05)', padding: 10, borderRadius: 8, textAlign: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: '0.7rem', opacity: 0.5 }}>Landed Cost</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00f2fe' }}>Rs {(form.unit_cost + form.packaging_cost).toLocaleString()}</div>
+              <div style={{ background: 'var(--brand-glow)', padding: 10, borderRadius: 8, textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: '0.7rem', opacity: 0.5, color: 'var(--text-muted)' }}>Landed Cost</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--brand)' }}>Rs {(form.unit_cost + form.packaging_cost).toLocaleString()}</div>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Save</button></div>
             </form>
@@ -692,11 +693,11 @@ export default function CostManager() {
       {showBulkModal && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Bulk Update: {bulkItem.name}</h3>
+            <h3 style={{ color: 'var(--text-primary)' }}>Bulk Update: {bulkItem.name}</h3>
             <form onSubmit={handleBulkSync}>
               <div style={{ display: 'flex', gap: 10 }}>
-                <div className="form-group" style={{ flex: 1 }}><label>Unit Cost</label><input type="number" className="form-input" value={bulkForm.unit_cost} onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value)})} /></div>
-                <div className="form-group" style={{ flex: 1 }}><label>Packaging</label><input type="number" className="form-input" value={bulkForm.packaging_cost} onChange={e => setBulkForm({...bulkForm, packaging_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label style={{ color: 'var(--text-secondary)' }}>Unit Cost</label><input type="number" className="form-input" value={bulkForm.unit_cost} onChange={e => setBulkForm({...bulkForm, unit_cost: parseFloat(e.target.value)})} /></div>
+                <div className="form-group" style={{ flex: 1 }}><label style={{ color: 'var(--text-secondary)' }}>Packaging</label><input type="number" className="form-input" value={bulkForm.packaging_cost} onChange={e => setBulkForm({...bulkForm, packaging_cost: parseFloat(e.target.value)})} /></div>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 20 }}><button type="button" className="btn btn-secondary" onClick={() => setShowBulkModal(false)}>Cancel</button><button type="submit" className="btn btn-primary">Apply to All Variants</button></div>
             </form>
@@ -707,12 +708,12 @@ export default function CostManager() {
       {showGhostModal && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: 800, width: '95%' }}>
-            <h3>🔍 Order Verification: {inspectingGhost}</h3>
+            <h3 style={{ color: 'var(--text-primary)' }}>🔍 Order Verification: {inspectingGhost}</h3>
             <div style={{ maxHeight: 400, overflowY: 'auto', marginTop: 20 }}>
-              {loadingGhostOrders ? <p>Loading history...</p> : (
+              {loadingGhostOrders ? <p style={{ color: 'var(--text-muted)' }}>Loading history...</p> : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem' }}><th>Date</th><th>Ref #</th><th>Customer</th><th style={{ textAlign: 'right' }}>Price</th></tr></thead>
-                  <tbody>{ghostOrders.map((o,i) => (<tr key={i} style={{ borderBottom: '1px solid #222' }}><td style={{ padding: 10 }}>{o.order_date}</td><td style={{ padding: 10 }}>{o.ref_number}</td><td style={{ padding: 10 }}>{o.customer_name}</td><td style={{ textAlign: 'right', padding: 10 }}>Rs {o.price?.toLocaleString()}</td></tr>))}</tbody>
+                  <thead><tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)' }}><th>Date</th><th>Ref #</th><th>Customer</th><th style={{ textAlign: 'right' }}>Price</th></tr></thead>
+                  <tbody>{ghostOrders.map((o,i) => (<tr key={i} style={{ borderBottom: '1px solid var(--border)' }}><td style={{ padding: 10, color: 'var(--text-primary)' }}>{o.order_date}</td><td style={{ padding: 10, color: 'var(--text-primary)' }}>{o.ref_number}</td><td style={{ padding: 10, color: 'var(--text-primary)' }}>{o.customer_name}</td><td style={{ textAlign: 'right', padding: 10, color: 'var(--text-primary)' }}>Rs {o.price?.toLocaleString()}</td></tr>))}</tbody>
                 </table>
               )}
             </div>
@@ -723,12 +724,12 @@ export default function CostManager() {
 
       <style>{`
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-        .modal-content { background: #111; padding: 30px; border-radius: 16px; border: 1px solid #333; width: 450px; }
+        .modal-content { background: var(--bg-surface); padding: 30px; border-radius: 16px; border: 1px solid var(--border); width: 450px; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; opacity: 0.6; font-size: 0.8rem; }
         .btn-icon { background: none; border: none; cursor: pointer; opacity: 0.5; padding: 5px; }
-        .btn-icon:hover { opacity: 1; color: #00f2fe; }
-        .badge-warning { background: rgba(255, 193, 7, 0.1); color: #ffc107; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
+        .btn-icon:hover { opacity: 1; color: var(--brand); }
+        .badge-warning { background: var(--yellow-dim); color: var(--yellow); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
       `}</style>
     </div>
   )
