@@ -996,7 +996,7 @@ export default function SearchTool() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '1.2rem' }}>{syncProgress.current === syncProgress.total ? '✅' : '⚡'}</span>
               <div>
-                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                   {syncProgress.message || 'Processing Orders...'}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
@@ -1008,7 +1008,7 @@ export default function SearchTool() {
               {Math.round((syncProgress.current / syncProgress.total) * 100)}%
             </div>
           </div>
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ height: 6, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ 
               height: '100%', 
               background: 'linear-gradient(90deg, var(--brand) 0%, #fff 100%)', 
@@ -1217,12 +1217,11 @@ export default function SearchTool() {
                       justifyContent: 'center',
                       cursor: 'pointer',
                       opacity: activeAgingBucket && !isActive ? 0.3 : 1,
-                      borderRight: idx < agingBuckets.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                      borderRight: idx < agingBuckets.length - 1 ? '1px solid var(--border)' : 'none',
                       transition: 'all 0.2s',
                       position: 'relative'
                     }}
                   >
-                    <div style={{ fontSize: '0.62rem', fontWeight: 800, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', marginBottom: 2 }}>{b.label}</div>
                     <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
                     {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
                   </div>
@@ -1313,7 +1312,7 @@ export default function SearchTool() {
                   setActiveAgingBucket(null)
                   addToast('Filters cleared', 'info')
                 }}
-                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
               >
                 🧹 Clear
               </button>
@@ -1903,7 +1902,7 @@ export default function SearchTool() {
                          <input 
                            type="number" 
                            className="form-input" 
-                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'rgba(255,255,255,0.05)' }}
+                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
                            value={editingOrder.courier_fee || ''} 
                            onChange={e => setEditingOrder({ ...editingOrder, courier_fee: e.target.value })}
                            onBlur={() => updateOrderField(editingOrder.id, 'courier_fee', editingOrder.courier_fee)}
@@ -2131,7 +2130,7 @@ function NoteCell({ order, onSave }) {
       style={{
         cursor: 'pointer',
         fontSize: '0.72rem',
-        color: order.notes ? '#fff' : 'var(--text-muted)',
+        color: order.notes ? 'var(--text-primary)' : 'var(--text-muted)',
         maxWidth: 180,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
@@ -2142,7 +2141,7 @@ function NoteCell({ order, onSave }) {
     >
       {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
       {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
-      {val || <span style={{ opacity: 0.3 }}>Empty Note...</span>}
+      {val || <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>Empty Note...</span>}
     </div>
   )
 }
@@ -2414,7 +2413,7 @@ function CustomerHistoryModal({ phone, allOrders, onClose }) {
                 {orders.map((o, idx) => {
                   const { bg, color } = getStatusStyle(o.delivery_status)
                   return (
-                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border-subtle)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)' }}>
+                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
                       <td style={{ padding: '9px 14px', color: 'var(--brand)', fontWeight: 700 }}>{o.ref_number || o.shopify_order_id || '—'}</td>
                       <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '9px 14px' }}>

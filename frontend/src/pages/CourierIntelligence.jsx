@@ -66,15 +66,15 @@ export default function CourierIntelligence() {
         alignItems: 'center', 
         marginBottom: '40px',
         padding: '20px 30px',
-        background: 'linear-gradient(90deg, rgba(124, 58, 237, 0.1) 0%, rgba(0,0,0,0) 100%)',
+        background: 'linear-gradient(90deg, var(--brand-glow) 0%, rgba(0,0,0,0) 100%)',
         borderRadius: '20px',
         borderLeft: '4px solid var(--brand)'
       }}>
         <div>
-          <h1 style={{ fontSize: '2.4rem', fontWeight: 900, color: '#fff', margin: 0, letterSpacing: '-1px' }}>
+          <h1 style={{ fontSize: '2.4rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0, letterSpacing: '-1px' }}>
             Logistics Intelligence
           </h1>
-          <p style={{ opacity: 0.5, fontWeight: 600, fontSize: '1rem', marginTop: '4px' }}>
+          <p style={{ opacity: 0.5, fontWeight: 600, fontSize: '1rem', marginTop: '4px', color: 'var(--text-secondary)' }}>
             Global performance auditing and regional optimization
           </p>
         </div>
@@ -87,26 +87,24 @@ export default function CourierIntelligence() {
                 value={customStart} 
                 onChange={e => setCustomStart(e.target.value)}
                 style={{ 
-                  background: 'rgba(255,255,255,0.05)', 
+                  background: 'var(--bg-elevated)', 
                   border: '1px solid var(--border)', 
                   borderRadius: '12px', 
                   padding: '12px 15px', 
-                  color: '#fff',
-                  colorScheme: 'dark'
+                  color: 'var(--text-primary)'
                 }}
               />
-              <span style={{ opacity: 0.5, fontWeight: 700 }}>to</span>
+              <span style={{ opacity: 0.5, fontWeight: 700, color: 'var(--text-muted)' }}>to</span>
               <input 
                 type="date" 
                 value={customEnd} 
                 onChange={e => setCustomEnd(e.target.value)}
                 style={{ 
-                  background: 'rgba(255,255,255,0.05)', 
+                  background: 'var(--bg-elevated)', 
                   border: '1px solid var(--border)', 
                   borderRadius: '12px', 
                   padding: '12px 15px', 
-                  color: '#fff',
-                  colorScheme: 'dark'
+                  color: 'var(--text-primary)'
                 }}
               />
             </div>
@@ -117,19 +115,19 @@ export default function CourierIntelligence() {
               onChange={e => setPreset(e.target.value)}
               style={{ 
                 appearance: 'none',
-                background: 'rgba(255,255,255,0.05)',
+                background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
                 borderRadius: '12px',
                 padding: '12px 40px 12px 20px',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontSize: '0.9rem'
               }}
             >
-              {DATE_PRESETS.map(p => <option key={p} style={{ background: '#111' }}>{p}</option>)}
+              {DATE_PRESETS.map(p => <option key={p} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>{p}</option>)}
             </select>
-            <span style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }}>▼</span>
+            <span style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none', color: 'var(--text-muted)' }}>▼</span>
           </div>
           <button 
             onClick={fetchData}
@@ -141,7 +139,7 @@ export default function CourierIntelligence() {
               borderRadius: '12px', 
               fontWeight: 800, 
               cursor: 'pointer',
-              boxShadow: '0 8px 20px rgba(124, 58, 237, 0.3)'
+              boxShadow: '0 8px 20px var(--brand-glow)'
             }}
           >
             🔄 Sync Report
@@ -173,8 +171,8 @@ export default function CourierIntelligence() {
                 <div key={c.courier_name} className="card" style={{ 
                   padding: '30px', 
                   borderRadius: '24px', 
-                  background: 'rgba(255,255,255,0.02)', 
-                  border: '1px solid rgba(255,255,255,0.05)',
+                  background: 'var(--bg-surface)', 
+                  border: '1px solid var(--border)',
                   position: 'relative',
                   overflow: 'hidden'
                 }}>
@@ -187,8 +185,8 @@ export default function CourierIntelligence() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '25px' }}>
                     <div>
-                      <h2 style={{ fontSize: '1.8rem', fontWeight: 900, color: '#fff', margin: 0 }}>{c.courier_name}</h2>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.4, letterSpacing: '1px' }}>
+                      <h2 style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>{c.courier_name}</h2>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, opacity: 0.4, letterSpacing: '1px', color: 'var(--text-secondary)' }}>
                         {c.total_orders} TOTAL DISPATCHES
                       </span>
                     </div>
@@ -196,7 +194,7 @@ export default function CourierIntelligence() {
                       <div style={{ fontSize: '2.5rem', fontWeight: 900, color: score > 70 ? 'var(--green)' : 'var(--orange)', lineHeight: 0.9 }}>
                         {score}
                       </div>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.4 }}>PERF. INDEX</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 800, opacity: 0.4, color: 'var(--text-muted)' }}>PERF. INDEX</span>
                     </div>
                   </div>
 
@@ -204,37 +202,37 @@ export default function CourierIntelligence() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6 }}>DELIVERY SUCCESS</span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6, color: 'var(--text-secondary)' }}>DELIVERY SUCCESS</span>
                         <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--green)' }}>{delRate}%</span>
                       </div>
-                      <div style={{ height: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ height: '10px', background: 'var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
                         <div style={{ width: `${delRate}%`, height: '100%', background: 'var(--green)', borderRadius: '10px', boxShadow: '0 0 15px rgba(16, 185, 129, 0.3)' }}></div>
                       </div>
                     </div>
 
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6 }}>RETURN RATE</span>
-                        <span style={{ fontSize: '1rem', fontWeight: 900, color: parseFloat(retRate) > 20 ? 'var(--red)' : '#fff' }}>{retRate}%</span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.6, color: 'var(--text-secondary)' }}>RETURN RATE</span>
+                        <span style={{ fontSize: '1rem', fontWeight: 900, color: parseFloat(retRate) > 20 ? 'var(--red)' : 'var(--text-primary)' }}>{retRate}%</span>
                       </div>
-                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden' }}>
-                        <div style={{ width: `${retRate}%`, height: '100%', background: parseFloat(retRate) > 20 ? 'var(--red)' : 'rgba(255,255,255,0.2)', borderRadius: '6px' }}></div>
+                      <div style={{ height: '6px', background: 'var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div style={{ width: `${retRate}%`, height: '100%', background: parseFloat(retRate) > 20 ? 'var(--red)' : 'var(--text-muted)', borderRadius: '6px' }}></div>
                       </div>
                     </div>
                   </div>
 
                   {/* Secondary Metrics */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>AVG. FEE</div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>Rs {Math.round(c.avg_fee || 0)}</div>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px', color: 'var(--text-muted)' }}>AVG. FEE</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-primary)' }}>Rs {Math.round(c.avg_fee || 0)}</div>
                     </div>
-                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>DELIVERY TIME</div>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.8rem', opacity: 0.3 }}>d</span></div>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px', color: 'var(--text-muted)' }}>DELIVERY TIME</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-primary)' }}>{c.avg_days_to_deliver ? c.avg_days_to_deliver.toFixed(1) : '—'} <span style={{ fontSize: '0.8rem', opacity: 0.3 }}>d</span></div>
                     </div>
-                    <div style={{ padding: '15px', borderRadius: '16px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.02)' }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px' }}>1ST ATTEMPT %</div>
+                    <div style={{ padding: '15px', borderRadius: '16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.65rem', fontWeight: 800, opacity: 0.3, marginBottom: '5px', color: 'var(--text-muted)' }}>1ST ATTEMPT %</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: firstAttemptRate > 80 ? 'var(--green)' : 'var(--orange)' }}>{firstAttemptRate}%</div>
                     </div>
                   </div>
@@ -248,16 +246,16 @@ export default function CourierIntelligence() {
           </div>
 
           {/* 📍 REGIONAL STRATEGY */}
-          <div style={{ borderRadius: '30px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', padding: '40px' }}>
+          <div style={{ borderRadius: '30px', background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '40px' }}>
             <div style={{ marginBottom: '30px' }}>
-              <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0 }}>City-Specific Strategy</h2>
-              <p style={{ opacity: 0.4, fontWeight: 600 }}>Dominant carrier recommendations by regional delivery success</p>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: 'var(--text-primary)' }}>City-Specific Strategy</h2>
+              <p style={{ opacity: 0.4, fontWeight: 600, color: 'var(--text-secondary)' }}>Dominant carrier recommendations by regional delivery success</p>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 15px' }}>
                 <thead>
-                  <tr style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  <tr style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
                     <th style={{ padding: '0 20px', textAlign: 'left' }}>Regional Hub</th>
                     <th style={{ padding: '0 20px', textAlign: 'left' }}>Primary Partner</th>
                     <th style={{ padding: '0 20px', textAlign: 'center' }}>Success Rate</th>
@@ -277,19 +275,19 @@ export default function CourierIntelligence() {
                     const rate = ((best.delivered / best.total) * 100).toFixed(1)
                     
                     return (
-                      <tr key={city} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '15px' }}>
-                        <td style={{ padding: '25px 20px', fontWeight: 900, fontSize: '1.1rem', borderRadius: '15px 0 0 15px' }}>{city}</td>
+                      <tr key={city} style={{ background: 'var(--bg-elevated)', borderRadius: '15px' }}>
+                        <td style={{ padding: '25px 20px', fontWeight: 900, fontSize: '1.1rem', borderRadius: '15px 0 0 15px', color: 'var(--text-primary)' }}>{city}</td>
                         <td style={{ padding: '25px 20px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{ width: '35px', height: '35px', borderRadius: '10px', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.8rem' }}>
+                            <div style={{ width: '35px', height: '35px', borderRadius: '10px', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.8rem', color: '#fff' }}>
                               {best.courier_name[0]}
                             </div>
-                            <span style={{ fontWeight: 800, fontSize: '1rem' }}>{best.courier_name}</span>
+                            <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>{best.courier_name}</span>
                           </div>
                         </td>
                         <td style={{ padding: '25px 20px', textAlign: 'center' }}>
                           <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--green)' }}>{rate}%</div>
-                          <div style={{ fontSize: '0.6rem', opacity: 0.3, fontWeight: 800 }}>FROM {best.total} PARCELS</div>
+                          <div style={{ fontSize: '0.6rem', opacity: 0.3, fontWeight: 800, color: 'var(--text-muted)' }}>FROM {best.total} PARCELS</div>
                         </td>
                         <td style={{ padding: '25px 20px', borderRadius: '0 15px 15px 0' }}>
                           {parseFloat(rate) >= 90 ? (
