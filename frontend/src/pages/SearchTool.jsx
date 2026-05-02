@@ -1373,7 +1373,8 @@ export default function SearchTool() {
       ) : results.length === 0 ? (
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
-        <div className="table-wrapper">
+        <>
+          <div className="table-wrapper">
           <div style={{ background: 'rgba(251, 191, 36, 0.05)', borderBottom: '1px solid #333', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b></span>
             {(keyword || status !== 'All Statuses') && (
@@ -1716,6 +1717,7 @@ export default function SearchTool() {
             </button>
           </div>
         )}
+        </>
       )}
 
       {/* ─── Shopify-Style Order Editor Modal ─────────────────────────────────── */}
