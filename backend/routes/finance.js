@@ -491,6 +491,9 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
 
     const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
     
+    // 0. Load the full catalog for fallback matching
+    const catalog = db.prepare('SELECT parent_title, variant_title, landed_cost, packaging_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+
     db.transaction(() => {
       // 1. SYNC TO MASTER REGISTRY (Auto-learn)
       for (const [pName, pCost] of Object.entries(mappings)) {
@@ -511,7 +514,7 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
 
         let totalLanded = 0;
         let totalPackaging = 0;
-        let matched = false;
+        let hasNewMapping = false;
         let match;
         regex.lastIndex = 0;
         
@@ -520,33 +523,32 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
           const qty = parseInt(match[2]) || 0;
           
           const parts = fullName.split(' - ');
-          const parentName = parts[0].trim();
+          const pName = parts[0].trim();
+          const vName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
 
-          // 1. Try Exact Match First (Full Name)
-          let matchPrice = mappings[fullName];
+          // A. Try provided mappings first (New costs being learned)
+          let unitPrice = mappings[fullName];
+          if (unitPrice === undefined) unitPrice = mappings[pName];
 
-          // 2. Try Parent Match (everything before first " - ")
-          if (matchPrice === undefined) {
-            matchPrice = mappings[parentName];
-          }
-
-          // 3. Try "Reverse" Match (maybe user mapping is more specific than order title?)
-          if (matchPrice === undefined) {
-             const foundKey = Object.keys(mappings).find(k => k.toLowerCase() === fullName.toLowerCase() || k.toLowerCase().startsWith(fullName.toLowerCase()));
-             if (foundKey) matchPrice = mappings[foundKey];
+          // B. Fallback to Master Registry (Existing costs)
+          if (unitPrice === undefined) {
+             let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
+             if (!matchRow) matchRow = catalog.find(c => c.parent_title === pName);
+             if (matchRow) {
+                unitPrice = matchRow.landed_cost;
+                totalPackaging += (matchRow.packaging_cost || 0) * qty;
+             }
+          } else {
+             hasNewMapping = true;
           }
           
-          if (matchPrice !== undefined) {
-            totalLanded += matchPrice * qty;
-            const existing = db.prepare('SELECT packaging_cost FROM product_master_costs WHERE store_id = ? AND parent_title = ?').get(Number(store_id), parentName);
-            if (existing) {
-               totalPackaging += (existing.packaging_cost || 0) * qty;
-            }
-            matched = true;
+          if (unitPrice !== undefined) {
+            totalLanded += unitPrice * qty;
           }
         }
 
-        if (matched) {
+        // Only update if we actually applied one of the new mappings OR if the order was previously unhealed
+        if (totalLanded > 0) {
           updateStmt.run(totalLanded, totalPackaging, order.id);
           healedCount++;
         }

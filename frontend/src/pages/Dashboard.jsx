@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
+import ProfitabilityCharts from '../components/ProfitabilityCharts'
 
 export default function Dashboard() {
   const { activeStoreId, activeStore, addToast } = useApp()
@@ -9,7 +10,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!activeStoreId) { setLoading(false); return }
     setLoading(true)
-    fetch(`/api/stores/${activeStoreId}/stats`)
+    const token = localStorage.getItem('trace_token');
+    fetch(`/api/stores/${activeStoreId}/stats`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => { setStats(data); setLoading(false) })
       .catch(() => { addToast('Failed to load stats', 'error'); setLoading(false) })
@@ -58,6 +62,8 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          <ProfitabilityCharts storeId={activeStoreId} />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="card">

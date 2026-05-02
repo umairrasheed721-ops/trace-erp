@@ -4,6 +4,34 @@ const db = require('../db');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CHUNK_SIZE = 50;
 
+async function fetchWithRetry(url, options, retries = 3, backoff = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || backoff;
+        await sleep(parseInt(retryAfter) * 1.5);
+        continue;
+      }
+      if (response.ok) return response;
+      if (response.status >= 500) {
+         await sleep(backoff * Math.pow(2, i));
+         continue;
+      }
+      return response;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await sleep(backoff * Math.pow(2, i));
+    }
+  }
+}
+
+function logAudit(storeId, level, message, trackingNumber = null) {
+  try {
+    db.prepare('INSERT INTO sync_audit (store_id, level, message, tracking_number) VALUES (?, ?, ?, ?)').run(storeId, level, message, trackingNumber);
+  } catch (e) { console.error('Audit Log Error:', e.message); }
+}
+
 function getDaysAgo(days) {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -39,9 +67,13 @@ function detectOrderSource(order) {
 
 const registryLookupStmt = db.prepare(`
   SELECT landed_cost, shopify_cost FROM product_master_costs 
-  WHERE store_id = ? AND parent_title = ? 
-  AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
-  ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+  WHERE store_id = ? 
+  AND (
+    shopify_variant_id = ? 
+    OR (parent_title = ? AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL))
+  )
+  ORDER BY (CASE WHEN shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+           (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
   LIMIT 1
 `);
 
@@ -54,19 +86,27 @@ function calculateOrderCost(storeId, lineItems, costMap) {
     const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
     if (qty === 0) continue;
 
-    let unitCost = costMap[String(item.variant_id)] || 0;
+    const variantId = String(item.variant_id);
+    let unitCost = 0;
+    const shopifyCost = costMap[variantId] || 0;
 
-    // 🛡️ COST SHIELD FALLBACK
-    if (unitCost === 0) {
-      const parts = item.name.split(' - ');
-      const pName = parts[0].trim();
-      const vName = parts.length > 1 ? parts[1].trim() : '';
-
-      const registry = registryLookupStmt.get(storeId, pName, vName, vName);
-
-      if (registry) {
-        unitCost = registry.landed_cost || registry.shopify_cost || 0;
+    // 🛡️ STRICT COST SHIELD: Check Master Registry FIRST
+    const parts = item.name.split(' - ');
+    const pName = parts[0].trim();
+    const vName = parts.length > 1 ? parts[1].trim() : '';
+    
+    const registry = registryLookupStmt.get(storeId, variantId, pName, vName, variantId, vName);
+    
+    if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
+      unitCost = registry.landed_cost || registry.shopify_cost || 0;
+      
+      // ⚠️ COST DRIFT DETECTION
+      if (shopifyCost > 0 && Math.abs(shopifyCost - unitCost) > (unitCost * 0.05)) {
+        logAudit(storeId, 'WARN', `Cost Drift: ${item.name} registry cost is ${unitCost} but Shopify says ${shopifyCost}. Difference: ${Math.round(Math.abs(shopifyCost - unitCost))}`);
       }
+    } else {
+      // Fallback to Shopify's current cost if registry is empty
+      unitCost = shopifyCost;
     }
 
     totalCost += unitCost * qty;
@@ -555,36 +595,14 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
 
     if (!isCancelled && !isReturned) {
-      for (const item of order.line_items) {
-        const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
-        if (qty === 0) continue;
-        
-        let unitCost = costMap[String(item.variant_id)] || 0;
-        
-        // 🛡️ FALLBACK: If Shopify returns 0, check our Master Cost Registry
-        if (unitCost === 0) {
-          const parts = item.name.split(' - ');
-          const pName = parts[0].trim();
-          const vName = parts.length > 1 ? parts[1].trim() : '';
-          
-          const registry = db.prepare(`
-            SELECT landed_cost FROM product_master_costs 
-            WHERE store_id = ? AND parent_title = ? 
-            AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
-            ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
-            LIMIT 1
-          `).get(storeId, pName, vName, vName);
-          
-          if (registry) {
-            unitCost = registry.landed_cost || 0;
-            console.log(`🛡️ [CostShield] Fallback cost used for ${item.name}: Rs ${unitCost}`);
-          }
-        }
-
-        totalCost += unitCost * qty;
-        productTitles.push(`${item.name} (x${qty})`);
-        activeCount++;
-      }
+      const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, order.line_items, costMap);
+      totalCost = tc;
+      productTitles = [titles]; // it expects an array based on original code usage?
+      // Wait, original code: productTitles.push(`${item.name} (x${qty})`);
+      // calculateOrderCost returns: productTitles.join(', ')
+      // So productTitles should be the string result.
+      productTitles = titles;
+      activeCount = count;
     }
 
     const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');

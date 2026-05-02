@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
+import SearchFilters from '../components/SearchFilters'
+import OrderTable from '../components/OrderTable'
+import BulkActions from '../components/BulkActions'
+import EditOrderModal from '../components/EditOrderModal'
+import CustomerHistoryModal from '../components/CustomerHistoryModal'
+import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
+import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from '../components/OrderCells'
+
+const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
+const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
+const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
+const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value)
@@ -9,75 +22,6 @@ function useDebounce(value, delay) {
     return () => clearTimeout(handler)
   }, [value, delay])
   return debouncedValue
-}
-
-const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
-const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
-const CITY_ALIASES = {
-  karachi: ['khi','krachi','karaci'],
-  lahore: ['lhr','lahor'],
-  islamabad: ['isb'],
-  rawalpindi: ['rwp','pindi'],
-  faisalabad: ['fsd','faisalabd']
-}
-
-const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
-const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
-
-const formatYMD = (d) => {
-  if (!d || isNaN(d.getTime())) return ''
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function getDateRange(preset, customStart, customEnd) {
-  const now = new Date(); now.setHours(0,0,0,0)
-  const end = new Date(); end.setHours(23,59,59,999)
-  if (preset === 'Today') return { start: now, end }
-  if (preset === 'Yesterday') {
-    const d = new Date(now); d.setDate(d.getDate()-1)
-    const e = new Date(d); e.setHours(23,59,59,999)
-    return { start: d, end: e }
-  }
-  if (preset === 'Last 7 Days') { const s = new Date(now); s.setDate(s.getDate()-7); return { start: s, end } }
-  if (preset === 'Last 30 Days') { const s = new Date(now); s.setDate(s.getDate()-30); return { start: s, end } }
-  if (preset === 'This Month') { const s = new Date(now); s.setDate(1); return { start: s, end } }
-  if (preset === 'Last Month') {
-    const s = new Date(now.getFullYear(), now.getMonth()-1, 1)
-    const e = new Date(now.getFullYear(), now.getMonth(), 0); e.setHours(23,59,59,999)
-    return { start: s, end: e }
-  }
-  if (preset === 'This Year') { const s = new Date(now); s.setMonth(0); s.setDate(1); return { start: s, end } }
-  if (preset === 'Last Year') {
-    const s = new Date(now.getFullYear() - 1, 0, 1)
-    const e = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999)
-    return { start: s, end: e }
-  }
-  if (preset === '2025') {
-    const s = new Date(2025, 0, 1)
-    const e = new Date(2025, 11, 31, 23, 59, 59, 999)
-    return { start: s, end: e }
-  }
-  if (preset === '2024') {
-    const s = new Date(2024, 0, 1)
-    const e = new Date(2024, 11, 31, 23, 59, 59, 999)
-    return { start: s, end: e }
-  }
-  if (preset === '2023') {
-    const s = new Date(2023, 0, 1)
-    const e = new Date(2023, 11, 31, 23, 59, 59, 999)
-    return { start: s, end: e }
-  }
-  if (preset === 'All Time') return { start: new Date('2010-01-01'), end }
-  if (preset === 'Custom Range' && customStart) {
-    const s = new Date(customStart); s.setHours(0,0,0,0)
-    const e = customEnd ? new Date(customEnd) : new Date(s)
-    e.setHours(23,59,59,999)
-    return { start: s, end: e }
-  }
-  return null
 }
 
 function matchesSearch(order, keyword) {
@@ -204,14 +148,6 @@ function applySpecialMode(order, mode, today) {
     return fee < 1 && !['pending','cancelled'].includes(s) && !!order.tracking_number
   }
   return true
-}
-
-function getStatusColor(status) {
-  const s = (status||'').toLowerCase()
-  if (s.includes('delivered')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
-  if (s.includes('return')||s.includes('cancel')||s.includes('void')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
-  if (s.includes('review')||s.includes('attempt')||s.includes('refused')) return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
-  return { bg: 'var(--yellow-dim)', color: 'var(--yellow)' }
 }
 
 export default function SearchTool() {
@@ -980,11 +916,9 @@ export default function SearchTool() {
   }
 
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
-
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
-      
-      {/* 🚀 REAL-TIME SYNC PROGRESS BAR */}
+      {/* REAL-TIME SYNC PROGRESS BAR */}
       {syncProgress && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
@@ -1017,995 +951,114 @@ export default function SearchTool() {
               boxShadow: '0 0 15px var(--brand)'
             }}></div>
           </div>
-          {syncProgress.current === syncProgress.total && (
-            <div style={{ textAlign: 'center', fontSize: '0.65rem', color: 'var(--green)', marginTop: 6, fontWeight: 700 }}>
-              🎉 SYNC COMPLETE! DATA REFRESHED.
-            </div>
-          )}
-        </div>
-      )}
-      {/* Aging Config Dialog */}
-      {showAgingConfig && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="card" style={{ width: 360, padding: 24 }}>
-            <div style={{ fontWeight: 700, marginBottom: 20, fontSize: '1.1rem' }}>⚙️ Configure Aging Bar</div>
-            
-            <div className="form-group">
-              <label className="form-label">Critical Level (Days until Red)</label>
-              <select 
-                className="form-select" 
-                value={agingConfig.criticalLevel}
-                onChange={e => setAgingConfig(prev => ({ ...prev, criticalLevel: parseInt(e.target.value) }))}
-              >
-                {[3, 5, 7, 8, 10, 14].map(v => <option key={v} value={v}>{v} Days</option>)}
-              </select>
-            </div>
-
-            <div className="form-group mt-4">
-              <label className="form-label">Aging Span (Grouping)</label>
-              <select 
-                className="form-select" 
-                value={agingConfig.span}
-                onChange={e => setAgingConfig(prev => ({ ...prev, span: parseInt(e.target.value) }))}
-              >
-                {[1, 2, 3].map(v => <option key={v} value={v}>{v} Day{v > 1 ? 's' : ''}</option>)}
-              </select>
-            </div>
-
-            <div className="flex gap-2 mt-8">
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { localStorage.setItem('trace_aging_config', JSON.stringify(agingConfig)); setShowAgingConfig(false); }}>Confirm</button>
-              <button className="btn btn-secondary" onClick={() => setShowAgingConfig(false)}>Cancel</button>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Name Settings Dialog */}
-      {showNameDialog && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="card" style={{ width: 380, padding: 24 }}>
-            <div style={{ fontWeight: 700, marginBottom: 18, fontSize: '1.1rem' }}>🖊️ Customer Name Rules</div>
-            
-            <div className="form-group">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={nameSettings.shorten} 
-                  onChange={e => saveNameSettings({ ...nameSettings, shorten: e.target.checked })} 
-                />
-                <span style={{ fontSize: '0.85rem' }}>Limit to max 2 words (Short View)</span>
-              </label>
-            </div>
-
-            <div className="form-group mt-4">
-              <label className="form-label">Hide Words (comma separated)</label>
-              <textarea 
-                className="form-textarea" 
-                rows={3}
-                placeholder="e.g. Mr, Ms, Dr, Malik"
-                value={nameSettings.stripWords}
-                onChange={e => setNameSettings({ ...nameSettings, stripWords: e.target.value })}
-                style={{ fontSize: '0.8rem' }}
-              />
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                These words will be hidden from the Customer column automatically.
-              </p>
-            </div>
-
-            <div className="flex gap-2 mt-6">
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => saveNameSettings(nameSettings)}>Save Instructions</button>
-              <button className="btn btn-secondary" onClick={() => setShowNameDialog(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Main Page Header */}
       <div className="sticky-controls">
-        <div className="page-header" style={compactMode ? { marginBottom: 8 } : {}}>
+        <div className="page-header" style={{ marginBottom: compactMode ? 8 : 16 }}>
           <div>
-            <h2 style={compactMode ? { fontSize: '1rem' } : {}}>🔍 Command Center</h2>
-            {!compactMode && <p>Advanced search, filter, and order management</p>}
+            <h2 style={{ fontSize: compactMode ? '1.1rem' : '1.5rem', margin: 0 }}>🔍 Command Center</h2>
+            {!compactMode && <p style={{ margin: '4px 0 0', opacity: 0.6 }}>Advanced search, filter, and logistics management</p>}
           </div>
           <div className="flex gap-2">
-            <button 
-              className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} 
-              onClick={toggleCompact}
-              title={compactMode ? 'Show Full Stats' : 'Focus Mode (Hide Stats)'}
-            >
-              {compactMode ? '✨ Show KPIs' : '🎯 Focus Mode'}
-            </button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(!showColPicker)}>🎭 Columns</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowSaveDialog(true)}>💾 Save View</button>
-            {selectedView && <button className="btn btn-danger btn-sm" onClick={deleteView}>🗑 Delete View</button>}
             <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
           </div>
         </div>
 
-        {showColPicker && (
-          <div className="card mb-4" style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-            {DEFAULT_COLS.map(c => {
-              const isVisible = cols.find(col => col.id === c.id)
-              return (
-                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={!!isVisible} 
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setCols(prev => [...prev, c])
-                      } else {
-                        setCols(prev => prev.filter(col => col.id !== c.id))
-                      }
-                    }} 
-                  />
-                  {c.label}
-                </label>
-              )
-            })}
-          </div>
-        )}
-
-        {!compactMode && (
-          <>
-            {/* KPI Scorecard */}
-            <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 16 }}>
-              {[
-                { label: 'Results', value: kpi.total.toLocaleString(), color: 'blue', icon: '🔍' },
-                { label: 'Total Value', value: `Rs ${Math.round(kpi.sum).toLocaleString()}`, color: 'purple', icon: '💰' },
-                { label: 'Delivered', value: kpi.delivered, color: 'green', icon: '✅' },
-                { label: 'Returned', value: kpi.returned, color: 'red', icon: '↩️' },
-                { label: 'In Transit', value: kpi.pending, color: 'yellow', icon: '🚚' },
-              ].map(k => (
-                <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: 12 }}>
-                  <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value" style={{ fontSize: '1.3rem' }}>{k.value}</div>
-                  <div className="kpi-icon" style={{ fontSize: '1rem' }}>{k.icon}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Pipeline Bar */}
-            <div className="card mb-4" style={{ padding: '8px 16px' }}>
-              <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: 'var(--bg-elevated)', marginBottom: 8 }}>
-                <div style={{ width: `${(kpi.delivered / kpi.total * 100) || 0}%`, background: 'var(--green)' }}></div>
-                <div style={{ width: `${(kpi.returned / kpi.total * 100) || 0}%`, background: 'var(--red)' }}></div>
-                <div style={{ width: `${(kpi.pending / kpi.total * 100) || 0}%`, background: 'var(--yellow)' }}></div>
-              </div>
-              <div className="flex gap-3" style={{ fontSize: '0.68rem', fontWeight: 600 }}>
-                <span style={{ color: 'var(--green)' }}>Delivered: {deliveryRate}%</span>
-                <span style={{ color: 'var(--red)' }}>Returned: {((kpi.returned / kpi.total * 100) || 0).toFixed(1)}%</span>
-                <span style={{ color: 'var(--yellow)' }}>In Transit: {kpi.pending}</span>
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAgingBar ? 10 : 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>📊 Pending by Operations</div>
-              <button 
-                onClick={toggleAgingBar} 
-                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, fontSize: '0.75rem', padding: '2px 6px' }}
-                title={showAgingBar ? 'Hide Bar' : 'Show Bar'}
-              >
-                {showAgingBar ? '🙈 Hide' : '👁️ Show'}
-              </button>
-            </div>
-            <button onClick={() => setShowAgingConfig(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.9rem' }}>⚙️</button>
-          </div>
-          
-          {showAgingBar && (
-            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', height: 44, border: '1px solid var(--border)', transition: 'all 0.3s ease' }}>
-              {agingBuckets.map((b, idx) => {
-                const count = agingCounts[b.label] || 0
-                const isActive = activeAgingBucket === b.label
-                // Color logic: green -> brown -> red
-                let bg = 'var(--green)'
-                if (b.min >= agingConfig.criticalLevel) bg = '#c53030' // Red
-                else if (b.min >= agingConfig.criticalLevel - 2) bg = '#975a5e' // Brownish
-                
-                return (
-                  <div 
-                    key={b.label}
-                    onClick={() => setActiveAgingBucket(isActive ? null : b.label)}
-                    style={{ 
-                      flex: 1, 
-                      background: bg, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      opacity: activeAgingBucket && !isActive ? 0.3 : 1,
-                      borderRight: idx < agingBuckets.length - 1 ? '1px solid var(--border)' : 'none',
-                      transition: 'all 0.2s',
-                      position: 'relative'
-                    }}
-                  >
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>{count}</div>
-                    {isActive && <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#fff' }}></div>}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {missingCostCount > 0 && (
-          <div 
-            onClick={() => { setStatus('[MISSING COST]'); setPreset('All Time'); }}
-            style={{ 
-              background: 'linear-gradient(90deg, #c53030 0%, #742a2a 100%)', 
-              color: 'white', 
-              padding: '12px 20px', 
-              borderRadius: 12, 
-              marginBottom: 16, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              cursor: 'pointer',
-              boxShadow: '0 8px 16px rgba(197, 48, 48, 0.2)',
-              animation: 'pulse 2s infinite'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{missingCostCount} Delivered Orders Missing Cost</div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>This will make your P&L inaccurate. Click here to fix them now.</div>
-              </div>
-            </div>
-            <button className="btn btn-sm" style={{ background: 'white', color: '#c53030', fontWeight: 800, borderRadius: 20 }}>FIX NOW</button>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-            <div>
-              <label className="form-label">📅 Date Preset</label>
-              <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
-                {DATE_PRESETS.map(p => <option key={p}>{p}</option>)}
-              </select>
-            </div>
-            {preset === 'Custom Range' ? <>
-              <div>
-                <label className="form-label">📆 Start</label>
-                <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
-              </div>
-              <div>
-                <label className="form-label">🏁 End</label>
-                <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-              </div>
-            </> : <><div/><div/></>}
-            <div>
-              <label className="form-label">🏷️ Status / Mode</label>
-              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
-                {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">🔑 Keyword</label>
-              <input className="form-input" placeholder="name, city, tracking..." value={keyword} onChange={e => setKeyword(e.target.value)} onKeyDown={e => e.key === 'Enter' && runSearch()} />
-            </div>
-            <div>
-              <label className="form-label">🗂️ Sort</label>
-              <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
-                {SORT_OPTIONS.map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-label">⭐ Saved Views</label>
-              <select className="form-select" value={selectedView} onChange={e => loadView(e.target.value)}>
-                <option value="">— Default Layout —</option>
-                {savedViews.map(v => <option key={v.id} value={v.id}>{v.is_locked ? '🔒' : '👤'} {v.view_name}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => {
-                  setPreset('All Time')
-                  setStatus('All Statuses')
-                  setKeyword('')
-                  setColFilters({ ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' })
-                  setActiveAgingBucket(null)
-                  addToast('Filters cleared', 'info')
-                }}
-                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600, background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-              >
-                🧹 Clear
-              </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => runSearch()}
-                style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600 }}
-              >
-                🔄 Refresh
-              </button>
-            </div>
-          </div>
-        </div>
+        <SearchFilters
+          preset={preset} setPreset={setPreset}
+          customStart={customStart} setCustomStart={setCustomStart}
+          customEnd={customEnd} setCustomEnd={setCustomEnd}
+          status={status} setStatus={setStatus}
+          keyword={keyword} setKeyword={setKeyword}
+          sort={sort} setSort={setSort}
+          selectedView={selectedView} loadView={loadView}
+          deleteView={deleteView}
+          savedViews={savedViews}
+          runSearch={runSearch}
+          setColFilters={setColFilters}
+          setActiveAgingBucket={setActiveAgingBucket}
+          addToast={addToast}
+          compactMode={compactMode}
+          toggleCompact={toggleCompact}
+          toggleAgingBar={toggleAgingBar}
+          showAgingBar={showAgingBar}
+          setShowAgingConfig={setShowAgingConfig}
+          syncProgress={syncProgress}
+          kpi={kpi}
+          deliveryRate={deliveryRate}
+          missingCostCount={missingCostCount}
+          activeAgingBucket={activeAgingBucket}
+          agingBuckets={agingBuckets}
+          agingCounts={agingCounts}
+          DATE_PRESETS={DATE_PRESETS}
+          STATUS_OPTIONS={STATUS_OPTIONS}
+          SORT_OPTIONS={SORT_OPTIONS}
+          setShowSaveDialog={setShowSaveDialog}
+          setShowColPicker={setShowColPicker}
+          setShowNameDialog={setShowNameDialog}
+        />
       </div>
 
-      {/* Save View Dialog */}
-      {showSaveDialog && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="card" style={{ width: 360, padding: 24 }}>
-            <div style={{ fontWeight: 700, marginBottom: 14 }}>💾 Save Current View</div>
-            <div className="form-group">
-              <label className="form-label">View Name</label>
-              <input className="form-input" placeholder="e.g. Finance View" value={viewName} onChange={e => setViewName(e.target.value)} autoFocus />
-            </div>
-            <div className="form-group mt-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={isViewLocked} onChange={e => setIsViewLocked(e.target.checked)} />
-                <span style={{ fontSize: '0.85rem' }}>🔒 Lock this view (Only you can edit)</span>
-              </label>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button className="btn btn-primary" onClick={saveView}>Save View</button>
-              <button className="btn btn-secondary" onClick={() => setShowSaveDialog(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BulkActions
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        bulkActionLoading={bulkActionLoading}
+        handleBulkConfirm={handleBulkConfirm}
+        handleBulkSyncStatus={handleBulkSyncStatus}
+        handleBulkSyncCourier={handleBulkSyncCourier}
+        handleBulkRevert={handleBulkRevert}
+        handleBulkUpdateStatus={handleBulkUpdateStatus}
+        handleBulkBookPostEx={handleBulkBookPostEx}
+        handleBulkBookInstaworld={handleBulkBookInstaworld}
+      />
 
-      {/* Bulk Actions Bar */}
-      {selectedIds.length > 0 && (
-        <div className="flex items-center gap-4" style={{ 
-          background: 'var(--brand)', 
-          color: 'black', 
-          padding: '8px 16px', 
-          borderRadius: 8, 
-          marginBottom: 12,
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-        }}>
-          <div className="font-bold">📦 {selectedIds.length} selected</div>
-          <button 
-            disabled={bulkActionLoading}
-            onClick={handleBulkConfirm}
-            className="btn btn-sm" 
-            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
-          >
-            {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
-          </button>
+      <OrderTable
+        loading={loading}
+        filteredOrders={filteredOrders}
+        allOrders={allOrders}
+        totalCount={totalCount}
+        debugWhere={debugWhere}
+        cols={cols}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        handleHeaderSort={handleHeaderSort}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        colFilters={colFilters}
+        setColFilters={setColFilters}
+        formatCustomerName={formatCustomerName}
+        fetchOrderDetails={fetchOrderDetails}
+        bookingId={bookingId}
+        handleConfirmOrder={handleConfirmOrder}
+        handleRevertConfirm={handleRevertConfirm}
+        handleBookPostEx={handleBookPostEx}
+        handleCancelBooking={handleCancelBooking}
+        handleBookInstaworld={handleBookInstaworld}
+        updateOrderField={updateOrderField}
+        setCustomerHistoryPhone={setCustomerHistoryPhone}
+        setShowNameDialog={setShowNameDialog}
+        setKeyword={setKeyword}
+        setStatus={setStatus}
+        page={page}
+        setPage={setPage}
+      />
 
-          <button 
-            disabled={bulkActionLoading}
-            onClick={handleBulkSyncStatus}
-            className="btn btn-sm" 
-            style={{ background: 'black', color: 'white', fontWeight: 700 }}
-          >
-            {bulkActionLoading ? '⌛...' : '🔄 SYNC STATUS (FORCE)'}
-          </button>
+      {/* MODALS */}
+      <EditOrderModal
+        editingOrder={editingOrder}
+        setEditingOrder={setEditingOrder}
+        editorLoading={editorLoading}
+        fetchOrderDetails={fetchOrderDetails}
+        updateOrderField={updateOrderField}
+        isCityValid={isCityValid}
+        addToast={addToast}
+      />
 
-          <button 
-            disabled={bulkActionLoading}
-            onClick={handleBulkSyncCourier}
-            className="btn btn-sm" 
-            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700, border: '1px solid var(--brand)' }}
-          >
-            {bulkActionLoading ? '⌛...' : '⚡ SYNC COURIER (FORCE)'}
-          </button>
-
-          <button 
-            disabled={bulkActionLoading}
-            onClick={handleBulkRevert}
-            className="btn btn-sm" 
-            style={{ background: 'black', color: '#ff4444', fontWeight: 700 }}
-          >
-            {bulkActionLoading ? '⌛...' : '↩️ BULK REVERT'}
-          </button>
-          
-          <button 
-            disabled={bulkActionLoading}
-            onClick={handleBulkBookPostEx}
-            className="btn btn-sm" 
-            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
-          >
-            {bulkActionLoading ? '⌛...' : '⚡ BULK POSTEX'}
-          </button>
-
-          <select 
-            disabled={bulkActionLoading}
-            className="btn btn-sm"
-            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
-            onChange={(e) => handleBulkBookInstaworld(e.target.value)}
-            value=""
-          >
-            <option value="" disabled>🌐 BULK BOOK...</option>
-            <option value="TCS">TCS</option>
-            <option value="LCS">LCS</option>
-            <option value="Leopards">Leopards</option>
-            <option value="InstaLogicstics">Insta</option>
-          </select>
-
-          <select 
-            disabled={bulkActionLoading}
-            className="btn btn-sm"
-            style={{ background: 'black', color: '#ffcc00', fontWeight: 700 }}
-            onChange={(e) => handleBulkUpdateStatus(e.target.value)}
-            value=""
-          >
-            <option value="" disabled>🏷️ BULK STATUS...</option>
-            <option value="Delivered">Delivered</option>
-            <option value="Returned">Returned</option>
-            <option value="RTO">RTO</option>
-            <option value="Cancelled">Cancelled</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Pending">Pending</option>
-          </select>
-
-          <button 
-            onClick={() => setSelectedIds([])}
-            className="btn btn-sm" 
-            style={{ background: 'rgba(0,0,0,0.1)', color: 'black' }}
-          >
-            CANCEL
-          </button>
-        </div>
-      )}
-
-      {/* Results Table */}
-      {loading ? (
-        <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
-      ) : (
-        <>
-          <div className="table-wrapper">
-          <div style={{ background: 'rgba(251, 191, 36, 0.05)', borderBottom: '1px solid #333', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>
-              💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
-              {debugWhere && <span style={{ marginLeft: 10, color: '#666', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
-            </span>
-            {(keyword || status !== 'All Statuses') && (
-              <button 
-                onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
-                style={{ background: '#fbbf24', color: 'black', border: 'none', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
-              >
-                CLEAR ALL FILTERS
-              </button>
-            )}
-          </div>
-          <table className="draggable-table">
-            <thead>
-              <tr>
-                <th style={{ width: 40, textAlign: 'center' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id))
-                      else setSelectedIds([])
-                    }}
-                  />
-                </th>
-                {cols.map((col, idx) => (
-                  <th 
-                    key={col.id}
-                    draggable
-                    onDragStart={() => onDragStart(idx)}
-                    onDragOver={onDragOver}
-                    onDrop={() => onDrop(idx)}
-                    onClick={() => handleHeaderSort(col.id)}
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {sortKey === col.id && (
-                        <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
-                          {sortDir === 'asc' ? '▲' : '▼'}
-                        </span>
-                      )}
-                      {col.id === 'customer_name' && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
-                          title="Edit Name Rules"
-                        >
-                          🖊️
-                        </button>
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-              <tr className="header-search-row">
-                <th style={{ padding: '4px 8px' }}></th>
-                {cols.map(col => {
-                  const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
-                  return (
-                    <th key={col.id} style={{ padding: '4px 8px' }}>
-                      {isFiltered && (
-                        <input 
-                          className="header-search-input"
-                          placeholder="Search..."
-                          value={colFilters[col.id] || ''}
-                          onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
-                        />
-                      )}
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.map(o => {
-                const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
-                const isClear = Math.abs(diff) <= 1
-                const { bg, color } = getStatusColor(o.delivery_status)
-                const s = (o.delivery_status||'').toLowerCase()
-                const orderDate = o.order_date ? new Date(o.order_date) : null
-                const today = new Date(); today.setHours(0,0,0,0)
-                const daysOld = orderDate ? Math.floor((today-orderDate)/86400000) : 0
-                const isPending = !s.includes('delivered') && !s.includes('return') && !s.includes('cancel')
-                const dateAged = isPending && daysOld >= 5
-
-                return (
-                  <tr key={o.id} className={selectedIds.includes(o.id) ? 'row-selected' : ''}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedIds.includes(o.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedIds(prev => [...prev, o.id])
-                          else setSelectedIds(prev => prev.filter(id => id !== o.id))
-                        }}
-                      />
-                    </td>
-                    {cols.map(col => {
-                      if (col.id === 'ref_number') return (
-                        <td key={col.id}>
-                          <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                            {/* Edit button always visible */}
-                            <button 
-                              onClick={() => fetchOrderDetails(o.id)}
-                              className="btn btn-primary btn-sm"
-                              style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
-                              title="Edit Full Order"
-                            >
-                              ✏️
-                            </button>
-
-                            {/* Actions dropdown */}
-                            {bookingId === o.id ? (
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>⌛ Working...</span>
-                            ) : (
-                              <select
-                                className="btn btn-sm"
-                                style={{ 
-                                  padding: '2px 4px', 
-                                  fontSize: '0.65rem', 
-                                  flexShrink: 0,
-                                  width: '110px',
-                                  background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
-                                  color: s === 'confirmed' ? 'black' : 'var(--text-muted)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 4,
-                                  cursor: 'pointer'
-                                }}
-                                value=""
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  const action = e.target.value;
-                                  if (action === 'confirm') handleConfirmOrder(o.id);
-                                  else if (action === 'revert') handleRevertConfirm(o.id);
-                                  else if (action === 'postex') handleBookPostEx(o.id);
-                                  else if (action === 'cancel') handleCancelBooking(o.id);
-                                  else if (action.startsWith('insta:')) handleBookInstaworld(o.id, action.split(':')[1]);
-                                }}
-                              >
-                                <option value="" disabled>⚡ Action</option>
-                                {/* CS: Confirm */}
-                                {!o.tracking_number && s !== 'confirmed' && (
-                                  <option value="confirm">✅ Confirm Order</option>
-                                )}
-                                {/* CS: Revert */}
-                                {!o.tracking_number && s === 'confirmed' && (
-                                  <option value="revert">↩️ Revert to Pending</option>
-                                )}
-                                {/* Ops: Book */}
-                                {!o.tracking_number && s === 'confirmed' && (
-                                  <>
-                                    <option value="postex">⚡ Book PostEx</option>
-                                    <option value="insta:TCS">🌐 Book TCS</option>
-                                    <option value="insta:LCS">🌐 Book LCS</option>
-                                    <option value="insta:Leopards">🌐 Book Leopards</option>
-                                    <option value="insta:InstaLogicstics">🌐 Book InstaLog</option>
-                                  </>
-                                )}
-                                {/* Cancel booking */}
-                                {!!o.tracking_number && ['booked','pending','confirmed'].includes(s) && (
-                                  <option value="cancel">🛑 Cancel Booking</option>
-                                )}
-                              </select>
-                            )}
-
-                            <a 
-                              href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
-                            >
-                              {o.ref_number || o.shopify_order_id}
-                            </a>
-                          </div>
-                        </td>
-                      )
-                      if (col.id === 'order_date') return (
-                        <td key={col.id} style={{ fontSize: '0.75rem', color: dateAged ? 'var(--orange)' : 'var(--text-muted)', fontWeight: dateAged ? 700 : 400 }}>
-                          {o.order_date || '—'}
-                          {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
-                        </td>
-                      )
-                      if (col.id === 'customer_name') return (
-                        <td key={col.id} title={o.customer_name}>
-                          {formatCustomerName(o.customer_name)}
-                        </td>
-                      )
-                      if (col.id === 'phone') return (
-                        <td key={col.id} style={{ fontSize: '0.75rem' }}>
-                          {o.phone ? (
-                            <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                              <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', flexShrink: 0 }} title="Call via SIM">📞</a>
-                              <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none', flexShrink: 0 }} title="WhatsApp Chat">💬</a>
-                              <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
-                              {(() => {
-                                const count = allOrders.filter(order => order.phone === o.phone).length
-                                return count > 0 ? (
-                                  <span
-                                    onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone(o.phone) }}
-                                    style={{
-                                      background: 'var(--green-dim)',
-                                      color: 'var(--green)',
-                                      fontSize: '0.58rem',
-                                      fontWeight: 700,
-                                      padding: '2px 6px',
-                                      borderRadius: 10,
-                                      cursor: 'pointer',
-                                      whiteSpace: 'nowrap',
-                                      flexShrink: 0,
-                                      border: '1px solid var(--green)',
-                                      userSelect: 'none'
-                                    }}
-                                    title="View customer order history"
-                                  >
-                                    {count} {count === 1 ? 'Order' : 'Orders'}
-                                  </span>
-                                ) : null
-                              })()}
-                            </div>
-                          ) : '—'}
-                        </td>
-                      )
-                      if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
-                      if (col.id === 'address') return (
-                        <td key={col.id}>
-                          <AddressCell order={o} onSave={updateOrderField} />
-                        </td>
-                      )
-                      if (col.id === 'items') return (
-                        <td key={col.id} title={o.product_titles}>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {o.product_titles || '—'}
-                          </div>
-                        </td>
-                      )
-                      if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-                      if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} /></td>
-                      if (col.id === 'diff') return (
-                        <td key={col.id} style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
-                          {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
-                        </td>
-                      )
-                      if (col.id === 'delivery_status') {
-                        const isExchange = (s.includes('delivered') || s.includes('transit')) && parseInt(o.items_count) === 0;
-                        return (
-                          <td key={col.id}>
-                            <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                              <span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span>
-                              {isExchange && (
-                                <span 
-                                  className="badge" 
-                                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.55rem', border: '1px solid var(--blue)' }}
-                                  title="Inventory was restocked/removed after delivery (likely an Exchange)"
-                                >
-                                  🔄 EXCHANGE
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      }
-                      if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
-                      if (col.id === 'tracking_number') {
-                        const courierStr = (o.courier || '').toLowerCase();
-                        const isInstaPortal = courierStr.includes('insta') || courierStr.includes('lcs') || courierStr.includes('leopard') || courierStr.includes('tcs') || courierStr.includes('private rider');
-                        
-                        return (
-                          <td key={col.id} style={{ fontSize: '0.75rem' }}>
-                            {o.tracking_number ? (
-                              <a 
-                                href={isInstaPortal 
-                                  ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
-                                  : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                style={{ color: 'var(--blue)', textDecoration: 'none' }}
-                              >
-                                🚚 {o.tracking_number}
-                              </a>
-                            ) : '—'}
-                          </td>
-                        )
-                      }
-                      if (col.id === 'courier_fee') return <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td>
-                      if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
-                      if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-                      if (col.id === 'cost') return <td key={col.id}><CostCell order={o} onSave={updateOrderField} /></td>
-                      if (col.id === 'profit') {
-                        const fee = parseFloat(o.courier_fee) || 0
-                        const cost = parseFloat(o.cost) || 0
-                        const price = parseFloat(o.price) || 0
-                        const profit = price - cost - fee
-                        return <td key={col.id} style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)' }}>Rs {Math.round(profit).toLocaleString()}</td>
-                      }
-                      if (col.id === 'order_source') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.order_source || 'Shopify'}</td>
-                      if (col.id === 'status_date') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.status_date ? new Date(o.status_date).toLocaleDateString() : '—'}</td>
-                      if (col.id === 'payment_ref') return <td key={col.id} style={{ fontSize: '0.7rem' }}>{o.payment_ref || '—'}</td>
-                      if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
-                      
-                      if (col.id === 'edit') return (
-                        <td key={col.id}>
-                          <select className="form-select" style={{ padding: '3px 6px', fontSize: '0.72rem', width: 130 }} value={o.delivery_status || 'Pending'} onChange={e => updateOrderField(o.id, 'delivery_status', e.target.value)}>
-                            {[
-                              'Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered',
-                              'Attempted','Refused','Arrived at Warehouse','Not Available',
-                              'Return Initiated','Return Received','Cancelled'
-                            ].concat(o.delivery_status && !['Pending','Booked','Picked Up','In Transit','Out for Delivery','Delivered','Attempted','Refused','Arrived at Warehouse','Not Available','Return Initiated','Return Received','Cancelled'].includes(o.delivery_status) ? [o.delivery_status] : []).map(st => <option key={st} value={st}>{st}</option>)}
-                          </select>
-                        </td>
-                      )
-                      if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>
-                      return <td key={col.id}>—</td>
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Bar */}
-        {totalCount > 250 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '16px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
-            <button 
-              className="btn btn-secondary btn-sm" 
-              disabled={page === 1 || loading}
-              onClick={() => { setPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-            >
-              ◀ Previous
-            </button>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-              Page {page} of {Math.ceil(totalCount / 250)}
-            </div>
-            <button 
-              className="btn btn-secondary btn-sm" 
-              disabled={page >= Math.ceil(totalCount / 250) || loading}
-              onClick={() => { setPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-            >
-              Next ▶
-            </button>
-          </div>
-        )}
-        </>
-      )}
-
-      {/* ─── Shopify-Style Order Editor Modal ─────────────────────────────────── */}
-      {editingOrder && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}>
-          <div className="card" style={{ width: '100%', maxWidth: 1100, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
-            
-            {/* Modal Header */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Order {editingOrder.ref_number || editingOrder.shopify_order_id}</h2>
-                  <span className="badge" style={{ background: 'var(--yellow-dim)', color: 'var(--yellow)' }}>{editingOrder.payment_status || 'Pending'}</span>
-                  <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>{editingOrder.delivery_status || 'Unfulfilled'}</span>
-                  { ((editingOrder.delivery_status || '').toLowerCase().includes('delivered') || (editingOrder.delivery_status || '').toLowerCase().includes('transit')) && parseInt(editingOrder.items_count) === 0 && (
-                    <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.7rem', border: '1px solid var(--blue)' }}>🔄 EXCHANGE / RESTOCKED</span>
-                  )}
-                </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {(() => {
-                    if (!editingOrder.order_date) return '—';
-                    const d = new Date(editingOrder.order_date);
-                    if (!isNaN(d.getTime())) return d.toLocaleString();
-                    // Fallback for DD/MM/YYYY
-                    const parts = editingOrder.order_date.split(/[\/\- ]/);
-                    if (parts.length >= 3) {
-                      // Try YYYY-MM-DD or DD/MM/YYYY
-                      if (parts[0].length === 4) return new Date(editingOrder.order_date).toLocaleString();
-                      const d2 = new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
-                      if (!isNaN(d2.getTime())) return d2.toLocaleString();
-                    }
-                    return editingOrder.order_date;
-                  })()}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                {editorLoading && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>⏳ Syncing...</span>}
-                <button className="btn btn-secondary" onClick={() => setEditingOrder(null)}>Close</button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24, background: 'var(--bg-app)' }}>
-              
-              {/* Left Column: Products & Financials */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                
-                {/* Products Card */}
-                <div className="card" style={{ padding: 0 }}>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.85rem' }}>🛒 Line Items</div>
-                  <div style={{ padding: 16 }}>
-                    {(editingOrder.line_items || []).map(item => (
-                      <div key={item.id} style={{ display: 'flex', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                        <div style={{ width: 50, height: 50, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                          {item.image_url ? <img src={item.image_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '0.6rem', fontWeight: 800 }}>{item.sku?.slice(0,3)}</span>}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.title}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.variant_title} • SKU: {item.sku || '—'}</div>
-                        </div>
-                        <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
-                          <div>Rs {Math.round(item.price).toLocaleString()} × {item.quantity}</div>
-                          <div style={{ fontWeight: 700 }}>Rs {Math.round(item.price * item.quantity).toLocaleString()}</div>
-                        </div>
-                      </div>
-                    ))}
-                    {!editingOrder.line_items?.length && (
-                      <div style={{ textAlign: 'center', padding: 20 }}>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No items found locally.</p>
-                        <button className="btn btn-primary btn-sm" onClick={() => fetchOrderDetails(editingOrder.id)}>🔄 Fetch from Shopify</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Financials Summary */}
-                <div className="card" style={{ padding: 16 }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
-                     <span>Subtotal</span>
-                     <span>Rs {Math.round(Math.max(0, (parseFloat(editingOrder.price) || 0) - 250)).toLocaleString()}</span>
-                   </div>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
-                     <span>Shipping</span>
-                     <span>Rs 250</span>
-                   </div>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', borderTop: '1px solid var(--border)', paddingTop: 8, marginBottom: 16 }}>
-                     <span>Total Revenue</span>
-                     <span>Rs {Math.round(parseFloat(editingOrder.price) || 0).toLocaleString()}</span>
-                   </div>
-
-                   <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>🚚 Courier Fee</span>
-                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Rs</span>
-                         <input 
-                           type="number" 
-                           className="form-input" 
-                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}
-                           value={editingOrder.courier_fee || ''} 
-                           onChange={e => setEditingOrder({ ...editingOrder, courier_fee: e.target.value })}
-                           onBlur={() => updateOrderField(editingOrder.id, 'courier_fee', editingOrder.courier_fee)}
-                           placeholder="0"
-                         />
-                       </div>
-                     </div>
-                   </div>
-                </div>
-              </div>
-
-              {/* Right Column: Customer & Notes */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                
-                {/* Notes Card */}
-                <div className="card" style={{ padding: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 12 }}>📝 Order Notes</div>
-                  <textarea 
-                    className="form-textarea" 
-                    rows={4} 
-                    value={editingOrder.notes || ''} 
-                    onChange={e => setEditingOrder({ ...editingOrder, notes: e.target.value })}
-                    onBlur={() => updateOrderField(editingOrder.id, 'notes', editingOrder.notes)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
-                    style={{ fontSize: '0.8rem' }}
-                    placeholder="Enter customer notes..."
-                  />
-                  <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 8 }}>Notes sync live with Shopify.</p>
-                </div>
-
-                {/* Customer Details Card */}
-                <div className="card" style={{ padding: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>👤 Customer</div>
-                  </div>
-                  
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Full Name</label>
-                    <input 
-                      className="form-input" 
-                      value={editingOrder.customer_name || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, customer_name: e.target.value })}
-                      onBlur={() => updateOrderField(editingOrder.id, 'customer_name', editingOrder.customer_name)}
-                      style={{ height: 32, fontSize: '0.8rem' }}
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Phone</label>
-                      {editingOrder.phone && (
-                        <a href={`tel:${editingOrder.phone}`} style={{ fontSize: '0.75rem', textDecoration: 'none' }} title="Call via SIM">📞 Call</a>
-                      )}
-                    </div>
-                    <input 
-                      className="form-input" 
-                      value={editingOrder.phone || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, phone: e.target.value })}
-                      onBlur={() => updateOrderField(editingOrder.id, 'phone', editingOrder.phone)}
-                      style={{ height: 32, fontSize: '0.8rem' }}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Address</label>
-                    <textarea 
-                      className="form-textarea" 
-                      rows={3}
-                      value={editingOrder.address || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, address: e.target.value })}
-                      onBlur={() => updateOrderField(editingOrder.id, 'address', editingOrder.address)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
-                      style={{ fontSize: '0.8rem' }}
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginTop: 12 }}>
-                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>City</label>
-                    <div style={{ position: 'relative' }}>
-                      <input 
-                        className="form-input" 
-                        value={editingOrder.city || ''} 
-                        onChange={e => setEditingOrder({ ...editingOrder, city: e.target.value })}
-                        onBlur={() => updateOrderField(editingOrder.id, 'city', editingOrder.city)}
-                        style={{ 
-                          height: 32, 
-                          fontSize: '0.8rem',
-                          borderColor: !isCityValid ? 'var(--red)' : 'var(--border)'
-                        }}
-                      />
-                      {!isCityValid && (
-                        <div style={{ color: 'var(--red)', fontSize: '0.65rem', marginTop: 4 }}>
-                          ⚠️ Unmapped City. Might fail booking.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {customerHistoryPhone && (
         <CustomerHistoryModal
           phone={customerHistoryPhone}
@@ -2013,431 +1066,41 @@ export default function SearchTool() {
           onClose={() => setCustomerHistoryPhone(null)}
         />
       )}
-    </div>
-  )
-}
 
-// ─── Inline Paid Amount Cell ───────────────────────────────────────────────────
-function PaidAmountCell({ order, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(order.paid_amount || '')
-
-  // Sync if parent updates (e.g. after backend auto-change)
-  useEffect(() => { setVal(order.paid_amount || '') }, [order.paid_amount])
-
-  const commit = () => {
-    const num = parseFloat(val)
-    if (!isNaN(num) && num !== parseFloat(order.paid_amount || 0)) {
-      onSave(order.id, 'paid_amount', num)
-    }
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <input
-        type="number"
-        className="form-input"
-        style={{ width: 100, padding: '3px 6px', fontSize: '0.75rem' }}
-        value={val}
-        autoFocus
-        onChange={e => setVal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+      <SaveViewModal
+        show={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        viewName={viewName}
+        setViewName={setViewName}
+        isViewLocked={isViewLocked}
+        setIsViewLocked={setIsViewLocked}
+        onSave={saveView}
       />
-    )
-  }
 
-  const paid = parseFloat(order.paid_amount) || 0
-  const price = parseFloat(order.price) || 0
-  const diff = price - paid
-  const isPartial = paid >= 1 && diff > 1
-  const isFull = Math.abs(diff) <= 1 && paid >= 1
-
-  return (
-    <span
-      onClick={() => setEditing(true)}
-      title="Click to edit"
-      style={{
-        cursor: 'pointer',
-        color: isFull ? 'var(--green)' : isPartial ? 'var(--yellow)' : 'var(--text-muted)',
-        fontWeight: paid > 0 ? 600 : 400,
-        fontSize: '0.78rem',
-        display: 'flex', alignItems: 'center', gap: 4
-      }}
-    >
-      {paid > 0 ? `Rs ${Math.round(paid).toLocaleString()}` : <span style={{ opacity: 0.5 }}>—</span>}
-      {isPartial && <span style={{ fontSize: '0.6rem', background: 'var(--yellow-dim)', color: 'var(--yellow)', padding: '1px 4px', borderRadius: 4 }}>Partial</span>}
-      <span style={{ fontSize: '0.6rem', opacity: 0.3, marginLeft: 2 }}>✏️</span>
-    </span>
-  )
-}
-// ─── Inline Note Cell ───────────────────────────────────────────────────
-function NoteCell({ order, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(order.notes || '')
-  const [loading, setLoading] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const committedRef = useRef(false)
-
-  useEffect(() => { setVal(order.notes || '') }, [order.notes])
-
-  const commit = async () => {
-    // Guard against double-commit (onBlur fires when textarea unmounts after Enter)
-    if (committedRef.current) return
-    committedRef.current = true
-    setEditing(false)
-
-    if (val !== (order.notes || '')) {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/orders/${order.id}/notes`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: val })
-        })
-        if (res.ok) {
-          onSave(order.id, 'notes', val)
-          setSaved(true)
-          setTimeout(() => setSaved(false), 2000)
-        }
-      } catch (e) { console.error('Note sync failed', e) }
-      finally { setLoading(false) }
-    }
-  }
-
-  if (editing) {
-    return (
-      <textarea
-        className="form-input"
-        style={{ width: 180, height: 60, fontSize: '0.72rem', padding: '4px' }}
-        value={val}
-        autoFocus
-        onChange={e => setVal(e.target.value)}
-        onFocus={() => { committedRef.current = false }}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') { committedRef.current = true; setEditing(false); }
-        }}
+      <ColumnPickerModal
+        show={showColPicker}
+        onClose={() => setShowColPicker(false)}
+        cols={cols}
+        setCols={setCols}
+        DEFAULT_COLS={DEFAULT_COLS}
       />
-    )
-  }
 
-  return (
-    <div
-      onClick={() => setEditing(true)}
-      style={{
-        cursor: 'pointer',
-        fontSize: '0.72rem',
-        color: order.notes ? 'var(--text-primary)' : 'var(--text-muted)',
-        maxWidth: 180,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        position: 'relative'
-      }}
-      title={order.notes || 'Click to edit Shopify Note'}
-    >
-      {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
-      {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
-      {val || <span style={{ color: 'var(--text-muted)' }}>Empty Note...</span>}
-    </div>
-  )
-}
-
-// ─── Editable Cost Cell ──────────────────────────────────────────────────────────
-function CostCell({ order, onSave }) {
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(order.cost || 0);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => { setVal(order.cost || 0); }, [order.cost]);
-
-  const handleSave = async () => {
-    if (parseFloat(val) === parseFloat(order.cost)) return setEditing(false);
-    setLoading(true);
-    await onSave(order.id, 'cost', parseFloat(val) || 0);
-    setLoading(false);
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <input 
-          autoFocus
-          className="form-input" 
-          style={{ width: 70, height: 24, fontSize: '0.75rem', padding: '2px 4px', textAlign: 'right' }} 
-          type="number" 
-          value={val} 
-          onChange={e => setVal(e.target.value)}
-          onBlur={handleSave}
-          onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-      style={{ 
-        cursor: 'pointer', 
-        padding: '2px 4px', 
-        borderRadius: 4, 
-        border: (order.cost === 0 || !order.cost) ? '1px dashed #f87171' : '1px solid transparent',
-        background: (order.cost === 0 || !order.cost) ? 'rgba(248, 113, 113, 0.1)' : 'transparent',
-        textAlign: 'right',
-        minWidth: 60
-      }}
-      title="Click to edit cost"
-    >
-      {loading ? '...' : `Rs ${Math.round(parseFloat(order.cost)||0).toLocaleString()}`}
-    </div>
-  );
-}
-
-// ─── Inline Address Cell ───────────────────────────────────────────────────
-function AddressCell({ order, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(order.address || '')
-  const [loading, setLoading] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const committedRef = useRef(false)
-
-  useEffect(() => { setVal(order.address || '') }, [order.address])
-
-  const commit = async () => {
-    // Guard against double-commit (onBlur fires when textarea unmounts after Enter)
-    if (committedRef.current) return
-    committedRef.current = true
-    setEditing(false)
-
-    if (val !== (order.address || '')) {
-      setLoading(true)
-      try {
-        const res = await fetch(`/api/orders/${order.id}/address`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: val })
-        })
-        if (res.ok) {
-          onSave(order.id, 'address', val)
-          setSaved(true)
-          setTimeout(() => setSaved(false), 2000)
-        }
-      } catch (e) { console.error('Address sync failed', e) }
-      finally { setLoading(false) }
-    }
-  }
-
-  if (editing) {
-    return (
-      <textarea
-        className="form-input"
-        style={{ width: 220, height: 70, fontSize: '0.72rem', padding: '4px' }}
-        value={val}
-        autoFocus
-        onChange={e => setVal(e.target.value)}
-        onFocus={() => { committedRef.current = false }}
-        onBlur={commit}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') { committedRef.current = true; setEditing(false); }
-        }}
+      <AgingConfigModal
+        show={showAgingConfig}
+        onClose={() => setShowAgingConfig(false)}
+        agingConfig={agingConfig}
+        setAgingConfig={setAgingConfig}
+        onConfirm={() => { localStorage.setItem('trace_aging_config', JSON.stringify(agingConfig)); setShowAgingConfig(false); }}
       />
-    )
-  }
 
-  return (
-    <div 
-      onClick={() => setEditing(true)} 
-      style={{ cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text-muted)', position: 'relative', minWidth: 150 }}
-      title="Click to edit Shipping Address"
-    >
-      {saved && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem', color: 'var(--green)', fontWeight: 700 }}>✓ Saved</span>}
-      {loading && <span style={{ position: 'absolute', right: 0, top: -15, fontSize: '0.6rem' }}>⏳ syncing...</span>}
-      {val || <span style={{ opacity: 0.3 }}>+ Add address</span>}
-    </div>
-  )
-}
-
-// ─── Inline Courier Fee Cell ───────────────────────────────────────────────────
-function CourierFeeCell({ order, onSave }) {
-  const [editing, setEditing] = useState(false)
-  const [val, setVal] = useState(order.courier_fee || '')
-
-  useEffect(() => { setVal(order.courier_fee || '') }, [order.courier_fee])
-
-  const commit = () => {
-    const num = parseFloat(val)
-    if (!isNaN(num) && num !== parseFloat(order.courier_fee || 0)) {
-      onSave(order.id, 'courier_fee', num)
-    }
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <input
-        type="number"
-        className="form-input"
-        style={{ width: 80, padding: '3px 6px', fontSize: '0.75rem' }}
-        value={val}
-        autoFocus
-        onChange={e => setVal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+      <NameRulesModal
+        show={showNameDialog}
+        onClose={() => setShowNameDialog(false)}
+        nameSettings={nameSettings}
+        setNameSettings={setNameSettings}
+        onSave={() => saveNameSettings(nameSettings)}
       />
-    )
-  }
-
-  const fee = parseFloat(order.courier_fee) || 0
-
-  return (
-    <span
-      onClick={() => setEditing(true)}
-      title="Click to edit expense"
-      style={{
-        cursor: 'pointer',
-        color: fee > 0 ? 'var(--orange-dim)' : 'var(--text-muted)',
-        fontWeight: 600,
-        fontSize: '0.78rem',
-        display: 'flex', alignItems: 'center', gap: 4
-      }}
-    >
-      {fee > 0 ? `Rs ${Math.round(fee).toLocaleString()}` : <span style={{ opacity: 0.5 }}>Rs 0</span>}
-      <span style={{ fontSize: '0.6rem', opacity: 0.3, marginLeft: 2 }}>✏️</span>
-    </span>
-  )
-}
-
-// ─── Customer History Modal ──────────────────────────────────────────────────────
-function CustomerHistoryModal({ phone, allOrders, onClose }) {
-  const orders = allOrders
-    .filter(o => o.phone === phone)
-    .sort((a, b) => new Date(b.order_date) - new Date(a.order_date))
-
-  const customerName = orders[0]?.customer_name || 'Unknown Customer'
-
-  let totalValue = 0
-  const statusBreakdown = {}
-  orders.forEach(o => {
-    const s = o.delivery_status || 'Pending'
-    statusBreakdown[s] = (statusBreakdown[s] || 0) + 1
-    totalValue += parseFloat(o.price) || 0
-  })
-
-  const delivered = orders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered')).length
-  const returned = orders.filter(o => {
-    const s = (o.delivery_status||'').toLowerCase()
-    return s.includes('return') || s.includes('cancel')
-  }).length
-  const deliveryRate = orders.length > 0 ? ((delivered / orders.length) * 100).toFixed(0) : 0
-
-  function getStatusStyle(status) {
-    const s = (status||'').toLowerCase()
-    if (s.includes('delivered')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
-    if (s.includes('return')||s.includes('cancel')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
-    if (s.includes('attempt')||s.includes('refused')) return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
-    return { bg: 'var(--yellow-dim)', color: 'var(--yellow)' }
-  }
-
-  return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
-    >
-      <div className="card" style={{ width: '100%', maxWidth: 740, maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
-
-        {/* Header */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)' }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>👤 {customerName}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <a href={`tel:${phone}`} style={{ color: 'var(--blue)', textDecoration: 'none' }} title="Call">📞</a>
-              <a href={`https://wa.me/${phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }} title="WhatsApp">💬</a>
-              <span style={{ opacity: 0.7 }}>{phone}</span>
-            </div>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={onClose}>✕ Close</button>
-        </div>
-
-        {/* KPI Row */}
-        <div style={{ padding: '14px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-          {[
-            { label: 'Total Orders', value: orders.length, icon: '📦', color: 'blue' },
-            { label: 'Delivered', value: delivered, icon: '✅', color: 'green' },
-            { label: 'Returned', value: returned, icon: '↩️', color: 'red' },
-            { label: 'Total Value', value: `Rs ${Math.round(totalValue).toLocaleString()}`, icon: '💰', color: 'purple' },
-          ].map(k => (
-            <div key={k.label} className={`kpi-card ${k.color}`} style={{ padding: '10px 14px' }}>
-              <div className="kpi-label">{k.label}</div>
-              <div className="kpi-value" style={{ fontSize: '1.1rem' }}>{k.value}</div>
-              <div className="kpi-icon" style={{ fontSize: '0.9rem' }}>{k.icon}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Status Breakdown + Delivery Rate */}
-        <div style={{ padding: '8px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'var(--bg-elevated)' }}>
-          <span style={{ fontSize: '0.68rem', fontWeight: 700, opacity: 0.4, marginRight: 4 }}>BREAKDOWN</span>
-          {Object.entries(statusBreakdown).map(([status, count]) => {
-            const { bg, color } = getStatusStyle(status)
-            return (
-              <span key={status} style={{ background: bg, color, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
-                {status}: {count}
-              </span>
-            )
-          })}
-          <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 700, color: Number(deliveryRate) >= 50 ? 'var(--green)' : 'var(--orange)' }}>
-            🎯 {deliveryRate}% Delivery Rate
-          </span>
-        </div>
-
-        {/* Orders Table */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {orders.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No orders found for this number.</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-elevated)', position: 'sticky', top: 0, zIndex: 1 }}>
-                  {['REF #', 'DATE', 'STATUS', 'COURIER', 'TRACKING', 'PRICE'].map(h => (
-                    <th key={h} style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', opacity: 0.5, letterSpacing: '0.05em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map((o, idx) => {
-                  const { bg, color } = getStatusStyle(o.delivery_status)
-                  return (
-                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                      <td style={{ padding: '9px 14px', color: 'var(--brand)', fontWeight: 700 }}>{o.ref_number || o.shopify_order_id || '—'}</td>
-                      <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
-                      <td style={{ padding: '9px 14px' }}>
-                        <span style={{ background: bg, color, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
-                          {o.delivery_status || 'Pending'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.courier || '—'}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '0.72rem' }}>
-                        {o.tracking_number
-                          ? <span style={{ color: 'var(--blue)' }}>🚚 {o.tracking_number}</span>
-                          : <span style={{ opacity: 0.3 }}>—</span>
-                        }
-                      </td>
-                      <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-      </div>
     </div>
   )
 }
+

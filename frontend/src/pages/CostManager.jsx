@@ -58,6 +58,50 @@ export default function CostManager() {
     } catch (e) { console.error('Failed to fetch ghosts', e) }
   }
 
+  // --- Derived Data ---
+  const totals = {
+    acceptedValue: 0,
+    acceptedQty: 0,
+    pendingValue: 0,
+    totalVariants: costs.length
+  }
+
+  const grouped = {}
+  costs.forEach(c => {
+    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0 }
+    grouped[c.parent_title].variants.push(c)
+    grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
+    
+    const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
+    if (landed > 0) {
+      totals.acceptedValue += landed * (c.inventory_qty || 0)
+      totals.acceptedQty += (c.inventory_qty || 0)
+    } else if (c.shopify_cost > 0) {
+      totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
+    }
+    
+    grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
+    if (landed > 0) grouped[c.parent_title].hasCost = true
+    
+    // Track Price Drift (Shopify Cost changed but we haven't accepted it)
+    if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
+      grouped[c.parent_title].hasDrift = true
+    }
+
+    // Track unique costs for the hint
+    if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
+    grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
+  })
+
+  const sorted = Object.values(grouped)
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b) => b.totalValue - a.totalValue)
+
+  const pendingItems = sorted.filter(p => !p.hasCost)
+  const verifiedItems = sorted.filter(p => p.hasCost)
+  const currentList = activeTab === 'pending' ? pendingItems : activeTab === 'verified' ? verifiedItems : []
+
+  // --- Handlers ---
   const handleSyncShopify = async () => {
     setIsSyncing(true)
     try {
@@ -220,18 +264,15 @@ export default function CostManager() {
   const handleBulkAccept = async (parentTitle) => {
     if (!window.confirm(`Accept Shopify costs for ALL variants of "${parentTitle}"?`)) return
     try {
-      const parent = grouped[parentTitle]
-      for (const v of parent.variants) {
-        if (v.shopify_cost > 0) {
-          await fetch('/api/finance/accept-shopify-cost', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ store_id: activeStoreId, parent_title: v.parent_title, variant_title: v.variant_title })
-          })
-        }
+      const res = await fetch('/api/finance/bulk-accept-shopify-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle })
+      })
+      if (res.ok) {
+        addToast(`Accepted all costs for ${parentTitle}`, 'success')
+        fetchCosts()
       }
-      addToast(`Accepted all costs for ${parentTitle}`, 'success')
-      fetchCosts()
     } catch (e) { addToast('Bulk accept failed', 'error') }
   }
 
@@ -241,49 +282,6 @@ export default function CostManager() {
     else next.add(name)
     setExpandedParents(next)
   }
-
-  const totals = {
-    acceptedValue: 0,
-    acceptedQty: 0,
-    pendingValue: 0,
-    totalVariants: costs.length
-  }
-
-  const grouped = {}
-  costs.forEach(c => {
-    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0 }
-    grouped[c.parent_title].variants.push(c)
-    grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
-    
-    const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
-    if (landed > 0) {
-      totals.acceptedValue += landed * (c.inventory_qty || 0)
-      totals.acceptedQty += (c.inventory_qty || 0)
-    } else if (c.shopify_cost > 0) {
-      totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
-    }
-    
-    grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
-    if (landed > 0) grouped[c.parent_title].hasCost = true
-    
-    // Track Price Drift (Shopify Cost changed but we haven't accepted it)
-    if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
-      grouped[c.parent_title].hasDrift = true
-    }
-
-    // Track unique costs for the hint
-    if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
-    grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
-  })
-
-  const sorted = Object.values(grouped)
-    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a,b) => b.totalValue - a.totalValue)
-
-  const pendingItems = sorted.filter(p => !p.hasCost)
-  const verifiedItems = sorted.filter(p => p.hasCost)
-
-  const currentList = activeTab === 'pending' ? pendingItems : activeTab === 'verified' ? verifiedItems : []
   
   return (
     <div className="page-container cost-manager" style={{ padding: 30 }}>

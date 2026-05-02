@@ -125,6 +125,7 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(delivery_status);
     CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status_date);
+    
     CREATE TABLE IF NOT EXISTS sync_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tracking_number TEXT,
@@ -277,3 +278,7 @@ try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").
 try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN packaging_cost REAL DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE product_master_costs ADD COLUMN previous_unit_cost REAL DEFAULT 0").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE sync_audit ADD COLUMN store_id INTEGER").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'").run(); } catch(e) {}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id)").run(); } catch(e) {}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch(e) {}

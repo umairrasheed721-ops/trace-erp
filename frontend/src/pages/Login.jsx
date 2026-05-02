@@ -83,6 +83,8 @@ export default function Login() {
     }
   }
 
+  const [showPass, setShowPass] = useState(false)
+
   return (
     <div className="login-container" style={{
       display: 'flex',
@@ -124,7 +126,39 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input className="form-input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+              <div style={{ position: 'relative' }}>
+                <input 
+                  className="form-input" 
+                  type={showPass ? "text" : "password"} 
+                  placeholder="••••••••" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required 
+                  style={{ paddingRight: 45 }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPass(!showPass)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    padding: 5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0.7
+                  }}
+                >
+                  {showPass ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
             <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} disabled={loading}>
               {loading ? <span className="loading-spinner"></span> : 'Login to Dashboard'}
@@ -159,7 +193,39 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label className="form-label">New Password</label>
-              <input className="form-input" type="password" placeholder="Min 6 characters" value={newPass} onChange={e => setNewPass(e.target.value)} required />
+              <div style={{ position: 'relative' }}>
+                <input 
+                  className="form-input" 
+                  type={showPass ? "text" : "password"} 
+                  placeholder="Min 6 characters" 
+                  value={newPass} 
+                  onChange={e => setNewPass(e.target.value)} 
+                  required 
+                  style={{ paddingRight: 45 }}
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setShowPass(!showPass)}
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '1.1rem',
+                    padding: 5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0.7
+                  }}
+                >
+                  {showPass ? '👁️' : '🙈'}
+                </button>
+              </div>
             </div>
             <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} disabled={loading}>
               {loading ? <span className="loading-spinner"></span> : 'Reset Password'}

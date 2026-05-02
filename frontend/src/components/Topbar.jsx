@@ -15,7 +15,10 @@ export default function Topbar() {
 
     const check = async () => {
       try {
-        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`)
+        const token = localStorage.getItem('trace_token');
+        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
         const data = await res.json()
         if (data && data.status && data.status !== 'idle') {
           if (data.status === 'Sync Complete') {
@@ -49,9 +52,13 @@ export default function Topbar() {
     setSyncingShopify(true)
     addToast('🛒 Shopify sync started...', 'info')
     try {
+      const token = localStorage.getItem('trace_token');
       await fetch('/api/tracking/sync-shopify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ store_id: activeStoreId })
       })
     } catch (e) {
@@ -65,9 +72,13 @@ export default function Topbar() {
     setSyncingCouriers(true)
     addToast('🚚 Courier sync started...', 'info')
     try {
+      const token = localStorage.getItem('trace_token');
       await fetch('/api/tracking/sync-couriers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ store_id: activeStoreId })
       })
     } catch (e) {

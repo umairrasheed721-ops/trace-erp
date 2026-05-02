@@ -1,0 +1,31 @@
+
+> trace-erp-frontend@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 25 modules transformed.
+x Build failed in 274ms
+error during build:
+[vite:esbuild] Transform failed with 1 error:
+/Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/src/pages/SearchTool.jsx:153:9: ERROR: The symbol "getStatusColor" has already been declared
+file: /Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/src/pages/SearchTool.jsx:153:9
+
+The symbol "getStatusColor" has already been declared
+151|  }
+152|  
+153|  function getStatusColor(status) {
+   |           ^
+154|    const s = (status||'').toLowerCase()
+155|    if (s.includes('delivered')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
+
+    at failureErrorWithLog (/Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/node_modules/esbuild/lib/main.js:1472:15)
+    at /Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/node_modules/esbuild/lib/main.js:755:50
+    at responseCallbacks.<computed> (/Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/node_modules/esbuild/lib/main.js:622:9)
+    at handleIncomingPacket (/Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/node_modules/esbuild/lib/main.js:677:12)
+    at Socket.readFromStdout (/Users/umairrasheed/Desktop/antigravity/trace-erp/frontend/node_modules/esbuild/lib/main.js:600:7)
+    at Socket.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)

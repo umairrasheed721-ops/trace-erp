@@ -109,4 +109,22 @@ router.post('/postex-action', async (req, res) => {
   }
 });
 
+// GET /api/monitors/sync-audit?store_id=1
+router.get('/sync-audit', (req, res) => {
+  const { store_id, limit = 100 } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const logs = db.prepare(`
+      SELECT * FROM sync_audit 
+      WHERE store_id = ? 
+      ORDER BY timestamp DESC 
+      LIMIT ?
+    `).all(Number(store_id), Number(limit));
+    res.json(logs);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
