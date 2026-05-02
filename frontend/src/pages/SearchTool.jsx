@@ -149,7 +149,7 @@ function applySpecialMode(order, mode, today) {
   const statusDate = order.status_date ? new Date(order.status_date) : null
   const daysOld = statusDate ? Math.floor((today - statusDate) / 86400000) : 999
 
-  if (mode === '[ACTIVE PIPELINE]') return !['delivered','return received','cancelled','returned'].includes(s)
+  if (mode === '[ACTIVE PIPELINE]') return !['delivered','return received','cancelled','returned','void','voided'].includes(s)
   if (mode === '[READY TO BOOK]') {
     const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
     return s === 'confirmed' && !hasTracking
@@ -192,7 +192,7 @@ function applySpecialMode(order, mode, today) {
 function getStatusColor(status) {
   const s = (status||'').toLowerCase()
   if (s.includes('delivered')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
-  if (s.includes('return')||s.includes('cancel')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
+  if (s.includes('return')||s.includes('cancel')||s.includes('void')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
   if (s.includes('review')||s.includes('attempt')||s.includes('refused')) return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
   return { bg: 'var(--yellow-dim)', color: 'var(--yellow)' }
 }
