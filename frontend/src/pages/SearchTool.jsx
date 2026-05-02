@@ -1755,8 +1755,6 @@ export default function SearchTool() {
                         <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
                           <div>Rs {Math.round(item.price).toLocaleString()} × {item.quantity}</div>
                           <div style={{ fontWeight: 700 }}>Rs {Math.round(item.price * item.quantity).toLocaleString()}</div>
-                        </div>
-                      </div>
                     ))}
                     {!editingOrder.line_items?.length && (
                       <div style={{ textAlign: 'center', padding: 20 }}>
@@ -1784,22 +1782,6 @@ export default function SearchTool() {
 
                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>📦 Product Cost</span>
-                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                         <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Rs</span>
-                         <input 
-                           type="number" 
-                           className="form-input" 
-                           style={{ width: 100, height: 32, fontSize: '0.9rem', textAlign: 'right', fontWeight: 700, background: 'rgba(255,255,255,0.05)' }}
-                           value={editingOrder.cost || ''} 
-                           onChange={e => setEditingOrder({ ...editingOrder, cost: e.target.value })}
-                           onBlur={() => updateOrderField(editingOrder.id, 'cost', editingOrder.cost)}
-                           placeholder="0"
-                         />
-                       </div>
-                     </div>
-
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>🚚 Courier Fee</span>
                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                          <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Rs</span>
@@ -1814,26 +1796,6 @@ export default function SearchTool() {
                          />
                        </div>
                      </div>
-
-                     <div style={{ 
-                       marginTop: 8, 
-                       padding: '12px 16px', 
-                       borderRadius: 8, 
-                       background: (editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)) > 0 ? 'rgba(52, 211, 153, 0.1)' : 'rgba(248, 113, 113, 0.1)',
-                       display: 'flex', 
-                       justifyContent: 'space-between', 
-                       alignItems: 'center' 
-                     }}>
-                       <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>✨ Net Profit</span>
-                       <span style={{ 
-                         fontWeight: 800, 
-                         fontSize: '1.1rem', 
-                         color: (editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)) > 0 ? '#34d399' : '#f87171' 
-                       }}>
-                         Rs {Math.round(editingOrder.price - (parseFloat(editingOrder.cost)||0) - (parseFloat(editingOrder.courier_fee)||0)).toLocaleString()}
-                       </span>
-                     </div>
-                   </div>
                 </div>
               </div>
 
