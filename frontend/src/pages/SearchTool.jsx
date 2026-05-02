@@ -304,6 +304,26 @@ export default function SearchTool() {
     } catch { addToast('Sync error', 'error') }
   }
 
+  const handleBulkUpdateStatus = async (newStatus) => {
+    if (selectedIds.length === 0 || !newStatus) return
+    if (!confirm(`📦 Mark ${selectedIds.length} orders as ${newStatus}?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, status: newStatus })
+      })
+      if (res.ok) {
+        addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
+        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
+        setSelectedIds([])
+      }
+    } catch { addToast('Bulk update error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
   const handleBulkConfirm = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
@@ -1274,6 +1294,22 @@ export default function SearchTool() {
             <option value="LCS">LCS</option>
             <option value="Leopards">Leopards</option>
             <option value="InstaLogicstics">Insta</option>
+          </select>
+
+          <select 
+            disabled={bulkActionLoading}
+            className="btn btn-sm"
+            style={{ background: 'black', color: '#ffcc00', fontWeight: 700 }}
+            onChange={(e) => handleBulkUpdateStatus(e.target.value)}
+            value=""
+          >
+            <option value="" disabled>🏷️ BULK STATUS...</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Returned">Returned</option>
+            <option value="RTO">RTO</option>
+            <option value="Cancelled">Cancelled</option>
+            <option value="Confirmed">Confirmed</option>
+            <option value="Pending">Pending</option>
           </select>
 
           <button 

@@ -257,6 +257,35 @@ router.post('/bulk-confirm', (req, res) => {
   }
 });
 
+// POST /api/orders/bulk-update-status - Generic bulk status update
+router.post('/bulk-update-status', (req, res) => {
+  const { ids, status } = req.body;
+  if (!ids || !Array.isArray(ids) || !status) return res.status(400).json({ error: 'ids and status required' });
+
+  try {
+    const stmt = db.prepare("UPDATE orders SET delivery_status = ?, status_date = datetime('now') WHERE id = ?");
+    const today = new Date().toISOString().split('T')[0];
+    const updatePL = db.prepare("UPDATE orders SET payment_date = ? WHERE id = ?");
+
+    for (const id of ids) {
+      stmt.run(status, id);
+      
+      // If marking as Delivered, also stamp the P&L payment date
+      const s = status.toLowerCase();
+      if (s.includes('delivered')) {
+        updatePL.run(today, id);
+      } else if (s.includes('return') || s.includes('cancel')) {
+        updatePL.run(null, id);
+      }
+
+      broadcast('message', { type: 'order_updated', orderId: id });
+    }
+    res.json({ success: true, count: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/bulk-revert - Bulk move back to Pending
 router.post('/bulk-revert', (req, res) => {
   const { ids } = req.body;
