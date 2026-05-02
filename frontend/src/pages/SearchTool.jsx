@@ -218,7 +218,7 @@ export default function SearchTool() {
   const { activeStoreId, addToast } = useApp()
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
-  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -816,18 +816,13 @@ export default function SearchTool() {
     return () => source.close();
   }, [activeStoreId]);
 
-  const runSearch = useCallback(() => {
-    const today = new Date(); today.setHours(0,0,0,0)
-    const dateRange = getDateRange(preset, customStart, customEnd)
-    const isSpecial = SPECIAL_MODES.includes(status)
-    const bypassStatus = status === 'All Statuses' || isSpecial
+  const filteredOrders = useMemo(() => {
+    let sorted = [...allOrders];
 
-    let filtered = [...allOrders];
-
-    // Default Sort (apply relevance if searching)
-    if (keyword && keyword.trim().length > 2) {
-      const kwClean = keyword.trim().toLowerCase().replace(/^#/, '');
-      filtered.sort((a, b) => {
+    // Client-side Sort (only if Default or specific relevance is needed)
+    if (debouncedKeyword && debouncedKeyword.trim().length > 2) {
+      const kwClean = debouncedKeyword.trim().toLowerCase().replace(/^#/, '');
+      sorted.sort((a, b) => {
         const aRef = (a.ref_number || '').toLowerCase().replace(/^#/, '');
         const bRef = (b.ref_number || '').toLowerCase().replace(/^#/, '');
         const aID = (a.shopify_order_id || '').toString();
@@ -838,33 +833,15 @@ export default function SearchTool() {
         
         if (aExact && !bExact) return -1;
         if (!aExact && bExact) return 1;
-        return new Date(b.order_date) - new Date(a.order_date);
+        return 0;
       });
-    } else {
-      if (sort === 'Newest First') filtered.sort((a,b) => new Date(b.order_date)-new Date(a.order_date))
-      else if (sort === 'Oldest First') filtered.sort((a,b) => new Date(a.order_date)-new Date(b.order_date))
-      else if (sort === 'Highest Price') filtered.sort((a,b) => (b.price||0)-(a.price||0))
-      else if (sort === 'Lowest Price') filtered.sort((a,b) => (a.price||0)-(b.price||0))
-      else if (sort === 'Custom' || sort === 'Default') {
-        filtered.sort((a, b) => {
-          let valA = a[sortKey], valB = b[sortKey]
-          if (sortKey === 'order_date' || sortKey === 'status_date') {
-            valA = valA ? new Date(valA).getTime() : 0
-            valB = valB ? new Date(valB).getTime() : 0
-          } else if (['price', 'cost', 'paid_amount', 'profit', 'courier_fee'].includes(sortKey)) {
-            valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0
-          } else {
-            valA = (valA || '').toString().toLowerCase(); valB = (valB || '').toString().toLowerCase()
-          }
-          if (valA < valB) return sortDir === 'asc' ? -1 : 1
-          if (valA > valB) return sortDir === 'asc' ? 1 : -1
-          return 0
-        })
-      }
     }
+    return sorted;
+  }, [allOrders, debouncedKeyword]);
 
+  useEffect(() => {
     let delivered=0, returned=0, pending=0, sum=0
-    filtered.forEach(o => {
+    filteredOrders.forEach(o => {
       const s = (o.delivery_status||'').toLowerCase()
       sum += parseFloat(o.price)||0
       if (s.includes('delivered')) delivered++
@@ -872,10 +849,7 @@ export default function SearchTool() {
       else pending++
     })
     setKpi({ total: totalCount, sum, delivered, returned, pending })
-    setResults(filtered)
-  }, [allOrders, debouncedKeyword, totalCount])
-
-  useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
+  }, [filteredOrders, totalCount])
 
   const saveView = async () => {
     if (!viewName.trim()) return
@@ -1370,7 +1344,7 @@ export default function SearchTool() {
       {/* Results Table */}
       {loading ? (
         <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
-      ) : results.length === 0 ? (
+      ) : filteredOrders.length === 0 ? (
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
         <>
@@ -1392,9 +1366,9 @@ export default function SearchTool() {
                 <th style={{ width: 40, textAlign: 'center' }}>
                   <input 
                     type="checkbox" 
-                    checked={results.length > 0 && selectedIds.length === results.length}
+                    checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
                     onChange={(e) => {
-                      if (e.target.checked) setSelectedIds(results.map(o => o.id))
+                      if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id))
                       else setSelectedIds([])
                     }}
                   />
@@ -1449,7 +1423,7 @@ export default function SearchTool() {
               </tr>
             </thead>
             <tbody>
-              {results.slice(0, 1000).map(o => {
+              {filteredOrders.map(o => {
                 const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
                 const isClear = Math.abs(diff) <= 1
                 const { bg, color } = getStatusColor(o.delivery_status)
