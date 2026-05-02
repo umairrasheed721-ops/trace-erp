@@ -4,34 +4,55 @@ const db = require('../db');
 const fetch = require('node-fetch');
 const { broadcast } = require('../sse');
 
-// GET /api/orders?store_id=1&page=1&limit=100&status=&search=
+// GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
 router.get('/', (req, res) => {
-  const { store_id, page = 1, limit = 100, status, search, courier } = req.query;
+  const { store_id, page = 1, limit = 100, status, search, courier, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  console.log(`🔍 Search request for store ${store_id}, status: ${status}, limit: ${limit}`);
+  console.log(`🔍 Search request for store ${store_id}, status: ${status}, limit: ${limit}, dates: ${start_date} to ${end_date}`);
 
-  let conditions = ['store_id = ?'];
-  let params = [store_id];
+  let queryParams = [Number(store_id)];
+  let whereClauses = ['o.store_id = ?'];
 
-  if (status) { conditions.push('LOWER(delivery_status) = ?'); params.push(status.toLowerCase()); }
-  if (courier) { conditions.push('LOWER(courier) = ?'); params.push(courier.toLowerCase()); }
-  if (search) {
-    conditions.push('(tracking_number LIKE ? OR customer_name LIKE ? OR ref_number LIKE ? OR shopify_order_id LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  if (status && status !== 'All Statuses' && status !== '') {
+    if (status === '[ACTIVE PIPELINE]') {
+      whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned', 'void', 'voided')");
+    } else if (status === '[READY TO BOOK]') {
+      whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
+    } else if (status === '[NO TRACKING]') {
+      whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
+    } else if (status === '[UNPAID DELIVERED]') {
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.paid_amount IS NULL OR o.paid_amount < 1)");
+    } else if (status === '[MISSING COST]') {
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
+    } else if (status === '[AUDIT: MISSING CHARGES]') {
+      whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
+    } else {
+      whereClauses.push('LOWER(o.delivery_status) = ?');
+      queryParams.push(status.toLowerCase());
+    }
   }
 
-  const where = conditions.join(' AND ');
+  if (courier) { whereClauses.push('LOWER(o.courier) = ?'); queryParams.push(courier.toLowerCase()); }
+  if (start_date) { whereClauses.push('o.order_date >= ?'); queryParams.push(start_date); }
+  if (end_date) { whereClauses.push('o.order_date <= ?'); queryParams.push(end_date); }
+  
+  if (search) {
+    whereClauses.push('(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ?)');
+    queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  const where = whereClauses.join(' AND ');
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  const total = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE ${where}`).get(...params);
+  const total = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
   const orders = db.prepare(`
     SELECT o.*, s.shop_domain 
     FROM orders o
     JOIN stores s ON o.store_id = s.id
-    WHERE ${where.replace(/store_id/g, 'o.store_id')}
+    WHERE ${where}
     ORDER BY o.created_timestamp DESC
     LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit), offset);
+  `).all(...queryParams, parseInt(limit), offset);
 
   res.json({ orders, total: total.count, page: parseInt(page), limit: parseInt(limit) });
 });

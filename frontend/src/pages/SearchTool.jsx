@@ -15,6 +15,14 @@ const CITY_ALIASES = {
 const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']
 
+const formatYMD = (d) => {
+  if (!d || isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function getDateRange(preset, customStart, customEnd) {
   const now = new Date(); now.setHours(0,0,0,0)
   const end = new Date(); end.setHours(23,59,59,999)
@@ -716,16 +724,19 @@ export default function SearchTool() {
     if (!activeStoreId) return
     setLoading(true)
     
-    // If it's a special mode (in brackets), fetch everything to filter locally
-    const isSpecial = status && status.startsWith('[')
-    const queryStatus = isSpecial ? '' : (status === 'All Statuses' ? '' : status)
+    // If it's a special mode (in brackets), we now pass it to backend for efficient filtering
+    const queryStatus = status === 'All Statuses' ? '' : status
     
     const kw = keyword ? keyword.trim().replace(/^#/, '') : ''
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=5000&status=${queryStatus||''}&search=${kw}&t=${Date.now()}`)
+    const dateRange = getDateRange(preset, customStart, customEnd)
+    const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
+    const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=15000&status=${queryStatus||''}&search=${kw}&start_date=${startDate}&end_date=${endDate}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { setAllOrders(data.orders || []); setLoading(false) })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
-  }, [activeStoreId, status, keyword])
+  }, [activeStoreId, status, keyword, preset, customStart, customEnd])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -784,10 +795,12 @@ export default function SearchTool() {
         if (!isBacklogOrder(order)) return false
         const b = agingBuckets.find(bucket => bucket.label === activeAgingBucket)
         if (b && (diff < b.min || diff > b.max)) return false
-      } else if (dateRange && orderDate) {
+      } else if (dateRange && order.order_date) {
         // Only apply Date Preset if no Aging Bucket is active
-        orderDate.setHours(0,0,0,0)
-        if (orderDate < dateRange.start || orderDate > dateRange.end) return false
+        const startStr = formatYMD(dateRange.start)
+        const endStr = formatYMD(dateRange.end)
+        const oDate = order.order_date.split(' ')[0] // Handle YYYY-MM-DD HH:mm:ss if exists
+        if (oDate < startStr || oDate > endStr) return false
       }
       if (isSpecial && !applySpecialMode(order, status, today)) return false
       if (!bypassStatus) {
