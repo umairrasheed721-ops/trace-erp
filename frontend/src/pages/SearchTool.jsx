@@ -213,6 +213,19 @@ export default function SearchTool() {
   const [status, setStatus] = useState('[ACTIVE PIPELINE]')
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('Default')
+  const [sortKey, setSortKey] = useState('order_date')
+  const [sortDir, setSortDir] = useState('desc')
+
+  const handleHeaderSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+    setSort('Custom')
+  }
+
   const [colFilters, setColFilters] = useState({
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
@@ -816,6 +829,22 @@ export default function SearchTool() {
       else if (sort === 'Oldest First') filtered.sort((a,b) => new Date(a.order_date)-new Date(b.order_date))
       else if (sort === 'Highest Price') filtered.sort((a,b) => (b.price||0)-(a.price||0))
       else if (sort === 'Lowest Price') filtered.sort((a,b) => (a.price||0)-(b.price||0))
+      else if (sort === 'Custom' || sort === 'Default') {
+        filtered.sort((a, b) => {
+          let valA = a[sortKey], valB = b[sortKey]
+          if (sortKey === 'order_date' || sortKey === 'status_date') {
+            valA = valA ? new Date(valA).getTime() : 0
+            valB = valB ? new Date(valB).getTime() : 0
+          } else if (['price', 'cost', 'paid_amount', 'profit', 'courier_fee'].includes(sortKey)) {
+            valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0
+          } else {
+            valA = (valA || '').toString().toLowerCase(); valB = (valB || '').toString().toLowerCase()
+          }
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1
+          return 0
+        })
+      }
     }
 
     let delivered=0, returned=0, pending=0, sum=0
@@ -828,7 +857,7 @@ export default function SearchTool() {
     })
     setKpi({ total: filtered.length, sum, delivered, returned, pending })
     setResults(filtered)
-  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, activeAgingBucket, agingBuckets, colFilters])
+  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, sortKey, sortDir, activeAgingBucket, agingBuckets, colFilters])
 
   useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
 
@@ -1354,18 +1383,26 @@ export default function SearchTool() {
                     onDragStart={() => onDragStart(idx)}
                     onDragOver={onDragOver}
                     onDrop={() => onDrop(idx)}
-                    style={{ cursor: 'move', userSelect: 'none' }}
+                    onClick={() => handleHeaderSort(col.id)}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
                   >
-                    {col.label}
-                    {col.id === 'customer_name' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
-                        title="Edit Name Rules"
-                      >
-                        🖊️
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {col.label}
+                      {sortKey === col.id && (
+                        <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                      {col.id === 'customer_name' && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
+                          title="Edit Name Rules"
+                        >
+                          🖊️
+                        </button>
+                      )}
+                    </div>
                   </th>
                 ))}
               </tr>
