@@ -215,8 +215,45 @@ router.get('/:id/details', async (req, res) => {
       return mapped;
     }));
 
-    db.prepare('UPDATE orders SET line_items = ? WHERE id = ?').run(JSON.stringify(lineItems), order.id);
-    res.json({ ...order, ...shopifyOrder, line_items: lineItems });
+    // Extract and flatten customer/price info from Shopify
+    const sa = shopifyOrder.shipping_address || {};
+    const customer_name = sa.name || `${sa.first_name || ''} ${sa.last_name || ''}`.trim() || order.customer_name;
+    const phone = sa.phone || order.phone;
+    const address = `${sa.address1 || ''} ${sa.address2 || ''}`.trim() || order.address;
+    const city = sa.city || order.city;
+    const price = parseFloat(shopifyOrder.total_price) || order.price;
+    const ref_number = shopifyOrder.name || order.ref_number;
+    const notes = shopifyOrder.note || order.notes;
+
+    // Update local database with full fresh info
+    db.prepare(`
+      UPDATE orders SET 
+        customer_name = ?, 
+        phone = ?, 
+        address = ?, 
+        city = ?, 
+        price = ?, 
+        ref_number = ?,
+        notes = ?,
+        line_items = ?
+      WHERE id = ?
+    `).run(customer_name, phone, address, city, price, ref_number, notes, JSON.stringify(lineItems), order.id);
+
+    // Return the flattened object for the frontend
+    const updatedOrder = {
+      ...order,
+      ...shopifyOrder,
+      customer_name,
+      phone,
+      address,
+      city,
+      price,
+      ref_number,
+      notes,
+      line_items: lineItems
+    };
+
+    res.json(updatedOrder);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
