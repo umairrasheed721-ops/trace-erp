@@ -15,17 +15,17 @@ router.get('/', (req, res) => {
 
   if (status && status !== 'All Statuses' && status !== '') {
     const s = status.toUpperCase().trim();
-    if (s === '[ACTIVE PIPELINE]') {
+    if (s.includes('ACTIVE PIPELINE')) {
       whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned', 'void', 'voided')");
-    } else if (s === '[READY TO BOOK]') {
+    } else if (s.includes('READY TO BOOK')) {
       whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
-    } else if (s === '[NO TRACKING]') {
+    } else if (s.includes('NO TRACKING')) {
       whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
-    } else if (s === '[UNPAID DELIVERED]') {
+    } else if (s.includes('UNPAID DELIVERED')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.paid_amount IS NULL OR o.paid_amount < 1)");
-    } else if (s === '[MISSING COST]') {
+    } else if (s.includes('MISSING COST')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
-    } else if (s === '[AUDIT: MISSING CHARGES]') {
+    } else if (s.includes('AUDIT: MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else {
       whereClauses.push('LOWER(o.delivery_status) = ?');
@@ -79,7 +79,9 @@ router.get('/', (req, res) => {
     orders, 
     total: total.count, 
     page: parseInt(page), 
-    limit: parseInt(limit)
+    limit: parseInt(limit),
+    debugWhere: where,
+    debugParams: queryParams
   });
 });
 
