@@ -430,12 +430,12 @@ export default function CostManager() {
                         backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
                       }}>
                         <td></td>
-                        <td style={{ padding: '12px 15px 12px 40px', opacity: 0.7, color: 'var(--text-secondary)' }}>
+                        <td style={{ padding: '12px 15px 12px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             {v.variant_title || 'Default'}
                             {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
                             {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                              <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3 }}>DRIFT</span>
+                              <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
                             )}
                           </div>
                         </td>
@@ -443,7 +443,7 @@ export default function CostManager() {
                         <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
                           {(v.unit_cost + v.packaging_cost) > 0 ? `Rs ${(v.unit_cost + v.packaging_cost).toLocaleString()}` : '—'}
                         </td>
-                        <td style={{ textAlign: 'right', opacity: 0.8, color: 'var(--text-primary)' }}>{v.inventory_qty}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--text-primary)' }}>{v.inventory_qty}</td>
                         <td style={{ textAlign: 'right', padding: 15 }}>
                           {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
                             <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
@@ -625,10 +625,10 @@ export default function CostManager() {
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: selectedGhosts.has(p.name) ? 'var(--brand-glow)' : 'var(--bg-elevated)' }}>
                         <td></td>
-                        <td style={{ padding: '10px 15px 10px 45px', opacity: 0.8, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                        <td style={{ padding: '10px 15px 10px 45px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                           └─ {v.name || 'Default Variant'}
                         </td>
-                        <td style={{ textAlign: 'center', opacity: 0.6, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        <td style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                           {v.count}
                         </td>
                         <td style={{ textAlign: 'right' }}>
