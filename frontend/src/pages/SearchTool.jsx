@@ -1786,7 +1786,7 @@ export default function SearchTool() {
                 <div className="card" style={{ padding: 16 }}>
                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
                      <span>Subtotal</span>
-                     <span>Rs {Math.round(editingOrder.price - 250).toLocaleString()}</span>
+                     <span>Rs {Math.round(Math.max(0, (parseFloat(editingOrder.price) || 0) - 250)).toLocaleString()}</span>
                    </div>
                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
                      <span>Shipping</span>
@@ -1794,7 +1794,7 @@ export default function SearchTool() {
                    </div>
                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', borderTop: '1px solid var(--border)', paddingTop: 8, marginBottom: 16 }}>
                      <span>Total Revenue</span>
-                     <span>Rs {Math.round(editingOrder.price).toLocaleString()}</span>
+                     <span>Rs {Math.round(parseFloat(editingOrder.price) || 0).toLocaleString()}</span>
                    </div>
 
                    <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
