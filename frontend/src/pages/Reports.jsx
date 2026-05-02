@@ -418,16 +418,16 @@ export default function Reports() {
     <div className="page-container" style={{ maxWidth: '100%' }}>
       <style>{`
         .reports-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; text-align: right; white-space: nowrap; }
-        .reports-table th { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 10; font-weight: 700; color: #fff; text-transform: uppercase; cursor: pointer; user-select: none; }
-        .reports-table td { padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .reports-table tr:hover { background-color: rgba(255,255,255,0.05); }
-        .editable-input { width: 90px; padding: 6px; text-align: right; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-weight: 600; }
-        .head-sales { background-color: #854d0e !important; }
-        .head-out { background-color: #6b21a8 !important; }
-        .head-pnl { background-color: #065f46 !important; }
-        .head-kpi { background-color: #1e293b !important; }
-        .sticky-col { position: sticky; left: 0; background-color: #0f172a !important; z-index: 20; border-right: 2px solid rgba(255,255,255,0.1); text-align: left !important; font-weight: 800; }
-        .column-picker { position: absolute; top: 100%; left: 0; z-index: 100; background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 16px; width: 250px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-height: 400px; overflow-y: auto; }
+        .reports-table th { padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; font-weight: 700; color: var(--text-primary); text-transform: uppercase; cursor: pointer; user-select: none; }
+        .reports-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+        .reports-table tr:hover { background-color: var(--bg-hover); }
+        .editable-input { width: 90px; padding: 6px; text-align: right; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-weight: 600; }
+        .head-sales { background-color: #854d0e !important; color: white !important; }
+        .head-out { background-color: #6b21a8 !important; color: white !important; }
+        .head-pnl { background-color: #065f46 !important; color: white !important; }
+        .head-kpi { background-color: var(--bg-active) !important; color: var(--text-primary) !important; }
+        .sticky-col { position: sticky; left: 0; background-color: var(--bg-surface) !important; z-index: 20; border-right: 2px solid var(--border); text-align: left !important; font-weight: 800; color: var(--text-primary); }
+        .column-picker { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; width: 250px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 400px; overflow-y: auto; }
         .view-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
       `}</style>
 
@@ -437,7 +437,7 @@ export default function Reports() {
 
       {/* ─── Date Range Filter Bar ─── */}
       <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.06em' }}>DATE RANGE</span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em' }}>DATE RANGE</span>
         {['This Month', 'Last Month', 'This Quarter', 'This Year', 'Last Year', 'All Time', 'Custom'].map(p => (
           <button
             key={p}
@@ -450,9 +450,9 @@ export default function Reports() {
               cursor: 'pointer',
               border: '1px solid',
               transition: 'all 0.15s',
-              borderColor: datePreset === p ? 'var(--brand)' : 'rgba(255,255,255,0.15)',
-              background: datePreset === p ? 'var(--brand-glow)' : 'transparent',
-              color: datePreset === p ? 'var(--brand)' : 'rgba(255,255,255,0.5)',
+              borderColor: datePreset === p ? 'var(--brand)' : 'var(--border)',
+              background: datePreset === p ? 'var(--brand-glow)' : 'var(--bg-surface)',
+              color: datePreset === p ? 'var(--brand)' : 'var(--text-secondary)',
             }}
           >
             {p}
@@ -467,7 +467,7 @@ export default function Reports() {
               className="editable-input"
               style={{ width: 140, fontSize: '0.75rem' }}
             />
-            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem' }}>→</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>→</span>
             <input
               type="date"
               value={customEnd}
@@ -478,7 +478,7 @@ export default function Reports() {
           </>
         )}
         {activeDateRange.start && (
-          <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginLeft: 4 }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>
             {activeDateRange.start} → {activeDateRange.end}
           </span>
         )}
@@ -486,11 +486,11 @@ export default function Reports() {
 
       <div className="view-controls">
         <div style={{ position: 'relative' }}>
-          <button className="btn" onClick={() => setShowColPicker(!showColPicker)} style={{ background: 'rgba(255,255,255,0.1)' }}>⚙️ Columns</button>
+          <button className="btn" onClick={() => setShowColPicker(!showColPicker)} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>⚙️ Columns</button>
           {showColPicker && (
             <div className="column-picker">
               {columns.map(col => (
-                <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12 }}>
+                <label key={col.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12, color: 'var(--text-primary)' }}>
                   <input type="checkbox" checked={!hiddenColumns.includes(col.id)} onChange={() => toggleColumn(col.id)} disabled={col.group === 'key'} />
                   <span>{col.label}</span>
                 </label>
@@ -500,17 +500,17 @@ export default function Reports() {
         </div>
 
         {view === 'daily' && filteredDaily.length > 0 && (
-          <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
             {filteredDaily.length} days
           </span>
         )}
         {view === 'monthly' && monthlyData.length > 0 && (
-          <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
             {monthlyData.length} months
           </span>
         )}
 
-        <div style={{ display: 'flex', gap: 8, background: 'rgba(0,0,0,0.3)', padding: 6, borderRadius: 10 }}>
+        <div style={{ display: 'flex', gap: 8, background: 'var(--bg-active)', padding: 6, borderRadius: 10 }}>
           <button className={`btn ${view === 'daily' ? 'btn-primary' : ''}`} onClick={() => setView('daily')}>📅 Daily PNL</button>
           <button className={`btn ${view === 'monthly' ? 'btn-primary' : ''}`} onClick={() => setView('monthly')}>📊 Month Vise</button>
         </div>
@@ -519,9 +519,9 @@ export default function Reports() {
       </div>
 
       {loading ? (
-        <div style={{ padding: 100, textAlign: 'center', opacity: 0.5 }}>⏳ Crunching numbers...</div>
+        <div style={{ padding: 100, textAlign: 'center', opacity: 0.5, color: 'var(--text-muted)' }}>⏳ Crunching numbers...</div>
       ) : (
-        <div className="stat-card" style={{ padding: 0, overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+        <div className="stat-card" style={{ padding: 0, overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
           <table className="reports-table">
             <thead>
               <tr style={{ height: 40 }}>
@@ -551,7 +551,7 @@ export default function Reports() {
                     if (['roasMeta'].includes(col.id)) content = formatNumber(row[col.id]);
                     if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                     
-                    if (col.id === 'pnl') style = { color: row.pnl >= 0 ? '#34d399' : '#fca5a5', fontWeight: 800 };
+                    if (col.id === 'pnl') style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
                     const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending'].includes(col.id);
 
                     return (
@@ -561,7 +561,7 @@ export default function Reports() {
                         onClick={() => isClickable && handleDrilldown(row, col.id)}
                       >
                         {isClickable ? (
-                          <span style={{ borderBottom: '1px dashed rgba(255,255,255,0.3)' }}>{content}</span>
+                          <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span>
                         ) : content}
                       </td>
                     );
@@ -574,10 +574,10 @@ export default function Reports() {
       )}
 
       {showBulkModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-          <div className="stat-card" style={{ width: 500, padding: 32, border: '1px solid var(--blue)' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
+          <div className="stat-card" style={{ width: 500, padding: 32, border: '1px solid var(--blue)', background: 'var(--bg-surface)' }}>
             <h2 style={{ color: 'var(--blue)', marginTop: 0 }}>🚀 Bulk Marketing Sync</h2>
-            <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Paste a column from Excel. Applied in table order.</p>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, color: 'var(--text-secondary)' }}>Paste a column from Excel. Applied in table order.</p>
             <select className="editable-input" style={{ width: '100%', marginBottom: 16 }} value={bulkMetric} onChange={e => setBulkMetric(e.target.value)}>
               <option value="marketingSpend">Meta Ads</option>
               <option value="tiktokMarketing">TikTok Ads</option>
@@ -587,7 +587,7 @@ export default function Reports() {
             <textarea className="editable-input" style={{ width: '100%', height: 180, textAlign: 'left', marginBottom: 16 }} placeholder="Paste here..." value={bulkData} onChange={e => setBulkData(e.target.value)} disabled={bulkLoading} />
             <div style={{ display: 'flex', gap: 12 }}>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={processBulkSync} disabled={bulkLoading}>{bulkLoading ? 'Syncing...' : 'Sync Data'}</button>
-              <button className="btn" onClick={() => setShowBulkModal(false)} disabled={bulkLoading}>Cancel</button>
+              <button className="btn" onClick={() => setShowBulkModal(false)} disabled={bulkLoading} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>Cancel</button>
             </div>
           </div>
         </div>
