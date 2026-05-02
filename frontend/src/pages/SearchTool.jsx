@@ -804,10 +804,12 @@ export default function SearchTool() {
       }
       if (isSpecial && !applySpecialMode(order, status, today)) return false
       if (!bypassStatus) {
-        const s = (order.delivery_status||'').toLowerCase()
-        if (!status.split(',').some(st => s.includes(st.trim().toLowerCase()))) return false
+        const s = (order.delivery_status||'').toLowerCase().trim()
+        const targetStatus = status.toLowerCase().trim()
+        if (!targetStatus.split(',').some(st => s.includes(st.trim()))) return false
       }
-      if (keyword && !matchesSearch(order, keyword)) return false
+      const kwClean = keyword ? keyword.trim().toLowerCase() : ''
+      if (kwClean && !matchesSearch(order, kwClean)) return false
       
       // Apply Column Filters (natively supports space/comma separated OR search)
       for (const [colId, filterVal] of Object.entries(colFilters)) {
@@ -1371,11 +1373,17 @@ export default function SearchTool() {
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
         <div className="table-wrapper">
-          {results.length > 1000 && (
-            <div style={{ background: 'rgba(251, 191, 36, 0.1)', borderBottom: '1px solid #fbbf24', color: '#fbbf24', padding: '10px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span>💡 <b>Showing first 1,000 of {results.length.toLocaleString()} matching orders.</b> Use filters to narrow down the list.</span>
-            </div>
-          )}
+          <div style={{ background: 'rgba(251, 191, 36, 0.1)', borderBottom: '1px solid #fbbf24', color: '#fbbf24', padding: '10px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>💡 <b>Showing {Math.min(results.length, 1000).toLocaleString()} of {results.length.toLocaleString()} matching orders.</b> (Total loaded: {allOrders.length.toLocaleString()})</span>
+            {results.length !== allOrders.length && (
+              <button 
+                onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
+                style={{ background: '#fbbf24', color: 'black', border: 'none', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
+              >
+                CLEAR ALL FILTERS
+              </button>
+            )}
+          </div>
           <table className="draggable-table">
             <thead>
               <tr>
