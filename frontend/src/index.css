@@ -89,7 +89,7 @@ body {
   min-height: 100vh;
   transition: background 0.3s ease, color 0.3s ease;
   line-height: 1.5;
-  overflow-x: hidden;
+  /* overflow-x: hidden; - Removed to restore horizontal swipe gestures (two-finger back/forward) */
 }
 
 /* ─── Layout ─── */
