@@ -1755,6 +1755,8 @@ export default function SearchTool() {
                         <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
                           <div>Rs {Math.round(item.price).toLocaleString()} × {item.quantity}</div>
                           <div style={{ fontWeight: 700 }}>Rs {Math.round(item.price * item.quantity).toLocaleString()}</div>
+                        </div>
+                      </div>
                     ))}
                     {!editingOrder.line_items?.length && (
                       <div style={{ textAlign: 'center', padding: 20 }}>
@@ -1796,6 +1798,7 @@ export default function SearchTool() {
                          />
                        </div>
                      </div>
+                   </div>
                 </div>
               </div>
 
