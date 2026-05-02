@@ -219,10 +219,10 @@ export default function SearchTool() {
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(false)
+  const [debugWhere, setDebugWhere] = useState('')
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
-  const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
@@ -772,6 +772,7 @@ export default function SearchTool() {
       .then(data => { 
         setAllOrders(data.orders || []); 
         setTotalCount(data.total || 0);
+        setDebugWhere(data.debugWhere || '');
         setLoading(false) 
       })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
@@ -1350,7 +1351,10 @@ export default function SearchTool() {
         <>
           <div className="table-wrapper">
           <div style={{ background: 'rgba(251, 191, 36, 0.05)', borderBottom: '1px solid #333', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b></span>
+            <span>
+              💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
+              {debugWhere && <span style={{ marginLeft: 10, color: '#666', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
+            </span>
             {(keyword || status !== 'All Statuses') && (
               <button 
                 onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
