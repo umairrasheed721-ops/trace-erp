@@ -132,8 +132,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           productTitles,
           order.cancelled_at ? 'Cancelled' : 
           (order.financial_status === 'voided' ? 'Voided' : 
-          (order.return_status === 'returned' ? 'Returned' : 
-          (order.financial_status === 'paid' && order.fulfillment_status === 'fulfilled' ? 'Delivered' : 'Pending'))),
+          (order.return_status === 'returned' || order.financial_status === 'refunded' ? 'Returned' : 
+          (order.fulfillment_status === 'fulfilled' ? 'Booked' : 'Pending'))),
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source
@@ -375,8 +375,10 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           newDeliveryStatus = 'Cancelled';
         } else if (fresh.financial_status === 'voided' && !isProtected) {
           newDeliveryStatus = 'Voided';
-        } else if (fresh.return_status === 'returned' && !isProtected) {
+        } else if ((fresh.return_status === 'returned' || fresh.financial_status === 'refunded') && !isProtected) {
           newDeliveryStatus = 'Returned';
+        } else if (fresh.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
+          newDeliveryStatus = 'Booked';
         }
 
         updateStmt.run(
@@ -591,8 +593,10 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       newDeliveryStatus = 'Cancelled';
     } else if (order.financial_status === 'voided' && !isProtected) {
       newDeliveryStatus = 'Voided';
-    } else if (order.return_status === 'returned' && !isProtected) {
+    } else if ((order.return_status === 'returned' || order.financial_status === 'refunded') && !isProtected) {
       newDeliveryStatus = 'Returned';
+    } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
+      newDeliveryStatus = 'Booked';
     }
 
     if (existing) {
@@ -806,7 +810,7 @@ async function syncSpecificOrders(store, shopifyIds) {
       let newStatus = 'Pending';
       if (fresh.cancelled_at) newStatus = 'Cancelled';
       else if (fresh.financial_status === 'voided') newStatus = 'Voided';
-      else if (fresh.return_status === 'returned') newStatus = 'Returned';
+      else if (fresh.return_status === 'returned' || fresh.financial_status === 'refunded') newStatus = 'Returned';
       else if (fresh.fulfillment_status === 'fulfilled') newStatus = 'Booked';
 
       updateStmt.run(
