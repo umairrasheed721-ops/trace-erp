@@ -1261,7 +1261,7 @@ export default function SearchTool() {
 
         {/* Filters */}
         <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
             <div>
               <label className="form-label">📅 Date Preset</label>
               <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
