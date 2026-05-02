@@ -8,23 +8,24 @@ const { broadcast } = require('../sse');
 router.get('/', (req, res) => {
   const { store_id, page = 1, limit = 100, status, search, courier, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  console.log(`🔍 Search request for store ${store_id}, status: ${status}, limit: ${limit}, dates: ${start_date} to ${end_date}`);
-
+  console.log(`DEBUG: req.query: ${JSON.stringify(req.query)}`);
+  
   let queryParams = [Number(store_id)];
   let whereClauses = ['o.store_id = ?'];
 
   if (status && status !== 'All Statuses' && status !== '') {
-    if (status === '[ACTIVE PIPELINE]') {
+    const s = status.toUpperCase().trim();
+    if (s === '[ACTIVE PIPELINE]') {
       whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned', 'void', 'voided')");
-    } else if (status === '[READY TO BOOK]') {
+    } else if (s === '[READY TO BOOK]') {
       whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
-    } else if (status === '[NO TRACKING]') {
+    } else if (s === '[NO TRACKING]') {
       whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
-    } else if (status === '[UNPAID DELIVERED]') {
+    } else if (s === '[UNPAID DELIVERED]') {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.paid_amount IS NULL OR o.paid_amount < 1)");
-    } else if (status === '[MISSING COST]') {
+    } else if (s === '[MISSING COST]') {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
-    } else if (status === '[AUDIT: MISSING CHARGES]') {
+    } else if (s === '[AUDIT: MISSING CHARGES]') {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else {
       whereClauses.push('LOWER(o.delivery_status) = ?');
