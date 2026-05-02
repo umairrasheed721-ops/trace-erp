@@ -41,8 +41,27 @@ router.get('/', (req, res) => {
     queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
+  // Column-specific filters
+  ['ref_number', 'customer_name', 'city', 'phone', 'courier', 'tracking_number', 'notes'].forEach(field => {
+    if (req.query[field]) {
+      const val = req.query[field].toLowerCase().trim();
+      const terms = val.split(/[\s,]+/).filter(Boolean);
+      if (terms.length > 0) {
+        const orClauses = terms.map(() => `LOWER(o.${field}) LIKE ?`).join(' OR ');
+        whereClauses.push(`(${orClauses})`);
+        terms.forEach(t => queryParams.push(`%${t}%`));
+      }
+    }
+  });
+
   const where = whereClauses.join(' AND ');
   const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  // Dynamic Sorting
+  const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name'];
+  const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
+  const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
+  const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
   const total = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
   const orders = db.prepare(`
@@ -50,7 +69,7 @@ router.get('/', (req, res) => {
     FROM orders o
     JOIN stores s ON o.store_id = s.id
     WHERE ${where}
-    ORDER BY o.created_timestamp DESC
+    ORDER BY o.${safeSort} ${safeDir}
     LIMIT ? OFFSET ?
   `).all(...queryParams, parseInt(limit), offset);
 
@@ -58,8 +77,7 @@ router.get('/', (req, res) => {
     orders, 
     total: total.count, 
     page: parseInt(page), 
-    limit: parseInt(limit),
-    debug: { start_date, end_date, where, queryParams }
+    limit: parseInt(limit)
   });
 });
 

@@ -2,6 +2,15 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(handler)
+  }, [value, delay])
+  return debouncedValue
+}
+
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
 const CITY_ALIASES = {
@@ -214,13 +223,15 @@ export default function SearchTool() {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
   const [loading, setLoading] = useState(false)
-  const [debugInfo, setDebugInfo] = useState(null)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
 
   const [preset, setPreset] = useState('Last Month')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [status, setStatus] = useState('[ACTIVE PIPELINE]')
   const [keyword, setKeyword] = useState('')
+  const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
   const [sortKey, setSortKey] = useState('order_date')
   const [sortDir, setSortDir] = useState('desc')
@@ -238,6 +249,12 @@ export default function SearchTool() {
   const [colFilters, setColFilters] = useState({
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
+  const debouncedColFilters = useDebounce(colFilters, 500)
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedKeyword, debouncedColFilters, status, preset, customStart, customEnd])
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('search_compact') === 'true')
   const [editingOrder, setEditingOrder] = useState(null)
   const [editorLoading, setEditorLoading] = useState(false)
@@ -728,20 +745,37 @@ export default function SearchTool() {
     // If it's a special mode (in brackets), we now pass it to backend for efficient filtering
     const queryStatus = status === 'All Statuses' ? '' : status
     
-    const kw = keyword ? keyword.trim().replace(/^#/, '') : ''
+    const kw = debouncedKeyword ? debouncedKeyword.trim().replace(/^#/, '') : ''
     const dateRange = getDateRange(preset, customStart, customEnd)
     const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
     const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
 
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=15000&status=${queryStatus||''}&search=${kw}&start_date=${startDate}&end_date=${endDate}&t=${Date.now()}`)
+    const limit = 250
+    // Encode colFilters into query string
+    const colFilterParams = Object.entries(debouncedColFilters)
+      .filter(([_, v]) => v && v.trim())
+      .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
+      .join('')
+
+    // Map sortKey to backend columns
+    const backendSortMap = {
+      'order_date': 'order_date',
+      'cost': 'cost',
+      'price': 'price',
+      'customer_name': 'customer_name',
+      'delivery_status': 'delivery_status'
+    }
+    const sCol = backendSortMap[sortKey] || 'created_timestamp'
+
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${queryStatus||''}&search=${kw}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`)
       .then(r => r.json())
       .then(data => { 
         setAllOrders(data.orders || []); 
-        setDebugInfo(data.debug);
+        setTotalCount(data.total || 0);
         setLoading(false) 
       })
       .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
-  }, [activeStoreId, status, keyword, preset, customStart, customEnd])
+  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -788,45 +822,7 @@ export default function SearchTool() {
     const isSpecial = SPECIAL_MODES.includes(status)
     const bypassStatus = status === 'All Statuses' || isSpecial
 
-    let filtered = allOrders.filter(order => {
-      // Inject colFilters for matchesSearch to use
-      order._meta = { colFilters }
-      
-      const orderDate = order.order_date ? new Date(order.order_date) : null
-      const diff = orderDate ? Math.floor((today - new Date(orderDate).setHours(0,0,0,0)) / 86400000) : -1
-
-      // 1. Aging Bucket Filter (Bypasses Date Preset when active)
-      if (activeAgingBucket) {
-        if (!isBacklogOrder(order)) return false
-        const b = agingBuckets.find(bucket => bucket.label === activeAgingBucket)
-        if (b && (diff < b.min || diff > b.max)) return false
-      } else if (dateRange && order.order_date) {
-        // Only apply Date Preset if no Aging Bucket is active
-        const startStr = formatYMD(dateRange.start)
-        const endStr = formatYMD(dateRange.end)
-        const oDate = order.order_date.split(' ')[0] // Handle YYYY-MM-DD HH:mm:ss if exists
-        if (oDate < startStr || oDate > endStr) return false
-      }
-      if (isSpecial && !applySpecialMode(order, status, today)) return false
-      if (!bypassStatus) {
-        const s = (order.delivery_status||'').toLowerCase().trim()
-        const targetStatus = status.toLowerCase().trim()
-        if (!targetStatus.split(',').some(st => s.includes(st.trim()))) return false
-      }
-      const kwClean = keyword ? keyword.trim().toLowerCase() : ''
-      if (kwClean && !matchesSearch(order, kwClean)) return false
-      
-      // Apply Column Filters (natively supports space/comma separated OR search)
-      for (const [colId, filterVal] of Object.entries(colFilters)) {
-        if (!filterVal || !filterVal.trim()) continue
-        const term = filterVal.toLowerCase().trim()
-        const val = (order[colId] || '').toString().toLowerCase()
-        const subTerms = term.split(/[\s,]+/).filter(Boolean)
-        if (!subTerms.some(t => val.includes(t))) return false
-      }
-
-      return true
-    })
+    let filtered = [...allOrders];
 
     // Default Sort (apply relevance if searching)
     if (keyword && keyword.trim().length > 2) {
@@ -875,9 +871,9 @@ export default function SearchTool() {
       else if (s.includes('return')||s.includes('cancel')) returned++
       else pending++
     })
-    setKpi({ total: filtered.length, sum, delivered, returned, pending })
+    setKpi({ total: totalCount, sum, delivered, returned, pending })
     setResults(filtered)
-  }, [allOrders, preset, customStart, customEnd, status, keyword, sort, sortKey, sortDir, activeAgingBucket, agingBuckets, colFilters])
+  }, [allOrders, debouncedKeyword, totalCount])
 
   useEffect(() => { if (allOrders.length) runSearch() }, [allOrders, runSearch])
 
@@ -1378,9 +1374,9 @@ export default function SearchTool() {
         <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
       ) : (
         <div className="table-wrapper">
-          <div style={{ background: 'rgba(251, 191, 36, 0.1)', borderBottom: '1px solid #fbbf24', color: '#fbbf24', padding: '10px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>💡 <b>Showing {results.length.toLocaleString()} of {allOrders.length.toLocaleString()} loaded orders.</b> (Backend Dates: {debugInfo?.start_date || 'ALL'} to {debugInfo?.end_date || 'ALL'})</span>
-            {results.length !== allOrders.length && (
+          <div style={{ background: 'rgba(251, 191, 36, 0.05)', borderBottom: '1px solid #333', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b></span>
+            {(keyword || status !== 'All Statuses') && (
               <button 
                 onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
                 style={{ background: '#fbbf24', color: 'black', border: 'none', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}
@@ -1697,6 +1693,29 @@ export default function SearchTool() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Bar */}
+        {totalCount > 250 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '16px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border)' }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              disabled={page === 1 || loading}
+              onClick={() => { setPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            >
+              ◀ Previous
+            </button>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+              Page {page} of {Math.ceil(totalCount / 250)}
+            </div>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              disabled={page >= Math.ceil(totalCount / 250) || loading}
+              onClick={() => { setPage(p => p + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            >
+              Next ▶
+            </button>
+          </div>
+        )}
       )}
 
       {/* ─── Shopify-Style Order Editor Modal ─────────────────────────────────── */}
