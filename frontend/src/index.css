@@ -79,6 +79,7 @@ html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -88,16 +89,13 @@ body {
   min-height: 100vh;
   transition: background 0.3s ease, color 0.3s ease;
   line-height: 1.5;
+  overflow-x: hidden;
 }
 
 /* ─── Layout ─── */
 .app-layout { 
   display: flex; 
   min-height: 100vh; 
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000;
 }
 
 .sidebar {
