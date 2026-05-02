@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
-const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','All Time','Custom Range']
+const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
 const CITY_ALIASES = {
   karachi: ['khi','krachi','karaci'],
@@ -33,6 +33,26 @@ function getDateRange(preset, customStart, customEnd) {
     return { start: s, end: e }
   }
   if (preset === 'This Year') { const s = new Date(now); s.setMonth(0); s.setDate(1); return { start: s, end } }
+  if (preset === 'Last Year') {
+    const s = new Date(now.getFullYear() - 1, 0, 1)
+    const e = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999)
+    return { start: s, end: e }
+  }
+  if (preset === '2025') {
+    const s = new Date(2025, 0, 1)
+    const e = new Date(2025, 11, 31, 23, 59, 59, 999)
+    return { start: s, end: e }
+  }
+  if (preset === '2024') {
+    const s = new Date(2024, 0, 1)
+    const e = new Date(2024, 11, 31, 23, 59, 59, 999)
+    return { start: s, end: e }
+  }
+  if (preset === '2023') {
+    const s = new Date(2023, 0, 1)
+    const e = new Date(2023, 11, 31, 23, 59, 59, 999)
+    return { start: s, end: e }
+  }
   if (preset === 'All Time') return { start: new Date('2010-01-01'), end }
   if (preset === 'Custom Range' && customStart) {
     const s = new Date(customStart); s.setHours(0,0,0,0)
