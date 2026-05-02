@@ -303,7 +303,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   return { updated: updatesToApply.length };
 }
 
-async function syncSpecificCourierOrders(store, orderIds) {
+async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   if (!orderIds || !orderIds.length) return 0;
   
   const orders = db.prepare(`
@@ -311,6 +311,8 @@ async function syncSpecificCourierOrders(store, orderIds) {
     WHERE id IN (${orderIds.map(() => '?').join(',')})
   `).all(...orderIds);
 
+  const total = orders.length;
+  let processed = 0;
   const updatesToApply = [];
 
   // Group by type
@@ -322,24 +324,32 @@ async function syncSpecificCourierOrders(store, orderIds) {
     let rawUrl = store.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
     const baseUrl = rawUrl.replace(/\/?$/, '/');
     
-    await Promise.allSettled(postexOrders.map(async order => {
-      try {
-        const res = await fetch(`${baseUrl}${order.tracking_number}`, {
-          method: 'GET',
-          headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
-        if (rawStatus) {
-          const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
-          if (newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
-             const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(newStatus.toLowerCase());
-             updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
+    // Process in smaller chunks for progress
+    const batchSize = 10;
+    for (let i = 0; i < postexOrders.length; i += batchSize) {
+      const batch = postexOrders.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async order => {
+        try {
+          const res = await fetch(`${baseUrl}${order.tracking_number}`, {
+            method: 'GET',
+            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
+          if (rawStatus) {
+            const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
+            if (newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
+               const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(newStatus.toLowerCase());
+               updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
+            }
           }
-        }
-      } catch (e) {}
-    }));
+        } catch (e) {}
+      }));
+      processed += batch.length;
+      if (onProgress) onProgress(processed, total, `Syncing PostEx tracking...`);
+      await sleep(200);
+    }
   }
 
   // 2. Sync Others (Instaworld engine)
@@ -347,32 +357,39 @@ async function syncSpecificCourierOrders(store, orderIds) {
     const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
     const apiKeys = [store.instaworld_key, store.instaworld_key_backup].filter(Boolean);
 
-    await Promise.allSettled(otherOrders.map(async order => {
-       for (const key of apiKeys) {
-         try {
-            const res = await fetch(trackUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key })
-            });
-            if (!res.ok) continue;
-            const data = await res.json();
-            let rawStatus = null;
-            if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
-            else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
-            else if (data?.status) rawStatus = data.status;
+    const batchSize = 10;
+    for (let i = 0; i < otherOrders.length; i += batchSize) {
+      const batch = otherOrders.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async order => {
+         for (const key of apiKeys) {
+           try {
+              const res = await fetch(trackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key })
+              });
+              if (!res.ok) continue;
+              const data = await res.json();
+              let rawStatus = null;
+              if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
+              else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
+              else if (data?.status) rawStatus = data.status;
 
-            if (rawStatus) {
-               const newStatus = INSTAWORLD_STATUS_MAP[String(rawStatus).toLowerCase()] || rawStatus;
-               if (String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
-                  const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus).toLowerCase());
-                  updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
-               }
-               break; // Success with this key
-            }
-         } catch (e) {}
-       }
-    }));
+              if (rawStatus) {
+                 const newStatus = INSTAWORLD_STATUS_MAP[String(rawStatus).toLowerCase()] || rawStatus;
+                 if (String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
+                    const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus).toLowerCase());
+                    updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
+                 }
+                 break; // Success with this key
+              }
+           } catch (e) {}
+         }
+      }));
+      processed += batch.length;
+      if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
+      await sleep(200);
+    }
   }
 
   if (updatesToApply.length > 0) {

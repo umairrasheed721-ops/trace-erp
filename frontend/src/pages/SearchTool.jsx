@@ -610,6 +610,7 @@ export default function SearchTool() {
     const saved = localStorage.getItem('trace_aging_config')
     return saved ? JSON.parse(saved) : { criticalLevel: 8, span: 1 }
   })
+  const [syncProgress, setSyncProgress] = useState(null) // { current, total, message }
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
   const [showAgingConfig, setShowAgingConfig] = useState(false)
 
@@ -848,6 +849,18 @@ export default function SearchTool() {
       } catch (err) { console.error('Live update failed', err) }
     });
 
+    source.addEventListener('sync_progress', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (String(data.storeId) === String(activeStoreId)) {
+          setSyncProgress(data);
+          if (data.current === data.total) {
+            setTimeout(() => setSyncProgress(null), 3000);
+          }
+        }
+      } catch (err) { console.error('Sync progress parse failed', err) }
+    });
+
     return () => source.close();
   }, [activeStoreId]);
 
@@ -971,6 +984,46 @@ export default function SearchTool() {
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
       
+      {/* 🚀 REAL-TIME SYNC PROGRESS BAR */}
+      {syncProgress && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)',
+          padding: '12px 24px', borderBottom: '1px solid var(--brand)',
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: '1.2rem' }}>{syncProgress.current === syncProgress.total ? '✅' : '⚡'}</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff' }}>
+                  {syncProgress.message || 'Processing Orders...'}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  {syncProgress.current} of {syncProgress.total} orders synced
+                </div>
+              </div>
+            </div>
+            <div style={{ fontWeight: 900, fontSize: '1.1rem', color: 'var(--brand)' }}>
+              {Math.round((syncProgress.current / syncProgress.total) * 100)}%
+            </div>
+          </div>
+          <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ 
+              height: '100%', 
+              background: 'linear-gradient(90deg, var(--brand) 0%, #fff 100%)', 
+              width: `${(syncProgress.current / syncProgress.total) * 100}%`,
+              transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 0 15px var(--brand)'
+            }}></div>
+          </div>
+          {syncProgress.current === syncProgress.total && (
+            <div style={{ textAlign: 'center', fontSize: '0.65rem', color: 'var(--green)', marginTop: 6, fontWeight: 700 }}>
+              🎉 SYNC COMPLETE! DATA REFRESHED.
+            </div>
+          )}
+        </div>
+      )}
       {/* Aging Config Dialog */}
       {showAgingConfig && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1002, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

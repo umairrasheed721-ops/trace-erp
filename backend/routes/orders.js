@@ -457,13 +457,23 @@ router.post('/bulk-sync-courier', async (req, res) => {
   if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
 
   const { syncSpecificCourierOrders } = require('../engines/tracking');
+  const { broadcast } = require('../sse');
   
   try {
     const firstOrder = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
     if (!firstOrder) throw new Error('No orders found');
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(firstOrder.store_id);
 
-    const updatedCount = await syncSpecificCourierOrders(store, ids);
+    // Call sync with progress callback
+    const updatedCount = await syncSpecificCourierOrders(store, ids, (current, total, message) => {
+      broadcast('sync_progress', { 
+        storeId: store.id,
+        current, 
+        total, 
+        message 
+      });
+    });
+
     res.json({ success: true, count: updatedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
