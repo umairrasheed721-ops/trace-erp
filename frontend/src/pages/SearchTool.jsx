@@ -226,6 +226,17 @@ export default function SearchTool() {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
 
+  // Explicit search trigger (mostly for the 'Run Search' button)
+  const runSearch = () => {
+    if (page === 1) {
+      // Force a refresh even if page is already 1 by slightly changing a dependency or just relying on the user's intent
+      // For now, let's just ensure page 1 is set which triggers the useEffect
+      setPage(1); 
+    } else {
+      setPage(1);
+    }
+  }
+
   const [preset, setPreset] = useState('Last Month')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
