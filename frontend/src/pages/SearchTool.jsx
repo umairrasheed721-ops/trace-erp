@@ -414,6 +414,29 @@ export default function SearchTool() {
     finally { setBulkActionLoading(false) }
   }
 
+  const handleBulkSyncCourier = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`🚀 Sync tracking for ${selectedIds.length} orders from Couriers?`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/bulk-sync-courier`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        addToast(`✅ Courier Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
+        setSelectedIds([])
+        window.location.reload()
+      } else {
+        addToast(`❌ Sync Failed: ${data.error}`, 'error')
+      }
+    } catch { addToast('Network error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
   const handleBulkSyncStatus = async () => {
     if (selectedIds.length === 0) return
     if (!confirm(`🔄 Sync status for ${selectedIds.length} orders from Shopify?`)) return
@@ -1306,6 +1329,15 @@ export default function SearchTool() {
             style={{ background: 'black', color: 'white', fontWeight: 700 }}
           >
             {bulkActionLoading ? '⌛...' : '🔄 SYNC STATUS (FORCE)'}
+          </button>
+
+          <button 
+            disabled={bulkActionLoading}
+            onClick={handleBulkSyncCourier}
+            className="btn btn-sm" 
+            style={{ background: 'black', color: 'var(--brand)', fontWeight: 700, border: '1px solid var(--brand)' }}
+          >
+            {bulkActionLoading ? '⌛...' : '⚡ SYNC COURIER (FORCE)'}
           </button>
 
           <button 

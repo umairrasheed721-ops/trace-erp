@@ -10,6 +10,26 @@ const SLEEP_MS = 800;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+const POSTEX_STATUS_MAP = {
+  'postex warehouse': 'In Transit',
+  'out for return': 'Return Initiated',
+  'inroute': 'In Transit',
+  'intransit': 'In Transit'
+};
+
+const INSTAWORLD_STATUS_MAP = {
+  'delivered': 'Delivered',
+  'pickup done': 'Booked',
+  'arrival at insta-hub': 'Booked',
+  'handover to courier': 'In Transit',
+  'in transit': 'In Transit',
+  'returned to shipper': 'Returned',
+  'return received at insta hub': 'Return Received',
+  'delivery unsuccessful': 'Shipper Advice',
+  'shipper advice': 'Shipper Advice',
+  'uncollected': 'Pending'
+};
+
 // Chunk array into groups
 function chunks(arr, size) {
   const out = [];
@@ -85,13 +105,6 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
               || null;
 
             if (!rawStatus) return null;
-            
-            const POSTEX_STATUS_MAP = {
-              'postex warehouse': 'In Transit',
-              'out for return': 'Return Initiated',
-              'inroute': 'In Transit',
-              'intransit': 'In Transit'
-            };
             
             const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
 
@@ -170,18 +183,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     return { updated: 0 };
   }
 
-  const STATUS_MAP = {
-    'delivered': 'Delivered',
-    'pickup done': 'Booked',
-    'arrival at insta-hub': 'Booked',
-    'handover to courier': 'In Transit',
-    'in transit': 'In Transit',
-    'returned to shipper': 'Returned',
-    'return received at insta hub': 'Return Received',
-    'delivery unsuccessful': 'Shipper Advice',
-    'shipper advice': 'Shipper Advice',
-    'uncollected': 'Pending'
-  };
+      // Using global INSTAWORLD_STATUS_MAP
 
   const trackOne = async (order, apiKey) => {
     try {
@@ -226,7 +228,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
       // Normalize status
       const lowerRaw = String(rawStatus).toLowerCase();
-      const newStatus = STATUS_MAP[lowerRaw] || rawStatus;
+      const newStatus = INSTAWORLD_STATUS_MAP[lowerRaw] || rawStatus;
 
       return { status: 200, order, newStatus, courierName };
     } catch (err) {
@@ -301,4 +303,87 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   return { updated: updatesToApply.length };
 }
 
-module.exports = { syncPostEx, syncInstaworld };
+async function syncSpecificCourierOrders(store, orderIds) {
+  if (!orderIds || !orderIds.length) return 0;
+  
+  const orders = db.prepare(`
+    SELECT id, tracking_number, delivery_status, courier FROM orders
+    WHERE id IN (${orderIds.map(() => '?').join(',')})
+  `).all(...orderIds);
+
+  const updatesToApply = [];
+
+  // Group by type
+  const postexOrders = orders.filter(o => (o.courier || '').toLowerCase().includes('postex'));
+  const otherOrders = orders.filter(o => !(o.courier || '').toLowerCase().includes('postex') && o.tracking_number);
+
+  // 1. Sync PostEx
+  if (postexOrders.length && store.postex_token) {
+    let rawUrl = store.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+    const baseUrl = rawUrl.replace(/\/?$/, '/');
+    
+    await Promise.allSettled(postexOrders.map(async order => {
+      try {
+        const res = await fetch(`${baseUrl}${order.tracking_number}`, {
+          method: 'GET',
+          headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
+        if (rawStatus) {
+          const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
+          if (newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
+             const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(newStatus.toLowerCase());
+             updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
+          }
+        }
+      } catch (e) {}
+    }));
+  }
+
+  // 2. Sync Others (Instaworld engine)
+  if (otherOrders.length && store.instaworld_key) {
+    const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+    const apiKeys = [store.instaworld_key, store.instaworld_key_backup].filter(Boolean);
+
+    await Promise.allSettled(otherOrders.map(async order => {
+       for (const key of apiKeys) {
+         try {
+            const res = await fetch(trackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key })
+            });
+            if (!res.ok) continue;
+            const data = await res.json();
+            let rawStatus = null;
+            if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
+            else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
+            else if (data?.status) rawStatus = data.status;
+
+            if (rawStatus) {
+               const newStatus = INSTAWORLD_STATUS_MAP[String(rawStatus).toLowerCase()] || rawStatus;
+               if (String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
+                  const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus).toLowerCase());
+                  updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
+               }
+               break; // Success with this key
+            }
+         } catch (e) {}
+       }
+    }));
+  }
+
+  if (updatesToApply.length > 0) {
+    const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
+    const updateMany = db.transaction(items => {
+      for (const u of items) updateStmt.run(u.status, u.failed_attempt_increment || 0, u.id);
+    });
+    updateMany(updatesToApply);
+  }
+
+  return updatesToApply.length;
+}
+
+module.exports = { syncPostEx, syncInstaworld, syncSpecificCourierOrders };

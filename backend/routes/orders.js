@@ -451,6 +451,25 @@ router.post('/bulk-sync-status', async (req, res) => {
   }
 });
 
+// POST /api/orders/bulk-sync-courier
+router.post('/bulk-sync-courier', async (req, res) => {
+  const { ids } = req.body;
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
+
+  const { syncSpecificCourierOrders } = require('../engines/tracking');
+  
+  try {
+    const firstOrder = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
+    if (!firstOrder) throw new Error('No orders found');
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(firstOrder.store_id);
+
+    const updatedCount = await syncSpecificCourierOrders(store, ids);
+    res.json({ success: true, count: updatedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/bulk-book-instaworld
 router.post('/bulk-book-instaworld', async (req, res) => {
   const { ids, courier_name } = req.body;
