@@ -1725,7 +1725,22 @@ export default function SearchTool() {
                     <span className="badge" style={{ background: 'var(--blue-dim)', color: 'var(--blue)', fontSize: '0.7rem', border: '1px solid var(--blue)' }}>🔄 EXCHANGE / RESTOCKED</span>
                   )}
                 </div>
-                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(editingOrder.order_date).toLocaleString()}</p>
+                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {(() => {
+                    if (!editingOrder.order_date) return '—';
+                    const d = new Date(editingOrder.order_date);
+                    if (!isNaN(d.getTime())) return d.toLocaleString();
+                    // Fallback for DD/MM/YYYY
+                    const parts = editingOrder.order_date.split(/[\/\- ]/);
+                    if (parts.length >= 3) {
+                      // Try YYYY-MM-DD or DD/MM/YYYY
+                      if (parts[0].length === 4) return new Date(editingOrder.order_date).toLocaleString();
+                      const d2 = new Date(`${parts[1]}/${parts[0]}/${parts[2]}`);
+                      if (!isNaN(d2.getTime())) return d2.toLocaleString();
+                    }
+                    return editingOrder.order_date;
+                  })()}
+                </p>
               </div>
               <div className="flex gap-2">
                 {editorLoading && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>⏳ Syncing...</span>}
