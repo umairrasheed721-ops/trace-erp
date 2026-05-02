@@ -344,7 +344,7 @@ export default function Reports() {
       };
     });
     return sortData(rawMonthly, sortConfig);
-  }, [dailyData, sortConfig]);
+  }, [dailyData, activeDateRange.start, activeDateRange.end, sortConfig]);
 
   const filteredDaily = useMemo(() => {
     let data = dailyData.filter(r => isInRange(r.date));
