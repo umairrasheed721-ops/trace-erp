@@ -1,7 +1,7 @@
-import React from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
+import { useState } from 'react'
 
 export default function OrderTable({
   loading,
@@ -264,7 +264,51 @@ export default function OrderTable({
                         {o.phone ? (
                           <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
                             <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', flexShrink: 0 }} title="Call via SIM">📞</a>
-                            <a href={`https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none', flexShrink: 0 }} title="WhatsApp Chat">💬</a>
+                            
+                            <select 
+                              className="wa-template-select"
+                              style={{ 
+                                background: 'none', 
+                                border: 'none', 
+                                color: 'var(--green)', 
+                                cursor: 'pointer', 
+                                fontSize: '0.9rem',
+                                padding: 0,
+                                width: '20px'
+                              }}
+                              onChange={(e) => {
+                                const template = e.target.value;
+                                if (!template) return;
+                                
+                                const name = formatCustomerName(o.customer_name);
+                                const orderId = o.ref_number || o.shopify_order_id;
+                                const price = Math.round(parseFloat(o.price)||0);
+                                const courier = o.courier || 'our courier';
+                                const tracking = o.tracking_number || '';
+                                
+                                let msg = "";
+                                if (template === 'confirm') {
+                                  msg = `Hi ${name}, thank you for your order #${orderId} from TRACE. Your total is Rs ${price}. Please reply with 'CONFIRM' to ship it today!`;
+                                } else if (template === 'address') {
+                                  msg = `Hi ${name}, we have received your order #${orderId}, but the address seems incomplete. Could you please provide your House # and Street name?`;
+                                } else if (template === 'shipped') {
+                                  msg = `Hi ${name}, your order #${orderId} has been shipped via ${courier}. Your Tracking ID is: ${tracking}.`;
+                                } else if (template === 'payment') {
+                                  msg = `Hi ${name}, this is a reminder regarding your order #${orderId}. The rider will be arriving soon with your package (Rs ${price}). Please keep the cash ready.`;
+                                }
+
+                                const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
+                                window.open(waLink, '_blank');
+                                e.target.value = ""; // Reset
+                              }}
+                            >
+                              <option value="">💬</option>
+                              <option value="confirm">✅ Confirm Order</option>
+                              <option value="address">🏠 Address Query</option>
+                              <option value="shipped">🚚 Shipped Update</option>
+                              <option value="payment">💰 Payment Reminder</option>
+                            </select>
+
                             <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
                             {(() => {
                               const count = allOrders.filter(order => order.phone === o.phone).length
