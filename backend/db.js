@@ -37,6 +37,8 @@ function initDb() {
       sync_progress TEXT,
       sync_total INTEGER DEFAULT 0,
       sync_processed INTEGER DEFAULT 0,
+      meta_ad_account_id TEXT,
+      meta_access_token TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -282,3 +284,5 @@ try { db.prepare("ALTER TABLE sync_audit ADD COLUMN store_id INTEGER").run(); } 
 try { db.prepare("ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'").run(); } catch(e) {}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id)").run(); } catch(e) {}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch(e) {}

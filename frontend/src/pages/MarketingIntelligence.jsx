@@ -3,13 +3,59 @@ import { useApp } from '../context/AppContext';
 
 export default function MarketingIntelligence() {
   const { activeStoreId, token } = useApp();
-  const [loading, setLoading] = useState(false);
-  const [metrics, setMetrics] = useState([]);
-  const [platforms, setPlatforms] = useState([
-    { id: 'meta', name: 'Meta Ads', icon: '📱', connected: false, spend: 0 },
-    { id: 'google', name: 'Google Ads', icon: '🔍', connected: false, spend: 0 },
-    { id: 'tiktok', name: 'TikTok Ads', icon: '🎵', connected: false, spend: 0 }
-  ]);
+  const [showMetaModal, setShowMetaModal] = useState(false);
+  const [metaConfig, setMetaConfig] = useState({ ad_account_id: '', access_token: '' });
+
+  useEffect(() => {
+    if (activeStoreId) fetchMetrics();
+  }, [activeStoreId]);
+
+  const fetchMetrics = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/finance/marketing-metrics?store_id=${activeStoreId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setMetrics(data);
+      
+      // Also fetch store config for Meta
+      const storeRes = await fetch(`/api/stores/${activeStoreId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const store = await storeRes.json();
+      if (store.meta_ad_account_id) {
+        setPlatforms(prev => prev.map(p => p.id === 'meta' ? { ...p, connected: true } : p));
+        setMetaConfig({ ad_account_id: store.meta_ad_account_id, access_token: store.meta_access_token || '' });
+      }
+    } catch (e) {
+      console.error('Failed to fetch metrics:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveMetaConfig = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/meta-config`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(metaConfig)
+      });
+      if (res.ok) {
+        setShowMetaModal(false);
+        fetchMetrics();
+      }
+    } catch (e) {
+      console.error('Failed to save meta config:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const stats = [
     { label: 'Total Ad Spend', value: '0 PKR', trend: 'Waiting for Sync', icon: '💸' },
@@ -20,6 +66,45 @@ export default function MarketingIntelligence() {
 
   return (
     <div className="finance-manager">
+      {/* Meta Connection Modal */}
+      {showMetaModal && (
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel" style={{ width: '450px' }}>
+            <h3>🔗 Connect Meta Ads</h3>
+            <p className="subtitle">Enter your Meta Marketing API credentials to sync ad spend.</p>
+            
+            <div className="form-group" style={{ marginTop: '20px' }}>
+              <label>Ad Account ID (including 'act_')</label>
+              <input 
+                type="text" 
+                className="premium-input" 
+                placeholder="act_123456789"
+                value={metaConfig.ad_account_id}
+                onChange={e => setMetaConfig({...metaConfig, ad_account_id: e.target.value})}
+              />
+            </div>
+            
+            <div className="form-group" style={{ marginTop: '15px' }}>
+              <label>System User / Long-Lived Access Token</label>
+              <textarea 
+                className="premium-input" 
+                rows="4"
+                placeholder="EAAB..."
+                value={metaConfig.access_token}
+                onChange={e => setMetaConfig({...metaConfig, access_token: e.target.value})}
+              ></textarea>
+            </div>
+            
+            <div className="modal-actions" style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={saveMetaConfig} disabled={loading}>
+                {loading ? 'Saving...' : 'Save & Connect'}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setShowMetaModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="manager-header">
         <div>
           <h2 className="premium-title">🧠 Marketing & Profitability Intelligence</h2>
@@ -57,7 +142,10 @@ export default function MarketingIntelligence() {
                     <div className="platform-status">{p.connected ? '✅ Connected' : '❌ Disconnected'}</div>
                   </div>
                 </div>
-                <button className={`btn btn-sm ${p.connected ? 'btn-outline' : 'btn-primary'}`}>
+                <button 
+                  className={`btn btn-sm ${p.connected ? 'btn-outline' : 'btn-primary'}`}
+                  onClick={() => p.id === 'meta' ? setShowMetaModal(true) : null}
+                >
                   {p.connected ? 'Configure' : 'Connect'}
                 </button>
               </div>

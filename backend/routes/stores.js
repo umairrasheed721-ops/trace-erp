@@ -192,4 +192,16 @@ router.delete('/:store_id/views/:view_id', (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/stores/:id/meta-config
+router.post('/:id/meta-config', (req, res) => {
+  const { ad_account_id, access_token } = req.body;
+  try {
+    db.prepare('UPDATE stores SET meta_ad_account_id = ?, meta_access_token = ? WHERE id = ?')
+      .run(ad_account_id, access_token, req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
