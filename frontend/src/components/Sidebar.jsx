@@ -10,23 +10,22 @@ export default function Sidebar() {
     { to: '/orders', icon: '📦', label: 'Orders' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
-    { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'view_finance' },
-    { to: '/costing', icon: '💎', label: 'Master Costing', permission: 'view_finance' },
-    { to: '/prevention', icon: '🛡️', label: 'Cost Watchdog', permission: 'view_finance' },
-    { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'view_reports' },
-    { to: '/marketing', icon: '🧠', label: 'Marketing Intel', permission: 'view_reports' },
-    { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'view_reports' },
+    { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'admin_only' },
+    { to: '/costing', icon: '💎', label: 'Master Costing', permission: 'admin_only' },
+    { to: '/prevention', icon: '🛡️', label: 'Cost Watchdog', permission: 'admin_only' },
+    { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },
+    { to: '/marketing', icon: '🧠', label: 'Marketing Intel', permission: 'admin_only' },
+    { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
-    { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'manage_stores' },
-    { to: '/users', icon: '👥', label: 'User Management', permission: 'super_admin' },
+    { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'admin_only' },
+    { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
     if (!item.permission) return true
     if (user?.role === 'admin') return true
-    if (item.permission === 'super_admin') return user?.role === 'admin'
-    return user?.permissions?.includes(item.permission)
+    return false
   })
 
   return (

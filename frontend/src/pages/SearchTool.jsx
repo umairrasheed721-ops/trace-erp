@@ -151,7 +151,8 @@ function applySpecialMode(order, mode, today) {
 }
 
 export default function SearchTool() {
-  const { activeStoreId, addToast } = useApp()
+  const { activeStoreId, addToast, user } = useApp()
+  const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(false)
@@ -239,6 +240,11 @@ export default function SearchTool() {
   }
 
   const handleConfirmOrder = async (orderId) => {
+    const order = allOrders.find(o => o.id === orderId)
+    if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
+      addToast('🛑 Zero Cost Block: Heal cost before confirming', 'error')
+      return
+    }
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/confirm`, { method: 'POST' })
@@ -292,6 +298,17 @@ export default function SearchTool() {
 
   const handleBulkUpdateStatus = async (newStatus) => {
     if (selectedIds.length === 0 || !newStatus) return
+    
+    // Zero Cost Check for dangerous statuses
+    const dangerous = ['confirmed', 'booked', 'dispatched', 'delivered']
+    if (dangerous.includes(newStatus.toLowerCase())) {
+      const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+      if (blocked.length > 0) {
+        addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost and cannot be moved to ${newStatus}`, 'error')
+        return
+      }
+    }
+
     if (!confirm(`📦 Mark ${selectedIds.length} orders as ${newStatus}?`)) return
     setBulkActionLoading(true)
     try {
@@ -312,6 +329,14 @@ export default function SearchTool() {
 
   const handleBulkConfirm = async () => {
     if (selectedIds.length === 0) return
+    
+    // Zero Cost Check
+    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+    if (blocked.length > 0) {
+      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
+      return
+    }
+
     if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
     setBulkActionLoading(true)
     try {
@@ -399,6 +424,14 @@ export default function SearchTool() {
 
   const handleBulkBookPostEx = async () => {
     if (selectedIds.length === 0) return
+
+    // Zero Cost Check
+    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+    if (blocked.length > 0) {
+      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
+      return
+    }
+
     if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx?`)) return
     setBulkActionLoading(true)
     try {
@@ -417,6 +450,14 @@ export default function SearchTool() {
 
   const handleBulkBookInstaworld = async (courier) => {
     if (selectedIds.length === 0) return
+
+    // Zero Cost Check
+    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
+    if (blocked.length > 0) {
+      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
+      return
+    }
+
     if (!confirm(`🌐 Book ${selectedIds.length} orders with ${courier}?`)) return
     setBulkActionLoading(true)
     try {
@@ -451,6 +492,11 @@ export default function SearchTool() {
   }
 
   const handleBookInstaworld = async (orderId, courier = 'TCS') => {
+    const order = allOrders.find(o => o.id === orderId)
+    if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
+      addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
+      return
+    }
     if (!confirm(`🌐 Book this order with ${courier}?`)) return
     setBookingId(orderId)
     try {
@@ -472,6 +518,11 @@ export default function SearchTool() {
   }
 
   const handleBookPostEx = async (orderId) => {
+    const order = allOrders.find(o => o.id === orderId)
+    if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
+      addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
+      return
+    }
     if (!confirm('🚀 Book this order with PostEx? This will generate a real tracking number.')) return
     setBookingId(orderId)
     try {
@@ -639,7 +690,11 @@ export default function SearchTool() {
   ]
   const [cols, setCols] = useState(() => {
     const saved = localStorage.getItem('trace_search_cols')
-    return saved ? JSON.parse(saved) : DEFAULT_COLS
+    let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
+    if (user?.role !== 'admin') {
+      baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit')
+    }
+    return baseCols
   })
 
   // Smart-inject missing essential columns without resetting the whole layout

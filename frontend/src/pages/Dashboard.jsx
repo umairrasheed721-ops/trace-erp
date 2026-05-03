@@ -36,7 +36,7 @@ export default function Dashboard() {
     { label: 'Returned (RTO)', value: stats.returned.toLocaleString(), icon: '↩️', color: 'red', sub: `${stats.rto_rate}% rate` },
     { label: 'In Transit', value: stats.pending.toLocaleString(), icon: '🚚', color: 'yellow', sub: 'Active orders' },
     { label: 'Stuck Orders', value: stats.stuck.toLocaleString(), icon: '⏳', color: 'orange', sub: '> 48 hours' },
-    { label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue).toLocaleString()}`, icon: '💰', color: 'purple', sub: 'Confirmed only' },
+    ...(user?.role === 'admin' ? [{ label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue).toLocaleString()}`, icon: '💰', color: 'purple', sub: 'Confirmed only' }] : []),
   ] : []
 
   return (
@@ -63,7 +63,7 @@ export default function Dashboard() {
             ))}
           </div>
 
-          <ProfitabilityCharts storeId={activeStoreId} />
+          {user?.role === 'admin' && <ProfitabilityCharts storeId={activeStoreId} />}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="card">

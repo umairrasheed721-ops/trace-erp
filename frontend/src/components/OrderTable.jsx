@@ -1,6 +1,7 @@
 import React from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from './OrderCells'
+import { useApp } from '../context/AppContext'
 
 export default function OrderTable({
   loading,
@@ -37,6 +38,9 @@ export default function OrderTable({
   keyword,
   status
 }) {
+  const { user } = useApp()
+  const canSeeFinancials = user?.role === 'admin'
+
   if (loading) {
     return <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
   }
@@ -163,6 +167,25 @@ export default function OrderTable({
                             ✏️
                           </button>
 
+                          {(o.cost <= 0) && (
+                            <div 
+                              style={{ 
+                                background: 'var(--red)', 
+                                color: '#fff', 
+                                padding: '2px 6px', 
+                                borderRadius: 4, 
+                                fontSize: '0.6rem', 
+                                fontWeight: 800,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 2
+                              }}
+                              title="ZERO COST BLOCK: Processing Disabled"
+                            >
+                              🛑 BLOCK
+                            </div>
+                          )}
+
                           {bookingId === o.id ? (
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>⌛ Working...</span>
                           ) : (
@@ -177,8 +200,10 @@ export default function OrderTable({
                                 color: s === 'confirmed' ? '#fff' : 'var(--text-muted)',
                                 border: '1px solid var(--border)',
                                 borderRadius: 4,
-                                cursor: 'pointer'
+                                cursor: (o.cost <= 0) ? 'not-allowed' : 'pointer',
+                                opacity: (o.cost <= 0) ? 0.5 : 1
                               }}
+                              disabled={o.cost <= 0}
                               value=""
                               onChange={(e) => {
                                 e.stopPropagation();
@@ -330,10 +355,11 @@ export default function OrderTable({
                         </td>
                       )
                     }
-                    if (col.id === 'courier_fee') return <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td>
+                    if (col.id === 'courier_fee') return canSeeFinancials ? <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td> : <td key={col.id}>—</td>
                     if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
-                    if (col.id === 'cost') return <td key={col.id}><CostCell order={o} onSave={updateOrderField} /></td>
+                    if (col.id === 'cost') return canSeeFinancials ? <td key={col.id}><CostCell order={o} onSave={updateOrderField} /></td> : null
                     if (col.id === 'profit') {
+                      if (!canSeeFinancials) return null
                       const fee = parseFloat(o.courier_fee) || 0
                       const cost = parseFloat(o.cost) || 0
                       const price = parseFloat(o.price) || 0
