@@ -32,7 +32,7 @@ console.log('🏗️ --- TRACE ERP ROBUST BUILD ENGINE --- 🏗️');
 // 1. Build Frontend
 console.log('✨ Compiling Frontend Assets (Vite)...');
 process.env.NODE_OPTIONS = '--max-old-space-size=1024';
-run('npx vite build --prefix frontend');
+run('cd frontend && npx --yes vite build');
 
 // 3. Verify Dist
 const distPath = path.join(__dirname, 'frontend', 'dist');

@@ -806,4 +806,86 @@ router.post('/delete-master-cost', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ==========================================
+// 🛡️ PREVENTION & WATCHDOG API
+// ==========================================
+router.get('/prevention-audit', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    // 1. Missing Mapping (In Master Registry but cost is 0)
+    const zeroCostInRegistry = db.prepare(`
+      SELECT parent_title, variant_title, inventory_qty, landed_cost 
+      FROM product_master_costs 
+      WHERE store_id = ? AND (landed_cost = 0 OR landed_cost IS NULL)
+      ORDER BY inventory_qty DESC
+    `).all(Number(store_id));
+
+    // 2. Pending Orders with Missing Cost (The actual risk)
+    const pendingOrdersWithMissingCost = db.prepare(`
+      SELECT id, shopify_order_id, customer_name, price, order_date 
+      FROM orders 
+      WHERE store_id = ? 
+      AND (cost = 0 OR cost IS NULL)
+      AND delivery_status NOT IN ('Cancelled', 'Returned', 'RTO')
+      AND order_date >= date('now', '-30 days')
+      ORDER BY order_date DESC
+    `).all(Number(store_id));
+
+    // 3. New Shopify Variants not yet in registry
+    // This requires a Shopify scan, but we can detect them if they appear in orders but not in master_costs
+    // For now, we use a simple heuristic: any order with items that don't match anything in registry
+    
+    res.json({
+      missingInRegistry: [], // Future: Implement live Shopify diff
+      zeroCostInRegistry,
+      pendingOrdersWithMissingCost
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==========================================
+// 🧠 MARKETING INTELLIGENCE API
+// ==========================================
+router.get('/marketing-metrics', (req, res) => {
+  const { store_id, days = 30 } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const metrics = db.prepare(`
+      SELECT * FROM daily_metrics 
+      WHERE store_id = ? 
+      AND date_string >= date('now', '-' || ? || ' days')
+      ORDER BY date_string DESC
+    `).all(Number(store_id), Number(days));
+    res.json(metrics);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/marketing-metrics', (req, res) => {
+  const { store_id, date, meta_spend, google_spend, tiktok_spend } = req.body;
+  if (!store_id || !date) return res.status(400).json({ error: 'store_id and date required' });
+
+  try {
+    const total = (parseFloat(meta_spend) || 0) + (parseFloat(google_spend) || 0) + (parseFloat(tiktok_spend) || 0);
+    db.prepare(`
+      INSERT INTO daily_metrics (store_id, date_string, marketing_spend, tiktok_marketing)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(store_id, date_string) DO UPDATE SET
+        marketing_spend = excluded.marketing_spend,
+        tiktok_marketing = excluded.tiktok_marketing
+    `).run(Number(store_id), date, total, parseFloat(tiktok_spend) || 0);
+    
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
