@@ -29,17 +29,10 @@ function copyRecursiveSync(src, dest) {
 
 console.log('🏗️ --- TRACE ERP ROBUST BUILD ENGINE --- 🏗️');
 
-// 1. Install frontend deps if missing
-const frontendNodeModules = path.join(__dirname, 'frontend', 'node_modules');
-if (!fs.existsSync(frontendNodeModules)) {
-  console.log('💎 Installing Frontend Dependencies...');
-  run('npm install --prefix frontend --no-audit --no-fund');
-}
-
-// 2. Build Frontend
+// 1. Build Frontend
 console.log('✨ Compiling Frontend Assets (Vite)...');
 process.env.NODE_OPTIONS = '--max-old-space-size=1024';
-run('npm run build --prefix frontend');
+run('npx vite build --prefix frontend');
 
 // 3. Verify Dist
 const distPath = path.join(__dirname, 'frontend', 'dist');
