@@ -102,6 +102,7 @@ app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISO
 
 // Catch-all route to serve the React app
 app.get('*', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
