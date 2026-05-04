@@ -187,25 +187,35 @@ export default function OrderTable({
                             📜
                           </button>
 
+                          <a 
+                            href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+                          >
+                            {o.ref_number || o.shopify_order_id}
+                          </a>
+                        </div>
+                      </td>
+                    )
+                    if (col.id === 'edit') return (
+                      <td key={col.id}>
+                        <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
                           {(o.cost <= 0) && (
                             <div 
                               style={{ 
                                 background: 'var(--red)', 
                                 color: '#fff', 
-                                padding: '2px 6px', 
+                                padding: '2px 5px', 
                                 borderRadius: 4, 
                                 fontSize: '0.6rem', 
                                 fontWeight: 800,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 2
                               }}
                               title="ZERO COST BLOCK: Processing Disabled"
                             >
-                              🛑 BLOCK
+                              🛑
                             </div>
                           )}
-
                           {bookingId === o.id ? (
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>⌛ Working...</span>
                           ) : (
@@ -215,7 +225,7 @@ export default function OrderTable({
                                 padding: '2px 4px', 
                                 fontSize: '0.65rem', 
                                 flexShrink: 0,
-                                width: '110px',
+                                width: '115px',
                                 background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
                                 color: s === 'confirmed' ? '#fff' : 'var(--text-muted)',
                                 border: '1px solid var(--border)',
@@ -256,15 +266,6 @@ export default function OrderTable({
                               )}
                             </select>
                           )}
-
-                          <a 
-                            href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
-                          >
-                            {o.ref_number || o.shopify_order_id}
-                          </a>
                         </div>
                       </td>
                     )
