@@ -1,16 +1,19 @@
 require('dotenv').config();
 const { sendEmergencyAlert } = require('./engines/alerts');
+const { logSystemError } = require('./db');
 
 // --- 🛡️ GLOBAL CRASH PREVENTERS (BULLETPROOF) ---
 // These handlers catch ALL errors — server NEVER exits due to unhandled errors.
 process.on('uncaughtException', (err) => {
   console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
+  try { logSystemError('ERROR', err.message, 'uncaughtException'); } catch (_) {}
   try { sendEmergencyAlert(`*Uncaught Exception*\n${err.message}`); } catch (_) {}
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
   console.error('🛑 CRITICAL: Unhandled Rejection — server kept alive:', msg);
+  try { logSystemError('ERROR', msg, 'unhandledRejection'); } catch (_) {}
   try { sendEmergencyAlert(`*Unhandled Rejection*\n${msg}`); } catch (_) {}
 });
 
@@ -102,22 +105,98 @@ try {
   console.error('Failed to reset sync statuses:', e.message);
 }
 
-// --- 🐕 RESOURCE WATCHDOG ---
-const MEMORY_LIMIT_MB = 512; // Typical Railway Hobby limit
+// --- 🔄 AUTO-RETRY FAILED MODULES (every 90s) ---
+// If a module failed to load at boot (timing issue, missing file, etc.),
+// this loop retries it automatically and re-wires it into Express.
+const ROUTE_MAP = {
+  'Orders':      ['/api/orders',      './routes/orders'],
+  'Tracking':    ['/api/tracking',    './routes/tracking'],
+  'Monitors':    ['/api/monitors',    './routes/monitors'],
+  'Watchdog':    ['/api/watchdog',    './routes/watchdog'],
+  'Stores':      ['/api/stores',      './routes/stores'],
+  'Finance':     ['/api/finance',     './routes/finance'],
+  'Reports':     ['/api/reports',     './routes/reports'],
+  'Users':       ['/api/users',       './routes/users'],
+  'WhatsApp':    ['/api/whatsapp',    './routes/whatsapp'],
+  'Templates':   ['/api/templates',   './routes/templates'],
+  'Diagnostics': ['/api/diagnostics', './routes/diagnostics'],
+};
+
+setInterval(() => {
+  const failed = Object.entries(moduleRegistry).filter(([, v]) => v.status === 'FAILED');
+  if (failed.length === 0) return;
+
+  for (const [label] of failed) {
+    const mapping = ROUTE_MAP[label];
+    if (!mapping) continue;
+    const [routePath, modulePath] = mapping;
+    try {
+      delete require.cache[require.resolve(modulePath)];
+      const mod = require(modulePath);
+      moduleRegistry[label] = { status: 'OK', error: null, loadedAt: new Date().toISOString(), autoHealed: true };
+      app.use(routePath, mod); // Re-register with Express
+      console.log(`🩹 Auto-healed module: ${label} → now serving ${routePath}`);
+      logSystemError('INFO', `Auto-healed module: ${label}`, 'auto-retry');
+    } catch (err) {
+      console.warn(`⏳ Auto-retry failed for ${label}: ${err.message}`);
+      moduleRegistry[label].error = err.message; // Update with latest error
+    }
+  }
+}, 90000); // Every 90 seconds
+
+// --- 🐕 RESOURCE WATCHDOG — auto-heals on memory leak ---
+const MEMORY_LIMIT_MB = 512;
+let highMemoryStrikes = 0;
 setInterval(() => {
   const used = process.memoryUsage().rss / 1024 / 1024;
-  const percentage = (used / MEMORY_LIMIT_MB) * 100;
+  const pct = (used / MEMORY_LIMIT_MB) * 100;
   
-  if (percentage > 80) {
-    console.error(`⚠️ CRITICAL MEMORY USAGE: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)`);
-    sendEmergencyAlert(`*CRITICAL MEMORY ALERT*\nUsage: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)\nRestart recommended if it keeps climbing.`);
-  } else if (percentage > 60) {
-    console.warn(`📉 High Memory Usage: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)`);
+  if (pct > 85) {
+    highMemoryStrikes++;
+    console.error(`⚠️ CRITICAL MEMORY: ${used.toFixed(1)}MB (${pct.toFixed(1)}%) — strike ${highMemoryStrikes}/3`);
+    logSystemError('ERROR', `Critical memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`, 'watchdog');
+    if (highMemoryStrikes >= 3) {
+      console.error('🔄 Auto-restarting due to sustained memory pressure...');
+      sendEmergencyAlert(`*AUTO-RESTART*\nMemory at ${pct.toFixed(1)}% for 3 checks. Restarting gracefully.`);
+      setTimeout(() => process.exit(0), 1000); // Railway restarts it automatically
+    } else {
+      sendEmergencyAlert(`*High Memory*\n${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
+    }
+  } else {
+    highMemoryStrikes = 0; // Reset strikes if memory recovers
+    if (pct > 65) console.warn(`📉 Memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
   }
-}, 300000); // Every 5 minutes
+}, 120000); // Every 2 minutes
+
+// --- 🚨 ERROR RATE ALERTING — auto-alert on error spikes ---
+let recentErrorTimes = [];
+let lastAlertTime = 0;
+const originalPushLog = pushLog;
+const _monitoredPushLog = (level, args) => {
+  if (level === 'ERROR') {
+    const now = Date.now();
+    recentErrorTimes.push(now);
+    recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000); // last 60s
+    if (recentErrorTimes.length >= 10 && (now - lastAlertTime) > 600000) {
+      lastAlertTime = now;
+      const msg = args.map(a => String(a)).join(' ').substring(0, 200);
+      sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} errors in 60s\nLatest: ${msg}`);
+    }
+    // Persist to SQLite
+    try { logSystemError('ERROR', args.map(a => String(a)).join(' ').substring(0, 2000), 'server'); } catch (_) {}
+  }
+};
+// Hook into the existing pushLog
+const _origPushLog = pushLog;
+console.error = (...a) => { _origPushLog('ERROR', a); _monitoredPushLog('ERROR', a); originalError.apply(console, a); };
+
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ⚡ GZIP COMPRESSION — cuts API response sizes 60-80%
+const compression = require('compression');
+app.use(compression({ level: 6, threshold: 1024 })); // Only compress > 1KB responses
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
@@ -125,7 +204,7 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
@@ -174,12 +253,19 @@ app.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
 
-  // Get WhatsApp bot status safely
   let waBotStatus = 'UNKNOWN';
   try {
     const waBot = require.cache[require.resolve('./engines/whatsapp_bot')]?.exports;
     waBotStatus = waBot ? waBot.getStatus().status : 'NOT_LOADED';
   } catch (_) { waBotStatus = 'NOT_LOADED'; }
+
+  // Persistent errors from SQLite (survives restarts)
+  let persistentErrors = [];
+  try {
+    persistentErrors = db.prepare(
+      `SELECT level, message, module, created_at FROM system_logs WHERE level = 'ERROR' ORDER BY created_at DESC LIMIT 30`
+    ).all();
+  } catch (_) {}
 
   res.json({
     server: {
@@ -189,6 +275,8 @@ app.get('/api/admin/system-status', (req, res) => {
       nodeVersion: process.version,
       startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
       errorCount,
+      errorsPerMinute: recentErrorTimes.length,
+      highMemoryStrikes,
     },
     memory: {
       rss: toMB(mem.rss),
@@ -200,8 +288,9 @@ app.get('/api/admin/system-status', (req, res) => {
     },
     modules: moduleRegistry,
     whatsappBot: waBotStatus,
-    recentLogs: logBuffer.slice(-100), // last 100 entries
+    recentLogs: logBuffer.slice(-100),
     recentErrors: logBuffer.filter(l => l.level === 'ERROR').slice(-20),
+    persistentErrors, // Errors since last deploy — from SQLite
   });
 });
 

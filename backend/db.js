@@ -16,8 +16,14 @@ const db = new DatabaseSync(DB_PATH);
 
 
 function initDb() {
+  // --- ⚡ PERFORMANCE PRAGMAs ---
   db.exec(`PRAGMA journal_mode = WAL`);
+  db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
+  db.exec(`PRAGMA cache_size = -20000`);         // 20MB page cache
+  db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
+  db.exec(`PRAGMA mmap_size = 268435456`);       // 256MB memory-mapped I/O
   db.exec(`PRAGMA foreign_keys = ON`);
+  db.exec(`PRAGMA busy_timeout = 5000`);         // Wait 5s instead of failing on lock
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS stores (
@@ -106,6 +112,7 @@ function initDb() {
       content TEXT NOT NULL,
       type TEXT DEFAULT 'custom', -- 'confirmation', 'address', 'shipping', 'custom'
       is_default INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -133,10 +140,15 @@ function initDb() {
       UNIQUE(store_id, date_string)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_tracking ON orders(tracking_number);
-    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(delivery_status);
+    CREATE INDEX IF NOT EXISTS idx_orders_store    ON orders(store_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_tracking  ON orders(tracking_number);
+    CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(delivery_status);
     CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status_date);
+    CREATE INDEX IF NOT EXISTS idx_orders_date      ON orders(order_date);
+    CREATE INDEX IF NOT EXISTS idx_orders_phone     ON orders(phone);
+    CREATE INDEX IF NOT EXISTS idx_orders_customer  ON orders(customer_name);
+    CREATE INDEX IF NOT EXISTS idx_orders_store_date ON orders(store_id, order_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders(store_id, delivery_status);
     
     CREATE TABLE IF NOT EXISTS sync_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,8 +225,20 @@ function initDb() {
 
 
   runMigrations(db);
-  
-  // Legacy repair logic removed to prevent accidental data loss.
+
+  // Persistent system error log (survives restarts unlike in-memory logBuffer)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT NOT NULL DEFAULT 'INFO',
+      message TEXT NOT NULL,
+      module TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_syslogs_level   ON system_logs(level);
+    CREATE INDEX IF NOT EXISTS idx_syslogs_created ON system_logs(created_at DESC);
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -278,30 +302,38 @@ initDb();
 // Helper wrappers to mimic better-sqlite3's API pattern
 // so the rest of the code doesn't need to change
 
+// --- ⚡ PREPARED STATEMENT CACHE ---
+// Compiles each SQL statement ONCE and reuses it — huge speed gain.
 const _prepare_cache = new Map();
 
+function getPrepared(sql) {
+  if (!_prepare_cache.has(sql)) {
+    _prepare_cache.set(sql, db.prepare(sql));
+  }
+  return _prepare_cache.get(sql);
+}
+
 function prepare(sql) {
-  // Return an object with .get(), .all(), .run() methods
   return {
     get: (...params) => {
       const start = Date.now();
-      const res = db.prepare(sql).get(...params);
+      const res = getPrepared(sql).get(...params);
       const duration = Date.now() - start;
-      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      if (duration > 300) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql: sql.substring(0, 80), duration } });
       return res;
     },
     all: (...params) => {
       const start = Date.now();
-      const res = db.prepare(sql).all(...params);
+      const res = getPrepared(sql).all(...params);
       const duration = Date.now() - start;
-      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      if (duration > 300) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql: sql.substring(0, 80), duration } });
       return res;
     },
     run: (...params) => {
       const start = Date.now();
-      const res = db.prepare(sql).run(...params);
+      const res = getPrepared(sql).run(...params);
       const duration = Date.now() - start;
-      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      if (duration > 300) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql: sql.substring(0, 80), duration } });
       return res;
     }
   };
@@ -356,7 +388,14 @@ function logOrderChange({ order_id, user_id, type, old_val, new_val }) {
   }
 }
 
-module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange };
+function logSystemError(level, message, module = 'server') {
+  try {
+    db.prepare(`INSERT INTO system_logs (level, message, module) VALUES (?, ?, ?)`)
+      .run(level, message.substring(0, 2000), module);
+  } catch (_) {} // Never let error logging crash anything
+}
+
+module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}
@@ -378,7 +417,8 @@ function runMigrations(db) {
     { table: 'stores', column: 'sync_progress', type: 'TEXT' },
     { table: 'product_master_costs', column: 'variant_title', type: 'TEXT NOT NULL DEFAULT ""' },
     { table: 'product_master_costs', column: 'selling_price', type: 'REAL DEFAULT 0' },
-    { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' }
+    { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' },
+    { table: 'whatsapp_templates', column: 'status', type: "TEXT DEFAULT 'active'" }
   ];
 
   migrations.forEach(m => {

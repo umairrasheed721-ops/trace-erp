@@ -8,7 +8,6 @@ const { broadcast } = require('../sse');
 router.get('/', (req, res) => {
   const { store_id, page = 1, limit = 100, status, search, courier, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  console.log(`DEBUG: req.query: ${JSON.stringify(req.query)}`);
   
   let queryParams = [Number(store_id)];
   let whereClauses = ['o.store_id = ?'];
@@ -56,7 +55,6 @@ router.get('/', (req, res) => {
   });
 
   const where = whereClauses.join(' AND ');
-  console.log(`DEBUG: WHERE clause: ${where} | PARAMS: ${JSON.stringify(queryParams)}`);
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   // Dynamic Sorting
@@ -79,9 +77,7 @@ router.get('/', (req, res) => {
     orders, 
     total: total.count, 
     page: parseInt(page), 
-    limit: parseInt(limit),
-    debugWhere: where,
-    debugParams: queryParams
+    limit: parseInt(limit)
   });
 });
 
