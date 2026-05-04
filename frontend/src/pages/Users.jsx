@@ -328,15 +328,20 @@ function RoleAuthorityMatrix({ addToast, token }) {
   };
 
   const toggleAccess = async (role, pageId) => {
-    setSaving(`${role}-${pageId}`);
+    // 🚀 OPTIMISTIC UPDATE: Update UI immediately
     const currentForRole = Array.isArray(permissions) 
       ? permissions.filter(p => p.role_name === role).map(p => p.page_id)
       : [];
+    
     let newPageIds;
-    if (currentForRole.includes(pageId)) {
-      newPageIds = currentForRole.filter(id => id !== pageId);
-    } else {
+    const isAdding = !currentForRole.includes(pageId);
+    
+    if (isAdding) {
       newPageIds = [...currentForRole, pageId];
+      setPermissions(prev => [...prev, { role_name: role, page_id: pageId }]);
+    } else {
+      newPageIds = currentForRole.filter(id => id !== pageId);
+      setPermissions(prev => prev.filter(p => !(p.role_name === role && p.page_id === pageId)));
     }
 
     try {
@@ -348,14 +353,14 @@ function RoleAuthorityMatrix({ addToast, token }) {
         },
         body: JSON.stringify({ role_name: role, page_ids: newPageIds })
       });
-      if (res.ok) {
-        addToast(`✅ Authority updated for ${role}`, 'success');
-        fetchPermissions();
+      
+      if (!res.ok) {
+        throw new Error('Failed');
       }
+      // Success - no toast needed for every click to avoid spam
     } catch (e) {
-      addToast('Failed to update authority', 'error');
-    } finally {
-      setSaving(null);
+      addToast('⚠️ Sync failed. Reverting...', 'error');
+      fetchPermissions(); // Revert on failure
     }
   };
 
