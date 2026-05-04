@@ -27,7 +27,7 @@ export default function DiagnosticCenter() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
-      setSmokeStatus(data);
+      setSmokeStatus(data.results);
     } catch (err) {
       alert('Smoke test failed');
     } finally {
@@ -98,7 +98,7 @@ export default function DiagnosticCenter() {
                 {smokeStatus.database}
               </span>
             </div>
-            {smokeStatus.shopify.map((s, i) => (
+            {smokeStatus.shopify?.map((s, i) => (
               <div key={i} className="p-4 bg-black/20 rounded-lg flex items-center justify-between">
                 <span className="text-sm truncate max-w-[150px]">{s.domain}</span>
                 <span className={`px-2 py-1 text-[10px] font-bold rounded ${s.status === 'OK' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
