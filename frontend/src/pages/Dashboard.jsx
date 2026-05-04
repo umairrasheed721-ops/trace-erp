@@ -69,7 +69,7 @@ export default function Dashboard() {
             <div className="card">
               <div className="card-title">Quick Actions</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <QuickAction href="/orders" icon="📦" label="View All Orders" desc="Browse, search and filter orders" />
+                <QuickAction href="/search" icon="🔍" label="Command Center" desc="Advanced search, bulk status & sync" />
                 <QuickAction href="/stuck" icon="⏳" label="Review Stuck Orders" desc="Orders with no movement > 48h" />
                 <QuickAction href="/advice" icon="🧠" label="Shipper Advice" desc="Take action on problem deliveries" />
                 <QuickAction href="/watchdog" icon="🐕" label="Watchdog Report" desc="PostEx rider fraud detection" />

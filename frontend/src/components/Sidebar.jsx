@@ -7,7 +7,6 @@ export default function Sidebar() {
 
   const navItems = [
     { to: '/', icon: '🏠', label: 'Dashboard' },
-    { to: '/orders', icon: '📦', label: 'Orders' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/whatsapp-bot', icon: '🤖', label: 'WhatsApp Bot', permission: 'admin_only' },

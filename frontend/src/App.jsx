@@ -9,7 +9,6 @@ import ToastContainer from './components/ToastContainer'
 import ErrorBoundary from './components/ErrorBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Orders = lazy(() => import('./pages/Orders'))
 const SearchTool = lazy(() => import('./pages/SearchTool'))
 const StuckMonitor = lazy(() => import('./pages/StuckMonitor'))
 const AdviceMonitor = lazy(() => import('./pages/AdviceMonitor'))
@@ -53,7 +52,6 @@ function AppContent() {
               <ErrorBoundary>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
-                  <Route path="/orders" element={<Orders />} />
                   <Route path="/search" element={<SearchTool />} />
                   <Route path="/returns" element={<ReturnsManager />} />
                   <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
