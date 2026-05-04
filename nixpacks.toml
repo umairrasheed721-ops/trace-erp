@@ -4,7 +4,6 @@ nixPkgs = [
   "chromium",
   "nss",
   "freetype",
-  "freetype.dev",
   "harfbuzz",
   "glib",
   "nspr",
@@ -12,16 +11,15 @@ nixPkgs = [
   "cups",
   "dbus",
   "libdrm",
-  "mesa",
   "libxkbcommon",
   "expat"
 ]
 
 [phases.install]
-cmds = ["cd backend && npm install --omit=dev"]
+cmds = ["npm install", "cd backend && npm install", "cd frontend && npm install"]
 
 [phases.build]
-cmds = ["cd frontend && npm install && npm run build && cp -r dist/* ../backend/public/"]
+cmds = ["npm run build"]
 
 [start]
 cmd = "node --experimental-sqlite backend/index.js"
