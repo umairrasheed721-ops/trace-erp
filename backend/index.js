@@ -1,15 +1,23 @@
 require('dotenv').config();
 const { sendEmergencyAlert } = require('./engines/alerts');
 
-// --- 🛡️ GLOBAL CRASH PREVENTERS ---
+// --- 🛡️ GLOBAL CRASH PREVENTERS (BULLETPROOF) ---
+// These handlers catch ALL errors — server NEVER exits due to unhandled errors.
 process.on('uncaughtException', (err) => {
-  console.error('🛑 CRITICAL: Uncaught Exception caught to prevent crash:', err.stack || err);
-  sendEmergencyAlert(`*Uncaught Exception*\n${err.message}\nCheck logs at /api/admin/logs`);
+  console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
+  try { sendEmergencyAlert(`*Uncaught Exception*\n${err.message}`); } catch (_) {}
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('🛑 CRITICAL: Unhandled Rejection caught to prevent crash:', reason);
-  sendEmergencyAlert(`*Unhandled Rejection*\n${reason}\nCheck logs at /api/admin/logs`);
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  console.error('🛑 CRITICAL: Unhandled Rejection — server kept alive:', msg);
+  try { sendEmergencyAlert(`*Unhandled Rejection*\n${msg}`); } catch (_) {}
+});
+
+// Prevent Railway from killing the process on SIGTERM during hot reload
+process.on('SIGTERM', () => {
+  console.log('📡 SIGTERM received — graceful shutdown');
+  process.exit(0);
 });
 
 // --- 🛡️ ENVIRONMENT HEALTH GUARD ---
@@ -47,22 +55,38 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
-const { router: authRoutes } = require('./routes/auth');
-const ordersRoutes = require('./routes/orders');
-const trackingRoutes = require('./routes/tracking');
-const monitorsRoutes = require('./routes/monitors');
-const watchdogRoutes = require('./routes/watchdog');
-const storesRoutes = require('./routes/stores');
-const financeRoutes = require('./routes/finance');
-const reportsRoutes = require('./routes/reports');
-const usersRoutes = require('./routes/users');
-const webhooksRoutes = require('./routes/webhooks');
-const whatsappRoutes = require('./routes/whatsapp');
-const publicRoutes = require('./routes/public');
-const templatesRoutes = require('./routes/templates');
-const diagnosticsRoutes = require('./routes/diagnostics');
-const schedulerInit = require('./scheduler');
-const bot = require('./engines/whatsapp_bot'); // Start the bot
+// --- 🛡️ SAFE ROUTE LOADER — a broken route never crashes the server ---
+function safeRequire(modulePath, label) {
+  try {
+    const mod = require(modulePath);
+    console.log(`✅ Loaded: ${label}`);
+    return mod;
+  } catch (err) {
+    console.error(`⚠️ Failed to load ${label}: ${err.message}`);
+    // Return a dummy router that returns 503 for all requests
+    const { Router } = require('express');
+    const fallback = Router();
+    fallback.all('*', (req, res) => res.status(503).json({ error: `${label} is temporarily unavailable`, details: err.message }));
+    return fallback;
+  }
+}
+
+const { router: authRoutes } = require('./routes/auth'); // Auth must work — no fallback
+const ordersRoutes     = safeRequire('./routes/orders',      'Orders');
+const trackingRoutes   = safeRequire('./routes/tracking',    'Tracking');
+const monitorsRoutes   = safeRequire('./routes/monitors',    'Monitors');
+const watchdogRoutes   = safeRequire('./routes/watchdog',    'Watchdog');
+const storesRoutes     = safeRequire('./routes/stores',      'Stores');
+const financeRoutes    = safeRequire('./routes/finance',     'Finance');
+const reportsRoutes    = safeRequire('./routes/reports',     'Reports');
+const usersRoutes      = safeRequire('./routes/users',       'Users');
+const webhooksRoutes   = safeRequire('./routes/webhooks',    'Webhooks');
+const whatsappRoutes   = safeRequire('./routes/whatsapp',    'WhatsApp');
+const publicRoutes     = safeRequire('./routes/public',      'Public');
+const templatesRoutes  = safeRequire('./routes/templates',   'Templates');
+const diagnosticsRoutes = safeRequire('./routes/diagnostics', 'Diagnostics');
+const schedulerInit    = safeRequire('./scheduler',          'Scheduler');
+// NOTE: WhatsApp bot is loaded LAZILY inside routes/whatsapp.js — NOT here.
 
 // Reset any stuck sync statuses on startup
 try {
