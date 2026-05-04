@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import ProfitabilityCharts from '../components/ProfitabilityCharts'
+import ApiStatusBanner from '../components/ApiStatusBanner'
 
 export default function Dashboard() {
   const { activeStoreId, activeStore, addToast, user } = useApp()
@@ -41,6 +42,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      <ApiStatusBanner />
       <div className="page-header">
         <div>
           <h2>Dashboard</h2>

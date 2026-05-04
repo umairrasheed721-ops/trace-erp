@@ -1,4 +1,14 @@
 require('dotenv').config();
+
+// --- 🛡️ GLOBAL CRASH PREVENTERS ---
+process.on('uncaughtException', (err) => {
+  console.error('🛑 CRITICAL: Uncaught Exception caught to prevent crash:', err.stack || err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🛑 CRITICAL: Unhandled Rejection caught to prevent crash:', reason);
+});
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
