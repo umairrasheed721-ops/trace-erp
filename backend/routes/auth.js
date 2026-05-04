@@ -8,6 +8,21 @@ const jwt = require('jsonwebtoken');
 const TRACEPK_SCOPES = 'read_orders,write_orders,read_locations,read_inventory,read_customers,read_products,read_all_orders';
 const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
 
+// Middleware to authenticate JWT tokens
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
 // POST /api/auth/login - User login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
@@ -243,4 +258,7 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = {
+  router,
+  authenticateToken
+};
