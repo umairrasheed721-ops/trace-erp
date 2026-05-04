@@ -140,7 +140,7 @@ app.use((req, res, next) => {
 });
 
 // --- 📊 LIVE PULSE LOGS API ---
-app.get('/api/admin/logs', authenticateToken, (req, res) => {
+app.get('/api/admin/logs', (req, res) => {
   if (req.user?.role !== 'admin' && req.user?.role !== 'owner') {
     return res.status(403).json({ error: 'Access denied. Admins only.' });
   }
@@ -165,7 +165,7 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
-app.use('/api/diagnostics', authenticateToken, diagnosticsRoutes);
+app.use('/api/diagnostics', diagnosticsRoutes);
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {
