@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const API_TIMEOUT = 15000; // 15s Circuit Breaker
 const db = require('../db');
 const bot = require('./whatsapp_bot');
 const crypto = require('crypto');
@@ -9,7 +10,7 @@ const CHUNK_SIZE = 50;
 async function fetchWithRetry(url, options, retries = 3, backoff = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, { ...options, timeout: API_TIMEOUT });
       if (response.status === 429) {
         const retryAfter = response.headers.get('Retry-After') || backoff;
         await sleep(parseInt(retryAfter) * 1.5);
@@ -215,7 +216,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
     // ── STREAMING SYNC: Process batch-by-batch to save memory ─────────
     while (nextUrl) {
-      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
+      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
 
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
       if (rateLimit) {
@@ -310,7 +311,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     let updatedOrders = [];
 
     while (nextUrl) {
-      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
+      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
       if (rateLimit) {
         const [used, total] = rateLimit.split('/').map(Number);
@@ -505,6 +506,7 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
             'X-Shopify-Access-Token': accessToken,
             'Content-Type': 'application/json'
           },
+          timeout: API_TIMEOUT,
           body: JSON.stringify({ query })
         });
 
@@ -548,7 +550,7 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
       try {
         const res = await fetch(
           `https://${shopDomain}/admin/api/2024-10/inventory_items.json?ids=${chunk.join(',')}`,
-          { headers: { 'X-Shopify-Access-Token': accessToken } }
+          { headers: { 'X-Shopify-Access-Token': accessToken }, timeout: API_TIMEOUT }
         );
 
         if (res.status === 429) {
@@ -584,7 +586,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
   try {
     const res = await fetch(`https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`, {
-      headers: { 'X-Shopify-Access-Token': access_token }
+      headers: { 'X-Shopify-Access-Token': access_token },
+      timeout: API_TIMEOUT
     });
     if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
     const data = await res.json();
@@ -703,6 +706,7 @@ async function registerShopifyWebhooks(store, appUrl) {
         'X-Shopify-Access-Token': access_token,
         'Content-Type': 'application/json'
       },
+      timeout: API_TIMEOUT,
       body: JSON.stringify({
         webhook: {
           topic,
@@ -725,7 +729,7 @@ async function fulfillShopifyOrder(store, shopifyOrderId, trackingNumber, courie
 
   // Step 1: Fetch fulfillment orders to get the fulfillment_order_id
   const foUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}/fulfillment_orders.json`;
-  const foRes = await fetch(foUrl, { headers: { 'X-Shopify-Access-Token': access_token } });
+  const foRes = await fetch(foUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
   const foData = await foRes.json();
   
   if (!foData.fulfillment_orders || !foData.fulfillment_orders.length) {

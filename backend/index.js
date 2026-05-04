@@ -146,7 +146,29 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
   schedulerInit();
 });
+
+// --- 🛑 GRACEFUL SHUTDOWN ---
+const shutdown = () => {
+  console.log('\n👋 Shutdown signal received. Closing server gracefully...');
+  server.close(() => {
+    console.log('✅ HTTP server closed.');
+    try {
+      db.exec('PRAGMA optimize;'); // Final DB optimization
+      console.log('✅ Database optimized and closed.');
+    } catch (e) {}
+    process.exit(0);
+  });
+
+  // Force shutdown after 10s if graceful close fails
+  setTimeout(() => {
+    console.error('⚠️ Could not close connections in time, forcing shut down');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
