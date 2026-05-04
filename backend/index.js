@@ -13,7 +13,10 @@ const financeRoutes = require('./routes/finance');
 const reportsRoutes = require('./routes/reports');
 const usersRoutes = require('./routes/users');
 const webhooksRoutes = require('./routes/webhooks');
+const whatsappRoutes = require('./routes/whatsapp');
+const publicRoutes = require('./routes/public');
 const schedulerInit = require('./scheduler');
+const bot = require('./engines/whatsapp_bot'); // Start the bot
 
 // Reset any stuck sync statuses on startup
 try {
@@ -43,6 +46,7 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/auth/callback')) return next();
   if (req.path === '/api/auth/login') return next();
   if (req.path.startsWith('/api/webhooks/')) return next();
+  if (req.path.startsWith('/api/public/')) return next();
   if (req.path === '/health') return next();
   
   // Live SSE Endpoint handles its own token from query
@@ -89,6 +93,8 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/public', publicRoutes);
 
 const { addClient } = require('./sse');
 

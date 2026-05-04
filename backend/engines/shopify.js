@@ -1,5 +1,7 @@
 const fetch = require('node-fetch');
 const db = require('../db');
+const bot = require('./whatsapp_bot');
+const crypto = require('crypto');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CHUNK_SIZE = 50;
@@ -135,8 +137,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     INSERT OR IGNORE INTO orders (
       store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
       address, city, price, tracking_number, items_count, notes, product_titles,
-      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
   `);
 
   const insertChunk = db.transaction((orders, costMap) => {
@@ -154,6 +156,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const tracking = ful?.tracking_number || '';
         const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
         const source = detectOrderSource(order);
+        const status = mapShopifyStatus(order);
+        const token = crypto.randomBytes(16).toString('hex');
 
         const firstName = (addr.first_name || '').trim();
         const lastName = (addr.last_name || '').trim();
@@ -170,11 +174,20 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           addr.city || '',
           finalPrice, tracking, activeCount, order.note || '',
           productTitles,
-          mapShopifyStatus(order),
+          status,
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
-          0.5, courier, totalCost, source
+          0.5, courier, totalCost, source, token
         );
+
+        // 🤖 AUTO-WHATSAPP TRIGGER
+        if (status === 'Pending' && (addr.phone || customer.phone)) {
+          const appUrl = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
+          const link = `${appUrl}/api/public/confirm-order/${token}`;
+          const msg = `Hi ${fullName}, thank you for your order ${order.name} at TRACE! 📦\n\nPlease confirm your order by clicking here: ${link}`;
+          bot.sendMessage(addr.phone || customer.phone, msg);
+        }
+
         count++;
       } catch (e) {
         console.error(`Skip order ${order.id}: ${e.message}`);
@@ -636,24 +649,36 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
     } else {
+      const token = crypto.randomBytes(16).toString('hex');
+      const fullName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || '');
+      
       db.prepare(`
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+          delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
       `).run(
         storeId, String(order.id), order.name,
-        `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || ''),
+        fullName,
         (order.created_at || '').split('T')[0],
         addr.phone || customer.phone || '',
         `${addr.address1 || ''} ${addr.city || ''}`.trim(),
         addr.city || '',
-        finalPrice, tracking, activeCount, order.note || '', productTitles.join(', '),
+        finalPrice, tracking, activeCount, order.note || '', productTitles,
         newDeliveryStatus,
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
-        0.5, courier, totalCost, source
+        0.5, courier, totalCost, source, token
       );
+
+      // 🤖 AUTO-WHATSAPP TRIGGER
+      if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
+        const appUrl = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
+        const link = `${appUrl}/api/public/confirm-order/${token}`;
+        const msg = `Hi ${fullName}, thank you for your order ${order.name} at TRACE! 📦\n\nPlease confirm your order by clicking here: ${link}`;
+        bot.sendMessage(addr.phone || customer.phone, msg);
+      }
+
       console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
       try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
     }

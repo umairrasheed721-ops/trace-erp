@@ -24,6 +24,7 @@ const Profile = lazy(() => import('./pages/Profile'))
 const CostManager = lazy(() => import('./pages/CostManager'))
 const PreventionManager = lazy(() => import('./pages/PreventionManager'))
 const MarketingIntelligence = lazy(() => import('./pages/MarketingIntelligence'))
+const WhatsAppBot = lazy(() => import('./pages/WhatsAppBot'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -52,6 +53,7 @@ function AppContent() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/search" element={<SearchTool />} />
                 <Route path="/returns" element={<ReturnsManager />} />
+                <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
                 <Route path="/finance" element={<FinanceManager />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/intelligence" element={<CourierIntelligence />} />

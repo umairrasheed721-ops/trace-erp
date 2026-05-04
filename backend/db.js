@@ -75,6 +75,7 @@ function initDb() {
       order_source TEXT DEFAULT 'Direct / Web',
       cost_locked INTEGER DEFAULT 0,
       courier_fee_locked INTEGER DEFAULT 0,
+      confirmation_token TEXT,
       UNIQUE(store_id, shopify_order_id)
     );
 
