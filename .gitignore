@@ -9,3 +9,5 @@ frontend/node_modules/
 .DS_Store
 frontend/dist/
 backend/public/
+backend/wa_session/
+wa_session/
