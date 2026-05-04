@@ -5,6 +5,13 @@ export default function MarketingIntelligence() {
   const { activeStoreId, token } = useApp();
   const [showMetaModal, setShowMetaModal] = useState(false);
   const [metaConfig, setMetaConfig] = useState({ ad_account_id: '', access_token: '' });
+  const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState(null);
+  const [platforms, setPlatforms] = useState([
+    { id: 'meta', name: 'Meta Ads', icon: '📘', connected: false },
+    { id: 'google', name: 'Google Ads', icon: '🔍', connected: false },
+    { id: 'tiktok', name: 'TikTok Ads', icon: '🎵', connected: false },
+  ]);
 
   useEffect(() => {
     if (activeStoreId) fetchMetrics();
