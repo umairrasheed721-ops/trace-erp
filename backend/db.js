@@ -187,6 +187,14 @@ function initDb() {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, view_name)
     );
+    
+    // Migrations for existing databases
+    try {
+      db.exec("ALTER TABLE orders ADD COLUMN confirmation_token TEXT");
+      console.log("✅ Migration: Added confirmation_token to orders table.");
+    } catch (e) {
+      // Column already exists, ignore
+    }
   `);
 
   try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}

@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import ProfitabilityCharts from '../components/ProfitabilityCharts'
 
 export default function Dashboard() {
-  const { activeStoreId, activeStore, addToast } = useApp()
+  const { activeStoreId, activeStore, addToast, user } = useApp()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
