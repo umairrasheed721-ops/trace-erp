@@ -3,6 +3,19 @@ const API_TIMEOUT = 15000; // 15s Circuit Breaker
 const db = require('../db');
 const bot = require('./whatsapp_bot');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+function saveRawPayload(type, payload) {
+  try {
+    const filename = `${type}-${Date.now()}.json`;
+    const filepath = path.join(__dirname, '../debug_storage', filename);
+    fs.writeFileSync(filepath, JSON.stringify(payload, null, 2));
+    console.log(`💾 [DebugStorage] Saved raw payload: ${filename}`);
+  } catch (err) {
+    console.error('Failed to save raw payload:', err.message);
+  }
+}
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CHUNK_SIZE = 50;

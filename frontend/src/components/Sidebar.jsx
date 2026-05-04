@@ -22,6 +22,7 @@ export default function Sidebar() {
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
     { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'admin_only' },
     { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
+    { to: '/diagnostics', icon: '🛠️', label: 'Diagnostic Center', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
     if (!item.permission) return true

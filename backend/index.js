@@ -60,6 +60,7 @@ const webhooksRoutes = require('./routes/webhooks');
 const whatsappRoutes = require('./routes/whatsapp');
 const publicRoutes = require('./routes/public');
 const templatesRoutes = require('./routes/templates');
+const diagnosticsRoutes = require('./routes/diagnostics');
 const schedulerInit = require('./scheduler');
 const bot = require('./engines/whatsapp_bot'); // Start the bot
 
@@ -70,6 +71,20 @@ try {
 } catch (e) {
   console.error('Failed to reset sync statuses:', e.message);
 }
+
+// --- 🐕 RESOURCE WATCHDOG ---
+const MEMORY_LIMIT_MB = 512; // Typical Railway Hobby limit
+setInterval(() => {
+  const used = process.memoryUsage().rss / 1024 / 1024;
+  const percentage = (used / MEMORY_LIMIT_MB) * 100;
+  
+  if (percentage > 80) {
+    console.error(`⚠️ CRITICAL MEMORY USAGE: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)`);
+    sendEmergencyAlert(`*CRITICAL MEMORY ALERT*\nUsage: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)\nRestart recommended if it keeps climbing.`);
+  } else if (percentage > 60) {
+    console.warn(`📉 High Memory Usage: ${used.toFixed(2)}MB (${percentage.toFixed(1)}%)`);
+  }
+}, 300000); // Every 5 minutes
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -150,6 +165,7 @@ app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
+app.use('/api/diagnostics', authenticateToken, diagnosticsRoutes);
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {

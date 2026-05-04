@@ -264,16 +264,25 @@ function prepare(sql) {
   // Return an object with .get(), .all(), .run() methods
   return {
     get: (...params) => {
-      const stmt = db.prepare(sql);
-      return stmt.get(...params);
+      const start = Date.now();
+      const res = db.prepare(sql).get(...params);
+      const duration = Date.now() - start;
+      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      return res;
     },
     all: (...params) => {
-      const stmt = db.prepare(sql);
-      return stmt.all(...params);
+      const start = Date.now();
+      const res = db.prepare(sql).all(...params);
+      const duration = Date.now() - start;
+      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      return res;
     },
     run: (...params) => {
-      const stmt = db.prepare(sql);
-      return stmt.run(...params);
+      const start = Date.now();
+      const res = db.prepare(sql).run(...params);
+      const duration = Date.now() - start;
+      if (duration > 500) logAction({ action: 'SLOW_QUERY', level: 'WARN', details: { sql, duration, params } });
+      return res;
     }
   };
 }
