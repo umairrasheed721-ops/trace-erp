@@ -50,8 +50,11 @@ export default function AppProvider({ children }) {
     if (!token) return
     fetch('/api/users/permissions')
       .then(r => r.json())
-      .then(setPermissions)
-      .catch(() => {})
+      .then(data => {
+        if (Array.isArray(data)) setPermissions(data)
+        else setPermissions([])
+      })
+      .catch(() => setPermissions([]))
   }
 
   useEffect(() => {

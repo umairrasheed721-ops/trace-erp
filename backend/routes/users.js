@@ -60,8 +60,8 @@ router.put('/:id', isAdmin, async (req, res) => {
   }
 });
 
-// GET /api/users/permissions - Get all role permissions
-router.get('/permissions', isAdmin, (req, res) => {
+// GET /api/users/permissions - Get all role permissions (Visible to all so sidebar can filter)
+router.get('/permissions', (req, res) => {
   try {
     const permissions = db.prepare('SELECT * FROM role_permissions').all();
     res.json(permissions);
