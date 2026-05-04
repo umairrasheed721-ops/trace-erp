@@ -145,58 +145,58 @@ setInterval(() => {
 }, 90000); // Every 90 seconds
 
 // --- 🐕 RESOURCE WATCHDOG — auto-heals on memory leak ---
+// --- 🐕 RESOURCE WATCHDOG — alert only, never self-terminate ---
+// Railway OOM-kills the process if needed. We don't force exits.
 const MEMORY_LIMIT_MB = 512;
 let highMemoryStrikes = 0;
 setInterval(() => {
   const used = process.memoryUsage().rss / 1024 / 1024;
   const pct = (used / MEMORY_LIMIT_MB) * 100;
-  
-  if (pct > 85) {
+  if (pct > 90) {
     highMemoryStrikes++;
-    console.error(`⚠️ CRITICAL MEMORY: ${used.toFixed(1)}MB (${pct.toFixed(1)}%) — strike ${highMemoryStrikes}/3`);
-    logSystemError('ERROR', `Critical memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`, 'watchdog');
-    if (highMemoryStrikes >= 3) {
-      console.error('🔄 Auto-restarting due to sustained memory pressure...');
-      sendEmergencyAlert(`*AUTO-RESTART*\nMemory at ${pct.toFixed(1)}% for 3 checks. Restarting gracefully.`);
-      setTimeout(() => process.exit(0), 1000); // Railway restarts it automatically
-    } else {
-      sendEmergencyAlert(`*High Memory*\n${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
+    console.error(`⚠️ HIGH MEMORY: ${used.toFixed(1)}MB (${pct.toFixed(1)}%) — strike ${highMemoryStrikes}`);
+    try { logSystemError('ERROR', `High memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`, 'watchdog'); } catch (_) {}
+    if (highMemoryStrikes === 1) { // Alert once, not every 2 min
+      try { sendEmergencyAlert(`*High Memory*\n${used.toFixed(1)}MB (${pct.toFixed(1)}%)\nMonitor closely`); } catch (_) {}
     }
   } else {
-    highMemoryStrikes = 0; // Reset strikes if memory recovers
-    if (pct > 65) console.warn(`📉 Memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
+    highMemoryStrikes = 0;
+    if (pct > 70) console.warn(`📉 Memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
   }
-}, 120000); // Every 2 minutes
+}, 300000); // Every 5 minutes
 
-// --- 🚨 ERROR RATE ALERTING — auto-alert on error spikes ---
+// --- 🚨 ERROR RATE ALERTING (piggyback on pushLog, no double-override) ---
 let recentErrorTimes = [];
 let lastAlertTime = 0;
-const originalPushLog = pushLog;
-const _monitoredPushLog = (level, args) => {
+const _origPushLog = pushLog;
+// Wrap pushLog to add error-rate monitoring + SQLite persistence
+function pushLog(level, args) {
+  _origPushLog(level, args);
   if (level === 'ERROR') {
     const now = Date.now();
     recentErrorTimes.push(now);
-    recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000); // last 60s
-    if (recentErrorTimes.length >= 10 && (now - lastAlertTime) > 600000) {
+    recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000);
+    if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
       lastAlertTime = now;
       const msg = args.map(a => String(a)).join(' ').substring(0, 200);
-      sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} errors in 60s\nLatest: ${msg}`);
+      try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
     }
-    // Persist to SQLite
-    try { logSystemError('ERROR', args.map(a => String(a)).join(' ').substring(0, 2000), 'server'); } catch (_) {}
+    try { logSystemError('ERROR', args.map(a => String(a)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
   }
-};
-// Hook into the existing pushLog
-const _origPushLog = pushLog;
-console.error = (...a) => { _origPushLog('ERROR', a); _monitoredPushLog('ERROR', a); originalError.apply(console, a); };
+}
 
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ⚡ GZIP COMPRESSION — cuts API response sizes 60-80%
-const compression = require('compression');
-app.use(compression({ level: 6, threshold: 1024 })); // Only compress > 1KB responses
+try {
+  const compression = require('compression');
+  app.use(compression({ level: 6, threshold: 1024 }));
+  console.log('✅ Gzip compression enabled');
+} catch (_) {
+  console.warn('⚠️ compression module not found, running without gzip');
+}
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
