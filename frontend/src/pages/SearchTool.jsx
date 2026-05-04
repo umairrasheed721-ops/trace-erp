@@ -10,6 +10,7 @@ import CustomerHistoryModal from '../components/CustomerHistoryModal'
 import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from '../components/OrderCells'
 import OrderHistoryModal from '../components/OrderHistoryModal'
+import ApiStatusBanner from '../components/ApiStatusBanner'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -228,8 +229,9 @@ export default function SearchTool() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
       const data = await res.json()
-      setWATemplates(data)
-      if (data.length > 0) setWAQueueTemplate(data[0].id)
+      const activeTemplates = data.filter(t => t.status === 'active')
+      setWATemplates(activeTemplates)
+      if (activeTemplates.length > 0) setWAQueueTemplate(activeTemplates[0].id)
     } catch (err) {
       console.error('Failed to fetch templates', err)
     }
@@ -1045,6 +1047,7 @@ export default function SearchTool() {
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
+      <ApiStatusBanner />
       {/* REAL-TIME SYNC PROGRESS BAR */}
       {syncProgress && (
         <div style={{
