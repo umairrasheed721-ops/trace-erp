@@ -189,27 +189,8 @@ function initDb() {
     );
   `);
 
+
   runMigrations(db);
-}
-
-function runMigrations(db) {
-  const migrations = [
-    { table: 'orders', column: 'confirmation_token', type: 'TEXT' },
-    { table: 'stores', column: 'sync_progress', type: 'TEXT' },
-    { table: 'product_master_costs', column: 'variant_title', type: 'TEXT NOT NULL DEFAULT ""' },
-    { table: 'product_master_costs', column: 'selling_price', type: 'REAL DEFAULT 0' },
-    { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' }
-  ];
-
-  migrations.forEach(m => {
-    try {
-      db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
-      console.log(`📦 Migration Applied: ${m.table}.${m.column}`);
-    } catch (e) {
-      // Ignore "duplicate column" errors
-    }
-  });
-}
   
   // Legacy repair logic removed to prevent accidental data loss.
   db.exec(`
@@ -313,3 +294,22 @@ try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch(e) {}
+
+function runMigrations(db) {
+  const migrations = [
+    { table: 'orders', column: 'confirmation_token', type: 'TEXT' },
+    { table: 'stores', column: 'sync_progress', type: 'TEXT' },
+    { table: 'product_master_costs', column: 'variant_title', type: 'TEXT NOT NULL DEFAULT ""' },
+    { table: 'product_master_costs', column: 'selling_price', type: 'REAL DEFAULT 0' },
+    { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' }
+  ];
+
+  migrations.forEach(m => {
+    try {
+      db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+      console.log(`📦 Migration Applied: ${m.table}.${m.column}`);
+    } catch (e) {
+      // Ignore "duplicate column" errors
+    }
+  });
+}
