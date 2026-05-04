@@ -21,4 +21,15 @@ router.post('/send-test', authenticateToken, async (req, res) => {
   }
 });
 
+// Reset Session — wipes wa_session and forces fresh QR scan
+router.post('/reset', authenticateToken, async (req, res) => {
+  try {
+    await bot.resetSession();
+    res.json({ success: true, message: 'Session reset. Scan the new QR code to reconnect.' });
+  } catch (err) {
+    console.error('Reset session error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

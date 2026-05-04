@@ -3,6 +3,8 @@ const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 
+const SESSION_PATH = path.join(process.cwd(), 'wa_session');
+
 // Detect the best Chromium executable available on this system (local or Railway/Nix)
 function detectChromePath() {
   // Explicit env override always wins
@@ -169,6 +171,36 @@ class WhatsAppBot {
       console.error(`Failed to send message to ${phone}:`, err.message);
       return false;
     }
+  }
+
+  async resetSession() {
+    console.log('🗑️ Resetting WhatsApp session...');
+    this.status = 'DISCONNECTED';
+    this.qrCode = null;
+    this.reconnectAttempts = 0;
+
+    // 1. Destroy existing client
+    if (this.client) {
+      try {
+        await this.client.logout().catch(() => {});
+        await this.client.destroy().catch(() => {});
+      } catch (_) {}
+      this.client = null;
+    }
+
+    // 2. Wipe the session folder so a fresh QR is generated
+    try {
+      if (fs.existsSync(SESSION_PATH)) {
+        fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+        console.log('✅ wa_session directory cleared');
+      }
+    } catch (err) {
+      console.error('⚠️ Failed to clear session dir:', err.message);
+    }
+
+    // 3. Re-initialize after a short pause
+    setTimeout(() => this._initClient(), 3000);
+    return true;
   }
 
   getStatus() {
