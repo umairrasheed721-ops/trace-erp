@@ -224,32 +224,25 @@ router.get('/:id/details', async (req, res) => {
       order.delivery_status = newStatus;
     }
 
-    // Fetch images for line items
-    const lineItems = await Promise.all(shopifyOrder.line_items.map(async item => {
-      const mapped = {
-        id: item.id, variant_id: item.variant_id, product_id: item.product_id,
-        title: item.title, sku: item.sku, quantity: item.quantity, price: item.price,
-        variant_title: item.variant_title, image_url: null
-      };
+    // 🚀 GOD-TIER IMAGE RESOLVER: Use GraphQL for batch accuracy & speed
+    const { fetchVariantImagesGraphQL } = require('../engines/shopify');
+    const variantIds = shopifyOrder.line_items.map(li => li.variant_id);
+    const imageMap = await fetchVariantImagesGraphQL(order.shop_domain, order.access_token, variantIds);
 
-      const cached = db.prepare('SELECT image_url FROM products WHERE shopify_variant_id = ?').get(String(item.variant_id));
-      if (cached?.image_url) {
-        mapped.image_url = cached.image_url;
-      } else if (item.variant_id) {
-        try {
-          const pRes = await fetch(`https://${order.shop_domain}/admin/api/2024-10/products/${item.product_id}.json?fields=image`, {
-            headers: { 'X-Shopify-Access-Token': order.access_token }
-          });
-          const pData = await pRes.json();
-          mapped.image_url = pData.product?.image?.src || null;
-          if (mapped.image_url) {
-            db.prepare(`INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price) VALUES (?,?,?,?,?,?,?)`)
-              .run(order.store_id, String(item.product_id), String(item.variant_id), item.sku, item.title, mapped.image_url, parseFloat(item.price));
-          }
-        } catch (e) { console.error('Image fetch error', e); }
-      }
-      return mapped;
+    const lineItems = shopifyOrder.line_items.map(item => ({
+      id: item.id,
+      variant_id: item.variant_id,
+      product_id: item.product_id,
+      title: item.title,
+      sku: item.sku,
+      quantity: item.quantity,
+      price: item.price,
+      variant_title: item.variant_title,
+      image_url: imageMap[String(item.variant_id)] || null
     }));
+
+    // 💾 SMART PERSISTENCE: Save to local DB so next time is INSTANT
+    db.prepare("UPDATE orders SET line_items = ? WHERE id = ?").run(JSON.stringify(lineItems), order.id);
 
     // Extract and flatten customer/price info from Shopify
     const sa = shopifyOrder.shipping_address || {};

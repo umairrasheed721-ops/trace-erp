@@ -56,7 +56,7 @@ export default function EditOrderModal({
             <div className="card" style={{ padding: 0 }}>
               <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.85rem' }}>🛒 Line Items</div>
               <div style={{ padding: 16 }}>
-                {(editingOrder.line_items || []).map(item => (
+                {(editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []))).map(item => (
                   <div key={item.id} style={{ display: 'flex', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                     <div style={{ width: 50, height: 50, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--border)' }}>
                       {item.image_url ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '0.6rem', fontWeight: 800 }}>{item.sku?.slice(0,3)}</span>}

@@ -621,6 +621,55 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
   return costMap;
 }
 
+async function fetchVariantImagesGraphQL(shopDomain, accessToken, variantIds) {
+  if (!variantIds?.length) return {};
+  const imageMap = {};
+  const uniqueIds = [...new Set(variantIds.filter(Boolean).map(id => String(id)))];
+  const gqlChunkSize = 50;
+
+  for (let i = 0; i < uniqueIds.length; i += gqlChunkSize) {
+    const chunk = uniqueIds.slice(i, i + gqlChunkSize);
+    const gidList = chunk.map(id => `"gid://shopify/ProductVariant/${id}"`).join(',');
+    
+    const query = `
+      query {
+        nodes(ids: [${gidList}]) {
+          ... on ProductVariant {
+            id
+            image { url }
+            product {
+              featuredImage { url }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const res = await fetch(`https://${shopDomain}/admin/api/2024-10/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': accessToken,
+          'Content-Type': 'application/json'
+        },
+        timeout: API_TIMEOUT,
+        body: JSON.stringify({ query })
+      });
+
+      const result = await res.json();
+      const nodes = result.data?.nodes || [];
+      nodes.forEach(node => {
+        if (node && node.id) {
+          const vId = node.id.split('/').pop();
+          // Prefer variant image, fallback to product featured image
+          imageMap[vId] = node.image?.url || node.product?.featuredImage?.url || null;
+        }
+      });
+    } catch (e) { console.error('GraphQL Image Sync Error:', e.message); }
+  }
+  return imageMap;
+}
+
 async function syncSingleShopifyOrder(store, shopifyOrderId) {
   const { id: storeId, shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') return null;
@@ -679,16 +728,31 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       newDeliveryStatus = 'Booked';
     }
 
+    // 🚀 ENHANCED: Fetch Images and Build LineItems JSON
+    const vIds = order.line_items.map(li => li.variant_id);
+    const imageMap = await fetchVariantImagesGraphQL(shop_domain, access_token, vIds);
+    const lineItemsJson = JSON.stringify(order.line_items.map(li => ({
+      id: li.id,
+      variant_id: li.variant_id,
+      title: li.title,
+      variant_title: li.variant_title,
+      sku: li.sku,
+      quantity: li.quantity,
+      price: li.price,
+      image_url: imageMap[String(li.variant_id)] || null
+    })));
+
     if (existing) {
       db.prepare(`
         UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-        payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
+        payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, 
+        line_items=?, status_date=datetime('now')
         WHERE id=?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles,
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
         (totalCost > 0 ? totalCost : (existing.cost || 0)), // 🛡️ Zero-Cost Lock
-        tracking, courier, newDeliveryStatus, existing.id
+        tracking, courier, newDeliveryStatus, lineItemsJson, existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
@@ -700,8 +764,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -710,6 +774,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         `${addr.address1 || ''} ${addr.city || ''}`.trim(),
         addr.city || '',
         finalPrice, tracking, activeCount, order.note || '', productTitles,
+        lineItemsJson,
         newDeliveryStatus,
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
         0.5, courier, totalCost, source, token
@@ -927,5 +992,6 @@ module.exports = {
   fulfillShopifyOrder, 
   updateShopifyAddress,
   syncSpecificOrders,
+  fetchVariantImagesGraphQL,
   mapShopifyStatus 
 };

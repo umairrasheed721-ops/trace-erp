@@ -80,7 +80,7 @@ export default function WhatsAppBot() {
             <div style={{ textAlign: 'center', background: '#fff', padding: 20, borderRadius: 12 }}>
               <p style={{ color: '#000', marginBottom: 10, fontWeight: 700 }}>Scan this QR with your WhatsApp</p>
               <img src={status.qrCode} alt="WhatsApp QR" style={{ width: 250, height: 250 }} />
-              <p style={{ color: '#666', fontSize: '0.8rem', marginTop: 10 }}>Open WhatsApp > Settings > Linked Devices</p>
+              <p style={{ color: '#666', fontSize: '0.8rem', marginTop: 10 }}>Open WhatsApp &gt; Settings &gt; Linked Devices</p>
             </div>
           )}
 
