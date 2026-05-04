@@ -6,6 +6,6 @@
   "deploy": {
     "numReplicas": 1,
     "sleepApplication": false,
-    "startCommand": "node --experimental-sqlite index.js"
+    "startCommand": "cd backend && node --experimental-sqlite index.js"
   }
 }

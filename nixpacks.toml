@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs", "chromium", "nss", "freetype", "harfbuzz", "ca-certificates"]
+
+[phases.build]
+cmds = ["npm install", "node build_script.js"]
+
+[start]
+cmd = "cd backend && node --experimental-sqlite index.js"
