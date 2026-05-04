@@ -144,7 +144,6 @@ setInterval(() => {
   }
 }, 90000); // Every 90 seconds
 
-// --- 🐕 RESOURCE WATCHDOG — auto-heals on memory leak ---
 // --- 🐕 RESOURCE WATCHDOG — alert only, never self-terminate ---
 // Railway OOM-kills the process if needed. We don't force exits.
 const MEMORY_LIMIT_MB = 512;
@@ -165,25 +164,24 @@ setInterval(() => {
   }
 }, 300000); // Every 5 minutes
 
-// --- 🚨 ERROR RATE ALERTING (piggyback on pushLog, no double-override) ---
+// --- 🚨 ERROR RATE ALERTING — hooks into console.error, no redeclarations ---
 let recentErrorTimes = [];
 let lastAlertTime = 0;
-const _origPushLog = pushLog;
-// Wrap pushLog to add error-rate monitoring + SQLite persistence
-function pushLog(level, args) {
-  _origPushLog(level, args);
-  if (level === 'ERROR') {
-    const now = Date.now();
-    recentErrorTimes.push(now);
-    recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000);
-    if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
-      lastAlertTime = now;
-      const msg = args.map(a => String(a)).join(' ').substring(0, 200);
-      try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
-    }
-    try { logSystemError('ERROR', args.map(a => String(a)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
+const _prevConsoleError = console.error; // Already overridden above (calls pushLog + originalError)
+console.error = (...a) => {
+  _prevConsoleError.apply(console, a); // Keeps pushLog + terminal output intact
+  // Error rate tracking
+  const now = Date.now();
+  recentErrorTimes.push(now);
+  recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000);
+  if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
+    lastAlertTime = now;
+    const msg = a.map(x => String(x)).join(' ').substring(0, 200);
+    try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
   }
-}
+  // Persist errors to SQLite (survives restarts)
+  try { logSystemError('ERROR', a.map(x => String(x)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
+};
 
 
 const app = express();
