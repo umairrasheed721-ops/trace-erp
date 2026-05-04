@@ -13,11 +13,11 @@ router.post('/send-test', authenticateToken, async (req, res) => {
   const { phone, message } = req.body;
   if (!phone || !message) return res.status(400).json({ error: 'Missing phone or message' });
   
-  const success = await bot.sendMessage(phone, message);
-  if (success) {
+  const result = await bot.sendMessage(phone, message);
+  if (result.success) {
     res.json({ success: true, message: 'Test message sent!' });
   } else {
-    res.status(500).json({ success: false, error: 'Failed to send message. Check bot connection.' });
+    res.status(500).json({ success: false, error: result.error || 'Failed to send message. Check bot connection.' });
   }
 });
 

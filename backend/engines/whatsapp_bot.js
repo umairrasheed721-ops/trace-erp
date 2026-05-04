@@ -169,8 +169,9 @@ class WhatsAppBot {
 
   async sendMessage(phone, message) {
     if (this.status !== 'CONNECTED') {
-      console.warn(`Cannot send message: Bot status is ${this.status}`);
-      return false;
+      const reason = `Bot not connected (status: ${this.status})`;
+      console.warn(reason);
+      return { success: false, error: reason };
     }
     try {
       // Normalize phone: strip non-digits, ensure 92 country code
@@ -181,13 +182,23 @@ class WhatsAppBot {
         cleaned = '92' + cleaned;
       }
 
-      const chatId = cleaned + '@c.us';
-      await this.client.sendMessage(chatId, message);
+      console.log(`📱 Attempting to send to: ${cleaned}@c.us`);
+
+      // Check if the number is registered on WhatsApp
+      const isRegistered = await this.client.isRegisteredUser(cleaned + '@c.us');
+      if (!isRegistered) {
+        const reason = `+${cleaned} is not a registered WhatsApp number`;
+        console.warn(`⚠️ ${reason}`);
+        return { success: false, error: reason };
+      }
+
+      await this.client.sendMessage(cleaned + '@c.us', message);
       console.log(`✉️ Message sent to ${cleaned}`);
-      return true;
+      return { success: true };
     } catch (err) {
-      console.error(`Failed to send message to ${phone}:`, err.message);
-      return false;
+      const reason = err.message || 'Unknown WhatsApp client error';
+      console.error(`❌ sendMessage failed for ${phone}:`, reason);
+      return { success: false, error: reason };
     }
   }
 
