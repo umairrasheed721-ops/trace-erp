@@ -4,8 +4,9 @@ import { useApp } from '../context/AppContext';
 export default function DiagnosticCenter() {
   const { user } = useApp();
   const [stats, setStats] = useState(null);
-  const [auditResult, setAuditResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState(null);
+  const [smokeStatus, setSmokeStatus] = useState(null);
 
   const fetchStats = async () => {
     try {
@@ -16,6 +17,21 @@ export default function DiagnosticCenter() {
       setStats(data);
     } catch (err) {
       console.error('Failed to fetch stats', err);
+    }
+  };
+
+  const runSmokeTest = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/diagnostics/smoke-test', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await res.json();
+      setSmokeStatus(data);
+    } catch (err) {
+      alert('Smoke test failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -60,6 +76,43 @@ export default function DiagnosticCenter() {
                     color={stats.memory > 400 ? 'text-red-500' : 'text-green-500'} />
         </div>
       )}
+
+      {/* 🚀 SMOKE TEST & ACTIONS */}
+      <div className="bg-surface p-6 rounded-xl border border-border mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold">🚀 Connectivity Status</h3>
+          <button 
+            onClick={runSmokeTest}
+            className="btn btn-secondary text-xs"
+            disabled={loading}
+          >
+            {loading ? '⌛ Checking...' : 'Run Pre-Flight Smoke Test'}
+          </button>
+        </div>
+
+        {smokeStatus ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="p-4 bg-black/20 rounded-lg flex items-center justify-between">
+              <span className="text-sm">Database Health</span>
+              <span className="px-2 py-1 bg-green-500/20 text-green-500 text-[10px] font-bold rounded">
+                {smokeStatus.database}
+              </span>
+            </div>
+            {smokeStatus.shopify.map((s, i) => (
+              <div key={i} className="p-4 bg-black/20 rounded-lg flex items-center justify-between">
+                <span className="text-sm truncate max-w-[150px]">{s.domain}</span>
+                <span className={`px-2 py-1 text-[10px] font-bold rounded ${s.status === 'OK' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
+                  {s.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-4 text-muted text-sm italic">
+            Click 'Run Pre-Flight Smoke Test' to verify API health across all services.
+          </div>
+        )}
+      </div>
 
       <div className="bg-surface p-6 rounded-xl border border-border mb-8">
         <h3 className="text-lg font-bold mb-4">Health Audits</h3>

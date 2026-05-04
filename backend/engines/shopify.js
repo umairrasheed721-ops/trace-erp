@@ -20,6 +20,20 @@ function saveRawPayload(type, payload) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CHUNK_SIZE = 50;
 
+async function smokeTestShopify(shopDomain, accessToken) {
+  try {
+    const url = `https://${shopDomain}/admin/api/2024-10/shop.json`;
+    const res = await fetch(url, {
+      headers: { 'X-Shopify-Access-Token': accessToken },
+      timeout: 5000 // Tight 5s timeout for smoke test
+    });
+    return res.ok;
+  } catch (err) {
+    console.error(`💨 [SmokeTest] Failed for ${shopDomain}:`, err.message);
+    return false;
+  }
+}
+
 async function fetchWithRetry(url, options, retries = 3, backoff = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -136,6 +150,18 @@ function calculateOrderCost(storeId, lineItems, costMap) {
 async function fetchShopifyOrders(store, onProgress, options = {}) {
   const { id: storeId, shop_domain, access_token, sync_start_date } = store;
   if (!access_token || access_token === 'PENDING') return { added: 0 };
+
+  // --- 🚀 PRE-FLIGHT SMOKE TEST ---
+  const isHealthy = await smokeTestShopify(shop_domain, access_token);
+  if (!isHealthy) {
+    const errorMsg = `🛑 [Sync Aborted] Shopify API for ${shop_domain} is unreachable or unauthorized.`;
+    console.error(errorMsg);
+    if (onProgress) onProgress(errorMsg);
+    logAudit(storeId, 'CRITICAL', errorMsg);
+    // Alert via WhatsApp (Emergency Only)
+    bot.sendEmergencyAlert(`*Sync Failure:* ${shop_domain} connectivity check failed. Check Internet/API Token.`);
+    return { added: 0 };
+  }
 
   const updateStatus = (status, progress, processed = 0, total = 0) => {
     try {

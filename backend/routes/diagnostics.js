@@ -94,4 +94,30 @@ router.post('/heal/zero-costs', (req, res) => {
   }
 });
 
+// 2. Comprehensive Smoke Test
+router.get('/smoke-test', async (req, res) => {
+  try {
+    const stores = db.prepare('SELECT id, shop_domain, access_token FROM stores').all();
+    const results = {
+      shopify: [],
+      database: 'OK',
+      timestamp: new Date().toISOString()
+    };
+
+    const { smokeTestShopify } = require('../engines/shopify');
+    
+    for (const store of stores) {
+      const healthy = await smokeTestShopify(store.shop_domain, store.access_token);
+      results.shopify.push({
+        domain: store.shop_domain,
+        status: healthy ? 'OK' : 'FAIL'
+      });
+    }
+
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
