@@ -323,12 +323,15 @@ function RoleAuthorityMatrix({ addToast, token }) {
 
   const hasAccess = (role, pageId) => {
     if (role === 'admin') return true;
+    if (!Array.isArray(permissions)) return false;
     return permissions.some(p => p.role_name === role && p.page_id === pageId);
   };
 
   const toggleAccess = async (role, pageId) => {
     setSaving(`${role}-${pageId}`);
-    const currentForRole = permissions.filter(p => p.role_name === role).map(p => p.page_id);
+    const currentForRole = Array.isArray(permissions) 
+      ? permissions.filter(p => p.role_name === role).map(p => p.page_id)
+      : [];
     let newPageIds;
     if (currentForRole.includes(pageId)) {
       newPageIds = currentForRole.filter(id => id !== pageId);

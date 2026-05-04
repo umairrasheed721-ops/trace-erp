@@ -27,6 +27,7 @@ export default function Sidebar() {
   ].filter(item => {
     if (user?.role === 'admin') return true
     // Check if this specific path is granted to this role in our Dynamic Matrix
+    if (!Array.isArray(permissions)) return false
     return permissions.some(p => p.role_name === user?.role && p.page_id === item.to)
   })
 
