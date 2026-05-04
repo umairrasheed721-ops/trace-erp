@@ -199,6 +199,16 @@ function initDb() {
       level TEXT DEFAULT 'INFO', -- 'INFO', 'WARN', 'ERROR'
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS order_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id),
+      change_type TEXT NOT NULL, -- 'STATUS', 'COST', 'ADDRESS', 'MANUAL_EDIT'
+      old_value TEXT, -- JSON
+      new_value TEXT, -- JSON
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
 
@@ -320,7 +330,23 @@ function logAction({ store_id, order_id, user_id, action, details, snapshot, lev
   }
 }
 
-module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction };
+function logOrderChange({ order_id, user_id, type, old_val, new_val }) {
+  try {
+    // Only log if something actually changed
+    const oldStr = JSON.stringify(old_val);
+    const newStr = JSON.stringify(new_val);
+    if (oldStr === newStr) return;
+
+    db.prepare(`
+      INSERT INTO order_history (order_id, user_id, change_type, old_value, new_value)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(order_id, user_id, type, oldStr, newStr);
+  } catch (err) {
+    console.error('❌ Failed to log order change:', err.message);
+  }
+}
+
+module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}

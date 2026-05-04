@@ -9,6 +9,7 @@ import EditOrderModal from '../components/EditOrderModal'
 import CustomerHistoryModal from '../components/CustomerHistoryModal'
 import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from '../components/OrderCells'
+import OrderHistoryModal from '../components/OrderHistoryModal'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -215,6 +216,7 @@ export default function SearchTool() {
   const [waQueueIndex, setWAQueueIndex] = useState(0)
   const [waQueueTemplate, setWAQueueTemplate] = useState('')
   const [waTemplates, setWATemplates] = useState([])
+  const [historyOrder, setHistoryOrder] = useState(null)
 
   useEffect(() => {
     fetchTemplates();
@@ -1217,6 +1219,7 @@ export default function SearchTool() {
         setStatus={setStatus}
         page={page}
         setPage={setPage}
+        onViewHistory={(o) => setHistoryOrder(o)}
       />
 
       {/* MODALS */}
@@ -1271,6 +1274,13 @@ export default function SearchTool() {
         setNameSettings={setNameSettings}
         onSave={() => saveNameSettings(nameSettings)}
       />
+
+      {historyOrder && (
+        <OrderHistoryModal
+          order={historyOrder}
+          onClose={() => setHistoryOrder(null)}
+        />
+      )}
     </div>
   )
 }

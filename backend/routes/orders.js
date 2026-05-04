@@ -87,12 +87,18 @@ router.get('/', (req, res) => {
 
 // PUT /api/orders/:id - Update a single order field (for manual edits)
 router.put('/:id', (req, res) => {
-  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost'];
+  const { id } = req.params;
+  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address1', 'province', 'zip'];
   const updates = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields to update' });
 
-  const extraSets = [];
-  const extraValues = [];
+  try {
+    // 1. Fetch OLD state
+    const oldOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!oldOrder) return res.status(404).json({ error: 'Order not found' });
+
+    const extraSets = [];
+    const extraValues = [];
 
   if (req.body.cost !== undefined) {
     extraSets.push('cost_locked = ?');
@@ -139,7 +145,17 @@ router.put('/:id', (req, res) => {
   const allSets = [...updates.map(k => `${k} = ?`), ...extraSets].join(', ');
   const allValues = [...updates.map(k => req.body[k]), ...extraValues];
 
-  db.prepare(`UPDATE orders SET ${allSets} WHERE id = ?`).run(...allValues, req.params.id);
+  db.db.prepare(`UPDATE orders SET ${allSets} WHERE id = ?`).run(...allValues, id);
+
+  // 2. Fetch NEW state and LOG change
+  const newOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  db.logOrderChange({
+    order_id: id,
+    user_id: req.user?.id,
+    type: 'MANUAL_EDIT',
+    old_val: oldOrder,
+    new_val: newOrder
+  });
 
   // 5. SHOPIFY LIVE SYNC: If note changed, push to Shopify
   if (req.body.notes !== undefined) {
@@ -162,6 +178,26 @@ router.put('/:id', (req, res) => {
   // Return updated row so frontend can reflect all auto-changes
   const updated = db.prepare('SELECT o.*, s.shop_domain FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
   res.json({ success: true, order: updated });
+} catch (err) {
+  console.error('❌ Manual update error:', err.message);
+  res.status(500).json({ error: err.message });
+}
+});
+
+// GET /api/orders/:id/history - Fetch version history for an order
+router.get('/:id/history', (req, res) => {
+  try {
+    const history = db.db.prepare(`
+      SELECT h.*, u.username 
+      FROM order_history h
+      LEFT JOIN users u ON h.user_id = u.id
+      WHERE h.order_id = ?
+      ORDER BY h.created_at DESC
+    `).all(req.params.id);
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/orders/:id/details - Fetch full order from Shopify (on-demand)

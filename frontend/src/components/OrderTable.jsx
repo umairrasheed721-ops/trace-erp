@@ -36,7 +36,8 @@ export default function OrderTable({
   page,
   setPage,
   keyword,
-  status
+  status,
+  onViewHistory
 }) {
   const { user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
@@ -175,6 +176,15 @@ export default function OrderTable({
                             title="Edit Full Order"
                           >
                             ✏️
+                          </button>
+
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onViewHistory(o); }}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                            title="View History Timeline"
+                          >
+                            📜
                           </button>
 
                           {(o.cost <= 0) && (
