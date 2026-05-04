@@ -29,6 +29,10 @@ function copyRecursiveSync(src, dest) {
 
 console.log('🏗️ --- TRACE ERP ROBUST BUILD ENGINE --- 🏗️');
 
+// 0. Backend Syntax Guard (Safety Layer)
+console.log('🛡️ Running Backend Syntax Guard...');
+run('node backend_check.js');
+
 // 1. Build Frontend
 console.log('✨ Compiling Frontend Assets (Vite)...');
 process.env.NODE_OPTIONS = '--max-old-space-size=1024';
