@@ -211,6 +211,9 @@ export default function SearchTool() {
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
   const [customerHistoryPhone, setCustomerHistoryPhone] = useState(null)
+  const [showWAQueue, setShowWAQueue] = useState(false)
+  const [waQueueIndex, setWAQueueIndex] = useState(0)
+  const [waQueueTemplate, setWAQueueTemplate] = useState('confirm')
 
   useEffect(() => {
     if (editingOrder) {
@@ -547,6 +550,44 @@ export default function SearchTool() {
       localStorage.setItem('search_compact', !prev)
       return !prev
     })
+  }
+
+  const handleStartWAQueue = () => {
+    if (selectedIds.length === 0) return;
+    setWAQueueIndex(0);
+    setShowWAQueue(true);
+  }
+
+  const sendNextWA = () => {
+    const orderId = selectedIds[waQueueIndex];
+    const o = allOrders.find(item => item.id === orderId);
+    if (!o) return;
+
+    const name = formatCustomerName(o.customer_name);
+    const ref = o.ref_number || o.shopify_order_id;
+    const price = Math.round(parseFloat(o.price)||0);
+    const courier = o.courier || 'our courier';
+    const tracking = o.tracking_number || '';
+    
+    let msg = "";
+    if (waQueueTemplate === 'confirm') {
+      msg = `Hi ${name}, thank you for your order #${ref} from TRACE. Your total is Rs ${price}. Please reply with 'CONFIRM' to ship it today!`;
+    } else if (waQueueTemplate === 'address') {
+      msg = `Hi ${name}, we have received your order #${ref}, but the address seems incomplete. Could you please provide your House # and Street name?`;
+    } else if (waQueueTemplate === 'shipped') {
+      msg = `Hi ${name}, your order #${ref} has been shipped via ${courier}. Your Tracking ID is: ${tracking}.`;
+    }
+
+    const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
+    window.open(waLink, '_blank');
+
+    if (waQueueIndex < selectedIds.length - 1) {
+      setWAQueueIndex(prev => prev + 1);
+    } else {
+      addToast('🎉 WhatsApp Queue Complete!', 'success');
+      setShowWAQueue(false);
+      setSelectedIds([]);
+    }
   }
 
   // ─── Name Cleaning Logic ─────────────────
@@ -1067,7 +1108,53 @@ export default function SearchTool() {
         handleBulkUpdateStatus={handleBulkUpdateStatus}
         handleBulkBookPostEx={handleBulkBookPostEx}
         handleBulkBookInstaworld={handleBulkBookInstaworld}
+        handleBulkWhatsApp={handleStartWAQueue}
       />
+
+      {/* WhatsApp Queue Modal */}
+      {showWAQueue && (
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel" style={{ width: '500px', textAlign: 'center', padding: '30px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '10px' }}>📱</div>
+            <h3 className="premium-title">WhatsApp Bulk Queue</h3>
+            <p className="premium-subtitle">Sending {selectedIds.length} messages in sequence.</p>
+            
+            <div style={{ margin: '20px 0', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '12px' }}>
+              <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.8rem', opacity: 0.7 }}>Select Template</label>
+              <select 
+                className="premium-input" 
+                value={waQueueTemplate}
+                onChange={e => setWAQueueTemplate(e.target.value)}
+              >
+                <option value="confirm">✅ Order Confirmation</option>
+                <option value="address">🏠 Address Query</option>
+                <option value="shipped">🚚 Shipping Update</option>
+              </select>
+            </div>
+
+            <div className="queue-progress" style={{ margin: '20px 0' }}>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--brand)' }}>
+                Message {waQueueIndex + 1} of {selectedIds.length}
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', marginTop: '10px', overflow: 'hidden' }}>
+                <div style={{ width: `${((waQueueIndex + 1) / selectedIds.length) * 100}%`, height: '100%', background: 'var(--brand)', transition: '0.3s ease' }}></div>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ display: 'flex', gap: '10px', marginTop: '30px' }}>
+              <button className="btn btn-primary" style={{ flex: 2, padding: '12px' }} onClick={sendNextWA}>
+                🚀 Send Next & Advance
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowWAQueue(false)}>
+                Cancel
+              </button>
+            </div>
+            <p style={{ marginTop: '15px', fontSize: '0.7rem', opacity: 0.5 }}>
+              Tip: Keep this tab open while you hit 'Enter' in the new WhatsApp tabs.
+            </p>
+          </div>
+        </div>
+      )}
 
       <OrderTable
         loading={loading}

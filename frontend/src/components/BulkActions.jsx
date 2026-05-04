@@ -8,7 +8,8 @@ export default function BulkActions({
   handleBulkSyncStatus,
   handleBulkSyncCourier,
   handleBulkRevert,
-  handleBulkUpdateStatus
+  handleBulkUpdateStatus,
+  handleBulkWhatsApp
 }) {
   if (selectedIds.length === 0) return null
 
@@ -77,6 +78,14 @@ export default function BulkActions({
         <option value="Confirmed">Confirmed</option>
         <option value="Pending">Pending</option>
       </select>
+
+      <button 
+        onClick={handleBulkWhatsApp}
+        className="btn btn-sm" 
+        style={{ background: 'white', color: 'var(--green)', fontWeight: 800, border: '2px solid var(--green)' }}
+      >
+        💬 BULK WHATSAPP
+      </button>
 
       <button 
         onClick={() => setSelectedIds([])}
