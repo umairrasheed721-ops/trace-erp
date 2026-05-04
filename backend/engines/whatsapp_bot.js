@@ -1,23 +1,16 @@
 /**
  * WhatsApp Bot Engine — Powered by Baileys (WebSocket, no Chrome required)
- * Uses the canonical Baileys reconnect pattern to avoid race conditions during QR auth.
+ * Uses dynamic import() because Baileys is ESM-only.
  */
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const { Boom } = require('@hapi/boom');
 
 const SESSION_PATH = path.join(process.cwd(), 'wa_session');
 const MAX_RECONNECT_ATTEMPTS = 10;
 
-// Silence Baileys' verbose internal logger
+// Silence Baileys logger
 const SILENT_LOGGER = {
   level: 'silent',
   trace: () => {}, debug: () => {}, info: () => {},
@@ -31,17 +24,13 @@ class WhatsAppBot {
     this.qrCode = null;
     this.status = 'DISCONNECTED';
     this.reconnectAttempts = 0;
-    this._authState = null;
-    this._saveCreds = null;
 
-    // Delay first init so server fully boots
     setTimeout(() => this._connect(), 5000);
   }
 
-  // ─── Core connect loop (canonical Baileys pattern) ─────────────────────────
   async _connect() {
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error(`❌ Max reconnect attempts reached. Click Reset Session to retry.`);
+      console.error('❌ Max reconnect attempts reached. Click Reset Session to retry.');
       this.status = 'FAILURE';
       return;
     }
@@ -50,21 +39,27 @@ class WhatsAppBot {
     this.status = 'CONNECTING';
 
     try {
+      // Dynamic import — Baileys is ESM-only, must use import() not require()
+      const {
+        default: makeWASocket,
+        useMultiFileAuthState,
+        DisconnectReason,
+        fetchLatestBaileysVersion,
+      } = await import('@whiskeysockets/baileys');
+      const { Boom } = await import('@hapi/boom');
+
       if (!fs.existsSync(SESSION_PATH)) fs.mkdirSync(SESSION_PATH, { recursive: true });
 
-      // Load (or create) auth state from disk
       const { state, saveCreds } = await useMultiFileAuthState(SESSION_PATH);
-      this._saveCreds = saveCreds;
 
-      // Fetch latest WA version — fallback to known-good if it fails
       let version;
       try {
         const result = await fetchLatestBaileysVersion();
         version = result.version;
         console.log(`📦 WA version: ${version.join('.')}`);
       } catch (_) {
-        version = [2, 3000, 1023209842]; // last known good
-        console.warn(`⚠️ Could not fetch latest WA version, using fallback ${version.join('.')}`);
+        version = [2, 3000, 1023209842];
+        console.warn('⚠️ Could not fetch latest WA version, using fallback');
       }
 
       this.sock = makeWASocket({
@@ -75,20 +70,16 @@ class WhatsAppBot {
         browser: ['TRACE ERP', 'Chrome', '120.0'],
         connectTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
-        retryRequestDelayMs: 250,
-        maxRetries: 5,
-        getMessage: async () => ({ conversation: '' }), // prevent message fetch errors
+        getMessage: async () => ({ conversation: '' }),
       });
 
-      // Save credentials whenever updated (critical for session persistence)
       this.sock.ev.on('creds.update', saveCreds);
 
-      // ─── QR + Connection events ─────────────────────────────────────────────
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('📸 QR Code ready — waiting for scan');
+          console.log('📸 QR Code ready — scan with WhatsApp');
           try {
             this.qrCode = await qrcode.toDataURL(qr);
             this.status = 'QR_READY';
@@ -102,38 +93,25 @@ class WhatsAppBot {
           console.log('✅ WhatsApp CONNECTED!');
           this.status = 'CONNECTED';
           this.qrCode = null;
-          this.reconnectAttempts = 0; // reset on success
+          this.reconnectAttempts = 0;
           return;
         }
 
         if (connection === 'close') {
           const err = lastDisconnect?.error;
           const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
-          const reason = DisconnectReason;
 
           console.warn(`🔌 Connection closed. Code: ${statusCode}`);
+          this.status = 'DISCONNECTED';
 
-          if (statusCode === reason.loggedOut) {
-            // Deliberately unlinked from phone — wipe creds, show fresh QR
+          if (statusCode === DisconnectReason.loggedOut) {
             console.log('📵 Logged out — clearing session for fresh QR');
-            this.status = 'DISCONNECTED';
             this._wipeCreds();
             this.reconnectAttempts = 0;
-            setTimeout(() => this._connect(), 3000);
-            return;
+          } else {
+            this.reconnectAttempts++;
           }
 
-          if (statusCode === reason.connectionReplaced) {
-            // Another device opened the same session
-            console.warn('⚠️ Connection replaced by another session');
-            this.status = 'DISCONNECTED';
-            setTimeout(() => this._connect(), 5000);
-            return;
-          }
-
-          // Any other disconnect — just reconnect (network blip, restart, QR phase close, etc.)
-          this.status = 'DISCONNECTED';
-          this.reconnectAttempts++;
           const delay = Math.min(3000 + this.reconnectAttempts * 2000, 20000);
           console.log(`🔄 Reconnecting in ${delay / 1000}s...`);
           setTimeout(() => this._connect(), delay);
@@ -162,8 +140,6 @@ class WhatsAppBot {
     }
   }
 
-  // ─── Public API ─────────────────────────────────────────────────────────────
-
   async sendMessage(phone, message) {
     if (this.status !== 'CONNECTED' || !this.sock) {
       const reason = `Bot not connected (status: ${this.status})`;
@@ -172,13 +148,12 @@ class WhatsAppBot {
     }
 
     try {
-      // Normalize to E.164 Pakistan format
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
       const jid = cleaned + '@s.whatsapp.net';
-      console.log(`📱 Verifying ${cleaned} on WhatsApp...`);
+      console.log(`📱 Checking ${cleaned} on WhatsApp...`);
 
       const [reg] = await this.sock.onWhatsApp(jid);
       if (!reg?.exists) {
@@ -193,25 +168,23 @@ class WhatsAppBot {
 
     } catch (err) {
       const reason = err.message || 'Unknown WhatsApp error';
-      console.error(`❌ sendMessage error:`, reason);
+      console.error('❌ sendMessage error:', reason);
       return { success: false, error: reason };
     }
   }
 
   resetSession() {
-    console.log('🗑️ Full session reset (non-blocking)...');
+    console.log('🗑️ Session reset...');
     this.status = 'DISCONNECTED';
     this.qrCode = null;
     this.reconnectAttempts = 0;
 
-    // Kill socket immediately — no await (logout() can hang forever)
     const oldSock = this.sock;
     this.sock = null;
     if (oldSock) {
       try { oldSock.end(new Error('reset')); } catch (_) {}
     }
 
-    // Wipe session files synchronously
     try {
       if (fs.existsSync(SESSION_PATH)) {
         fs.rmSync(SESSION_PATH, { recursive: true, force: true });
@@ -221,9 +194,8 @@ class WhatsAppBot {
       console.error('⚠️ Clear error:', e.message);
     }
 
-    // Reconnect in background after short delay
     setTimeout(() => this._connect(), 2000);
-    return true; // synchronous return — route responds immediately
+    return true;
   }
 
   getStatus() {
