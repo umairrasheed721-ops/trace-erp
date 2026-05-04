@@ -69,9 +69,8 @@ export default function DiagnosticCenter() {
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <StatCard title="Orders" value={stats.orders} />
-          <StatCard title="Stores" value={stats.stores} />
           <StatCard title="Audit Logs" value={stats.auditLogs} />
-          <StatCard title="Users" value={stats.users} />
+          <StatCard title="Fragmentation" value={stats.missingItems} color={stats.missingItems > 0 ? 'text-yellow-500' : 'text-green-500'} />
           <StatCard title="Memory" value={`${stats.memory.toFixed(1)} MB`} 
                     color={stats.memory > 400 ? 'text-red-500' : 'text-green-500'} />
         </div>

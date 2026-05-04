@@ -43,12 +43,14 @@ router.get('/stats', (req, res) => {
     const storeCount = db.prepare('SELECT COUNT(*) as count FROM stores').get().count;
     const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
     const auditCount = db.prepare('SELECT COUNT(*) as count FROM audit_logs').get().count;
+    const missingCount = db.prepare("SELECT COUNT(*) as count FROM orders WHERE (line_items IS NULL OR line_items = '' OR line_items = '[]') AND delivery_status NOT IN ('Cancelled', 'Voided', 'cancelled', 'Void')").get().count;
     
     res.json({
       orders: orderCount,
       stores: storeCount,
       users: userCount,
       auditLogs: auditCount,
+      missingItems: missingCount,
       memory: process.memoryUsage().rss / 1024 / 1024
     });
   } catch (err) {
@@ -62,7 +64,7 @@ router.get('/stats', (req, res) => {
 router.post('/heal/line-items', async (req, res) => {
   try {
     const { fetchVariantImagesGraphQL } = require('../engines/shopify');
-    const { fetch } = require('node-fetch'); // Ensure fetch is available
+    const fetch = require('node-fetch'); // FIX: node-fetch v2 uses default export
 
     // Find up to 50 orders with missing item data
     const orders = db.prepare(`
@@ -70,7 +72,7 @@ router.post('/heal/line-items', async (req, res) => {
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE (o.line_items IS NULL OR o.line_items = '' OR o.line_items = '[]')
-      AND o.delivery_status NOT IN ('Cancelled', 'Voided')
+      AND o.delivery_status NOT IN ('Cancelled', 'Voided', 'cancelled', 'Void')
       LIMIT 50
     `).all();
 
