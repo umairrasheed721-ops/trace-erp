@@ -198,18 +198,20 @@ class WhatsAppBot {
     }
   }
 
-  async resetSession() {
-    console.log('🗑️ Full session reset...');
+  resetSession() {
+    console.log('🗑️ Full session reset (non-blocking)...');
     this.status = 'DISCONNECTED';
     this.qrCode = null;
     this.reconnectAttempts = 0;
 
-    if (this.sock) {
-      try { await this.sock.logout().catch(() => {}); } catch (_) {}
-      this.sock = null;
+    // Kill socket immediately — no await (logout() can hang forever)
+    const oldSock = this.sock;
+    this.sock = null;
+    if (oldSock) {
+      try { oldSock.end(new Error('reset')); } catch (_) {}
     }
 
-    // Wipe everything
+    // Wipe session files synchronously
     try {
       if (fs.existsSync(SESSION_PATH)) {
         fs.rmSync(SESSION_PATH, { recursive: true, force: true });
@@ -219,8 +221,9 @@ class WhatsAppBot {
       console.error('⚠️ Clear error:', e.message);
     }
 
+    // Reconnect in background after short delay
     setTimeout(() => this._connect(), 2000);
-    return true;
+    return true; // synchronous return — route responds immediately
   }
 
   getStatus() {
