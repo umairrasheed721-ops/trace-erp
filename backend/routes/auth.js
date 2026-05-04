@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db');
+const { db, logAction } = require('../db');
 const fetch = require('node-fetch');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -40,6 +40,12 @@ router.post('/login', async (req, res) => {
       JWT_SECRET,
       { expiresIn: '24h' }
     );
+
+    logAction({
+      user_id: user.id,
+      action: 'USER_LOGIN',
+      details: { username: user.username, ip: req.ip }
+    });
 
     res.json({
       token,

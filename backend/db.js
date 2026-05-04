@@ -187,6 +187,17 @@ function initDb() {
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, view_name)
     );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER,
+      order_id INTEGER,
+      user_id INTEGER,
+      action TEXT NOT NULL,
+      details TEXT, -- JSON string
+      level TEXT DEFAULT 'INFO', -- 'INFO', 'WARN', 'ERROR'
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
 
@@ -280,7 +291,18 @@ function transaction(fn) {
   };
 }
 
-module.exports = { prepare, transaction, exec: (sql) => db.exec(sql) };
+function logAction({ store_id, order_id, user_id, action, details, level = 'INFO' }) {
+  try {
+    db.prepare(`
+      INSERT INTO audit_logs (store_id, order_id, user_id, action, details, level)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(store_id, order_id, user_id, action, typeof details === 'object' ? JSON.stringify(details) : details, level);
+  } catch (err) {
+    console.error('❌ Failed to write audit log:', err.message);
+  }
+}
+
+module.exports = { prepare, transaction, exec: (sql) => db.exec(sql), logAction };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}

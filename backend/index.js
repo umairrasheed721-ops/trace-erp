@@ -9,6 +9,17 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('🛑 CRITICAL: Unhandled Rejection caught to prevent crash:', reason);
 });
 
+// --- 🛡️ ENVIRONMENT HEALTH GUARD ---
+const REQUIRED_ENV = ['DB_PATH', 'JWT_SECRET']; 
+const missing = REQUIRED_ENV.filter(key => !process.env[key]);
+if (missing.length > 0) {
+  console.error('\n❌ CRITICAL STARTUP ERROR: Missing Environment Variables:');
+  missing.forEach(m => console.error(`   - ${m}`));
+  console.error('The server cannot start safely. Please check your Railway variables.\n');
+  process.exit(1);
+}
+console.log('✅ Environment Health Check Passed.');
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
