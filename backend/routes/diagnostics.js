@@ -56,4 +56,42 @@ router.get('/stats', (req, res) => {
   }
 });
 
+// --- ✨ HEALERS ---
+
+// 1. Heal orders with 0 cost by matching with Master Costs
+router.post('/heal/zero-costs', (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT id, product_titles 
+      FROM orders 
+      WHERE (cost = 0 OR cost IS NULL) 
+      AND delivery_status NOT IN ('Cancelled', 'Returned', 'Voided')
+    `).all();
+
+    let healedCount = 0;
+    const masterCosts = db.prepare('SELECT parent_title, variant_title, unit_cost FROM product_master_costs').all();
+
+    const transaction = db.transaction(() => {
+      orders.forEach(order => {
+        // Try to find a matching cost
+        const match = masterCosts.find(mc => 
+          order.product_titles.includes(mc.parent_title) || 
+          mc.parent_title.includes(order.product_titles)
+        );
+
+        if (match && match.unit_cost > 0) {
+          db.prepare('UPDATE orders SET cost = ? WHERE id = ?').run(match.unit_cost, order.id);
+          healedCount++;
+        }
+      });
+    });
+    
+    transaction();
+
+    res.json({ success: true, healedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

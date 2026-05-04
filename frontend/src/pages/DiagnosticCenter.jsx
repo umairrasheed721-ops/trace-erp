@@ -85,9 +85,36 @@ export default function DiagnosticCenter() {
 
       {auditResult && (
         <div className="bg-surface rounded-xl border border-border overflow-hidden">
-          <div className="p-4 bg-black/20 border-b border-border flex justify-between">
+          <div className="p-4 bg-black/20 border-b border-border flex justify-between items-center">
             <h4 className="font-bold">Audit Results: {auditResult.type}</h4>
-            <span className="text-xs">{auditResult.data.length} issues found</span>
+            <div className="flex items-center gap-4">
+              <span className="text-xs">{auditResult.data.length} issues found</span>
+              {auditResult.type === 'zero-costs' && auditResult.data.length > 0 && (
+                <button 
+                  onClick={async () => {
+                    if (!confirm('✨ This will automatically fix costs using Master Cost data. Proceed?')) return;
+                    setLoading(true);
+                    try {
+                      const res = await fetch('/api/diagnostics/heal/zero-costs', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                      });
+                      const data = await res.json();
+                      alert(`✅ Successfully healed ${data.healedCount} orders!`);
+                      runAudit('zero-costs');
+                      fetchStats();
+                    } catch (err) {
+                      alert('Heal failed: ' + err.message);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="btn btn-primary text-xs py-1"
+                >
+                  ✨ Heal All Issues
+                </button>
+              )}
+            </div>
           </div>
           <div className="max-h-[400px] overflow-auto">
             {auditResult.data.length === 0 ? (
