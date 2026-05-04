@@ -153,6 +153,60 @@ export default function DiagnosticCenter() {
             📉 Profit Anomalies
           </button>
         </div>
+
+        <div className="mt-8 pt-8 border-t border-border">
+          <h3 className="text-lg font-bold mb-2">✨ Automated Repair (God-Tier)</h3>
+          <p className="text-sm text-muted mb-4">One-click solutions to repair common data fragmentation issues.</p>
+          <div className="flex gap-4">
+            <button 
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const res = await fetch('/api/diagnostics/heal/zero-costs', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                  });
+                  const data = await res.json();
+                  alert(`✨ Healed ${data.healedCount} orders!`);
+                  fetchStats();
+                } catch (err) { alert('Heal failed: ' + err.message); }
+                finally { setLoading(false); }
+              }}
+              className="btn btn-primary bg-gradient-to-r from-purple-500 to-blue-500 border-none"
+            >
+              🛠️ Heal All 0-Cost Orders
+            </button>
+
+            <button 
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  let totalHealed = 0;
+                  let hasMore = true;
+                  while (hasMore) {
+                    const res = await fetch('/api/diagnostics/heal/line-items', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                    });
+                    const data = await res.json();
+                    totalHealed += data.healedCount;
+                    hasMore = data.remaining;
+                    if (data.healedCount === 0) break;
+                    // Optional: Update some progress UI here
+                  }
+                  alert(`✨ Successfully restored items & images for ${totalHealed} orders!`);
+                  fetchStats();
+                } catch (err) { alert('Mass-Restore failed: ' + err.message); }
+                finally { setLoading(false); }
+              }}
+              className="btn btn-primary bg-gradient-to-r from-emerald-500 to-teal-500 border-none"
+            >
+              🖼️ Mass-Restore All Missing Images
+            </button>
+          </div>
+        </div>
       </div>
 
       {loading && <div className="text-center p-8">Running deep audit... ⏳</div>}

@@ -58,6 +58,70 @@ router.get('/stats', (req, res) => {
 
 // --- ✨ HEALERS ---
 
+// 2. Heal orders with missing line_items (Mass-Restore)
+router.post('/heal/line-items', async (req, res) => {
+  try {
+    const { fetchVariantImagesGraphQL } = require('../engines/shopify');
+    const { fetch } = require('node-fetch'); // Ensure fetch is available
+
+    // Find up to 50 orders with missing item data
+    const orders = db.prepare(`
+      SELECT o.id, o.shopify_order_id, s.shop_domain, s.access_token 
+      FROM orders o
+      JOIN stores s ON o.store_id = s.id
+      WHERE (o.line_items IS NULL OR o.line_items = '' OR o.line_items = '[]')
+      AND o.delivery_status NOT IN ('Cancelled', 'Voided')
+      LIMIT 50
+    `).all();
+
+    let healedCount = 0;
+
+    for (const order of orders) {
+      try {
+        const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+        const sRes = await fetch(shopifyUrl, { 
+          headers: { 'X-Shopify-Access-Token': order.access_token },
+          timeout: 10000 
+        });
+        
+        if (!sRes.ok) continue;
+        
+        const sData = await sRes.json();
+        const shopifyOrder = sData.order;
+        if (!shopifyOrder) continue;
+
+        // Resolve images via GraphQL
+        const variantIds = shopifyOrder.line_items.map(li => li.variant_id);
+        const imageMap = await fetchVariantImagesGraphQL(order.shop_domain, order.access_token, variantIds);
+
+        const lineItems = shopifyOrder.line_items.map(item => ({
+          id: item.id,
+          variant_id: item.variant_id,
+          product_id: item.product_id,
+          title: item.title,
+          sku: item.sku,
+          quantity: item.quantity,
+          price: item.price,
+          variant_title: item.variant_title,
+          image_url: imageMap[String(item.variant_id)] || null
+        }));
+
+        // Update DB
+        db.prepare("UPDATE orders SET line_items = ? WHERE id = ?")
+          .run(JSON.stringify(lineItems), order.id);
+        
+        healedCount++;
+      } catch (e) {
+        console.error(`Heal Error for Order ${order.id}:`, e.message);
+      }
+    }
+
+    res.json({ success: true, healedCount, remaining: orders.length === 50 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 1. Heal orders with 0 cost by matching with Master Costs
 router.post('/heal/zero-costs', (req, res) => {
   try {
