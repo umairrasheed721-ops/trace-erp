@@ -114,7 +114,71 @@ router.get('/smoke-test', async (req, res) => {
       });
     }
 
-    res.json(results);
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. DUPLICATE WATCHDOG: Find orders with same Tracking or (Phone+Price+Date)
+router.get('/audit/duplicates', (req, res) => {
+  try {
+    // Audit for Tracking Duplicates
+    const trackingDups = db.prepare(`
+      SELECT tracking_number, COUNT(*) as count, GROUP_CONCAT(ref_number) as orders
+      FROM orders 
+      WHERE tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
+      GROUP BY tracking_number 
+      HAVING count > 1
+    `).all();
+
+    // Audit for Phone/Price Duplicates (same day)
+    const phonePriceDups = db.prepare(`
+      SELECT phone, price, date(order_date) as day, COUNT(*) as count, GROUP_CONCAT(ref_number) as orders
+      FROM orders
+      WHERE delivery_status NOT IN ('Cancelled', 'Voided')
+      GROUP BY phone, price, day
+      HAVING count > 1
+    `).all();
+
+    res.json({ results: [...trackingDups, ...phonePriceDups] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. MASTER COST LEAK: Find orders missing costs that exist in our history but not registry
+router.get('/audit/missing-master-costs', (req, res) => {
+  try {
+    const results = db.prepare(`
+      SELECT o.id, o.ref_number, o.product_titles, o.delivery_status
+      FROM orders o
+      LEFT JOIN product_master_costs pm ON (
+        o.product_titles LIKE '%' || pm.parent_title || '%'
+      )
+      WHERE (o.cost = 0 OR o.cost IS NULL)
+      AND pm.id IS NULL
+      AND o.delivery_status NOT IN ('Cancelled', 'Voided')
+      LIMIT 100
+    `).all();
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. PROFIT ANOMALIES: Negative profit or suspiciously high margin
+router.get('/audit/profit-anomalies', (req, res) => {
+  try {
+    const results = db.prepare(`
+      SELECT id, ref_number, price, cost, courier_fee, 
+             (price - cost - courier_fee) as profit
+      FROM orders
+      WHERE (profit < 0 OR profit > price * 0.9)
+      AND delivery_status NOT IN ('Cancelled', 'Voided')
+      AND price > 0
+    `).all();
+    res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

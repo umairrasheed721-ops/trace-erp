@@ -131,6 +131,27 @@ export default function DiagnosticCenter() {
           >
             🔍 Find Orphaned Costs
           </button>
+          <button 
+            disabled={loading}
+            onClick={() => runAudit('duplicates')}
+            className="btn btn-secondary"
+          >
+            🕵️‍♂️ Duplicate Watchdog
+          </button>
+          <button 
+            disabled={loading}
+            onClick={() => runAudit('missing-master-costs')}
+            className="btn btn-secondary"
+          >
+            🔍 Inventory Leak Audit
+          </button>
+          <button 
+            disabled={loading}
+            onClick={() => runAudit('profit-anomalies')}
+            className="btn btn-secondary"
+          >
+            📉 Profit Anomalies
+          </button>
         </div>
       </div>
 
