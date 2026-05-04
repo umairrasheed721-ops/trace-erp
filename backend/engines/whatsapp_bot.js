@@ -1,19 +1,55 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
+
+// Detect the best Chromium executable available on this system (local or Railway/Nix)
+function detectChromePath() {
+  // Explicit env override always wins
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    console.log(`🔍 Using PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  // Common Nix/Railway paths for Chromium
+  const candidates = [
+    '/run/current-system/sw/bin/chromium',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/nix/var/nix/profiles/default/bin/chromium',
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        console.log(`✅ Found system Chrome at: ${p}`);
+        return p;
+      }
+    } catch (_) {}
+  }
+
+  console.warn('⚠️ No system Chromium found — Puppeteer will try bundled Chrome. This may fail on Railway.');
+  return null;
+}
+
+const CHROME_PATH = detectChromePath();
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 class WhatsAppBot {
   constructor() {
     this.client = null;
     this.qrCode = null;
     this.status = 'DISCONNECTED'; // DISCONNECTED, CONNECTING, QR_READY, CONNECTED, FAILURE
-    this.init();
+    this.reconnectAttempts = 0;
+    this.initTimeout = null;
+    // Delay startup so the server fully boots first
+    this.initTimeout = setTimeout(() => this._initClient(), 8000);
   }
 
-  init() {
-    console.log('🚀 Initializing WhatsApp Bot Engine...');
-    
-    this.client = new Client({
+  _buildClient() {
+    return new Client({
       authStrategy: new LocalAuth({
         dataPath: path.join(process.cwd(), 'wa_session')
       }),
@@ -27,14 +63,32 @@ class WhatsAppBot {
           '--no-first-run',
           '--no-zygote',
           '--single-process',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-background-networking',
+          '--disable-default-apps',
+          '--mute-audio',
+          '--hide-scrollbars',
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
+        ...(CHROME_PATH ? { executablePath: CHROME_PATH } : {})
       }
     });
+  }
+
+  _initClient() {
+    console.log(`🚀 Initializing WhatsApp Bot (attempt ${this.reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+    this.status = 'CONNECTING';
+
+    try {
+      this.client = this._buildClient();
+    } catch (buildErr) {
+      console.error('❌ Failed to build WhatsApp client:', buildErr.message);
+      this.status = 'FAILURE';
+      return;
+    }
 
     this.client.on('qr', async (qr) => {
-      console.log('📸 WhatsApp QR Code Generated');
+      console.log('📸 WhatsApp QR Code Generated — scan with your phone');
       try {
         this.qrCode = await qrcode.toDataURL(qr);
         this.status = 'QR_READY';
@@ -44,58 +98,75 @@ class WhatsAppBot {
     });
 
     this.client.on('ready', () => {
-      console.log('✅ WhatsApp Bot is READY!');
+      console.log('✅ WhatsApp Bot is READY and CONNECTED!');
       this.status = 'CONNECTED';
       this.qrCode = null;
+      this.reconnectAttempts = 0; // Reset on successful connect
     });
 
     this.client.on('authenticated', () => {
-      console.log('🔓 WhatsApp Authenticated');
-      this.status = 'CONNECTED';
+      console.log('🔓 WhatsApp session authenticated successfully');
     });
 
     this.client.on('auth_failure', (msg) => {
-      console.error('❌ WhatsApp Auth Failure', msg);
+      console.error('❌ WhatsApp Auth Failure:', msg);
       this.status = 'FAILURE';
+      // Clear broken session and retry so a fresh QR is shown
+      this._scheduleReconnect(15000);
     });
 
     this.client.on('disconnected', (reason) => {
-      console.log('🔌 WhatsApp Disconnected', reason);
+      console.warn(`🔌 WhatsApp Disconnected: ${reason}`);
       this.status = 'DISCONNECTED';
-      // Auto-reinit
-      this.client.initialize();
+      this._scheduleReconnect(10000);
     });
 
-    // Non-blocking background initialization
-    setTimeout(() => {
-      console.log('🤖 Attempting to connect WhatsApp client...');
-      this.client.initialize().catch(err => {
-        console.error('❌ Failed to initialize WhatsApp client (Background):', err.message);
-        this.status = 'FAILURE';
-      });
-    }, 5000); // 5-second delay to let server settle
+    // Kick off the actual browser launch
+    this.client.initialize().catch(err => {
+      console.error('❌ WhatsApp client.initialize() failed:', err.message);
+      this.status = 'FAILURE';
+      this._scheduleReconnect(20000);
+    });
+  }
+
+  _scheduleReconnect(delayMs = 10000) {
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error(`❌ Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up. Restart the service to retry.`);
+      this.status = 'FAILURE';
+      return;
+    }
+    this.reconnectAttempts++;
+    console.log(`🔄 Reconnecting WhatsApp in ${delayMs / 1000}s (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+
+    // Safely destroy old client before reinit
+    if (this.client) {
+      try { this.client.destroy().catch(() => {}); } catch (_) {}
+      this.client = null;
+    }
+
+    setTimeout(() => this._initClient(), delayMs);
   }
 
   async sendMessage(phone, message) {
     if (this.status !== 'CONNECTED') {
-      console.warn('Cannot send message: Bot not connected');
+      console.warn(`Cannot send message: Bot status is ${this.status}`);
       return false;
     }
     try {
-      // Clean phone number: remove non-digits, ensure 92 prefix
+      // Normalize phone: strip non-digits, ensure 92 country code
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) {
         cleaned = '92' + cleaned.substring(1);
       } else if (!cleaned.startsWith('92') && cleaned.length === 10) {
         cleaned = '92' + cleaned;
       }
-      
+
       const chatId = cleaned + '@c.us';
       await this.client.sendMessage(chatId, message);
       console.log(`✉️ Message sent to ${cleaned}`);
       return true;
     } catch (err) {
-      console.error(`Failed to send message to ${phone}`, err);
+      console.error(`Failed to send message to ${phone}:`, err.message);
       return false;
     }
   }
@@ -103,7 +174,8 @@ class WhatsAppBot {
   getStatus() {
     return {
       status: this.status,
-      qrCode: this.qrCode
+      qrCode: this.qrCode,
+      reconnectAttempts: this.reconnectAttempts
     };
   }
 }

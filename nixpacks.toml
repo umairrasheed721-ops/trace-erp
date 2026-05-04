@@ -1,0 +1,27 @@
+[phases.setup]
+nixPkgs = [
+  "nodejs_22",
+  "chromium",
+  "nss",
+  "freetype",
+  "freetype.dev",
+  "harfbuzz",
+  "glib",
+  "nspr",
+  "atk",
+  "cups",
+  "dbus",
+  "libdrm",
+  "mesa",
+  "libxkbcommon",
+  "expat"
+]
+
+[phases.install]
+cmds = ["cd backend && npm install --omit=dev"]
+
+[phases.build]
+cmds = ["cd frontend && npm install && npm run build && cp -r dist/* ../backend/public/"]
+
+[start]
+cmd = "node --experimental-sqlite backend/index.js"
