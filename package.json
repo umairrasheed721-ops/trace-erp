@@ -8,7 +8,7 @@
     "dev:frontend": "cd frontend && npm run dev",
     "install:all": "npm install",
     "build": "node build_script.js",
-    "start": "cd backend && node --experimental-sqlite index.js"
+    "start": "node --experimental-sqlite backend/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
