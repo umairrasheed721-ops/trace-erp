@@ -66,9 +66,14 @@ class WhatsAppBot {
       this.client.initialize();
     });
 
-    this.client.initialize().catch(err => {
-      console.error('Failed to initialize WA client', err);
-    });
+    // Non-blocking background initialization
+    setTimeout(() => {
+      console.log('🤖 Attempting to connect WhatsApp client...');
+      this.client.initialize().catch(err => {
+        console.error('❌ Failed to initialize WhatsApp client (Background):', err.message);
+        this.status = 'FAILURE';
+      });
+    }, 5000); // 5-second delay to let server settle
   }
 
   async sendMessage(phone, message) {

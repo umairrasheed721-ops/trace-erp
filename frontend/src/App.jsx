@@ -6,6 +6,7 @@ import AppProvider from './context/AppProvider'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import ToastContainer from './components/ToastContainer'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Orders = lazy(() => import('./pages/Orders'))
@@ -49,26 +50,28 @@ function AppContent() {
           <Topbar />
           <div className="page-content">
             <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/search" element={<SearchTool />} />
-                <Route path="/returns" element={<ReturnsManager />} />
-                <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
-                <Route path="/whatsapp-templates" element={<TemplateManager />} />
-                <Route path="/finance" element={<FinanceManager />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/intelligence" element={<CourierIntelligence />} />
-                <Route path="/stuck" element={<StuckMonitor />} />
-                <Route path="/advice" element={<AdviceMonitor />} />
-                <Route path="/watchdog" element={<Watchdog />} />
-                <Route path="/connect" element={<Connect />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/costing" element={<CostManager />} />
-                <Route path="/prevention" element={<PreventionManager />} />
-                <Route path="/marketing" element={<MarketingIntelligence />} />
-              </Routes>
+              <ErrorBoundary>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/orders" element={<Orders />} />
+                  <Route path="/search" element={<SearchTool />} />
+                  <Route path="/returns" element={<ReturnsManager />} />
+                  <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
+                  <Route path="/whatsapp-templates" element={<TemplateManager />} />
+                  <Route path="/finance" element={<FinanceManager />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/intelligence" element={<CourierIntelligence />} />
+                  <Route path="/stuck" element={<StuckMonitor />} />
+                  <Route path="/advice" element={<AdviceMonitor />} />
+                  <Route path="/watchdog" element={<Watchdog />} />
+                  <Route path="/connect" element={<Connect />} />
+                  <Route path="/users" element={<Users />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/costing" element={<CostManager />} />
+                  <Route path="/prevention" element={<PreventionManager />} />
+                  <Route path="/marketing" element={<MarketingIntelligence />} />
+                </Routes>
+              </ErrorBoundary>
             </Suspense>
           </div>
         </div>

@@ -189,18 +189,27 @@ function initDb() {
     );
   `);
 
-  // Migrations for existing databases
-  try {
-    db.exec("ALTER TABLE orders ADD COLUMN confirmation_token TEXT");
-    console.log("✅ Migration: Added confirmation_token to orders table.");
-  } catch (e) {
-    // Column already exists, ignore
-  }
+  runMigrations(db);
+}
 
-  try { db.exec("ALTER TABLE stores ADD COLUMN sync_progress TEXT;"); } catch(e) {}
-  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN variant_title TEXT NOT NULL DEFAULT '';"); } catch(e) {}
-  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0;"); } catch(e) {}
-  try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shopify_variant_id TEXT;"); } catch(e) {}
+function runMigrations(db) {
+  const migrations = [
+    { table: 'orders', column: 'confirmation_token', type: 'TEXT' },
+    { table: 'stores', column: 'sync_progress', type: 'TEXT' },
+    { table: 'product_master_costs', column: 'variant_title', type: 'TEXT NOT NULL DEFAULT ""' },
+    { table: 'product_master_costs', column: 'selling_price', type: 'REAL DEFAULT 0' },
+    { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' }
+  ];
+
+  migrations.forEach(m => {
+    try {
+      db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+      console.log(`📦 Migration Applied: ${m.table}.${m.column}`);
+    } catch (e) {
+      // Ignore "duplicate column" errors
+    }
+  });
+}
   
   // Legacy repair logic removed to prevent accidental data loss.
   db.exec(`

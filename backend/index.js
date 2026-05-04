@@ -98,6 +98,17 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
 
+// --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ALIVE',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    wa_bot: bot.getStatus().status
+  });
+});
+
 const { addClient } = require('./sse');
 
 // Live Real-Time Events endpoint
