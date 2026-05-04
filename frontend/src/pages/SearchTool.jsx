@@ -774,7 +774,7 @@ export default function SearchTool() {
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
     const currentIds = cols.map(c => c.id)
-    const essentials = ['profit', 'paid_amount', 'address']
+    const essentials = ['delivery_status', 'tracking_number', 'profit', 'paid_amount', 'address']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
