@@ -226,6 +226,10 @@ export default function Users() {
         </div>
       )}
 
+
+      {/* 🔐 ROLE AUTHORITY MATRIX */}
+      <RoleAuthorityMatrix addToast={addToast} token={token} />
+
       <div className="table-wrapper">
         <table>
           <thead>
@@ -271,4 +275,136 @@ export default function Users() {
       </div>
     </div>
   )
+}
+
+function RoleAuthorityMatrix({ addToast, token }) {
+  const [permissions, setPermissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(null);
+
+  const pages = [
+    { id: '/', label: 'Dashboard', icon: '📊' },
+    { id: '/search', label: 'Search Tool', icon: '🔍' },
+    { id: '/returns', label: 'Returns Manager', icon: '📦' },
+    { id: '/whatsapp-bot', label: 'WhatsApp Bot', icon: '🤖' },
+    { id: '/whatsapp-templates', label: 'WhatsApp Templates', icon: '📝' },
+    { id: '/finance', label: 'Finance Manager', icon: '💰' },
+    { id: '/reports', label: 'Reports', icon: '📈' },
+    { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚' },
+    { id: '/stuck', label: 'Stuck Monitor', icon: '🛑' },
+    { id: '/advice', label: 'Advice Monitor', icon: '💡' },
+    { id: '/watchdog', label: 'Watchdog', icon: '🕵️' },
+    { id: '/connect', label: 'Connect', icon: '🔗' },
+    { id: '/users', label: 'User Management', icon: '👥' },
+    { id: '/profile', label: 'Profile', icon: '👤' },
+    { id: '/costing', label: 'Cost Manager', icon: '🏷️' },
+    { id: '/prevention', label: 'Prevention Manager', icon: '🛡️' },
+    { id: '/marketing', label: 'Marketing Intelligence', icon: '📢' },
+    { id: '/diagnostics', label: 'Diagnostic Center', icon: '🛠️' }
+  ];
+
+  const roles = ['manager', 'agent'];
+
+  const fetchPermissions = async () => {
+    try {
+      const res = await fetch('/api/users/permissions', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setPermissions(data);
+    } catch (e) {
+      console.error('Failed to load permissions', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPermissions(); }, []);
+
+  const hasAccess = (role, pageId) => {
+    if (role === 'admin') return true;
+    return permissions.some(p => p.role_name === role && p.page_id === pageId);
+  };
+
+  const toggleAccess = async (role, pageId) => {
+    setSaving(`${role}-${pageId}`);
+    const currentForRole = permissions.filter(p => p.role_name === role).map(p => p.page_id);
+    let newPageIds;
+    if (currentForRole.includes(pageId)) {
+      newPageIds = currentForRole.filter(id => id !== pageId);
+    } else {
+      newPageIds = [...currentForRole, pageId];
+    }
+
+    try {
+      const res = await fetch('/api/users/permissions', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ role_name: role, page_ids: newPageIds })
+      });
+      if (res.ok) {
+        addToast(`✅ Authority updated for ${role}`, 'success');
+        fetchPermissions();
+      }
+    } catch (e) {
+      addToast('Failed to update authority', 'error');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 24, marginBottom: 24 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>🔐 Role Authority Matrix</h3>
+        <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Define dynamic tab access for each role. (Super Admin always has full access)</p>
+      </div>
+
+      <div className="table-wrapper" style={{ maxHeight: 500, overflowY: 'auto' }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+            <tr>
+              <th style={{ background: 'var(--bg-app)', borderBottom: '2px solid var(--border)' }}>Module / Tab</th>
+              {roles.map(role => (
+                <th key={role} style={{ background: 'var(--bg-app)', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>
+                  {role.toUpperCase()} ACCESS
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={roles.length + 1} style={{ textAlign: 'center', padding: 40 }}>Loading authority matrix...</td></tr>
+            ) : (
+              pages.map(page => (
+                <tr key={page.id}>
+                  <td style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600 }}>
+                    <span style={{ fontSize: '1.2rem' }}>{page.icon}</span>
+                    <span>{page.label}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 400 }}>{page.id}</span>
+                  </td>
+                  {roles.map(role => (
+                    <td key={role} style={{ textAlign: 'center' }}>
+                      <label className="switch" style={{ display: 'inline-block' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={hasAccess(role, page.id)} 
+                          onChange={() => toggleAccess(role, page.id)}
+                          disabled={saving === `${role}-${page.id}`}
+                        />
+                        <span className="slider round"></span>
+                      </label>
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

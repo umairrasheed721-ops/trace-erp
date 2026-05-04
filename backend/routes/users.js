@@ -60,4 +60,37 @@ router.put('/:id', isAdmin, async (req, res) => {
   }
 });
 
+// GET /api/users/permissions - Get all role permissions
+router.get('/permissions', isAdmin, (req, res) => {
+  try {
+    const permissions = db.prepare('SELECT * FROM role_permissions').all();
+    res.json(permissions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/users/permissions - Update permissions for a role
+router.post('/permissions', isAdmin, (req, res) => {
+  const { role_name, page_ids } = req.body; // page_ids is an array
+  if (!role_name || !Array.isArray(page_ids)) return res.status(400).json({ error: 'Invalid data' });
+
+  try {
+    const transaction = db.transaction(() => {
+      // 1. Delete existing for this role
+      db.prepare('DELETE FROM role_permissions WHERE role_name = ?').run(role_name);
+      
+      // 2. Insert new ones
+      const insert = db.prepare('INSERT INTO role_permissions (role_name, page_id) VALUES (?, ?)');
+      for (const pid of page_ids) {
+        insert.run(role_name, pid);
+      }
+    });
+    transaction();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

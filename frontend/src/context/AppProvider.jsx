@@ -13,6 +13,7 @@ export default function AppProvider({ children }) {
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('trace_user')) } catch(e) { return null }
   })
+  const [permissions, setPermissions] = useState([])
 
   const addToast = (message, type = 'info', duration = 3500) => {
     const id = Date.now()
@@ -44,6 +45,18 @@ export default function AppProvider({ children }) {
       return !prev
     })
   }
+  
+  const fetchPermissions = () => {
+    if (!token) return
+    fetch('/api/users/permissions')
+      .then(r => r.json())
+      .then(setPermissions)
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    if (token) fetchPermissions()
+  }, [token])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -109,7 +122,8 @@ export default function AppProvider({ children }) {
     toasts, addToast, badgeCounts, setBadgeCounts,
     sidebarCollapsed, toggleSidebar,
     theme, toggleTheme, showAgingBar, toggleAgingBar,
-    token, setToken, user, setUser, logout
+    token, setToken, user, setUser, logout,
+    permissions, fetchPermissions
   }
 
   return (

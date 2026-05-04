@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Sidebar() {
-  const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout } = useApp()
+  const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout, permissions } = useApp()
 
   const navItems = [
     { to: '/', icon: '🏠', label: 'Dashboard' },
@@ -25,9 +25,9 @@ export default function Sidebar() {
     { to: '/diagnostics', icon: '🛠️', label: 'Diagnostic Center', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
-    if (!item.permission) return true
     if (user?.role === 'admin') return true
-    return false
+    // Check if this specific path is granted to this role in our Dynamic Matrix
+    return permissions.some(p => p.role_name === user?.role && p.page_id === item.to)
   })
 
   return (
