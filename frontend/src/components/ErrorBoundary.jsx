@@ -12,6 +12,17 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("🛡️ UI Safety Net Caught Error:", error, errorInfo);
+    
+    // Send crash report to backend
+    fetch('/api/public/crash-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: error.toString(),
+        info: errorInfo.componentStack,
+        url: window.location.href
+      })
+    }).catch(err => console.warn('Failed to send crash report', err));
   }
 
   render() {

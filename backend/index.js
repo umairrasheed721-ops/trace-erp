@@ -1,12 +1,15 @@
 require('dotenv').config();
+const { sendEmergencyAlert } = require('./engines/alerts');
 
 // --- 🛡️ GLOBAL CRASH PREVENTERS ---
 process.on('uncaughtException', (err) => {
   console.error('🛑 CRITICAL: Uncaught Exception caught to prevent crash:', err.stack || err);
+  sendEmergencyAlert(`*Uncaught Exception*\n${err.message}\nCheck logs at /api/admin/logs`);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🛑 CRITICAL: Unhandled Rejection caught to prevent crash:', reason);
+  sendEmergencyAlert(`*Unhandled Rejection*\n${reason}\nCheck logs at /api/admin/logs`);
 });
 
 // --- 🛡️ ENVIRONMENT HEALTH GUARD ---
@@ -19,6 +22,26 @@ if (missing.length > 0) {
   process.exit(1);
 }
 console.log('✅ Environment Health Check Passed.');
+
+// --- 📊 LIVE PULSE LOG BUFFER ---
+const LOG_BUFFER_SIZE = 200;
+let logBuffer = [];
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = (...args) => {
+  const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+  logBuffer.push(`[${new Date().toISOString()}] INFO: ${msg}`);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+  originalLog.apply(console, args);
+};
+
+console.error = (...args) => {
+  const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+  logBuffer.push(`[${new Date().toISOString()}] ERROR: ${msg}`);
+  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
+  originalError.apply(console, args);
+};
 
 const express = require('express');
 const cors = require('cors');
@@ -99,6 +122,15 @@ app.use((req, res, next) => {
   } catch (err) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+});
+
+// --- 📊 LIVE PULSE LOGS API ---
+app.get('/api/admin/logs', authenticateToken, (req, res) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'owner') {
+    return res.status(403).json({ error: 'Access denied. Admins only.' });
+  }
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(logBuffer.join('\n'));
 });
 
 // Serve static frontend files

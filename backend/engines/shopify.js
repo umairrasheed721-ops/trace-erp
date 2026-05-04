@@ -198,7 +198,9 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
   });
 
   try {
+    const traceId = `SYNC-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     updateStatus('syncing', 'Initializing sync...');
+    console.log(`🆔 [TraceID: ${traceId}] Sync started.`);
     const { forceDeepSync = false } = options;
     // Deep Sync ignores the dateMin limit entirely
     const dateMin = forceDeepSync ? '2010-01-01T00:00:00Z' : (sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70));

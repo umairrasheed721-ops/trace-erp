@@ -1,10 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { DatabaseSync } = require('node:sqlite');
-const path = require('path');
-
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../trace_erp.db');
-const db = new DatabaseSync(DB_PATH);
+const { db, logAction } = require('../db');
 
 // Public Order Confirmation
 router.get('/confirm-order/:token', (req, res) => {
@@ -41,6 +37,20 @@ router.get('/confirm-order/:token', (req, res) => {
     console.error('Public confirmation error', err);
     res.status(500).send('Server Error');
   }
+});
+
+// --- 🐞 PUBLIC CRASH REPORTING ---
+router.post('/crash-report', (req, res) => {
+  const { error, info, url } = req.body;
+  
+  logAction({
+    action: 'FRONTEND_CRASH',
+    level: 'ERROR',
+    details: { url, error: error?.substring(0, 500) },
+    snapshot: info
+  });
+
+  res.json({ success: true });
 });
 
 module.exports = router;

@@ -195,6 +195,7 @@ function initDb() {
       user_id INTEGER,
       action TEXT NOT NULL,
       details TEXT, -- JSON string
+      snapshot TEXT, -- Detailed state snapshot for debugging
       level TEXT DEFAULT 'INFO', -- 'INFO', 'WARN', 'ERROR'
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -291,12 +292,20 @@ function transaction(fn) {
   };
 }
 
-function logAction({ store_id, order_id, user_id, action, details, level = 'INFO' }) {
+function logAction({ store_id, order_id, user_id, action, details, snapshot, level = 'INFO' }) {
   try {
     db.prepare(`
-      INSERT INTO audit_logs (store_id, order_id, user_id, action, details, level)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(store_id, order_id, user_id, action, typeof details === 'object' ? JSON.stringify(details) : details, level);
+      INSERT INTO audit_logs (store_id, order_id, user_id, action, details, snapshot, level)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      store_id, 
+      order_id, 
+      user_id, 
+      action, 
+      typeof details === 'object' ? JSON.stringify(details) : details, 
+      typeof snapshot === 'object' ? JSON.stringify(snapshot) : snapshot,
+      level
+    );
   } catch (err) {
     console.error('❌ Failed to write audit log:', err.message);
   }
@@ -306,6 +315,7 @@ module.exports = { prepare, transaction, exec: (sql) => db.exec(sql), logAction 
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE audit_logs ADD COLUMN snapshot TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE orders ADD COLUMN packaging_cost REAL DEFAULT 0").run(); } catch(e) {}
