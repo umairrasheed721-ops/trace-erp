@@ -278,7 +278,7 @@ export default function Users() {
 }
 
 function RoleAuthorityMatrix({ addToast, token }) {
-  const { permissions, setPermissions, fetchPermissions } = useContext(AppContext);
+  const { permissions, setPermissions, fetchPermissions } = useApp();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
 
