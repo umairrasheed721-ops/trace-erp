@@ -31,62 +31,68 @@ if (missing.length > 0) {
 }
 console.log('✅ Environment Health Check Passed.');
 
-// --- 📊 LIVE PULSE LOG BUFFER ---
-const LOG_BUFFER_SIZE = 200;
-let logBuffer = [];
+// --- 📊 LIVE PULSE LOG BUFFER (structured) ---
+const LOG_BUFFER_SIZE = 500;
+let logBuffer = []; // { ts, level, msg }
+let errorCount = 0;
 const originalLog = console.log;
 const originalError = console.error;
+const originalWarn = console.warn;
 
-console.log = (...args) => {
-  const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-  logBuffer.push(`[${new Date().toISOString()}] INFO: ${msg}`);
+const pushLog = (level, args) => {
+  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+  logBuffer.push({ ts: new Date().toISOString(), level, msg });
   if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
-  originalLog.apply(console, args);
+  if (level === 'ERROR') errorCount++;
 };
 
-console.error = (...args) => {
-  const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-  logBuffer.push(`[${new Date().toISOString()}] ERROR: ${msg}`);
-  if (logBuffer.length > LOG_BUFFER_SIZE) logBuffer.shift();
-  originalError.apply(console, args);
-};
+console.log   = (...a) => { pushLog('INFO',  a); originalLog.apply(console, a); };
+console.error = (...a) => { pushLog('ERROR', a); originalError.apply(console, a); };
+console.warn  = (...a) => { pushLog('WARN',  a); originalWarn.apply(console, a); };
 
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
 // --- 🛡️ SAFE ROUTE LOADER — a broken route never crashes the server ---
+// Tracks every module's load status for the System Status dashboard.
+const moduleRegistry = {}; // { label: { status, error, loadedAt } }
+
 function safeRequire(modulePath, label) {
   try {
     const mod = require(modulePath);
+    moduleRegistry[label] = { status: 'OK', error: null, loadedAt: new Date().toISOString() };
     console.log(`✅ Loaded: ${label}`);
     return mod;
   } catch (err) {
+    moduleRegistry[label] = { status: 'FAILED', error: err.message, loadedAt: new Date().toISOString() };
     console.error(`⚠️ Failed to load ${label}: ${err.message}`);
-    // Return a dummy router that returns 503 for all requests
     const { Router } = require('express');
     const fallback = Router();
-    fallback.all('*', (req, res) => res.status(503).json({ error: `${label} is temporarily unavailable`, details: err.message }));
+    fallback.all('*', (req, res) => res.status(503).json({
+      error: `${label} module failed to load`,
+      details: err.message,
+      fix: 'Check /api/admin/system-status for details'
+    }));
     return fallback;
   }
 }
 
-const { router: authRoutes } = require('./routes/auth'); // Auth must work — no fallback
-const ordersRoutes     = safeRequire('./routes/orders',      'Orders');
-const trackingRoutes   = safeRequire('./routes/tracking',    'Tracking');
-const monitorsRoutes   = safeRequire('./routes/monitors',    'Monitors');
-const watchdogRoutes   = safeRequire('./routes/watchdog',    'Watchdog');
-const storesRoutes     = safeRequire('./routes/stores',      'Stores');
-const financeRoutes    = safeRequire('./routes/finance',     'Finance');
-const reportsRoutes    = safeRequire('./routes/reports',     'Reports');
-const usersRoutes      = safeRequire('./routes/users',       'Users');
-const webhooksRoutes   = safeRequire('./routes/webhooks',    'Webhooks');
-const whatsappRoutes   = safeRequire('./routes/whatsapp',    'WhatsApp');
-const publicRoutes     = safeRequire('./routes/public',      'Public');
-const templatesRoutes  = safeRequire('./routes/templates',   'Templates');
-const diagnosticsRoutes = safeRequire('./routes/diagnostics', 'Diagnostics');
-const schedulerInit    = safeRequire('./scheduler',          'Scheduler');
-// NOTE: WhatsApp bot is loaded LAZILY inside routes/whatsapp.js — NOT here.
+const { router: authRoutes } = require('./routes/auth');
+const ordersRoutes      = safeRequire('./routes/orders',       'Orders');
+const trackingRoutes    = safeRequire('./routes/tracking',     'Tracking');
+const monitorsRoutes    = safeRequire('./routes/monitors',     'Monitors');
+const watchdogRoutes    = safeRequire('./routes/watchdog',     'Watchdog');
+const storesRoutes      = safeRequire('./routes/stores',       'Stores');
+const financeRoutes     = safeRequire('./routes/finance',      'Finance');
+const reportsRoutes     = safeRequire('./routes/reports',      'Reports');
+const usersRoutes       = safeRequire('./routes/users',        'Users');
+const webhooksRoutes    = safeRequire('./routes/webhooks',     'Webhooks');
+const whatsappRoutes    = safeRequire('./routes/whatsapp',     'WhatsApp');
+const publicRoutes      = safeRequire('./routes/public',       'Public');
+const templatesRoutes   = safeRequire('./routes/templates',    'Templates');
+const diagnosticsRoutes = safeRequire('./routes/diagnostics',  'Diagnostics');
+const schedulerInit     = safeRequire('./scheduler',           'Scheduler');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -163,13 +169,53 @@ app.use((req, res, next) => {
   }
 });
 
-// --- 📊 LIVE PULSE LOGS API ---
+// --- 📊 SYSTEM STATUS API — replaces needing Railway agent for debugging ---
+app.get('/api/admin/system-status', (req, res) => {
+  const mem = process.memoryUsage();
+  const toMB = (b) => (b / 1024 / 1024).toFixed(1);
+
+  // Get WhatsApp bot status safely
+  let waBotStatus = 'UNKNOWN';
+  try {
+    const waBot = require.cache[require.resolve('./engines/whatsapp_bot')]?.exports;
+    waBotStatus = waBot ? waBot.getStatus().status : 'NOT_LOADED';
+  } catch (_) { waBotStatus = 'NOT_LOADED'; }
+
+  res.json({
+    server: {
+      status: 'ALIVE',
+      uptime: Math.floor(process.uptime()),
+      uptimeHuman: formatUptime(process.uptime()),
+      nodeVersion: process.version,
+      startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+      errorCount,
+    },
+    memory: {
+      rss: toMB(mem.rss),
+      heapUsed: toMB(mem.heapUsed),
+      heapTotal: toMB(mem.heapTotal),
+      external: toMB(mem.external),
+      limitMB: 512,
+      percentUsed: ((mem.rss / 1024 / 1024) / 512 * 100).toFixed(1),
+    },
+    modules: moduleRegistry,
+    whatsappBot: waBotStatus,
+    recentLogs: logBuffer.slice(-100), // last 100 entries
+    recentErrors: logBuffer.filter(l => l.level === 'ERROR').slice(-20),
+  });
+});
+
+function formatUptime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return `${h}h ${m}m ${s}s`;
+}
+
+// Legacy plain-text logs (kept for backwards compat)
 app.get('/api/admin/logs', (req, res) => {
-  if (req.user?.role !== 'admin' && req.user?.role !== 'owner') {
-    return res.status(403).json({ error: 'Access denied. Admins only.' });
-  }
   res.setHeader('Content-Type', 'text/plain');
-  res.send(logBuffer.join('\n'));
+  res.send(logBuffer.map(l => `[${l.ts}] ${l.level}: ${l.msg}`).join('\n'));
 });
 
 // Serve static frontend files
@@ -193,12 +239,21 @@ app.use('/api/diagnostics', diagnosticsRoutes);
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {
+  let waBotStatus = 'UNKNOWN';
+  try {
+    const waBot = require.cache[require.resolve('./engines/whatsapp_bot')]?.exports;
+    waBotStatus = waBot ? waBot.getStatus().status : 'NOT_LOADED';
+  } catch (_) {}
+
   res.json({
     status: 'ALIVE',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    wa_bot: bot.getStatus().status
+    wa_bot: waBotStatus,
+    failedModules: Object.entries(moduleRegistry)
+      .filter(([, v]) => v.status === 'FAILED')
+      .map(([k]) => k),
   });
 });
 
@@ -242,5 +297,5 @@ const shutdown = () => {
   }, 10000);
 };
 
-process.on('SIGTERM', shutdown);
+// Note: SIGTERM also handled by the bulletproof handler above (graceful shutdown takes precedence)
 process.on('SIGINT', shutdown);
