@@ -26,29 +26,63 @@ export function SaveViewModal({ show, onClose, viewName, setViewName, isViewLock
   )
 }
 
+// Columns that can NEVER be removed — they power profit reports and core operations
+const LOCKED_COLS = ['delivery_status', 'edit'];
+
 export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }) {
   if (!show) return null
+
+  const handleReset = () => {
+    if (window.confirm('Reset all columns to default layout?')) {
+      localStorage.removeItem('trace_search_cols');
+      setCols(DEFAULT_COLS);
+    }
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="card" style={{ width: 600, padding: 24, maxHeight: '80vh', overflow: 'auto' }}>
-        <div style={{ fontWeight: 700, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-          <span>🎭 Configure Columns</span>
-          <button className="btn btn-secondary btn-sm" onClick={onClose}>✕</button>
+        <div style={{ fontWeight: 700, marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>🎥 Configure Columns</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={handleReset}
+              style={{ fontSize: '0.7rem', color: 'var(--orange)' }}
+              title="Restore all default columns"
+            >
+              🔄 Reset Default
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={onClose}>✕</button>
+          </div>
+        </div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+          🔒 Locked columns (Status, Action) cannot be removed — they power profit reports.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {DEFAULT_COLS.map(c => {
             const isVisible = cols.find(col => col.id === c.id)
+            const isLocked = LOCKED_COLS.includes(c.id)
             return (
-              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 6 }}>
+              <label key={c.id} style={{ 
+                display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', 
+                cursor: isLocked ? 'not-allowed' : 'pointer', 
+                padding: '6px 10px', 
+                background: isLocked ? 'rgba(99,102,241,0.1)' : 'var(--bg-elevated)', 
+                borderRadius: 6,
+                border: isLocked ? '1px solid rgba(99,102,241,0.3)' : '1px solid transparent'
+              }}>
                 <input 
                   type="checkbox" 
                   checked={!!isVisible} 
+                  disabled={isLocked}
                   onChange={e => {
+                    if (isLocked) return;
                     if (e.target.checked) setCols(prev => [...prev, c])
                     else setCols(prev => prev.filter(col => col.id !== c.id))
                   }} 
                 />
-                {c.label}
+                {isLocked ? '🔒 ' : ''}{c.label}
               </label>
             )
           })}

@@ -1,13 +1,26 @@
 export function getStatusColor(status) {
   const s = (status || '').toLowerCase()
-  if (s.includes('delivered')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
-  if (s.includes('pending') || s.includes('unfulfilled')) return { bg: 'var(--yellow-dim)', color: 'var(--yellow)' }
-  if (s.includes('cancelled') || s.includes('void')) return { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }
-  if (s.includes('return') || s.includes('rto')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
-  if (s.includes('stuck') || s.includes('failed')) return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
-  if (s.includes('advice') || s.includes('hold')) return { bg: 'var(--blue-dim)', color: 'var(--blue)' }
-  if (s.includes('verified') || s.includes('confirm')) return { bg: 'var(--green-dim)', color: 'var(--green)' }
-  if (s.includes('fake') || s.includes('fraud')) return { bg: 'var(--red-dim)', color: 'var(--red)' }
+  // ✅ Success / Revenue
+  if (s === 'delivered')                                        return { bg: 'var(--green-dim)',  color: 'var(--green)' }
+  // 🔵 In-Progress / Active
+  if (s === 'confirmed')                                        return { bg: 'rgba(99,102,241,0.15)', color: '#818cf8' }
+  if (s === 'booked')                                           return { bg: 'var(--blue-dim)',   color: 'var(--blue)' }
+  if (s.includes('transit') || s === 'shipped')                 return { bg: 'var(--blue-dim)',   color: 'var(--blue)' }
+  if (s === 'out for delivery')                                  return { bg: 'rgba(34,197,94,0.15)', color: '#4ade80' }
+  if (s === 'picked up' || s === 'pick up')                     return { bg: 'var(--blue-dim)',   color: 'var(--blue)' }
+  // 🟡 Pending / Unknown
+  if (s === 'pending' || s.includes('unfulfilled'))             return { bg: 'var(--yellow-dim)', color: 'var(--yellow)' }
+  if (s === 'undelivered' || s === 'attempted' || s.includes('attempt')) return { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24' }
+  // 🔴 Problem / Loss
+  if (s === 'return received')                                  return { bg: 'var(--red-dim)',    color: 'var(--red)' }
+  if (s === 'returned' || s.includes('rto'))                    return { bg: 'var(--red-dim)',    color: 'var(--red)' }
+  if (s === 'refused')                                          return { bg: 'var(--red-dim)',    color: 'var(--red)' }
+  if (s.includes('fake') || s.includes('fraud'))                return { bg: 'var(--red-dim)',    color: 'var(--red)' }
+  // ⚠️ Hold / Advisory
+  if (s.includes('advice') || s.includes('hold'))               return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
+  if (s.includes('stuck') || s.includes('failed'))              return { bg: 'var(--orange-dim)', color: 'var(--orange)' }
+  // ⬛ Closed / Neutral
+  if (s === 'cancelled' || s.includes('void'))                  return { bg: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }
   return { bg: 'var(--bg-elevated)', color: 'var(--text-muted)' }
 }
 
