@@ -126,7 +126,7 @@ export default function AppProvider({ children }) {
     sidebarCollapsed, toggleSidebar,
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
-    permissions, fetchPermissions
+    permissions, setPermissions, fetchPermissions
   }
 
   return (

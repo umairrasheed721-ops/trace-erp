@@ -278,9 +278,17 @@ export default function Users() {
 }
 
 function RoleAuthorityMatrix({ addToast, token }) {
-  const [permissions, setPermissions] = useState([]);
+  const { permissions, setPermissions, fetchPermissions } = useContext(AppContext);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+
+  useEffect(() => {
+    const load = async () => {
+      await fetchPermissions();
+      setLoading(false);
+    };
+    load();
+  }, []);
 
   const pages = [
     { id: '/', label: 'Dashboard', icon: '📊' },
@@ -305,21 +313,7 @@ function RoleAuthorityMatrix({ addToast, token }) {
 
   const roles = ['manager', 'agent'];
 
-  const fetchPermissions = async () => {
-    try {
-      const res = await fetch('/api/users/permissions', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setPermissions(data);
-    } catch (e) {
-      console.error('Failed to load permissions', e);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  useEffect(() => { fetchPermissions(); }, []);
 
   const hasAccess = (role, pageId) => {
     if (role === 'admin') return true;
