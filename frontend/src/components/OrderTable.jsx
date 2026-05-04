@@ -1,7 +1,7 @@
 import { getStatusColor } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function OrderTable({
   loading,
@@ -40,6 +40,16 @@ export default function OrderTable({
 }) {
   const { user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
+  const [waTemplates, setWATemplates] = useState([])
+
+  useEffect(() => {
+    fetch('/api/templates', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+    })
+    .then(res => res.json())
+    .then(setWATemplates)
+    .catch(err => console.error('Failed to fetch WA templates', err))
+  }, [])
 
   if (loading) {
     return <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
@@ -277,24 +287,32 @@ export default function OrderTable({
                                 width: '20px'
                               }}
                               onChange={(e) => {
-                                const template = e.target.value;
-                                if (!template) return;
+                                const templateId = e.target.value;
+                                if (!templateId) return;
                                 
+                                const template = waTemplates.find(t => t.id === parseInt(templateId));
+                                if (!template) return;
+
                                 const name = formatCustomerName(o.customer_name);
                                 const orderId = o.ref_number || o.shopify_order_id;
                                 const price = Math.round(parseFloat(o.price)||0);
                                 const courier = o.courier || 'our courier';
                                 const tracking = o.tracking_number || '';
                                 
-                                let msg = "";
-                                if (template === 'confirm') {
-                                  msg = `Hi ${name}, thank you for your order #${orderId} from TRACE. Your total is Rs ${price}. Please reply with 'CONFIRM' to ship it today!`;
-                                } else if (template === 'address') {
-                                  msg = `Hi ${name}, we have received your order #${orderId}, but the address seems incomplete. Could you please provide your House # and Street name?`;
-                                } else if (template === 'shipped') {
-                                  msg = `Hi ${name}, your order #${orderId} has been shipped via ${courier}. Your Tracking ID is: ${tracking}.`;
-                                } else if (template === 'payment') {
-                                  msg = `Hi ${name}, this is a reminder regarding your order #${orderId}. The rider will be arriving soon with your package (Rs ${price}). Please keep the cash ready.`;
+                                let msg = template.content
+                                  .replace(/\[Name\]/g, name)
+                                  .replace(/\[OrderID\]/g, orderId)
+                                  .replace(/\[Price\]/g, price)
+                                  .replace(/\[Courier\]/g, courier)
+                                  .replace(/\[Tracking\]/g, tracking);
+
+                                // Auto-Link if confirmation token exists
+                                if (o.confirmation_token) {
+                                  const appUrl = window.location.origin;
+                                  const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+                                  msg = msg.replace(/\[Link\]/g, link);
+                                } else {
+                                  msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
                                 }
 
                                 const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
@@ -303,10 +321,9 @@ export default function OrderTable({
                               }}
                             >
                               <option value="">💬</option>
-                              <option value="confirm">✅ Confirm Order</option>
-                              <option value="address">🏠 Address Query</option>
-                              <option value="shipped">🚚 Shipped Update</option>
-                              <option value="payment">💰 Payment Reminder</option>
+                              {waTemplates.map(t => (
+                                <option key={t.id} value={t.id}>{t.name}</option>
+                              ))}
                             </select>
 
                             <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>

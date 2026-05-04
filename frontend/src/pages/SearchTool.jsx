@@ -213,8 +213,25 @@ export default function SearchTool() {
   const [customerHistoryPhone, setCustomerHistoryPhone] = useState(null)
   const [showWAQueue, setShowWAQueue] = useState(false)
   const [waQueueIndex, setWAQueueIndex] = useState(0)
-  const [waQueueTemplate, setWAQueueTemplate] = useState('confirm')
+  const [waQueueTemplate, setWAQueueTemplate] = useState('')
+  const [waTemplates, setWATemplates] = useState([])
 
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch('/api/templates', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
+      const data = await res.json()
+      setWATemplates(data)
+      if (data.length > 0) setWAQueueTemplate(data[0].id)
+    } catch (err) {
+      console.error('Failed to fetch templates', err)
+    }
+  }
   useEffect(() => {
     if (editingOrder) {
       fetch(`/api/orders/logistics/cities?courier=PostEx`)
@@ -569,13 +586,25 @@ export default function SearchTool() {
     const courier = o.courier || 'our courier';
     const tracking = o.tracking_number || '';
     
+    const template = waTemplates.find(t => t.id === parseInt(waQueueTemplate));
     let msg = "";
-    if (waQueueTemplate === 'confirm') {
-      msg = `Hi ${name}, thank you for your order #${ref} from TRACE. Your total is Rs ${price}. Please reply with 'CONFIRM' to ship it today!`;
-    } else if (waQueueTemplate === 'address') {
-      msg = `Hi ${name}, we have received your order #${ref}, but the address seems incomplete. Could you please provide your House # and Street name?`;
-    } else if (waQueueTemplate === 'shipped') {
-      msg = `Hi ${name}, your order #${ref} has been shipped via ${courier}. Your Tracking ID is: ${tracking}.`;
+    
+    if (template) {
+      msg = template.content
+        .replace(/\[Name\]/g, name)
+        .replace(/\[OrderID\]/g, ref)
+        .replace(/\[Price\]/g, price)
+        .replace(/\[Courier\]/g, courier)
+        .replace(/\[Tracking\]/g, tracking);
+      
+      // Auto-Link if confirmation token exists
+      if (o.confirmation_token) {
+        const appUrl = window.location.origin;
+        const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+        msg = msg.replace(/\[Link\]/g, link);
+      } else {
+        msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+      }
     }
 
     const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
@@ -1126,9 +1155,9 @@ export default function SearchTool() {
                 value={waQueueTemplate}
                 onChange={e => setWAQueueTemplate(e.target.value)}
               >
-                <option value="confirm">✅ Order Confirmation</option>
-                <option value="address">🏠 Address Query</option>
-                <option value="shipped">🚚 Shipping Update</option>
+                {waTemplates.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
               </select>
             </div>
 

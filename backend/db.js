@@ -100,6 +100,15 @@ function initDb() {
       UNIQUE(store_id, tracking_number)
     );
 
+    CREATE TABLE IF NOT EXISTS whatsapp_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      type TEXT DEFAULT 'custom', -- 'confirmation', 'address', 'shipping', 'custom'
+      is_default INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS watchdog_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,

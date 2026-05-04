@@ -15,6 +15,7 @@ const usersRoutes = require('./routes/users');
 const webhooksRoutes = require('./routes/webhooks');
 const whatsappRoutes = require('./routes/whatsapp');
 const publicRoutes = require('./routes/public');
+const templatesRoutes = require('./routes/templates');
 const schedulerInit = require('./scheduler');
 const bot = require('./engines/whatsapp_bot'); // Start the bot
 
@@ -95,6 +96,7 @@ app.use('/api/users', usersRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/templates', templatesRoutes);
 
 const { addClient } = require('./sse');
 
