@@ -2,37 +2,55 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const SESSION_PATH = path.join(process.cwd(), 'wa_session');
 
 // Detect the best Chromium executable available on this system (local or Railway/Nix)
 function detectChromePath() {
-  // Explicit env override always wins
+  // 1. Explicit env override always wins
   if (process.env.PUPPETEER_EXECUTABLE_PATH) {
     console.log(`🔍 Using PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  // Common Nix/Railway paths for Chromium
+  // 2. Use 'which' — handles Nix dynamic paths like /nix/store/xxx-chromium/bin/chromium
+  const whichTargets = ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'];
+  for (const bin of whichTargets) {
+    try {
+      const found = execSync(`which ${bin} 2>/dev/null`, { timeout: 3000 }).toString().trim();
+      if (found) {
+        console.log(`✅ Found Chrome via 'which ${bin}': ${found}`);
+        return found;
+      }
+    } catch (_) {}
+  }
+
+  // 3. Common static paths as fallback
   const candidates = [
-    '/run/current-system/sw/bin/chromium',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',
+    '/run/current-system/sw/bin/chromium',
     '/nix/var/nix/profiles/default/bin/chromium',
   ];
-
   for (const p of candidates) {
     try {
       if (fs.existsSync(p)) {
-        console.log(`✅ Found system Chrome at: ${p}`);
+        console.log(`✅ Found Chrome at static path: ${p}`);
         return p;
       }
     } catch (_) {}
   }
 
-  console.warn('⚠️ No system Chromium found — Puppeteer will try bundled Chrome. This may fail on Railway.');
+  // 4. Log PATH to help debug, then let Puppeteer attempt bundled Chrome
+  try {
+    const pathEnv = execSync('echo $PATH', { timeout: 2000 }).toString().trim();
+    console.warn(`⚠️ No system Chromium found. Current PATH: ${pathEnv}`);
+  } catch (_) {
+    console.warn('⚠️ No system Chromium found — Puppeteer will use bundled Chrome (will likely fail on Railway).');
+  }
   return null;
 }
 
