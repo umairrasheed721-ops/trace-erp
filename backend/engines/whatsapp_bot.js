@@ -81,14 +81,13 @@ class WhatsAppBot {
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
-          '--no-zygote',
-          '--single-process',
           '--disable-gpu',
           '--disable-extensions',
           '--disable-background-networking',
           '--disable-default-apps',
           '--mute-audio',
           '--hide-scrollbars',
+          '--shm-size=256mb',
         ],
         ...(CHROME_PATH ? { executablePath: CHROME_PATH } : {})
       }
