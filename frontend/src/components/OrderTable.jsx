@@ -40,6 +40,7 @@ export default function OrderTable({
   onViewHistory
 }) {
   const { addToast, user } = useApp()
+  const canSeeFinancials = user?.role === 'admin'
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
 
   const handleManualStatusChange = async (orderId, newStatus) => {
