@@ -7,14 +7,19 @@ function getAllFiles(dirPath, arrayOfFiles) {
   arrayOfFiles = arrayOfFiles || [];
 
   files.forEach(function(file) {
-    if (fs.statSync(dirPath + "/" + file).isDirectory()) {
-      if (file !== 'node_modules' && file !== 'public') {
-        arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles);
+    const fullPath = path.join(dirPath, file);
+    try {
+      if (fs.statSync(fullPath).isDirectory()) {
+        if (file !== 'node_modules' && file !== 'public' && file !== 'wa_session' && !file.startsWith('.')) {
+          arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
+        }
+      } else {
+        if (file.endsWith('.js')) {
+          arrayOfFiles.push(fullPath);
+        }
       }
-    } else {
-      if (file.endsWith('.js')) {
-        arrayOfFiles.push(path.join(dirPath, "/", file));
-      }
+    } catch (err) {
+      // Ignore files that disappeared or broken symlinks during scan
     }
   });
 
