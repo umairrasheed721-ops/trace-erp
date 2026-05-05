@@ -32,7 +32,8 @@ export default function TemplateManager() {
       name: formData.get('name'),
       content: formData.get('content'),
       type: formData.get('type'),
-      is_default: formData.get('is_default') === 'on' ? 1 : 0
+      is_default: formData.get('is_default') === 'on' ? 1 : 0,
+      status: formData.get('status')
     }
 
     const method = editing ? 'PUT' : 'POST'
@@ -95,6 +96,7 @@ export default function TemplateManager() {
               <div>
                 <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{t.name}</h4>
                 <span className="badge" style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)' }}>{t.type.toUpperCase()}</span>
+                {t.status === 'draft' ? <span className="badge" style={{ marginLeft: 5, background: 'rgba(255,255,255,0.2)', color: 'white' }}>DRAFT</span> : <span className="badge" style={{ marginLeft: 5, background: 'rgba(0, 255, 0, 0.1)', color: '#4ade80', border: '1px solid rgba(74, 222, 128, 0.2)' }}>ACTIVE</span>}
                 {t.is_default ? <span className="badge" style={{ marginLeft: 5, background: 'var(--brand)', color: 'black' }}>DEFAULT</span> : null}
               </div>
               <div style={{ display: 'flex', gap: 5 }}>
@@ -140,6 +142,14 @@ export default function TemplateManager() {
                 <option value="address">🏠 Address Query</option>
                 <option value="shipping">🚚 Shipping Update</option>
                 <option value="custom">✨ Custom</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label>Status</label>
+              <select name="status" className="premium-input" defaultValue={editing?.status || 'active'}>
+                <option value="active">🟢 Active</option>
+                <option value="draft">🟡 Draft</option>
               </select>
             </div>
 

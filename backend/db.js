@@ -414,11 +414,14 @@ try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); 
 function runMigrations(db) {
   const migrations = [
     { table: 'orders', column: 'confirmation_token', type: 'TEXT' },
+    { table: 'orders', column: 'courier_status', type: 'TEXT DEFAULT NULL' },          // raw courier API status
+    { table: 'orders', column: 'failed_attempts', type: 'INTEGER DEFAULT 0' },
     { table: 'stores', column: 'sync_progress', type: 'TEXT' },
     { table: 'product_master_costs', column: 'variant_title', type: 'TEXT NOT NULL DEFAULT ""' },
     { table: 'product_master_costs', column: 'selling_price', type: 'REAL DEFAULT 0' },
     { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' },
-    { table: 'whatsapp_templates', column: 'status', type: "TEXT DEFAULT 'active'" }
+    { table: 'whatsapp_templates', column: 'status', type: "TEXT DEFAULT 'active'" },
+    { table: 'users', column: 'can_override_erp_status', type: 'INTEGER DEFAULT 0' },  // manual ERP status authority
   ];
 
   migrations.forEach(m => {
@@ -429,4 +432,54 @@ function runMigrations(db) {
       // Ignore "duplicate column" errors
     }
   });
+
+  // ── Status Mappings Table ─────────────────────────────────────────────
+  // Admin-configurable table: courier raw status → ERP status
+  // Previously hardcoded in tracking.js — now fully manageable from the UI
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS status_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      courier TEXT NOT NULL DEFAULT 'All',
+      courier_status TEXT NOT NULL,
+      erp_status TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(courier, courier_status)
+    );
+  `);
+
+  // Seed from the hardcoded maps that used to live in tracking.js
+  const seeds = [
+    ['PostEx',      'postex warehouse',                   'In Transit'],
+    ['PostEx',      'out for return',                     'Return Initiated'],
+    ['PostEx',      'inroute',                            'In Transit'],
+    ['PostEx',      'intransit',                          'In Transit'],
+    ['PostEx',      'delivered',                          'Delivered'],
+    ['PostEx',      'return received',                    'Return Received'],
+    ['PostEx',      'attempted',                          'Attempted'],
+    ['PostEx',      'shipper advice',                     'Shipper Advice'],
+    ['PostEx',      'refused',                            'Refused'],
+    ['PostEx',      'cancelled',                          'Cancelled'],
+    ['Instaworld',  'delivered',                          'Delivered'],
+    ['Instaworld',  'pickup done',                        'Booked'],
+    ['Instaworld',  'arrival at insta-hub',               'Booked'],
+    ['Instaworld',  'handover to courier',                'In Transit'],
+    ['Instaworld',  'in transit',                         'In Transit'],
+    ['Instaworld',  'returned to shipper',                'Returned'],
+    ['Instaworld',  'return received at insta hub',       'Return Received'],
+    ['Instaworld',  'delivery unsuccessful',              'Shipper Advice'],
+    ['Instaworld',  'shipper advice',                     'Shipper Advice'],
+    ['Instaworld',  'uncollected',                        'Pending'],
+    ['Instaworld',  'out for delivery',                   'Out for Delivery'],
+    ['Instaworld',  'attempted delivery',                 'Attempted'],
+  ];
+  const insertMapping = db.prepare(
+    `INSERT OR IGNORE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
+  );
+  seeds.forEach(([courier, cs, erp]) => insertMapping.run(courier, cs, erp));
+
+  // Admin user always has ERP status override authority
+  try {
+    db.exec(`UPDATE users SET can_override_erp_status = 1 WHERE role = 'admin'`);
+  } catch (e) {}
 }

@@ -1,3 +1,10 @@
+export const ERP_STATUSES = [
+  'Pending', 'Confirmed', 'Booked', 'Picked Up', 'In Transit',
+  'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered',
+  'Refused', 'Delivered', 'Return Initiated', 'Return Received',
+  'Returned', 'Cancelled'
+];
+
 export function getStatusColor(status) {
   const s = (status || '').toLowerCase()
   // ✅ Success / Revenue

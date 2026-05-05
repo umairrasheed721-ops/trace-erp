@@ -5,30 +5,37 @@ const db = require('../db');
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
 const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'delivery unsuccessful', 'shipper advice'];
-const CONCURRENT = 10;   // How many requests to fire at once
+const CONCURRENT = 10;
 const SLEEP_MS = 800;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const POSTEX_STATUS_MAP = {
-  'postex warehouse': 'In Transit',
-  'out for return': 'Return Initiated',
-  'inroute': 'In Transit',
-  'intransit': 'In Transit'
-};
+// Load status mappings from DB (replaces hardcoded maps)
+function loadStatusMaps() {
+  try {
+    const rows = db.prepare(`SELECT courier, courier_status, erp_status FROM status_mappings WHERE is_active = 1`).all();
+    const map = {};
+    rows.forEach(r => {
+      const key = `${r.courier.toLowerCase()}:${r.courier_status.toLowerCase()}`;
+      map[key] = r.erp_status;
+      // Also add All: prefix as fallback
+      map[`all:${r.courier_status.toLowerCase()}`] = r.erp_status;
+    });
+    return map;
+  } catch (e) {
+    console.error('⚠️ Failed to load status maps from DB, using empty map:', e.message);
+    return {};
+  }
+}
 
-const INSTAWORLD_STATUS_MAP = {
-  'delivered': 'Delivered',
-  'pickup done': 'Booked',
-  'arrival at insta-hub': 'Booked',
-  'handover to courier': 'In Transit',
-  'in transit': 'In Transit',
-  'returned to shipper': 'Returned',
-  'return received at insta hub': 'Return Received',
-  'delivery unsuccessful': 'Shipper Advice',
-  'shipper advice': 'Shipper Advice',
-  'uncollected': 'Pending'
-};
+function applyMap(statusMap, courier, rawStatus) {
+  if (!rawStatus) return null;
+  const raw = rawStatus.toLowerCase().trim();
+  const courierKey = `${(courier || 'all').toLowerCase()}:${raw}`;
+  const allKey = `all:${raw}`;
+  // Exact courier match first, then generic All
+  return statusMap[courierKey] || statusMap[allKey] || null;
+}
 
 // Chunk array into groups
 function chunks(arr, size) {
@@ -77,6 +84,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   console.log(`🔄 PostEx [${store.shop_domain}]: Syncing ${toProcess.length} orders...`);
   const updatesToApply = [];
   let processed = 0;
+  const statusMap = loadStatusMaps();
 
   for (const batch of chunks(toProcess, CONCURRENT)) {
     const results = await Promise.allSettled(
@@ -106,9 +114,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
             if (!rawStatus) return null;
             
-            const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
-
-            return { id: order.id, oldStatus: order.delivery_status, status: newStatus };
+            const mappedStatus = applyMap(statusMap, 'PostEx', rawStatus);
+            return { id: order.id, oldStatus: order.delivery_status, rawStatus, mappedStatus };
           } catch (err) {
             await sleep(1000);
           }
@@ -119,11 +126,16 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value) {
-        const { id, status, oldStatus } = r.value;
-        if (status && status.toLowerCase() !== (oldStatus || '').toLowerCase()) {
-          const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(status.toLowerCase());
-          updatesToApply.push({ id, status, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
-        }
+        const { id, rawStatus, mappedStatus, oldStatus } = r.value;
+        if (!rawStatus) continue;
+        const isProtected = DEAD_STATUSES.includes((oldStatus||'').toLowerCase());
+        const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((rawStatus||'').toLowerCase());
+        updatesToApply.push({
+          id,
+          courier_status: rawStatus,
+          erp_status: (!isProtected && mappedStatus) ? mappedStatus : null,
+          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
+        });
       }
     }
     
@@ -133,10 +145,18 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     await sleep(SLEEP_MS);
   }
 
-  // Safe bulk write
-  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
+  // Safe bulk write — courier_status always written, ERP status only if not protected + mapping found
+  const updateStmt = db.prepare(`
+    UPDATE orders
+    SET courier_status = ?,
+        delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+        status_date = CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE status_date END,
+        failed_attempts = failed_attempts + ?
+    WHERE id = ?
+  `);
   const updateMany = db.transaction(items => {
-    for (const u of items) updateStmt.run(u.status, u.failed_attempt_increment || 0, u.id);
+    for (const u of items)
+      updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment || 0, u.id);
   });
   updateMany(updatesToApply);
 
@@ -226,11 +246,10 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
       if (!rawStatus) return { status: 200, order, newStatus: null, courierName };
 
-      // Normalize status
       const lowerRaw = String(rawStatus).toLowerCase();
-      const newStatus = INSTAWORLD_STATUS_MAP[lowerRaw] || rawStatus;
+      const newStatus = applyMap(statusMap, courierName || 'Instaworld', lowerRaw) || null;
 
-      return { status: 200, order, newStatus, courierName };
+      return { status: 200, order, newStatus, rawStatus, courierName };
     } catch (err) {
       const logStmt = db.prepare("INSERT INTO sync_audit (tracking_number, message) VALUES (?, ?)");
       logStmt.run(order.tracking_number, `ERR: ${err.message} | ${err.stack.split('\n')[0]}`);
@@ -240,23 +259,23 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
   const updatesToApply = [];
   let processed = 0;
+  const statusMap = loadStatusMaps();
 
   for (const batch of chunks(toProcess, 10)) {
     const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
     const retryOrders = [];
 
     for (const r of primaryResults) {
-      if (r.status === 200 && r.newStatus) {
-        const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
-        if (changedStatus || r.courierName) {
-          const isAttemptFailure = changedStatus && ATTEMPT_FAILURE_STATUSES.includes(String(r.newStatus).toLowerCase());
-          updatesToApply.push({ 
-            id: r.order.id, 
-            status: r.newStatus || r.order.delivery_status, 
-            courier: r.courierName,
-            failed_attempt_increment: isAttemptFailure ? 1 : 0
-          });
-        }
+      if (r.status === 200 && r.rawStatus) {
+        const isProtected = DEAD_STATUSES.includes((r.order.delivery_status||'').toLowerCase());
+        const isAttemptFailure = r.newStatus && ATTEMPT_FAILURE_STATUSES.includes(r.newStatus.toLowerCase());
+        updatesToApply.push({
+          id: r.order.id,
+          courier_status: r.rawStatus,
+          erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
+          courier: r.courierName,
+          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
+        });
       } else if (r.status !== 404 && apiKeys[1]) {
         retryOrders.push(r.order);
       }
@@ -266,17 +285,16 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       await sleep(2000);
       const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
       for (const r of backupResults) {
-        if (r.status === 200 && r.newStatus) {
-          const changedStatus = String(r.newStatus).toLowerCase() !== String(r.order.delivery_status || '').toLowerCase();
-          if (changedStatus || r.courierName) {
-            const isAttemptFailure = changedStatus && ATTEMPT_FAILURE_STATUSES.includes(String(r.newStatus).toLowerCase());
-            updatesToApply.push({ 
-              id: r.order.id, 
-              status: r.newStatus || r.order.delivery_status, 
-              courier: r.courierName,
-              failed_attempt_increment: isAttemptFailure ? 1 : 0
-            });
-          }
+        if (r.status === 200 && r.rawStatus) {
+          const isProtected = DEAD_STATUSES.includes((r.order.delivery_status||'').toLowerCase());
+          const isAttemptFailure = r.newStatus && ATTEMPT_FAILURE_STATUSES.includes(r.newStatus.toLowerCase());
+          updatesToApply.push({
+            id: r.order.id,
+            courier_status: r.rawStatus,
+            erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
+            courier: r.courierName,
+            failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
+          });
         }
       }
     }
@@ -293,9 +311,18 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
 
   // Safe bulk write
-  const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, courier=COALESCE(?, courier), status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
+  const updateStmt = db.prepare(`
+    UPDATE orders
+    SET courier_status = COALESCE(?, courier_status),
+        courier = COALESCE(?, courier),
+        delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+        status_date = CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE status_date END,
+        failed_attempts = failed_attempts + ?
+    WHERE id = ?
+  `);
   const updateMany = db.transaction(items => {
-    for (const u of items) updateStmt.run(u.status, u.courier || null, u.failed_attempt_increment || 0, u.id);
+    for (const u of items)
+      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment||0, u.id);
   });
   updateMany(updatesToApply);
 

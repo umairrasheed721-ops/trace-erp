@@ -1,4 +1,4 @@
-import { getStatusColor } from '../utils/orderUtils'
+import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
 import { useState, useEffect } from 'react'
@@ -39,8 +39,43 @@ export default function OrderTable({
   status,
   onViewHistory
 }) {
-  const { user } = useApp()
-  const canSeeFinancials = user?.role === 'admin'
+  const { addToast, user } = useApp()
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+
+  const handleManualStatusChange = async (orderId, newStatus) => {
+    if (!newStatus) return
+    setStatusUpdatingId(orderId)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/erp-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_status: newStatus })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 409 && data.protected) {
+          if (confirm(`${data.error}\n\nDo you want to FORCE this change? (Admin Only)`)) {
+            const forceRes = await fetch(`/api/orders/${orderId}/erp-status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ erp_status: newStatus, force: true })
+            })
+            if (!forceRes.ok) throw new Error((await forceRes.json()).error)
+            addToast('Status updated successfully (Forced)', 'success')
+          }
+        } else {
+          throw new Error(data.error || 'Failed to update status')
+        }
+      } else {
+        addToast(`ERP Status updated to ${newStatus}`, 'success')
+      }
+    } catch (err) {
+      addToast(err.message, 'error')
+    } finally {
+      setStatusUpdatingId(null)
+    }
+  }
+
   const [waTemplates, setWATemplates] = useState([])
 
   useEffect(() => {
@@ -388,10 +423,41 @@ export default function OrderTable({
                     )
                     if (col.id === 'delivery_status') {
                       const isExchange = (s.includes('delivered') || s.includes('transit')) && parseInt(o.items_count) === 0;
+                      const hasAuthority = user?.role === 'admin' || user?.can_override_erp_status;
+                      
                       return (
                         <td key={col.id}>
                           <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                            <span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span>
+                            {hasAuthority ? (
+                              <div className="relative-container">
+                                {statusUpdatingId === o.id ? (
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>⌛ Saving...</span>
+                                ) : (
+                                  <select
+                                    value={o.delivery_status || 'Pending'}
+                                    onChange={(e) => handleManualStatusChange(o.id, e.target.value)}
+                                    className="badge-select"
+                                    style={{ 
+                                      background: bg, 
+                                      color: color,
+                                      border: 'none',
+                                      padding: '2px 8px',
+                                      borderRadius: 12,
+                                      fontSize: '0.65rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      appearance: 'none',
+                                      textAlign: 'center'
+                                    }}
+                                  >
+                                    {ERP_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
+                                  </select>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="badge" style={{ background: bg, color }}>{o.delivery_status || 'Pending'}</span>
+                            )}
+
                             {isExchange && (
                               <span 
                                 className="badge" 
@@ -404,6 +470,28 @@ export default function OrderTable({
                           </div>
                         </td>
                       );
+                    }
+                    if (col.id === 'courier_status') {
+                      return (
+                        <td key={col.id}>
+                          {o.courier_status ? (
+                            <span 
+                              style={{ 
+                                fontSize: '0.65rem', 
+                                color: 'var(--text-muted)', 
+                                fontStyle: 'italic',
+                                padding: '1px 5px',
+                                borderRadius: 4,
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.1)'
+                              }}
+                              title="Raw status from courier API"
+                            >
+                              {o.courier_status}
+                            </span>
+                          ) : <span style={{ opacity: 0.3 }}>—</span>}
+                        </td>
+                      )
                     }
                     if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
                     if (col.id === 'tracking_number') {

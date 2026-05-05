@@ -28,6 +28,7 @@ const WhatsAppBot = lazy(() => import('./pages/WhatsAppBot'))
 const TemplateManager = lazy(() => import('./pages/TemplateManager'))
 const DiagnosticCenter = lazy(() => import('./pages/DiagnosticCenter'))
 const SystemStatus = lazy(() => import('./pages/SystemStatus'))
+const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -72,6 +73,7 @@ function AppContent() {
                   <Route path="/marketing" element={<MarketingIntelligence />} />
                   <Route path="/diagnostics" element={<DiagnosticCenter />} />
                   <Route path="/system-status" element={<SystemStatus />} />
+                  <Route path="/status-mappings" element={<StatusMappingManager />} />
                 </Routes>
               </ErrorBoundary>
             </Suspense>

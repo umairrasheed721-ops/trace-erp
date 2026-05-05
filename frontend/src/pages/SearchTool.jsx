@@ -747,8 +747,8 @@ export default function SearchTool() {
     { id: 'items', label: 'Line Items' },
     { id: 'tracking_number', label: 'Tracking #' },
     { id: 'courier', label: 'Courier' },
-    { id: 'courier_fee', label: 'Actual Expense' },
-    { id: 'delivery_status', label: 'Status' },
+    { id: 'courier_status', label: 'Courier Status' },
+    { id: 'delivery_status', label: 'ERP Status' },
     { id: 'payment_status', label: 'Payment' },
     { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
@@ -774,7 +774,7 @@ export default function SearchTool() {
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
     const currentIds = cols.map(c => c.id)
-    const essentials = ['delivery_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address']
+    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {

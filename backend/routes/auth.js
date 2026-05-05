@@ -53,6 +53,7 @@ router.post('/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        can_override_erp_status: user.can_override_erp_status === 1,
         permissions: JSON.parse(user.permissions || '[]')
       }
     });
@@ -69,7 +70,7 @@ router.get('/me', (req, res) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, username, role, permissions FROM users WHERE id = ?').get(decoded.id);
+    const user = db.prepare('SELECT id, username, role, email, can_override_erp_status, permissions FROM users WHERE id = ?').get(decoded.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
@@ -77,6 +78,7 @@ router.get('/me', (req, res) => {
       username: user.username,
       email: user.email,
       role: user.role,
+      can_override_erp_status: user.can_override_erp_status === 1,
       permissions: JSON.parse(user.permissions || '[]')
     });
   } catch (err) {

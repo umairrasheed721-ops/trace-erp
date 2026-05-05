@@ -158,6 +158,17 @@ export default function Users() {
                 <option value="agent">Agent (Order Lookup Only)</option>
               </select>
             </div>
+            <div className="form-group" style={{ gridColumn: 'span 3' }}>
+              <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
+                <input 
+                  type="checkbox" 
+                  checked={editUser.role === 'admin' || editUser.can_override_erp_status === 1}
+                  disabled={editUser.role === 'admin'}
+                  onChange={e => setEditUser({...editUser, can_override_erp_status: e.target.checked ? 1 : 0})} 
+                />
+                <span style={{ fontSize: '0.85rem' }}>Allow manual ERP status override (Authority)</span>
+              </label>
+            </div>
             <div style={{ gridColumn: 'span 3', textAlign: 'right', marginTop: 10 }}>
               <button type="submit" className="btn btn-primary">Save Changes</button>
             </div>
@@ -219,6 +230,17 @@ export default function Users() {
                 <option value="agent">Agent (Order Lookup Only)</option>
               </select>
             </div>
+            <div className="form-group" style={{ gridColumn: 'span 3' }}>
+              <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
+                <input 
+                  type="checkbox" 
+                  checked={newUser.role === 'admin' || newUser.can_override_erp_status === 1}
+                  disabled={newUser.role === 'admin'}
+                  onChange={e => setNewUser({...newUser, can_override_erp_status: e.target.checked ? 1 : 0})} 
+                />
+                <span style={{ fontSize: '0.85rem' }}>Allow manual ERP status override (Authority)</span>
+              </label>
+            </div>
             <div style={{ gridColumn: 'span 3', textAlign: 'right', marginTop: 10 }}>
               <button type="submit" className="btn btn-primary">Create Account</button>
             </div>
@@ -254,9 +276,14 @@ export default function Users() {
                   <td style={{ fontWeight: 600 }}>{u.username}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{u.email || '—'}</td>
                   <td>
-                    <span className={`badge ${u.role === 'admin' ? 'badge-delivered' : u.role === 'manager' ? 'badge-advice' : 'badge-pending'}`}>
-                      {u.role.toUpperCase()}
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`badge ${u.role === 'admin' ? 'badge-delivered' : u.role === 'manager' ? 'badge-advice' : 'badge-pending'}`}>
+                        {u.role.toUpperCase()}
+                      </span>
+                      {(u.can_override_erp_status === 1 || u.role === 'admin') && (
+                        <span style={{ fontSize: '0.65rem', color: 'var(--green)', fontWeight: 600 }}>🔓 Status Override OK</span>
+                      )}
+                    </div>
                   </td>
                   <td>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td style={{ textAlign: 'right' }}>

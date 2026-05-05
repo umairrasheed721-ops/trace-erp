@@ -95,6 +95,7 @@ const whatsappRoutes    = safeRequire('./routes/whatsapp',     'WhatsApp');
 const publicRoutes      = safeRequire('./routes/public',       'Public');
 const templatesRoutes   = safeRequire('./routes/templates',    'Templates');
 const diagnosticsRoutes = safeRequire('./routes/diagnostics',  'Diagnostics');
+const statusMappingsRoutes = safeRequire('./routes/status-mappings', 'StatusMappings');
 const schedulerInit     = safeRequire('./scheduler',           'Scheduler');
 
 // Reset any stuck sync statuses on startup
@@ -323,6 +324,8 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
+app.use('/api/status-mappings', statusMappingsRoutes);
+
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {

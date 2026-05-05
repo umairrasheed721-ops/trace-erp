@@ -31,8 +31,8 @@ function seedDefaults() {
         content: 'Hi [Name], your order [OrderID] has been shipped via [Courier]. Your Tracking ID is: [Tracking]' 
       }
     ];
-    const insert = db.prepare('INSERT INTO whatsapp_templates (name, content, type, is_default) VALUES (?, ?, ?, ?)');
-    defaults.forEach(d => insert.run(d.name, d.content, d.type, d.is_default));
+    const insert = db.prepare('INSERT INTO whatsapp_templates (name, content, type, is_default, status) VALUES (?, ?, ?, ?, ?)');
+    defaults.forEach(d => insert.run(d.name, d.content, d.type, d.is_default, 'active'));
     console.log('✅ Default WhatsApp templates seeded.');
   }
 }
@@ -50,14 +50,14 @@ router.get('/', authenticateToken, (req, res) => {
 
 // Create template
 router.post('/', authenticateToken, (req, res) => {
-  const { name, content, type, is_default } = req.body;
+  const { name, content, type, is_default, status } = req.body;
   if (!name || !content) return res.status(400).json({ error: 'Name and content required' });
   
   try {
     if (is_default) {
       db.prepare('UPDATE whatsapp_templates SET is_default = 0 WHERE type = ?').run(type);
     }
-    const result = db.prepare('INSERT INTO whatsapp_templates (name, content, type, is_default) VALUES (?, ?, ?, ?)').run(name, content, type || 'custom', is_default ? 1 : 0);
+    const result = db.prepare('INSERT INTO whatsapp_templates (name, content, type, is_default, status) VALUES (?, ?, ?, ?, ?)').run(name, content, type || 'custom', is_default ? 1 : 0, status || 'active');
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -66,14 +66,14 @@ router.post('/', authenticateToken, (req, res) => {
 
 // Update template
 router.put('/:id', authenticateToken, (req, res) => {
-  const { name, content, type, is_default } = req.body;
+  const { name, content, type, is_default, status } = req.body;
   const { id } = req.params;
   
   try {
     if (is_default) {
       db.prepare('UPDATE whatsapp_templates SET is_default = 0 WHERE type = ?').run(type);
     }
-    db.prepare('UPDATE whatsapp_templates SET name = ?, content = ?, type = ?, is_default = ? WHERE id = ?').run(name, content, type, is_default ? 1 : 0, id);
+    db.prepare('UPDATE whatsapp_templates SET name = ?, content = ?, type = ?, is_default = ?, status = ? WHERE id = ?').run(name, content, type, is_default ? 1 : 0, status || 'active', id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -545,6 +545,45 @@ router.post('/:id/revert-confirm', (req, res) => {
   }
 });
 
+// PATCH /api/orders/:id/erp-status — Manual ERP status override (permissioned users only)
+router.patch('/:id/erp-status', (req, res) => {
+  const { erp_status, force } = req.body;
+  if (!erp_status) return res.status(400).json({ error: 'erp_status required' });
+
+  // Permission check
+  const canOverride = req.user?.role === 'admin' || req.user?.can_override_erp_status === 1;
+  if (!canOverride) return res.status(403).json({ error: 'You do not have authority to manually change ERP status. Contact your admin.' });
+
+  const PROTECTED = ['delivered', 'return received'];
+  const orderId = parseInt(req.params.id);
+
+  try {
+    const order = db.prepare('SELECT delivery_status FROM orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const currentStatus = (order.delivery_status || '').toLowerCase();
+    if (PROTECTED.includes(currentStatus) && !force && req.user?.role !== 'admin') {
+      return res.status(409).json({
+        error: `Status "${order.delivery_status}" is protected. Only admin can override it.`,
+        protected: true
+      });
+    }
+
+    const oldStatus = order.delivery_status;
+    db.prepare("UPDATE orders SET delivery_status = ?, status_date = datetime('now') WHERE id = ?")
+      .run(erp_status, orderId);
+
+    // Full audit trail
+    db.logOrderChange({ order_id: orderId, user_id: req.user?.id, type: 'ERP_STATUS_MANUAL', old_val: { delivery_status: oldStatus }, new_val: { delivery_status: erp_status } });
+    db.logAction({ order_id: orderId, user_id: req.user?.id, action: 'ERP_STATUS_OVERRIDE', details: { from: oldStatus, to: erp_status, by: req.user?.username } });
+
+    broadcast('message', { type: 'order_updated', orderId });
+    res.json({ success: true, from: oldStatus, to: erp_status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/:id/confirm - Mark as ready for booking (CS side)
 router.post('/:id/confirm', (req, res) => {
   try {
