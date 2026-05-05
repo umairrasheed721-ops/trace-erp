@@ -24,6 +24,7 @@ export default function Sidebar() {
     { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
     { to: '/diagnostics', icon: '🛠️', label: 'Diagnostic Center', permission: 'admin_only' },
     { to: '/system-status', icon: '🛡️', label: 'System Status', permission: 'admin_only' },
+    { to: '/status-mappings', icon: '🔀', label: 'Status Mappings', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
     if (user?.role === 'admin') return true
