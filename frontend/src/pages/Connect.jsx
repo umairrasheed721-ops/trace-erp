@@ -5,7 +5,7 @@ export default function Connect() {
   const { stores, setStores, addToast, setActiveStoreId } = useApp()
   const [form, setForm] = useState({
     store_name: '', shop_domain: '', client_id: '', client_secret: '',
-    postex_token: '', instaworld_key: '', instaworld_key_backup: '',
+    postex_token: '', instaworld_key: '', instaworld_key_backup: '', instaworld_key_3: '',
     sync_start_date: ''
   })
   const [loading, setLoading] = useState(false)
@@ -73,6 +73,7 @@ export default function Connect() {
         postex_token: store.postex_token || '',
         instaworld_key: store.instaworld_key || '',
         instaworld_key_backup: store.instaworld_key_backup || '',
+        instaworld_key_3: store.instaworld_key_3 || '',
         sync_start_date: store.sync_start_date || '',
         postex_track_url: store.postex_track_url || '',
         instaworld_track_url: store.instaworld_track_url || ''
@@ -195,6 +196,10 @@ export default function Connect() {
               <label className="form-label">Instaworld Backup Key</label>
               <input className="form-input font-mono" placeholder="Backup/fallback key" value={form.instaworld_key_backup} onChange={set('instaworld_key_backup')} />
             </div>
+          </div>
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label className="form-label">Instaworld Key 3 (Optional)</label>
+            <input className="form-input font-mono" placeholder="3rd API Key" value={form.instaworld_key_3} onChange={set('instaworld_key_3')} />
           </div>
 
           <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ marginTop: 8 }}>
@@ -343,6 +348,10 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
               <label className="form-label">Instaworld Backup Key</label>
               <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
             </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Instaworld Key 3 (Optional)</label>
+            <input className="form-input font-mono" placeholder="3rd API Key" value={local.instaworld_key_3 || ''} onChange={setL('instaworld_key_3')} />
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>

@@ -7,7 +7,7 @@ const db = require('../db');
 router.get('/', (req, res) => {
   const stores = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
-           postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
+           postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, sync_start_date,
            sync_status, sync_progress, postex_track_url, instaworld_track_url,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores ORDER BY created_at DESC
@@ -19,7 +19,7 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const store = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
-           postex_token, instaworld_key, instaworld_key_backup, sync_start_date,
+           postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, sync_start_date,
            sync_status, sync_progress, postex_track_url, instaworld_track_url,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
     FROM stores WHERE id = ?
@@ -30,16 +30,16 @@ router.get('/:id', (req, res) => {
 
 // PUT /api/stores/:id - Update courier credentials + API URLs
 router.put('/:id', (req, res) => {
-  const { postex_token, instaworld_key, instaworld_key_backup, store_name, postex_track_url, instaworld_track_url, sync_start_date } = req.body;
+  const { postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, store_name, postex_track_url, instaworld_track_url, sync_start_date } = req.body;
   const startDate = sync_start_date || '';
   
   db.prepare(`
-    UPDATE stores SET postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?,
+    UPDATE stores SET postex_token=?, instaworld_key=?, instaworld_key_backup=?, instaworld_key_3=?, store_name=?,
     postex_track_url=COALESCE(NULLIF(?,''),(SELECT postex_track_url FROM stores WHERE id=?)),
     instaworld_track_url=COALESCE(NULLIF(?,''),(SELECT instaworld_track_url FROM stores WHERE id=?)),
     sync_start_date=?
     WHERE id=?
-  `).run(postex_token || null, instaworld_key || null, instaworld_key_backup || null, store_name || null,
+  `).run(postex_token || null, instaworld_key || null, instaworld_key_backup || null, instaworld_key_3 || null, store_name || null,
          postex_track_url || null, req.params.id,
          instaworld_track_url || null, req.params.id,
          startDate,
