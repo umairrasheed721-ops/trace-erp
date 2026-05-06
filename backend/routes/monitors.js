@@ -15,23 +15,19 @@ router.get('/stuck', (req, res) => {
     db.prepare('SELECT tracking_number FROM blacklist WHERE store_id = ?').all(store_id).map(r => r.tracking_number)
   );
 
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-
   const orders = db.prepare(`
     SELECT id, ref_number, tracking_number, customer_name, delivery_status, status_date, notes, price, product_titles
     FROM orders
     WHERE store_id = ?
-    AND status_date < ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
-  `).all(store_id, cutoff);
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
+    AND status_date < datetime('now', '+5 hours', '-48 hours')
+    AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
+  `).all(store_id, store_id);
 
-  const stuckOrders = orders.filter(o => {
-    const st = (o.delivery_status || '').toLowerCase();
-    if (IGNORE_STATUSES.some(k => st.includes(k))) return false;
-    if (blacklistSet.has(o.tracking_number)) return false;
-    return true;
-  }).map(o => {
-    const hours = (Date.now() - new Date(o.status_date).getTime()) / 3600000;
+  const stuckOrders = orders.map(o => {
+    const statusDateStr = o.status_date ? o.status_date.replace(' ', 'T') + '+05:00' : null;
+    const hours = statusDateStr ? (Date.now() - new Date(statusDateStr).getTime()) / 3600000 : 0;
     return { ...o, hours_stuck: Math.floor(hours), days_stuck: Math.floor(hours / 24) };
   }).sort((a, b) => b.hours_stuck - a.hours_stuck);
 

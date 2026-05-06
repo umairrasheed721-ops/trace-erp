@@ -24,7 +24,7 @@ router.get('/', (req, res) => {
       whereClauses.push(`
         o.tracking_number IS NOT NULL AND o.tracking_number != ''
         AND LOWER(o.delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
-        AND o.status_date < datetime('now', '-48 hours')
+        AND o.status_date < datetime('now', '+5 hours', '-48 hours')
         AND o.tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = o.store_id)
       `);
     } else if (s.includes('[PAID]')) {
