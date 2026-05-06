@@ -367,10 +367,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           if (rawStatus) {
             const statusMap = loadStatusMaps();
             const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
-            if (newStatus && newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
-               const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(newStatus.toLowerCase());
-               updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
-            }
+            const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((newStatus||rawStatus).toLowerCase());
+            updatesToApply.push({ 
+              id: order.id, 
+              courier_status: rawStatus, 
+              delivery_status: newStatus, 
+              failed_attempt_increment: isAttemptFailure ? 1 : 0 
+            });
           }
         } catch (e) {}
       }));
@@ -406,10 +409,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               if (rawStatus) {
                  const statusMap = loadStatusMaps();
                  const newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
-                 if (newStatus && String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
-                    const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus).toLowerCase());
-                    updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
-                 }
+                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
+                 updatesToApply.push({ 
+                    id: order.id, 
+                    courier_status: rawStatus, 
+                    delivery_status: newStatus, 
+                    failed_attempt_increment: isAttemptFailure ? 1 : 0 
+                 });
                  break; // Success with this key
               }
            } catch (e) {}
@@ -422,9 +428,16 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   }
 
   if (updatesToApply.length > 0) {
-    const updateStmt = db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now'), failed_attempts = failed_attempts + ? WHERE id=?");
+    const updateStmt = db.prepare(`
+      UPDATE orders 
+      SET courier_status = ?, 
+          delivery_status = COALESCE(?, delivery_status),
+          status_date = datetime('now'), 
+          failed_attempts = failed_attempts + ? 
+      WHERE id = ?
+    `);
     const updateMany = db.transaction(items => {
-      for (const u of items) updateStmt.run(u.status, u.failed_attempt_increment || 0, u.id);
+      for (const u of items) updateStmt.run(u.courier_status, u.delivery_status, u.failed_attempt_increment || 0, u.id);
     });
     updateMany(updatesToApply);
   }
