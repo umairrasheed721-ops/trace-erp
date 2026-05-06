@@ -466,4 +466,4 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   return updatesToApply.length;
 }
 
-module.exports = { syncPostEx, syncInstaworld, syncSpecificCourierOrders };
+module.exports = { syncPostEx, syncInstaworld, syncSpecificCourierOrders, loadStatusMaps, applyMap };

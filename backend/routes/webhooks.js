@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { loadStatusMaps, applyMap } = require('../engines/tracking');
 
 // POST /api/webhooks/postex
 router.post('/postex', (req, res) => {
@@ -36,9 +37,20 @@ router.post('/postex', (req, res) => {
     }
 
     // Update status
-    // Map PostEx status to ERP if necessary, though PostEx usually sends readable strings
-    db.prepare('UPDATE orders SET delivery_status = ?, status_date = ? WHERE id = ?').run(
+    const statusMap = loadStatusMaps();
+    const mappedStatus = applyMap(statusMap, 'PostEx', transactionStatus);
+    
+    // Always update courier_status, and update delivery_status if mapping exists
+    db.prepare(`
+      UPDATE orders 
+      SET courier_status = ?,
+          delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+          status_date = ?
+      WHERE id = ?
+    `).run(
       transactionStatus,
+      mappedStatus,
+      mappedStatus,
       statusDateTime || new Date().toISOString(),
       order.id
     );
