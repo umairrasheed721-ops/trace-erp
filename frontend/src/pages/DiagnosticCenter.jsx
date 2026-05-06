@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 
 export default function DiagnosticCenter() {
-  const { user } = useApp();
+  const { user, activeStoreId } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
@@ -10,7 +10,8 @@ export default function DiagnosticCenter() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('/api/diagnostics/stats', {
+      if (!activeStoreId) return;
+      const res = await fetch(`/api/diagnostics/stats?store_id=${activeStoreId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -23,7 +24,8 @@ export default function DiagnosticCenter() {
   const runSmokeTest = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/diagnostics/smoke-test', {
+      if (!activeStoreId) return;
+      const res = await fetch(`/api/diagnostics/smoke-test?store_id=${activeStoreId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -39,7 +41,8 @@ export default function DiagnosticCenter() {
     setLoading(true);
     setAuditResult(null);
     try {
-      const res = await fetch(`/api/diagnostics/audit/${type}`, {
+      if (!activeStoreId) return;
+      const res = await fetch(`/api/diagnostics/audit/${type}?store_id=${activeStoreId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -52,8 +55,10 @@ export default function DiagnosticCenter() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (activeStoreId) {
+      fetchStats();
+    }
+  }, [activeStoreId]);
 
   if (user?.role !== 'admin' && user?.role !== 'owner') {
     return <div className="p-8">Access Denied. Admins only.</div>;
@@ -164,7 +169,11 @@ export default function DiagnosticCenter() {
                 try {
                   const res = await fetch('/api/diagnostics/heal/zero-costs', {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                    headers: { 
+                      'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ store_id: activeStoreId })
                   });
                   const data = await res.json();
                   alert(`✨ Healed ${data.healedCount} orders!`);
@@ -187,7 +196,11 @@ export default function DiagnosticCenter() {
                   while (hasMore) {
                     const res = await fetch('/api/diagnostics/heal/line-items', {
                       method: 'POST',
-                      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                      headers: { 
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({ store_id: activeStoreId })
                     });
                     const data = await res.json();
                     totalHealed += data.healedCount;
@@ -224,7 +237,11 @@ export default function DiagnosticCenter() {
                     try {
                       const res = await fetch('/api/diagnostics/heal/zero-costs', {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                        headers: { 
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                          'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ store_id: activeStoreId })
                       });
                       const data = await res.json();
                       alert(`✅ Successfully healed ${data.healedCount} orders!`);

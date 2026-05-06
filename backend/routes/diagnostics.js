@@ -6,14 +6,16 @@ const { db } = require('../db');
 
 // 1. Check for orders with 0 cost
 router.get('/audit/zero-costs', (req, res) => {
+  const storeId = req.query.store_id;
   try {
     const orders = db.prepare(`
       SELECT id, ref_number, customer_name, product_titles, price 
       FROM orders 
       WHERE (cost = 0 OR cost IS NULL) 
       AND delivery_status NOT IN ('Cancelled', 'Returned', 'Voided')
+      ${storeId ? 'AND store_id = ?' : ''}
       LIMIT 100
-    `).all();
+    `).all(storeId ? [storeId] : []);
     res.json({ results: orders });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -22,14 +24,16 @@ router.get('/audit/zero-costs', (req, res) => {
 
 // 2. Check for orphaned master costs (no matching product title)
 router.get('/audit/orphaned-costs', (req, res) => {
+  const storeId = req.query.store_id;
   try {
     const orphaned = db.prepare(`
       SELECT m.id, m.parent_title, m.variant_title 
       FROM product_master_costs m
       LEFT JOIN orders o ON o.product_titles LIKE '%' || m.parent_title || '%'
       WHERE o.id IS NULL
+      ${storeId ? 'AND m.store_id = ?' : ''}
       LIMIT 100
-    `).all();
+    `).all(storeId ? [storeId] : []);
     res.json({ results: orphaned });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -38,12 +42,13 @@ router.get('/audit/orphaned-costs', (req, res) => {
 
 // 3. System Stats
 router.get('/stats', (req, res) => {
+  const storeId = req.query.store_id;
   try {
-    const orderCount = db.prepare('SELECT COUNT(*) as count FROM orders').get().count;
-    const storeCount = db.prepare('SELECT COUNT(*) as count FROM stores').get().count;
-    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-    const auditCount = db.prepare('SELECT COUNT(*) as count FROM audit_logs').get().count;
-    const missingCount = db.prepare("SELECT COUNT(*) as count FROM orders WHERE (line_items IS NULL OR line_items = '' OR line_items = '[]') AND delivery_status NOT IN ('Cancelled', 'Voided', 'cancelled', 'Void')").get().count;
+    const orderCount = db.prepare(`SELECT COUNT(*) as count FROM orders ${storeId ? 'WHERE store_id = ?' : ''}`).get(storeId ? [storeId] : []).count;
+    const storeCount = db.prepare('SELECT COUNT(*) as count FROM stores').get().count; // Global
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count; // Global
+    const auditCount = db.prepare(`SELECT COUNT(*) as count FROM audit_logs ${storeId ? 'WHERE store_id = ?' : ''}`).get(storeId ? [storeId] : []).count;
+    const missingCount = db.prepare(`SELECT COUNT(*) as count FROM orders WHERE (line_items IS NULL OR line_items = '' OR line_items = '[]') AND delivery_status NOT IN ('Cancelled', 'Voided', 'cancelled', 'Void') ${storeId ? 'AND store_id = ?' : ''}`).get(storeId ? [storeId] : []).count;
     
     res.json({
       orders: orderCount,
@@ -62,6 +67,7 @@ router.get('/stats', (req, res) => {
 
 // 2. Heal orders with missing line_items (Mass-Restore)
 router.post('/heal/line-items', async (req, res) => {
+  const storeId = req.body.store_id;
   try {
     const { fetchVariantImagesGraphQL } = require('../engines/shopify');
     const fetch = require('node-fetch'); // FIX: node-fetch v2 uses default export
@@ -73,8 +79,9 @@ router.post('/heal/line-items', async (req, res) => {
       JOIN stores s ON o.store_id = s.id
       WHERE (o.line_items IS NULL OR o.line_items = '' OR o.line_items = '[]')
       AND o.delivery_status NOT IN ('Cancelled', 'Voided', 'cancelled', 'Void')
+      ${storeId ? 'AND o.store_id = ?' : ''}
       LIMIT 50
-    `).all();
+    `).all(storeId ? [storeId] : []);
 
     let healedCount = 0;
 
@@ -126,13 +133,15 @@ router.post('/heal/line-items', async (req, res) => {
 
 // 1. Heal orders with 0 cost by matching with Master Costs
 router.post('/heal/zero-costs', (req, res) => {
+  const storeId = req.body.store_id;
   try {
     const orders = db.prepare(`
       SELECT id, product_titles 
       FROM orders 
       WHERE (cost = 0 OR cost IS NULL) 
       AND delivery_status NOT IN ('Cancelled', 'Returned', 'Voided')
-    `).all();
+      ${storeId ? 'AND store_id = ?' : ''}
+    `).all(storeId ? [storeId] : []);
 
     let healedCount = 0;
     const masterCosts = db.prepare('SELECT parent_title, variant_title, unit_cost FROM product_master_costs').all();
@@ -188,24 +197,27 @@ router.get('/smoke-test', async (req, res) => {
 
 // 3. DUPLICATE WATCHDOG: Find orders with same Tracking or (Phone+Price+Date)
 router.get('/audit/duplicates', (req, res) => {
+  const storeId = req.query.store_id;
   try {
     // Audit for Tracking Duplicates
     const trackingDups = db.prepare(`
       SELECT tracking_number, COUNT(*) as count, GROUP_CONCAT(ref_number) as orders
       FROM orders 
       WHERE tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
+      ${storeId ? 'AND store_id = ?' : ''}
       GROUP BY tracking_number 
       HAVING count > 1
-    `).all();
+    `).all(storeId ? [storeId] : []);
 
     // Audit for Phone/Price Duplicates (same day)
     const phonePriceDups = db.prepare(`
       SELECT phone, price, date(order_date) as day, COUNT(*) as count, GROUP_CONCAT(ref_number) as orders
       FROM orders
       WHERE delivery_status NOT IN ('Cancelled', 'Voided')
+      ${storeId ? 'AND store_id = ?' : ''}
       GROUP BY phone, price, day
       HAVING count > 1
-    `).all();
+    `).all(storeId ? [storeId] : []);
 
     res.json({ results: [...trackingDups, ...phonePriceDups] });
   } catch (err) {
@@ -215,6 +227,7 @@ router.get('/audit/duplicates', (req, res) => {
 
 // 4. MASTER COST LEAK: Find orders missing costs that exist in our history but not registry
 router.get('/audit/missing-master-costs', (req, res) => {
+  const storeId = req.query.store_id;
   try {
     const results = db.prepare(`
       SELECT o.id, o.ref_number, o.product_titles, o.delivery_status
@@ -225,8 +238,9 @@ router.get('/audit/missing-master-costs', (req, res) => {
       WHERE (o.cost = 0 OR o.cost IS NULL)
       AND pm.id IS NULL
       AND o.delivery_status NOT IN ('Cancelled', 'Voided')
+      ${storeId ? 'AND o.store_id = ?' : ''}
       LIMIT 100
-    `).all();
+    `).all(storeId ? [storeId] : []);
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -235,6 +249,7 @@ router.get('/audit/missing-master-costs', (req, res) => {
 
 // 5. PROFIT ANOMALIES: Negative profit or suspiciously high margin
 router.get('/audit/profit-anomalies', (req, res) => {
+  const storeId = req.query.store_id;
   try {
     const results = db.prepare(`
       SELECT id, ref_number, price, cost, courier_fee, 
@@ -243,7 +258,8 @@ router.get('/audit/profit-anomalies', (req, res) => {
       WHERE (profit < 0 OR profit > price * 0.9)
       AND delivery_status NOT IN ('Cancelled', 'Voided')
       AND price > 0
-    `).all();
+      ${storeId ? 'AND store_id = ?' : ''}
+    `).all(storeId ? [storeId] : []);
     res.json({ results });
   } catch (err) {
     res.status(500).json({ error: err.message });
