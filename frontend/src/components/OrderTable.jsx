@@ -42,6 +42,7 @@ export default function OrderTable({
   const { addToast, user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
 
   const handleManualStatusChange = async (orderId, newStatus) => {
     if (!newStatus) return
@@ -196,8 +197,25 @@ export default function OrderTable({
                       type="checkbox" 
                       checked={selectedIds.includes(o.id)}
                       onChange={(e) => {
-                        if (e.target.checked) setSelectedIds(prev => [...prev, o.id])
-                        else setSelectedIds(prev => prev.filter(id => id !== o.id))
+                        const checked = e.target.checked
+                        const currentIndex = filteredOrders.findIndex(order => order.id === o.id)
+                        
+                        if (e.nativeEvent.shiftKey && lastSelectedIndex !== null) {
+                          const start = Math.min(currentIndex, lastSelectedIndex)
+                          const end = Math.max(currentIndex, lastSelectedIndex)
+                          const idsInRange = filteredOrders.slice(start, end + 1).map(order => order.id)
+                          
+                          if (checked) {
+                            setSelectedIds(prev => Array.from(new Set([...prev, ...idsInRange])))
+                          } else {
+                            setSelectedIds(prev => prev.filter(id => !idsInRange.includes(id)))
+                          }
+                        } else {
+                          if (checked) setSelectedIds(prev => [...prev, o.id])
+                          else setSelectedIds(prev => prev.filter(id => id !== o.id))
+                        }
+                        
+                        setLastSelectedIndex(currentIndex)
                       }}
                     />
                   </td>

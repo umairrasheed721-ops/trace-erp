@@ -11,6 +11,8 @@ export default function CostManager() {
   const [selectedParents, setSelectedParents] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
+  const [lastSelectedParentIndex, setLastSelectedParentIndex] = useState(null)
+  const [lastSelectedGhostIndex, setLastSelectedGhostIndex] = useState(null)
   
   // Modal States
   const [showModal, setShowModal] = useState(false)
@@ -392,7 +394,26 @@ export default function CostManager() {
                         <input 
                           type="checkbox" 
                           checked={selectedParents.has(p.name)}
-                          onChange={() => toggleSelectParent(p.name)}
+                          onClick={(e) => {
+                            const checked = e.target.checked;
+                            const currentIndex = currentList.findIndex(item => item.name === p.name);
+                            if (e.shiftKey && lastSelectedParentIndex !== null) {
+                              const start = Math.min(currentIndex, lastSelectedParentIndex);
+                              const end = Math.max(currentIndex, lastSelectedParentIndex);
+                              const namesInRange = currentList.slice(start, end + 1).map(item => item.name);
+                              const next = new Set(selectedParents);
+                              if (checked) {
+                                namesInRange.forEach(name => next.add(name));
+                              } else {
+                                namesInRange.forEach(name => next.delete(name));
+                              }
+                              setSelectedParents(next);
+                            } else {
+                              toggleSelectParent(p.name);
+                            }
+                            setLastSelectedParentIndex(currentIndex);
+                          }}
+                          readOnly
                         />
                       </td>
                       <td style={{ padding: 15, fontWeight: 'bold', color: 'var(--text-primary)' }}>
@@ -580,12 +601,31 @@ export default function CostManager() {
                         <input 
                           type="checkbox" 
                           checked={selectedGhosts.has(p.name)} 
-                          onChange={() => {
-                            const next = new Set(selectedGhosts);
-                            if (next.has(p.name)) next.delete(p.name);
-                            else next.add(p.name);
-                            setSelectedGhosts(next);
+                          onClick={(e) => {
+                            const checked = e.target.checked;
+                            const filteredGhosts = ghosts.filter(g => g.name.toLowerCase().includes(ghostSearch.toLowerCase()));
+                            const currentIndex = filteredGhosts.findIndex(item => item.name === p.name);
+                            
+                            if (e.shiftKey && lastSelectedGhostIndex !== null) {
+                              const start = Math.min(currentIndex, lastSelectedGhostIndex);
+                              const end = Math.max(currentIndex, lastSelectedGhostIndex);
+                              const namesInRange = filteredGhosts.slice(start, end + 1).map(item => item.name);
+                              const next = new Set(selectedGhosts);
+                              if (checked) {
+                                namesInRange.forEach(name => next.add(name));
+                              } else {
+                                namesInRange.forEach(name => next.delete(name));
+                              }
+                              setSelectedGhosts(next);
+                            } else {
+                              const next = new Set(selectedGhosts);
+                              if (next.has(p.name)) next.delete(p.name);
+                              else next.add(p.name);
+                              setSelectedGhosts(next);
+                            }
+                            setLastSelectedGhostIndex(currentIndex);
                           }}
+                          readOnly
                         />
                       </td>
                       <td style={{ padding: 15, fontWeight: 'bold', color: 'var(--text-primary)' }}>
