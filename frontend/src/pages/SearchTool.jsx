@@ -414,7 +414,7 @@ export default function SearchTool() {
       if (res.ok) {
         addToast(`✅ Courier Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
         setSelectedIds([])
-        window.location.reload()
+        runSearch()
       } else {
         addToast(`❌ Sync Failed: ${data.error}`, 'error')
       }
@@ -437,8 +437,7 @@ export default function SearchTool() {
       if (res.ok) {
         addToast(`✅ Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
         setSelectedIds([])
-        // We could manually update local state, but a refresh is safer for bulk
-        window.location.reload()
+        runSearch()
       } else {
         addToast(`❌ Sync Failed: ${data.error}`, 'error')
       }
@@ -468,6 +467,7 @@ export default function SearchTool() {
       const data = await res.json()
       addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
       setSelectedIds([])
+      runSearch()
     } catch { addToast('Bulk booking error', 'error') }
     finally { setBulkActionLoading(false) }
   }
@@ -494,6 +494,7 @@ export default function SearchTool() {
       const data = await res.json()
       addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
       setSelectedIds([])
+      runSearch()
     } catch { addToast('Bulk booking error', 'error') }
     finally { setBulkActionLoading(false) }
   }
