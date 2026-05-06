@@ -110,7 +110,7 @@ router.get('/daily', (req, res) => {
       const unreconciledDispatched = Math.max(0, totalDispatched - reconciledCount);
       const hybridCourierFee = actualCourierFee + (unreconciledDispatched * 200);
       
-      const finalPnl = grossProfit - taxPaid - totalMarketing - hybridCourierFee - actualExp;
+      const finalPnl = grossProfit - totalMarketing - hybridCourierFee - actualExp;
       
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
