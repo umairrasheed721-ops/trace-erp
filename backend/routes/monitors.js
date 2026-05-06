@@ -18,7 +18,7 @@ router.get('/stuck', (req, res) => {
   const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, delivery_status, status_date, notes, price, product_titles
+    SELECT id, ref_number, tracking_number, customer_name, delivery_status, status_date, notes, price, product_titles
     FROM orders
     WHERE store_id = ?
     AND status_date < ?

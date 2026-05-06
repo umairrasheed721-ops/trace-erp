@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function StuckMonitor() {
   const { activeStoreId, addToast, setBadgeCounts } = useApp()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
 
   const load = () => {
     if (!activeStoreId) return
@@ -66,6 +68,7 @@ export default function StuckMonitor() {
           <table>
             <thead>
               <tr>
+                <th>Order #</th>
                 <th>Tracking #</th>
                 <th>Customer</th>
                 <th>Current Status</th>
@@ -79,6 +82,15 @@ export default function StuckMonitor() {
             <tbody>
               {orders.map(o => (
                 <tr key={o.id} className={getRowClass(o.days_stuck)}>
+                  <td>
+                    <button 
+                      className="btn-link" 
+                      onClick={() => navigate('/search', { state: { keyword: o.ref_number, status: 'All Statuses', preset: 'All Time' } })}
+                      style={{ fontWeight: 800, color: 'var(--brand)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      {o.ref_number || '—'}
+                    </button>
+                  </td>
                   <td className="font-mono" style={{ color: 'var(--brand)', fontSize: '0.75rem' }}>{o.tracking_number}</td>
                   <td>{o.customer_name}</td>
                   <td><span className="badge badge-stuck">{o.delivery_status}</span></td>
