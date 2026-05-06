@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import ProfitabilityCharts from '../components/ProfitabilityCharts'
 import ApiStatusBanner from '../components/ApiStatusBanner'
@@ -7,6 +8,22 @@ export default function Dashboard() {
   const { activeStoreId, activeStore, addToast, user } = useApp()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+
+  const handleCardClick = (label) => {
+    if (label === 'Stuck Orders') return navigate('/stuck')
+    
+    let status = 'All Statuses'
+    let preset = 'All Time'
+    
+    if (label === 'Delivered') status = 'Delivered'
+    else if (label === 'Returned (RTO)') status = 'Returned'
+    else if (label === 'In Transit') status = '[ACTIVE PIPELINE]'
+    else if (label === 'Total Orders') status = 'All Statuses'
+    else if (label === 'Revenue (Paid)') return navigate('/reports')
+    
+    navigate('/search', { state: { status, preset } })
+  }
 
   useEffect(() => {
     if (!activeStoreId) { setLoading(false); return }
@@ -56,7 +73,14 @@ export default function Dashboard() {
         <>
           <div className="kpi-grid">
             {kpis.map(kpi => (
-              <div key={kpi.label} className={`kpi-card ${kpi.color}`}>
+              <div 
+                key={kpi.label} 
+                className={`kpi-card ${kpi.color}`} 
+                onClick={() => handleCardClick(kpi.label)}
+                style={{ cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.1)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
+              >
                 <div className="kpi-label">{kpi.label}</div>
                 <div className="kpi-value">{kpi.value}</div>
                 <div className="kpi-sub">{kpi.sub}</div>
