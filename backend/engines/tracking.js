@@ -365,6 +365,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           const res = await fetch(`${baseUrl}${order.tracking_number}`, {
             method: 'GET',
             headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+            timeout: 15000 // 15s timeout
           });
           if (!res.ok) return;
           const data = await res.json();
@@ -404,7 +405,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               const res = await fetch(trackUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key })
+                body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
+                timeout: 15000 // 15s timeout
               });
               if (!res.ok) continue;
               const data = await res.json();
