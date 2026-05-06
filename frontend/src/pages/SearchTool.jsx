@@ -176,11 +176,11 @@ export default function SearchTool() {
     }
   }
 
-  const [preset, setPreset] = useState('Last Month')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd, setCustomEnd] = useState('')
-  const [status, setStatus] = useState('[ACTIVE PIPELINE]')
-  const [keyword, setKeyword] = useState('')
+  const [preset, setPreset] = useState(location.state?.preset || 'Last Month')
+  const [customStart, setCustomStart] = useState(location.state?.customStart || '')
+  const [customEnd, setCustomEnd] = useState(location.state?.customEnd || '')
+  const [status, setStatus] = useState(location.state?.status || '[ACTIVE PIPELINE]')
+  const [keyword, setKeyword] = useState(location.state?.keyword || '')
   const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
   const [sortKey, setSortKey] = useState('order_date')
@@ -842,6 +842,9 @@ export default function SearchTool() {
     if (!activeStoreId) return
     setLoading(true)
     
+    const controller = new AbortController();
+    const signal = controller.signal;
+    
     // If it's a special mode (in brackets), we now pass it to backend for efficient filtering
     const queryStatus = status === 'All Statuses' ? '' : status
     
@@ -867,7 +870,7 @@ export default function SearchTool() {
     }
     const sCol = backendSortMap[sortKey] || 'created_timestamp'
 
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`)
+    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`, { signal })
       .then(r => r.json())
       .then(data => { 
         setAllOrders(data.orders || []); 
@@ -875,7 +878,12 @@ export default function SearchTool() {
         setDebugWhere(data.debugWhere || '');
         setLoading(false) 
       })
-      .catch(() => { addToast('Failed to load orders', 'error'); setLoading(false) })
+      .catch((err) => { 
+        if (err.name === 'AbortError') return;
+        addToast('Failed to load orders', 'error'); setLoading(false) 
+      })
+      
+      return () => controller.abort();
   }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir])
 
   // Live Updates Connection (SSE)
