@@ -1061,8 +1061,12 @@ export default function SearchTool() {
       {syncProgress && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)',
-          padding: '12px 24px', borderBottom: '1px solid var(--brand)',
+          background: 'var(--bg-surface)', 
+          opacity: 0.98,
+          backdropFilter: 'blur(10px)',
+          padding: '12px 24px', 
+          borderBottom: '2px solid var(--brand)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
           animation: 'slideDown 0.3s ease'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
