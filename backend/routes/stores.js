@@ -130,11 +130,11 @@ router.get('/:id/stats', (req, res) => {
   const total = db.prepare('SELECT COUNT(*) as count FROM orders WHERE store_id=?').get(storeId);
   const delivered = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status)='delivered'").get(storeId);
   const returned = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status) IN ('return received','returned')").get(storeId);
-  const pending = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled')").get(storeId);
+  const pending = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided')").get(storeId);
   const revenue = db.prepare("SELECT SUM(price) as total FROM orders WHERE store_id=? AND payment_status='Paid'").get(storeId);
   const stuck = db.prepare(`
     SELECT COUNT(*) as count FROM orders WHERE store_id=?
-    AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','booked','pending')
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided','booked','pending')
     AND status_date < datetime('now', '-48 hours')
   `).get(storeId);
 
