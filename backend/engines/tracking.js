@@ -9,6 +9,11 @@ const CONCURRENT = 10;
 const SLEEP_MS = 800;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+function logAudit(storeId, level, message, trackingNumber = null) {
+  try {
+    db.prepare('INSERT INTO sync_audit (store_id, level, message, tracking_number) VALUES (?, ?, ?, ?)').run(storeId, level, message, trackingNumber);
+  } catch (e) { console.error('Audit Log Error:', e.message); }
+}
 
 // Load status mappings from DB (replaces hardcoded maps)
 function loadStatusMaps() {
@@ -375,7 +380,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               failed_attempt_increment: isAttemptFailure ? 1 : 0 
             });
           }
-        } catch (e) {}
+        } catch (e) {
+          logAudit(store.id, 'ERROR', `Manual PostEx Sync Error: ${e.message}`, order.tracking_number);
+        }
       }));
       processed += batch.length;
       if (onProgress) onProgress(processed, total, `Syncing PostEx tracking...`);
@@ -418,7 +425,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                  });
                  break; // Success with this key
               }
-           } catch (e) {}
+           } catch (e) {
+             logAudit(store.id, 'ERROR', `Manual Courier Sync Error: ${e.message}`, order.tracking_number);
+           }
          }
       }));
       processed += batch.length;
