@@ -356,33 +356,38 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     let rawUrl = store.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
     const baseUrl = rawUrl.replace(/\/?$/, '/');
     
-    for (const order of postexOrders) {
-      try {
-        const res = await fetch(`${baseUrl}${order.tracking_number}`, {
-          method: 'GET',
-          headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
-          timeout: 10000 // 10s timeout
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
-          if (rawStatus) {
-            const statusMap = loadStatusMaps();
-            const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
-            const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((newStatus||rawStatus).toLowerCase());
-            updatesToApply.push({ 
-              id: order.id, 
-              courier_status: rawStatus, 
-              delivery_status: newStatus, 
-              failed_attempt_increment: isAttemptFailure ? 1 : 0 
-            });
+    const batchSize = 5;
+    for (let i = 0; i < postexOrders.length; i += batchSize) {
+      const batch = postexOrders.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async order => {
+        try {
+          const res = await fetch(`${baseUrl}${order.tracking_number}`, {
+            method: 'GET',
+            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+            timeout: 5000 // 5s timeout
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
+            if (rawStatus) {
+              const statusMap = loadStatusMaps();
+              const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
+              const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((newStatus||rawStatus).toLowerCase());
+              updatesToApply.push({ 
+                id: order.id, 
+                courier_status: rawStatus, 
+                delivery_status: newStatus, 
+                failed_attempt_increment: isAttemptFailure ? 1 : 0 
+              });
+            }
           }
+        } catch (e) {
+          logAudit(store.id, 'ERROR', `Manual PostEx Sync Error: ${e.message}`, order.tracking_number);
+        } finally {
+          processed++;
+          if (onProgress) onProgress(processed, total, `Syncing PostEx tracking...`);
         }
-      } catch (e) {
-        logAudit(store.id, 'ERROR', `Manual PostEx Sync Error: ${e.message}`, order.tracking_number);
-      }
-      processed++;
-      if (onProgress && processed % 5 === 0) onProgress(processed, total, `Syncing PostEx tracking...`);
+      }));
       await sleep(100);
     }
   }
@@ -392,44 +397,52 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
     const apiKeys = [store.instaworld_key, store.instaworld_key_backup].filter(Boolean);
 
-    for (const order of otherOrders) {
-      let success = false;
-      for (const key of apiKeys) {
-        if (success) break;
-        try {
-          const res = await fetch(trackUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
-            timeout: 10000 // 10s timeout
-          });
-          if (res.ok) {
-            const data = await res.json();
-            let rawStatus = null;
-            if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
-            else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
-            else if (data?.status) rawStatus = data.status;
+    const batchSize = 5;
+    for (let i = 0; i < otherOrders.length; i += batchSize) {
+      const batch = otherOrders.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async order => {
+        let success = false;
+        for (const key of apiKeys) {
+          if (success) break;
+          try {
+            const res = await fetch(trackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
+              timeout: 5000 // 5s timeout
+            });
 
-            if (rawStatus) {
-              const statusMap = loadStatusMaps();
-              const newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
-              const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
-              updatesToApply.push({ 
-                id: order.id, 
-                courier_status: rawStatus, 
-                delivery_status: newStatus, 
-                failed_attempt_increment: isAttemptFailure ? 1 : 0 
-              });
-              success = true;
+            if (res.ok) {
+              const data = await res.json();
+              let rawStatus = null;
+              if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
+              else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
+              else if (data?.status) rawStatus = data.status;
+
+              if (rawStatus) {
+                const statusMap = loadStatusMaps();
+                const newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
+                const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
+                updatesToApply.push({ 
+                  id: order.id, 
+                  courier_status: rawStatus, 
+                  delivery_status: newStatus, 
+                  failed_attempt_increment: isAttemptFailure ? 1 : 0 
+                });
+                success = true;
+              }
+            } else if (res.status === 400) {
+              // If not found, don't bother retrying with other keys
+              break;
             }
+          } catch (e) {
+            logAudit(store.id, 'ERROR', `Manual Courier Sync Error: ${e.message}`, order.tracking_number);
           }
-        } catch (e) {
-          logAudit(store.id, 'ERROR', `Manual Courier Sync Error: ${e.message}`, order.tracking_number);
         }
-      }
-      processed++;
-      if (onProgress && processed % 5 === 0) onProgress(processed, total, `Syncing Courier tracking...`);
-      await sleep(150); // Small delay between requests to be nice to API
+        processed++;
+        if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
+      }));
+      await sleep(150);
     }
   }
 
