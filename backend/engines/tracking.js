@@ -365,8 +365,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           const data = await res.json();
           const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
           if (rawStatus) {
-            const newStatus = POSTEX_STATUS_MAP[rawStatus.toLowerCase()] || rawStatus;
-            if (newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
+            const statusMap = loadStatusMaps();
+            const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
+            if (newStatus && newStatus.toLowerCase() !== (order.delivery_status || '').toLowerCase()) {
                const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(newStatus.toLowerCase());
                updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
             }
@@ -403,8 +404,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               else if (data?.status) rawStatus = data.status;
 
               if (rawStatus) {
-                 const newStatus = INSTAWORLD_STATUS_MAP[String(rawStatus).toLowerCase()] || rawStatus;
-                 if (String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
+                 const statusMap = loadStatusMaps();
+                 const newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
+                 if (newStatus && String(newStatus).toLowerCase() !== String(order.delivery_status || '').toLowerCase()) {
                     const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus).toLowerCase());
                     updatesToApply.push({ id: order.id, status: newStatus, failed_attempt_increment: isAttemptFailure ? 1 : 0 });
                  }
