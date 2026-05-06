@@ -115,7 +115,7 @@ function applySpecialMode(order, mode, today) {
   const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
   
   if (mode === '[ACTIVE PIPELINE]') return hasTracking && !['delivered','return received','cancelled','returned','void','voided'].includes(s)
-  if (mode === '[UNBOOKED]') return !hasTracking && !['cancelled','void','voided'].includes(s)
+  if (mode === '[UNBOOKED]') return !hasTracking && !['delivered','return received','cancelled','returned','void','voided'].includes(s)
   if (mode === '[READY TO BOOK]') {
     const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
     return s === 'confirmed' && !hasTracking

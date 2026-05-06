@@ -133,14 +133,14 @@ router.get('/:id/stats', (req, res) => {
   
   const pending = db.prepare(`
     SELECT COUNT(*) as count FROM orders WHERE store_id=? 
-    AND tracking_number IS NOT NULL AND tracking_number != ''
+    AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
     AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided')
   `).get(storeId);
   
   const unbooked = db.prepare(`
     SELECT COUNT(*) as count FROM orders WHERE store_id=? 
-    AND (tracking_number IS NULL OR tracking_number = '')
-    AND LOWER(delivery_status) NOT IN ('cancelled','void','voided')
+    AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided')
   `).get(storeId);
   
   const revenue = db.prepare("SELECT SUM(price) as total FROM orders WHERE store_id=? AND payment_status='Paid'").get(storeId);
