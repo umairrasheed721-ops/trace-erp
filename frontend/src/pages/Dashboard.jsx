@@ -11,16 +11,15 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const handleCardClick = (label) => {
-    if (label === 'Stuck Orders') return navigate('/stuck')
-    
     let status = 'All Statuses'
     let preset = 'All Time'
     
     if (label === 'Delivered') status = 'Delivered'
-    else if (label === 'Returned (RTO)') status = 'Returned'
+    else if (label === 'Returned (RTO)') status = '[RETURNED]'
     else if (label === 'In Transit') status = '[ACTIVE PIPELINE]'
+    else if (label === 'Stuck Orders') status = '[STUCK PIPELINE]'
     else if (label === 'Total Orders') status = 'All Statuses'
-    else if (label === 'Revenue (Paid)') return navigate('/reports')
+    else if (label === 'Revenue (Paid)') status = '[PAID]'
     
     navigate('/search', { state: { status, preset } })
   }

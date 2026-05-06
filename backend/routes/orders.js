@@ -16,6 +16,12 @@ router.get('/', (req, res) => {
     const s = status.toUpperCase().trim();
     if (s.includes('ACTIVE PIPELINE')) {
       whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned', 'void', 'voided')");
+    } else if (s.includes('[RETURNED]')) {
+      whereClauses.push("LOWER(o.delivery_status) IN ('return received', 'returned')");
+    } else if (s.includes('[STUCK PIPELINE]')) {
+      whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided','booked','pending') AND o.status_date < datetime('now', '-48 hours')");
+    } else if (s.includes('[PAID]')) {
+      whereClauses.push("o.payment_status = 'Paid'");
     } else if (s.includes('READY TO BOOK')) {
       whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
     } else if (s.includes('NO TRACKING')) {
