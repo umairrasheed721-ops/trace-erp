@@ -134,9 +134,11 @@ router.get('/:id/stats', (req, res) => {
   const revenue = db.prepare("SELECT SUM(price) as total FROM orders WHERE store_id=? AND payment_status='Paid'").get(storeId);
   const stuck = db.prepare(`
     SELECT COUNT(*) as count FROM orders WHERE store_id=?
-    AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided','booked','pending')
+    AND tracking_number IS NOT NULL AND tracking_number != ''
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
     AND status_date < datetime('now', '-48 hours')
-  `).get(storeId);
+    AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
+  `).get(storeId, storeId);
 
   const totalCount = total.count || 0;
   const deliveredCount = delivered.count || 0;

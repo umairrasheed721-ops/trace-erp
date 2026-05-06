@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const fetch = require('node-fetch');
 
-const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned'];
+const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
 const ADVICE_KEYWORDS = ['shipper advice', 'delivery under review', 'reattempt', 'undelivered', 'refused', 'incomplete address', 'consignee not available'];
 
 // GET /api/monitors/stuck?store_id=1

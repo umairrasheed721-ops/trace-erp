@@ -19,7 +19,12 @@ router.get('/', (req, res) => {
     } else if (s.includes('[RETURNED]')) {
       whereClauses.push("LOWER(o.delivery_status) IN ('return received', 'returned')");
     } else if (s.includes('[STUCK PIPELINE]')) {
-      whereClauses.push("LOWER(o.delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided','booked','pending') AND o.status_date < datetime('now', '-48 hours')");
+      whereClauses.push(`
+        o.tracking_number IS NOT NULL AND o.tracking_number != ''
+        AND LOWER(o.delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
+        AND o.status_date < datetime('now', '-48 hours')
+        AND o.tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = o.store_id)
+      `);
     } else if (s.includes('[PAID]')) {
       whereClauses.push("o.payment_status = 'Paid'");
     } else if (s.includes('READY TO BOOK')) {
