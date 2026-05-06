@@ -18,6 +18,7 @@ export default function FinanceManager() {
   const [daysOld, setDaysOld] = useState(60)
   const [isRepairing, setIsRepairing] = useState(false)
   const [repairResult, setRepairResult] = useState(null);
+  const [forceUnpaidAsReturned, setForceUnpaidAsReturned] = useState(false);
   const [ghostProducts, setGhostProducts] = useState([]);
   const [productCosts, setProductCosts] = useState({});
   const [isScanning, setIsScanning] = useState(false);
@@ -50,7 +51,7 @@ export default function FinanceManager() {
       const res = await fetch('/api/finance/repair-legacy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, courier: selectedCourier, daysOld })
+        body: JSON.stringify({ store_id: activeStoreId, courier: selectedCourier, daysOld, forceUnpaidAsReturned })
       });
       const data = await res.json();
       if (data.success) {
@@ -448,6 +449,19 @@ export default function FinanceManager() {
                     <option value="90">Older than 90 days</option>
                     <option value="365">Older than 1 year</option>
                   </select>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 4 }}>
+                  <input 
+                    type="checkbox" 
+                    id="forceRto"
+                    checked={forceUnpaidAsReturned}
+                    onChange={e => setForceUnpaidAsReturned(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: 'pointer' }}
+                  />
+                  <label htmlFor="forceRto" style={{ fontSize: '0.75rem', cursor: 'pointer', opacity: 0.8 }}>
+                    Aggressive Clean: If unpaid, force mark as <b>Returned</b> (Assumes old COD = RTO)
+                  </label>
                 </div>
 
                 <button 

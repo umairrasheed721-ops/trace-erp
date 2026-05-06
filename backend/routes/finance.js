@@ -36,7 +36,7 @@ router.get('/couriers', (req, res) => {
 
 // POST /api/finance/repair-legacy
 router.post('/repair-legacy', async (req, res) => {
-  const { store_id, courier, daysOld } = req.body;
+  const { store_id, courier, daysOld, forceUnpaidAsReturned } = req.body;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
@@ -76,11 +76,13 @@ router.post('/repair-legacy', async (req, res) => {
 
         if (status.is_cancelled) {
           newDelivery = 'Cancelled';
-        } else if (status.financial_status === 'refunded') {
+        } else if (status.financial_status === 'refunded' || status.tags?.toLowerCase().includes('returned')) {
           newDelivery = 'Returned';
-        } else if (status.fulfillment_status === 'fulfilled' && status.financial_status === 'paid') {
+        } else if (status.financial_status === 'paid') {
           newDelivery = 'Delivered';
           newPayment = 'Paid';
+        } else if (forceUnpaidAsReturned) {
+          newDelivery = 'Returned';
         }
 
         if (newDelivery !== order.delivery_status || newPayment !== order.payment_status) {
