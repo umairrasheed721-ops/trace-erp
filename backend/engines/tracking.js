@@ -181,7 +181,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   }
 
   const trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-  const apiKeys = [instaworld_key, instaworld_key_backup].filter(Boolean);
+  // All 3 keys tried — different orders belong to different Instaworld accounts
+  const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
   const orders = db.prepare(`
     SELECT id, tracking_number, delivery_status FROM orders
@@ -395,7 +396,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   // 2. Sync Others (Instaworld engine)
   if (otherOrders.length && store.instaworld_key) {
     const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-    const apiKeys = [store.instaworld_key, store.instaworld_key_backup].filter(Boolean);
+    // All 3 keys tried — different orders belong to different Instaworld accounts
+    const apiKeys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
     const batchSize = 5;
     for (let i = 0; i < otherOrders.length; i += batchSize) {
