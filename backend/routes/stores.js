@@ -130,7 +130,19 @@ router.get('/:id/stats', (req, res) => {
   const total = db.prepare('SELECT COUNT(*) as count FROM orders WHERE store_id=?').get(storeId);
   const delivered = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status)='delivered'").get(storeId);
   const returned = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status) IN ('return received','returned')").get(storeId);
-  const pending = db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id=? AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided')").get(storeId);
+  
+  const pending = db.prepare(`
+    SELECT COUNT(*) as count FROM orders WHERE store_id=? 
+    AND tracking_number IS NOT NULL AND tracking_number != ''
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','returned','cancelled','void','voided')
+  `).get(storeId);
+  
+  const unbooked = db.prepare(`
+    SELECT COUNT(*) as count FROM orders WHERE store_id=? 
+    AND (tracking_number IS NULL OR tracking_number = '')
+    AND LOWER(delivery_status) NOT IN ('cancelled','void','voided')
+  `).get(storeId);
+  
   const revenue = db.prepare("SELECT SUM(price) as total FROM orders WHERE store_id=? AND payment_status='Paid'").get(storeId);
   const stuck = db.prepare(`
     SELECT COUNT(*) as count FROM orders WHERE store_id=?
@@ -149,6 +161,7 @@ router.get('/:id/stats', (req, res) => {
     delivered: deliveredCount,
     returned: returnedCount,
     pending: pending.count || 0,
+    unbooked: unbooked.count || 0,
     stuck: stuck.count || 0,
     delivery_rate: totalCount > 0 ? ((deliveredCount / totalCount) * 100).toFixed(1) : 0,
     rto_rate: totalCount > 0 ? ((returnedCount / totalCount) * 100).toFixed(1) : 0,

@@ -112,7 +112,10 @@ function applySpecialMode(order, mode, today) {
   const statusDate = order.status_date ? new Date(order.status_date) : null
   const daysOld = statusDate ? Math.floor((today - statusDate) / 86400000) : 999
 
-  if (mode === '[ACTIVE PIPELINE]') return !['delivered','return received','cancelled','returned','void','voided'].includes(s)
+  const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
+  
+  if (mode === '[ACTIVE PIPELINE]') return hasTracking && !['delivered','return received','cancelled','returned','void','voided'].includes(s)
+  if (mode === '[UNBOOKED]') return !hasTracking && !['cancelled','void','voided'].includes(s)
   if (mode === '[READY TO BOOK]') {
     const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
     return s === 'confirmed' && !hasTracking

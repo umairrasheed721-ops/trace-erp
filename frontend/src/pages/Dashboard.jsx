@@ -17,6 +17,7 @@ export default function Dashboard() {
     if (label === 'Delivered') status = 'Delivered'
     else if (label === 'Returned (RTO)') status = '[RETURNED]'
     else if (label === 'In Transit') status = '[ACTIVE PIPELINE]'
+    else if (label === 'Unbooked') status = '[UNBOOKED]'
     else if (label === 'Stuck Orders') status = '[STUCK PIPELINE]'
     else if (label === 'Total Orders') status = 'All Statuses'
     else if (label === 'Revenue (Paid)') status = '[PAID]'
@@ -51,7 +52,8 @@ export default function Dashboard() {
     { label: 'Total Orders', value: stats.total_orders.toLocaleString(), icon: '📦', color: 'blue', sub: 'All time' },
     { label: 'Delivered', value: stats.delivered.toLocaleString(), icon: '✅', color: 'green', sub: `${stats.delivery_rate}% rate` },
     { label: 'Returned (RTO)', value: stats.returned.toLocaleString(), icon: '↩️', color: 'red', sub: `${stats.rto_rate}% rate` },
-    { label: 'In Transit', value: stats.pending.toLocaleString(), icon: '🚚', color: 'yellow', sub: 'Active orders' },
+    { label: 'Unbooked', value: stats.unbooked.toLocaleString(), icon: '📝', color: 'purple', sub: 'No Tracking ID' },
+    { label: 'In Transit', value: stats.pending.toLocaleString(), icon: '🚚', color: 'yellow', sub: 'Active Pipeline' },
     { label: 'Stuck Orders', value: stats.stuck.toLocaleString(), icon: '⏳', color: 'orange', sub: '> 48 hours' },
     ...(user?.role === 'admin' ? [{ label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue).toLocaleString()}`, icon: '💰', color: 'purple', sub: 'Confirmed only' }] : []),
   ] : []
