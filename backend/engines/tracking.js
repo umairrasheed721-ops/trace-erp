@@ -408,7 +408,11 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               method: 'POST',
               headers: { 
                 'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://one.instaworld.pk',
+                'Referer': 'https://one.instaworld.pk/'
               },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
               agent,
