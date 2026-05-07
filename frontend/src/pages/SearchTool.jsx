@@ -442,54 +442,59 @@ export default function SearchTool() {
       } else {
         addToast(`❌ Sync Failed: ${data.error}`, 'error')
       }
-    } catch { addToast('Network error', 'error') }
-    finally { setBulkActionLoading(false) }
-  }
-
-  const handleExportTracking = () => {
+    } catch { addToast('Network error', 'error') }  const handleExportTracking = () => {
     // If we have selections, export only those. Otherwise export all filtered orders.
     const targetOrders = selectedIds.length > 0 
       ? allOrders.filter(o => selectedIds.includes(o.id))
-      : allOrders;
+      : filteredOrders;
 
     if (targetOrders.length === 0) {
       addToast('No orders selected or found to export', 'warning');
       return;
     }
 
-    const trackingList = targetOrders
-      .map(o => o.tracking_number)
-      .filter(t => t && t !== '—' && t !== '')
-      .join('\n');
+    // Define CSV Headers
+    const headers = [
+      'Shopify ID', 'Ref Number', 'Date', 'Customer', 'Phone', 
+      'City', 'Address', 'Tracking Number', 'Courier', 
+      'Status', 'Price', 'Payment Status'
+    ];
+
+    // Map data to rows
+    const rows = targetOrders.map(o => [
+      o.shopify_order_id || '',
+      o.ref_number || '',
+      o.created_at ? new Date(o.created_at).toLocaleDateString() : '',
+      o.customer_name || '',
+      o.phone || '',
+      o.city || '',
+      `"${(o.address || '').replace(/"/g, '""')}"`, // Wrap address in quotes to handle commas
+      o.tracking_number || '',
+      o.courier || '',
+      o.delivery_status || '',
+      o.price || '',
+      o.payment_status || ''
+    ]);
+
+    // Build CSV Content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    // Trigger Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Trace_ERP_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     
-    if (!trackingList) {
-      addToast('No valid tracking IDs found in selection', 'warning');
-      return;
-    }
-
-    // Fallback copy method for non-secure contexts or older browsers
-    const fallbackCopy = (text) => {
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        addToast(`📋 ${targetOrders.length} Tracking IDs copied (Legacy)!`, 'success');
-      } catch (err) {
-        addToast('Copy failed', 'error');
-      }
-      document.body.removeChild(textArea);
-    };
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(trackingList)
-        .then(() => addToast(`📋 ${targetOrders.length} Tracking IDs copied!`, 'success'))
-        .catch(() => fallbackCopy(trackingList));
-    } else {
-      fallbackCopy(trackingList);
-    }
-  }
+    addToast(`📊 Exported ${targetOrders.length} orders to CSV!`, 'success');
+  };
 
   const handleBulkBookPostEx = async () => {
     if (selectedIds.length === 0) return
