@@ -434,6 +434,29 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.status;
               }
 
+              // 🚀 DIRECT COURIER FALLBACK: If Instaworld fails, go straight to the source
+              if (!rawStatus) {
+                const courier = (order.courier || '').toLowerCase();
+                if (courier.includes('leopard')) {
+                  const leopardUrl = `https://www.leopardscourier.com/tracking?track_number=${order.tracking_number}`;
+                  const leopardRes = await fetch(leopardUrl, { timeout: 10000 });
+                  if (leopardRes.ok) {
+                    const html = await leopardRes.text();
+                    // Match the status from Leopards table
+                    const match = html.match(/<td[^>]*>Status:<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
+                    if (match && match[1]) rawStatus = match[1].trim();
+                  }
+                } else if (courier.includes('tcs')) {
+                  const tcsUrl = `https://www.tcsexpress.com/tracking/${order.tracking_number}`;
+                  const tcsRes = await fetch(tcsUrl, { timeout: 10000 });
+                  if (tcsRes.ok) {
+                    const html = await tcsRes.text();
+                    const match = html.match(/Status:<\/strong>\s*([^<]+)/i);
+                    if (match && match[1]) rawStatus = match[1].trim();
+                  }
+                }
+              }
+
               // 🚀 SECRET V2 FALLBACK: Use the GET endpoint discovered from the React portal
               if (!rawStatus) {
                 const v2Url = `https://one-be.instaworld.pk/v2/public/track/${order.tracking_number}`;
