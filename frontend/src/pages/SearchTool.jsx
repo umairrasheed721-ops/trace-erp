@@ -404,7 +404,6 @@ export default function SearchTool() {
 
   const handleBulkSyncCourier = async () => {
     if (selectedIds.length === 0) return
-    if (!confirm(`🚀 Sync tracking for ${selectedIds.length} orders from Couriers?`)) return
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -427,7 +426,6 @@ export default function SearchTool() {
 
   const handleBulkSyncStatus = async () => {
     if (selectedIds.length === 0) return
-    if (!confirm(`🔄 Sync status for ${selectedIds.length} orders from Shopify?`)) return
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
