@@ -434,6 +434,30 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.status;
               }
 
+              // 🚀 SECRET V2 FALLBACK: Use the GET endpoint discovered from the React portal
+              if (!rawStatus) {
+                const v2Url = `https://one-be.instaworld.pk/v2/public/track/${order.tracking_number}`;
+                const v2Res = await fetch(v2Url, { 
+                  headers: { 
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                    'Accept': 'application/json, text/plain, */*'
+                  },
+                  timeout: 10000 
+                });
+                if (v2Res.ok) {
+                  const v2Data = await v2Res.json();
+                  // V2 format: v2Data.data is an array or object containing history
+                  if (v2Data?.data) {
+                    const history = Array.isArray(v2Data.data) ? v2Data.data : (v2Data.data.history || []);
+                    if (history.length > 0) {
+                      rawStatus = history[history.length - 1].status || history[history.length - 1].statusDescription;
+                    } else if (v2Data.data.status) {
+                      rawStatus = v2Data.data.status;
+                    }
+                  }
+                }
+              }
+
               // 🚀 HUMAN FALLBACK: If API is silent, scrape the public portal
               if (!rawStatus) {
                 const publicUrl = `https://one.instaworld.pk/track/${order.tracking_number}`;
