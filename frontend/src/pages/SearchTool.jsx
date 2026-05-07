@@ -447,23 +447,48 @@ export default function SearchTool() {
   }
 
   const handleExportTracking = () => {
-    if (orders.length === 0) {
-      addToast('No orders to export', 'warning');
+    // If we have selections, export only those. Otherwise export all filtered orders.
+    const targetOrders = selectedIds.length > 0 
+      ? orders.filter(o => selectedIds.includes(o.id))
+      : orders;
+
+    if (targetOrders.length === 0) {
+      addToast('No orders selected or found to export', 'warning');
       return;
     }
-    const trackingList = orders
+
+    const trackingList = targetOrders
       .map(o => o.tracking_number)
       .filter(t => t && t !== '—' && t !== '')
       .join('\n');
     
     if (!trackingList) {
-      addToast('No valid tracking IDs found', 'warning');
+      addToast('No valid tracking IDs found in selection', 'warning');
       return;
     }
 
-    navigator.clipboard.writeText(trackingList)
-      .then(() => addToast(`📋 Tracking IDs from ${orders.length} orders copied!`, 'success'))
-      .catch(() => addToast('Failed to copy', 'error'));
+    // Fallback copy method for non-secure contexts or older browsers
+    const fallbackCopy = (text) => {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        addToast(`📋 ${targetOrders.length} Tracking IDs copied (Legacy)!`, 'success');
+      } catch (err) {
+        addToast('Copy failed', 'error');
+      }
+      document.body.removeChild(textArea);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(trackingList)
+        .then(() => addToast(`📋 ${targetOrders.length} Tracking IDs copied!`, 'success'))
+        .catch(() => fallbackCopy(trackingList));
+    } else {
+      fallbackCopy(trackingList);
+    }
   }
 
   const handleBulkBookPostEx = async () => {
