@@ -79,9 +79,10 @@ router.get('/test-v2/:tracking', async (req, res) => {
 });
 
 // 🛠️ CLOUD PROVISION: Securely update config on the live server
-router.get('/provision/:urlBase64', async (req, res) => {
+router.get('/provision', async (req, res) => {
     try {
-        const { urlBase64 } = req.params;
+        const { urlBase64 } = req.query;
+        if (!urlBase64) return res.status(400).json({ error: "Missing urlBase64 query param" });
         const decodedUrl = Buffer.from(urlBase64, 'base64').toString('utf-8');
         db.prepare("UPDATE stores SET gas_proxy_url = ?").run(decodedUrl);
         res.json({ message: "✅ Cloud Proxy Updated", url: decodedUrl });
