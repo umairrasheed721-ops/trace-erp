@@ -479,8 +479,18 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           failed_attempts = failed_attempts + ? 
       WHERE id = ?
     `);
+    const { broadcast } = require('../sse');
     const updateMany = db.transaction(items => {
-      for (const u of items) updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
+      for (const u of items) {
+        updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
+        // 🚀 REAL-TIME PUSH: Tell the frontend to update this row
+        broadcast({ 
+          type: 'ORDER_UPDATED', 
+          orderId: u.id, 
+          status: u.delivery_status,
+          courier_status: u.courier_status
+        });
+      }
     });
     updateMany(updatesToApply);
   }
