@@ -217,6 +217,7 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/public/')) return next();
   if (req.path === '/health' || req.path === '/api/health') return next();
   if (req.path.startsWith('/api/diagnostics/') || req.originalUrl.includes('/api/diagnostics/')) return next();
+  if (req.path === '/api/wake-up-test' || req.originalUrl.includes('wake-up-test')) return next();
   
   // Live SSE Endpoint handles its own token from query
   if (req.path === '/api/live') {
