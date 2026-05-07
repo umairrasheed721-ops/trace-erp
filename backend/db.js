@@ -473,6 +473,15 @@ function runMigrations(db) {
     ['Instaworld',  'uncollected',                        'Pending'],
     ['Instaworld',  'out for delivery',                   'Out for Delivery'],
     ['Instaworld',  'attempted delivery',                 'Attempted'],
+    ['all',         'returned to shipper',                'Returned'],
+    ['all',         'return received at insta hub',       'Returned'],
+    ['all',         'at origin warehouse',                'In Transit'],
+    ['all',         'at destination warehouse',           'In Transit'],
+    ['all',         'at warehouse',                       'In Transit'],
+    ['all',         'in transit',                         'In Transit'],
+    ['all',         'pickup done',                        'Booked'],
+    ['all',         'arrival at insta-hub',               'Booked'],
+    ['all',         'handover to courier',                'In Transit'],
   ];
   const insertMapping = db.prepare(
     `INSERT OR IGNORE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
