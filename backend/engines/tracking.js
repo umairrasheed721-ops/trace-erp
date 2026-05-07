@@ -423,8 +423,21 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.status;
               }
 
-              } else if (data?.status) {
-                rawStatus = data.status;
+              // 🚀 GOOGLE SHIELD: Fallback to GAS Proxy if direct fails
+              if (!rawStatus && store.gas_proxy_url) {
+                try {
+                   const gasRes = await fetch(store.gas_proxy_url, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
+                      timeout: 15000
+                   });
+                   if (gasRes.ok) {
+                      const gasData = await gasRes.json();
+                      if (Array.isArray(gasData) && gasData.length > 0) rawStatus = gasData[gasData.length - 1].status;
+                      else if (gasData?.status) rawStatus = gasData.status;
+                   }
+                } catch (e) {}
               }
 
               if (rawStatus) {
@@ -438,8 +451,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 const newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
                 
-                fs.appendFileSync(logFile, `[${new Date().toISOString()}] Match: ${order.tracking_number} -> ${rawStatus} (${newStatus})\n`);
-
                 updatesToApply.push({ 
                   id: order.id, 
                   courier_status: String(rawStatus).substring(0, 100), 
@@ -448,22 +459,22 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                   failed_attempt_increment: isAttemptFailure ? 1 : 0 
                 });
                 success = true;
-              } else {
-                fs.appendFileSync(logFile, `[${new Date().toISOString()}] No status found in data for ${order.tracking_number}\n`);
               }
-            } else {
-              fs.appendFileSync(logFile, `[${new Date().toISOString()}] API Error ${res.status} for ${order.tracking_number}\n`);
             }
           } catch (e) {
-            fs.appendFileSync(logFile, `[${new Date().toISOString()}] Sync Crash for ${order.tracking_number}: ${e.message}\n`);
             console.error(`Instaworld Sync Error [${order.tracking_number}]:`, e.message);
+          } finally {
+            processed++;
+            if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
           }
         }
-        processed++;
-        if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
       }));
       await sleep(1500); 
     }
+          } catch (e) {}
+       }
+    }));
+>>>>>>> d51feb5 (feat: add Google Apps Script proxy fallback for robust cloud sync)
   }
 
   if (updatesToApply.length > 0) {
