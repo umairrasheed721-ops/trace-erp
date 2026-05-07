@@ -461,8 +461,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 success = true;
               }
             }
-          } catch (e) {
-            console.error(`Instaworld Sync Error [${order.tracking_number}]:`, e.message);
           } finally {
             processed++;
             if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
@@ -471,10 +469,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
       }));
       await sleep(1500); 
     }
-          } catch (e) {}
-       }
-    }));
->>>>>>> d51feb5 (feat: add Google Apps Script proxy fallback for robust cloud sync)
   }
 
   if (updatesToApply.length > 0) {
