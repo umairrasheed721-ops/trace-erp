@@ -449,8 +449,8 @@ export default function SearchTool() {
   const handleExportTracking = () => {
     // If we have selections, export only those. Otherwise export all filtered orders.
     const targetOrders = selectedIds.length > 0 
-      ? orders.filter(o => selectedIds.includes(o.id))
-      : orders;
+      ? allOrders.filter(o => selectedIds.includes(o.id))
+      : allOrders;
 
     if (targetOrders.length === 0) {
       addToast('No orders selected or found to export', 'warning');
