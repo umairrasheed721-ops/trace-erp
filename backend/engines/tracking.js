@@ -412,7 +412,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
               agent,
-              timeout: 15000
+              timeout: 30000
             });
 
             if (res.ok) {
