@@ -319,6 +319,9 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   return { updated: updatesToApply.length };
 }
 
+const https = require('https');
+const agent = new https.Agent({ rejectUnauthorized: false });
+
 async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   if (!orderIds || !orderIds.length) return 0;
   
@@ -335,6 +338,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   const postexOrders = orders.filter(o => (o.courier || '').toLowerCase().includes('postex'));
   const otherOrders = orders.filter(o => !(o.courier || '').toLowerCase().includes('postex') && o.tracking_number);
 
+  console.log(`[Manual Sync] PostEx: ${postexOrders.length}, Others: ${otherOrders.length}`);
+
   // 1. Sync PostEx
   if (postexOrders.length && store.postex_token) {
     let rawUrl = store.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
@@ -348,7 +353,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           const res = await fetch(`${baseUrl}${order.tracking_number}`, {
             method: 'GET',
             headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
-            timeout: 5000 // 5s timeout
+            agent
           });
           if (res.ok) {
             const data = await res.json();
@@ -361,12 +366,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 id: order.id, 
                 courier_status: rawStatus, 
                 delivery_status: newStatus, 
+                courier: 'PostEx',
                 failed_attempt_increment: isAttemptFailure ? 1 : 0 
               });
             }
           }
         } catch (e) {
-          logAudit(store.id, 'ERROR', `Manual PostEx Sync Error: ${e.message}`, order.tracking_number);
+          console.error(`PostEx Sync Error [${order.tracking_number}]:`, e.message);
         } finally {
           processed++;
           if (onProgress) onProgress(processed, total, `Syncing PostEx tracking...`);
@@ -390,6 +396,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
       const batch = otherOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
         let success = false;
+        console.log(`[Manual Sync] Probing ${order.tracking_number} with ${apiKeys.length} keys...`);
+        
         for (const key of apiKeys) {
           if (success) break;
           try {
@@ -397,7 +405,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
-              timeout: 8000
+              agent,
+              timeout: 10000
             });
 
             if (res.ok) {
@@ -413,12 +422,12 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 
                 let newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
                 
-                // 🛡️ Final Status Protection: Manual sync also cannot auto-set 'Return Received'
-                if (newStatus && newStatus.toLowerCase() === 'return received') {
-                  newStatus = 'Returned'; 
-                }
+                // 🛡️ Final Status Protection
+                if (newStatus && newStatus.toLowerCase() === 'return received') newStatus = 'Returned';
 
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
+                
+                console.log(`[Manual Sync] Success for ${order.tracking_number}: ${rawStatus} -> ${newStatus}`);
                 
                 updatesToApply.push({ 
                   id: order.id, 
@@ -429,9 +438,11 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 });
                 success = true;
               }
+            } else {
+              console.warn(`[Manual Sync] API returned ${res.status} for ${order.tracking_number} with key ${key.substring(0,5)}...`);
             }
           } catch (e) {
-            console.error(`Manual Sync Error [${order.tracking_number}]:`, e.message);
+            console.error(`Instaworld Sync Error [${order.tracking_number}]:`, e.message);
           }
         }
         processed++;
@@ -461,3 +472,4 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
 }
 
 module.exports = { syncPostEx, syncInstaworld, syncSpecificCourierOrders, loadStatusMaps, applyMap };
+
