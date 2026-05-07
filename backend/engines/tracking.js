@@ -392,6 +392,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     const statusMap = loadStatusMaps();
 
     const batchSize = 5;
+    const fs = require('fs');
+    const logFile = path.join(__dirname, '../sync_debug.log');
+
     for (let i = 0; i < otherOrders.length; i += batchSize) {
       const batch = otherOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
@@ -405,47 +408,60 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
               agent,
-              timeout: 10000
+              timeout: 12000
             });
 
             if (res.ok) {
               const data = await res.json();
               let rawStatus = null;
               
-              // 🚀 MATCHING GAS PARSING LOGIC
+              // 🚀 AGGRESSIVE PARSING: Check all known Instaworld formats
               if (Array.isArray(data) && data.length > 0) {
-                rawStatus = data[data.length - 1].status;
+                rawStatus = data[data.length - 1].status || data[data.length - 1].statusDescription;
               } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
                 rawStatus = data.data[data.data.length - 1].status;
+              } else if (data?.history && Array.isArray(data.history) && data.history.length > 0) {
+                rawStatus = data.history[data.history.length - 1].status;
+              } else if (data?.status) {
+                rawStatus = data.status;
               }
 
               if (rawStatus) {
                 let courierName = null;
                 if (Array.isArray(data) && data.length > 0) {
                    courierName = data[data.length - 1].courier_name || data[data.length - 1].vendor_name;
+                } else if (data?.courier) {
+                  courierName = data.courier;
                 }
                 
                 const newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
                 
+                fs.appendFileSync(logFile, `[${new Date().toISOString()}] Match: ${order.tracking_number} -> ${rawStatus} (${newStatus})\n`);
+
                 updatesToApply.push({ 
                   id: order.id, 
-                  courier_status: rawStatus, 
+                  courier_status: String(rawStatus).substring(0, 100), 
                   delivery_status: newStatus, 
                   courier: courierName || order.courier,
                   failed_attempt_increment: isAttemptFailure ? 1 : 0 
                 });
                 success = true;
+              } else {
+                fs.appendFileSync(logFile, `[${new Date().toISOString()}] No status found in data for ${order.tracking_number}\n`);
               }
+            } else {
+              fs.appendFileSync(logFile, `[${new Date().toISOString()}] API Error ${res.status} for ${order.tracking_number}\n`);
             }
           } catch (e) {
+            fs.appendFileSync(logFile, `[${new Date().toISOString()}] Sync Crash for ${order.tracking_number}: ${e.message}\n`);
             console.error(`Instaworld Sync Error [${order.tracking_number}]:`, e.message);
           }
         }
         processed++;
         if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
       }));
-      await sleep(1500); // 🛡️ GAS-MATCHING DELAY: 1.5s
+      await sleep(1500); 
     }
   }
 
