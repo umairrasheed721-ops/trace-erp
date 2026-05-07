@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const fetch = require('node-fetch');
 
 // 🔍 SECURE DIAGNOSTICS: Check any parcel's REAL status in the Cloud DB
 router.get('/check-status/:tracking', (req, res) => {
