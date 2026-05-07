@@ -403,12 +403,16 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
         for (const key of apiKeys) {
           if (success) break;
           try {
+            const trimmedKey = String(key).trim();
             const res = await fetch(trackUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
+              headers: { 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+              },
+              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
               agent,
-              timeout: 12000
+              timeout: 15000
             });
 
             if (res.ok) {
