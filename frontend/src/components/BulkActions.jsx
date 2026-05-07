@@ -11,6 +11,7 @@ export default function BulkActions({
   handleBulkRevert,
   handleBulkUpdateStatus,
   handleBulkWhatsApp,
+  handleExportTracking,
   totalMatching,
   handleSelectAllMatching
 }) {
@@ -97,6 +98,14 @@ export default function BulkActions({
         <option value="Confirmed">Confirmed</option>
         <option value="Pending">Pending</option>
       </select>
+
+      <button 
+        onClick={handleExportTracking}
+        className="btn btn-sm" 
+        style={{ background: 'white', color: 'black', fontWeight: 800, border: '2px solid black' }}
+      >
+        📋 EXPORT TRACKINGS
+      </button>
 
       <button 
         onClick={handleBulkWhatsApp}

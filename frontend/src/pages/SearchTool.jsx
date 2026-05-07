@@ -98,11 +98,11 @@ function matchesSearch(order, keyword) {
       match = fullText.includes(actualToken)
     }
 
-    if (isNegated && match) return false // Found a negated term
-    if (!isNegated && !match) return false // Didn't find a required term
+    if (isNegated && match) return false;
+    if (!isNegated && !match) return false;
   }
 
-  return true
+  return true;
 }
 
 function applySpecialMode(order, mode, today) {
@@ -444,6 +444,26 @@ export default function SearchTool() {
       }
     } catch { addToast('Network error', 'error') }
     finally { setBulkActionLoading(false) }
+  }
+
+  const handleExportTracking = () => {
+    if (orders.length === 0) {
+      addToast('No orders to export', 'warning');
+      return;
+    }
+    const trackingList = orders
+      .map(o => o.tracking_number)
+      .filter(t => t && t !== '—' && t !== '')
+      .join('\n');
+    
+    if (!trackingList) {
+      addToast('No valid tracking IDs found', 'warning');
+      return;
+    }
+
+    navigator.clipboard.writeText(trackingList)
+      .then(() => addToast(`📋 Tracking IDs from ${orders.length} orders copied!`, 'success'))
+      .catch(() => addToast('Failed to copy', 'error'));
   }
 
   const handleBulkBookPostEx = async () => {
@@ -1184,6 +1204,7 @@ export default function SearchTool() {
         handleBulkBookPostEx={handleBulkBookPostEx}
         handleBulkBookInstaworld={handleBulkBookInstaworld}
         handleBulkWhatsApp={handleStartWAQueue}
+        handleExportTracking={handleExportTracking}
         totalMatching={totalCount}
         handleSelectAllMatching={handleSelectAllMatching}
       />
