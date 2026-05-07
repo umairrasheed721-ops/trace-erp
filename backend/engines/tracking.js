@@ -375,8 +375,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   // 2. Sync Others (Instaworld engine)
   if (otherOrders.length && store.instaworld_key) {
     const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-    // All 3 keys tried — different orders belong to different Instaworld accounts
     const apiKeys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
+    const statusMap = loadStatusMaps();
 
     const batchSize = 5;
     for (let i = 0; i < otherOrders.length; i += batchSize) {
@@ -390,7 +390,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: key }),
-              timeout: 5000 // 5s timeout
+              timeout: 8000
             });
 
             if (res.ok) {
@@ -401,33 +401,36 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
               else if (data?.status) rawStatus = data.status;
 
               if (rawStatus) {
-                const statusMap = loadStatusMaps();
-                let newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
+                let courierName = null;
+                if (Array.isArray(data) && data.length > 0) courierName = data[data.length - 1]?.courier_name || data[data.length - 1]?.vendor_name;
                 
-                // 🛡️ Final Status Protection
-                if (newStatus && newStatus.toLowerCase() === 'return received') newStatus = 'Returned';
+                let newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
+                
+                // 🛡️ Final Status Protection: Manual sync also cannot auto-set 'Return Received'
+                if (newStatus && newStatus.toLowerCase() === 'return received') {
+                  newStatus = 'Returned'; 
+                }
 
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
+                
                 updatesToApply.push({ 
                   id: order.id, 
                   courier_status: rawStatus, 
                   delivery_status: newStatus, 
+                  courier: courierName || order.courier,
                   failed_attempt_increment: isAttemptFailure ? 1 : 0 
                 });
                 success = true;
               }
-            } else if (res.status === 400) {
-              // If not found, don't bother retrying with other keys
-              break;
             }
           } catch (e) {
-            logAudit(store.id, 'ERROR', `Manual Courier Sync Error: ${e.message}`, order.tracking_number);
+            console.error(`Manual Sync Error [${order.tracking_number}]:`, e.message);
           }
         }
         processed++;
         if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
       }));
-      await sleep(150);
+      await sleep(200);
     }
   }
 
@@ -436,12 +439,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
       UPDATE orders 
       SET courier_status = ?, 
           delivery_status = COALESCE(?, delivery_status),
+          courier = COALESCE(?, courier),
           status_date = datetime('now'), 
           failed_attempts = failed_attempts + ? 
       WHERE id = ?
     `);
     const updateMany = db.transaction(items => {
-      for (const u of items) updateStmt.run(u.courier_status, u.delivery_status, u.failed_attempt_increment || 0, u.id);
+      for (const u of items) updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
     });
     updateMany(updatesToApply);
   }
