@@ -50,4 +50,21 @@ router.get('/force-update/:tracking', async (req, res) => {
     }
 });
 
+// 🧪 CLOUD WIRETAP: See what the Railway server sees from the V2 API
+router.get('/test-v2/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const fetch = require('node-fetch');
+        const v2Url = `https://one-be.instaworld.pk/v2/public/track/${tracking}`;
+        const v2Res = await fetch(v2Url, { 
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 10000 
+        });
+        const data = await v2Res.json();
+        res.json({ url: v2Url, status: v2Res.status, data });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
