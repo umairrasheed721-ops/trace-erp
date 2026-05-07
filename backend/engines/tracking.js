@@ -181,7 +181,6 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   }
 
   const trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-  // All 3 keys tried — different orders belong to different Instaworld accounts
   const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
   const orders = db.prepare(`
@@ -209,8 +208,6 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     return { updated: 0 };
   }
 
-      // Using global INSTAWORLD_STATUS_MAP
-
   const trackOne = async (order, apiKey) => {
     try {
       const res = await fetch(trackUrl, {
@@ -235,7 +232,6 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         rawStatus = data.status;
       }
 
-      // Capture Sub-Courier (LCS, TCS, etc) from Instaworld response
       let courierName = null;
       if (Array.isArray(data) && data.length > 0) {
         courierName = data[data.length - 1]?.courier_name || data[data.length - 1]?.vendor_name;
@@ -243,80 +239,62 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         courierName = data.data[data.data.length - 1]?.courier_name || data.data[data.data.length - 1]?.vendor_name;
       }
       
-      // Auto-detect by tracking number if still null
       if (!courierName && order.tracking_number) {
         const tn = String(order.tracking_number).toUpperCase();
         if (tn.startsWith('LE') || tn.startsWith('LCS')) courierName = 'LCS';
-        else if (tn.match(/^[0-9]{11,12}$/)) courierName = 'TCS'; // TCS is usually 11-12 digits
+        else if (tn.match(/^[0-9]{11,12}$/)) courierName = 'TCS';
       }
 
       if (!rawStatus) return { status: 200, order, newStatus: null, courierName };
 
       const lowerRaw = String(rawStatus).toLowerCase();
-      const newStatus = applyMap(statusMap, courierName || 'Instaworld', lowerRaw) || null;
+      const statusMap = loadStatusMaps();
+      let newStatus = applyMap(statusMap, courierName || 'Instaworld', lowerRaw) || null;
+      
+      // 🛡️ Final Status Protection: Auto-sync can't mark 'Return Received'
+      if (newStatus && newStatus.toLowerCase() === 'return received') {
+         newStatus = 'Returned'; // Downgrade to Returned for manual verification
+      }
 
       return { status: 200, order, newStatus, rawStatus, courierName };
     } catch (err) {
-      const logStmt = db.prepare("INSERT INTO sync_audit (tracking_number, message) VALUES (?, ?)");
-      logStmt.run(order.tracking_number, `ERR: ${err.message} | ${err.stack.split('\n')[0]}`);
       return { status: 0, order, newStatus: null };
     }
   };
 
   const updatesToApply = [];
-  let processed = 0;
-  const statusMap = loadStatusMaps();
+  let processedCount = 0;
 
   for (const batch of chunks(toProcess, 10)) {
-    const primaryResults = await Promise.all(batch.map(o => trackOne(o, apiKeys[0])));
-    const retryOrders = [];
+    const results = await Promise.all(batch.map(async (o) => {
+      // Try keys sequentially until we get a result
+      for (const key of apiKeys) {
+        const r = await trackOne(o, key);
+        if (r.status === 200 && r.rawStatus) return r;
+      }
+      return { status: 404, order: o, newStatus: null };
+    }));
 
-    for (const r of primaryResults) {
+    for (const r of results) {
       if (r.status === 200 && r.rawStatus) {
         const isProtected = DEAD_STATUSES.includes((r.order.delivery_status||'').toLowerCase());
         const isAttemptFailure = r.newStatus && ATTEMPT_FAILURE_STATUSES.includes(r.newStatus.toLowerCase());
+        
         updatesToApply.push({
           id: r.order.id,
           courier_status: r.rawStatus,
           erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
-          courier: r.courierName,
+          courier: r.courierName || 'Instaworld',
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
         });
-      } else if (r.status !== 404 && apiKeys[1]) {
-        retryOrders.push(r.order);
       }
     }
 
-    if (retryOrders.length > 0) {
-      await sleep(2000);
-      const backupResults = await Promise.all(retryOrders.map(o => trackOne(o, apiKeys[1])));
-      for (const r of backupResults) {
-        if (r.status === 200 && r.rawStatus) {
-          const isProtected = DEAD_STATUSES.includes((r.order.delivery_status||'').toLowerCase());
-          const isAttemptFailure = r.newStatus && ATTEMPT_FAILURE_STATUSES.includes(r.newStatus.toLowerCase());
-          updatesToApply.push({
-            id: r.order.id,
-            courier_status: r.rawStatus,
-            erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
-            courier: r.courierName,
-            failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
-          });
-        }
-      }
-    }
-
-    processed += batch.length;
-    if (onProgress) onProgress('Syncing Instaworld Tracking', processed, toProcess.length);
+    processedCount += batch.length;
+    if (onProgress) onProgress('Syncing Instaworld', processedCount, toProcess.length);
     await sleep(SLEEP_MS);
   }
 
-  // LOG TO CONSOLE FOR RAILWAY DEBUGGING
-  if (updatesToApply.length > 0) {
-    console.log(`[Instaworld Sync] Updated ${updatesToApply.length} orders for ${store.shop_domain}`);
-  }
-
-
-  // Safe bulk write
   const updateStmt = db.prepare(`
     UPDATE orders
     SET courier_status = COALESCE(?, courier_status),
@@ -326,13 +304,14 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         failed_attempts = failed_attempts + ?
     WHERE id = ?
   `);
+
   const updateMany = db.transaction(items => {
     for (const u of items)
       updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment||0, u.id);
   });
   updateMany(updatesToApply);
 
-  console.log(`✅ Instaworld [${store.shop_domain}] [${syncType}]: Updated ${updatesToApply.length} / ${toProcess.length} orders`);
+  console.log(`✅ Instaworld [${store.shop_domain}]: Updated ${updatesToApply.length} orders`);
   return { updated: updatesToApply.length };
 }
 
@@ -423,7 +402,11 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
 
               if (rawStatus) {
                 const statusMap = loadStatusMaps();
-                const newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
+                let newStatus = applyMap(statusMap, order.courier || 'Instaworld', rawStatus);
+                
+                // 🛡️ Final Status Protection
+                if (newStatus && newStatus.toLowerCase() === 'return received') newStatus = 'Returned';
+
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
                 updatesToApply.push({ 
                   id: order.id, 
