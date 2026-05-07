@@ -396,7 +396,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
       const batch = otherOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
         let success = false;
-        console.log(`[Manual Sync] Probing ${order.tracking_number} with ${apiKeys.length} keys...`);
         
         for (const key of apiKeys) {
           if (success) break;
@@ -412,22 +411,22 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
             if (res.ok) {
               const data = await res.json();
               let rawStatus = null;
-              if (Array.isArray(data) && data.length > 0) rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
-              else if (data?.data && Array.isArray(data.data) && data.data.length > 0) rawStatus = data.data[data.data.length - 1]?.status;
-              else if (data?.status) rawStatus = data.status;
+              
+              // 🚀 MATCHING GAS PARSING LOGIC
+              if (Array.isArray(data) && data.length > 0) {
+                rawStatus = data[data.length - 1].status;
+              } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+                rawStatus = data.data[data.data.length - 1].status;
+              }
 
               if (rawStatus) {
                 let courierName = null;
-                if (Array.isArray(data) && data.length > 0) courierName = data[data.length - 1]?.courier_name || data[data.length - 1]?.vendor_name;
+                if (Array.isArray(data) && data.length > 0) {
+                   courierName = data[data.length - 1].courier_name || data[data.length - 1].vendor_name;
+                }
                 
-                let newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
-                
-                // 🛡️ Final Status Protection
-                if (newStatus && newStatus.toLowerCase() === 'return received') newStatus = 'Returned';
-
+                const newStatus = applyMap(statusMap, courierName || order.courier || 'Instaworld', rawStatus);
                 const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes(String(newStatus || rawStatus).toLowerCase());
-                
-                console.log(`[Manual Sync] Success for ${order.tracking_number}: ${rawStatus} -> ${newStatus}`);
                 
                 updatesToApply.push({ 
                   id: order.id, 
@@ -438,8 +437,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 });
                 success = true;
               }
-            } else {
-              console.warn(`[Manual Sync] API returned ${res.status} for ${order.tracking_number} with key ${key.substring(0,5)}...`);
             }
           } catch (e) {
             console.error(`Instaworld Sync Error [${order.tracking_number}]:`, e.message);
@@ -448,7 +445,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
         processed++;
         if (onProgress) onProgress(processed, total, `Syncing Courier tracking...`);
       }));
-      await sleep(200);
+      await sleep(1500); // 🛡️ GAS-MATCHING DELAY: 1.5s
     }
   }
 
