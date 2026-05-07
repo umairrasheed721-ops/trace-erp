@@ -319,9 +319,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   return { updated: updatesToApply.length };
 }
 
-const https = require('https');
-const agent = new https.Agent({ rejectUnauthorized: false });
-
+// Removed custom https agent to restore original stable fetch behavior
 async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   if (!orderIds || !orderIds.length) return 0;
   
@@ -352,8 +350,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
         try {
           const res = await fetch(`${baseUrl}${order.tracking_number}`, {
             method: 'GET',
-            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
-            agent
+            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' }
           });
           if (res.ok) {
             const data = await res.json();
@@ -406,16 +403,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
             const trimmedKey = String(key).trim();
             const res = await fetch(trackUrl, {
               method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Origin': 'https://one.instaworld.pk',
-                'Referer': 'https://one.instaworld.pk/'
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
-              agent,
               timeout: 30000
             });
 
@@ -434,66 +423,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.status;
               }
 
-              // 🚀 DIRECT COURIER FALLBACK: If Instaworld fails, go straight to the source
-              if (!rawStatus) {
-                const courier = (order.courier || '').toLowerCase();
-                if (courier.includes('leopard')) {
-                  const leopardUrl = `https://www.leopardscourier.com/tracking?track_number=${order.tracking_number}`;
-                  const leopardRes = await fetch(leopardUrl, { timeout: 10000 });
-                  if (leopardRes.ok) {
-                    const html = await leopardRes.text();
-                    // Match the status from Leopards table
-                    const match = html.match(/<td[^>]*>Status:<\/td>\s*<td[^>]*>([^<]+)<\/td>/i);
-                    if (match && match[1]) rawStatus = match[1].trim();
-                  }
-                } else if (courier.includes('tcs')) {
-                  const tcsUrl = `https://www.tcsexpress.com/tracking/${order.tracking_number}`;
-                  const tcsRes = await fetch(tcsUrl, { timeout: 10000 });
-                  if (tcsRes.ok) {
-                    const html = await tcsRes.text();
-                    const match = html.match(/Status:<\/strong>\s*([^<]+)/i);
-                    if (match && match[1]) rawStatus = match[1].trim();
-                  }
-                }
-              }
-
-              // 🚀 SECRET V2 FALLBACK: Use the GET endpoint discovered from the React portal
-              if (!rawStatus) {
-                const v2Url = `https://one-be.instaworld.pk/v2/public/track/${order.tracking_number}`;
-                const v2Res = await fetch(v2Url, { 
-                  headers: { 
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                    'Accept': 'application/json, text/plain, */*'
-                  },
-                  timeout: 10000 
-                });
-                if (v2Res.ok) {
-                  const v2Data = await v2Res.json();
-                  // V2 format: v2Data.data is an array or object containing history
-                  if (v2Data?.data) {
-                    const history = Array.isArray(v2Data.data) ? v2Data.data : (v2Data.data.history || []);
-                    if (history.length > 0) {
-                      rawStatus = history[history.length - 1].status || history[history.length - 1].statusDescription;
-                    } else if (v2Data.data.status) {
-                      rawStatus = v2Data.data.status;
-                    }
-                  }
-                }
-              }
-
-              // 🚀 HUMAN FALLBACK: If API is silent, scrape the public portal
-              if (!rawStatus) {
-                const publicUrl = `https://one.instaworld.pk/track/${order.tracking_number}`;
-                const publicRes = await fetch(publicUrl, { 
-                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' },
-                  timeout: 10000 
-                });
-                if (publicRes.ok) {
-                  const html = await publicRes.text();
-                  // Extract status using regex (searching for common status patterns in the HTML)
-                  const match = html.match(/class="status-text"[^>]*>([^<]+)<\/span>/i) || html.match(/Status:\s*([^<]+)/i);
-                  if (match && match[1]) rawStatus = match[1].trim();
-                }
+              } else if (data?.status) {
+                rawStatus = data.status;
               }
 
               if (rawStatus) {
