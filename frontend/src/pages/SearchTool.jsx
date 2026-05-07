@@ -1056,6 +1056,33 @@ export default function SearchTool() {
     }
   }
 
+  const handleSelectAllMatching = async () => {
+    setBulkActionLoading(true)
+    try {
+      const dateRange = getDateRange(preset, customStart, customEnd)
+      const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
+      const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+      const queryStatus = status === 'All Statuses' ? '' : status
+      const kw = keyword ? keyword.trim().replace(/^#/, '') : ''
+      
+      const colFilterParams = Object.entries(colFilters)
+        .filter(([_, v]) => v && v.trim())
+        .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
+        .join('')
+
+      const res = await fetch(`/api/orders/all-ids?store_id=${activeStoreId}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}${colFilterParams}`)
+      const data = await res.json()
+      if (res.ok && data.ids) {
+        setSelectedIds(data.ids)
+        addToast(`✅ Selected all ${data.ids.length} matching orders`, 'success')
+      }
+    } catch (e) {
+      addToast('Failed to select all orders', 'error')
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
@@ -1159,6 +1186,8 @@ export default function SearchTool() {
         handleBulkBookPostEx={handleBulkBookPostEx}
         handleBulkBookInstaworld={handleBulkBookInstaworld}
         handleBulkWhatsApp={handleStartWAQueue}
+        totalMatching={totalCount}
+        handleSelectAllMatching={handleSelectAllMatching}
       />
 
       {/* WhatsApp Queue Modal */}

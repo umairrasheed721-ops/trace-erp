@@ -4,11 +4,8 @@ const db = require('../db');
 const fetch = require('node-fetch');
 const { broadcast } = require('../sse');
 
-// GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
-router.get('/', (req, res) => {
-  const { store_id, page = 1, limit = 100, status, search, courier, start_date, end_date } = req.query;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  
+function getOrderFilters(req) {
+  const { store_id, status, search, courier, start_date, end_date } = req.query;
   let queryParams = [Number(store_id)];
   let whereClauses = ['o.store_id = ?'];
 
@@ -67,7 +64,24 @@ router.get('/', (req, res) => {
     }
   });
 
-  const where = whereClauses.join(' AND ');
+  return { where: whereClauses.join(' AND '), queryParams };
+}
+
+// GET /api/orders/all-ids?store_id=1&... (same filters as /)
+router.get('/all-ids', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  const { where, queryParams } = getOrderFilters(req);
+  const rows = db.prepare(`SELECT o.id FROM orders o WHERE ${where}`).all(...queryParams);
+  res.json({ ids: rows.map(r => r.id) });
+});
+
+// GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
+router.get('/', (req, res) => {
+  const { store_id, page = 1, limit = 100 } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  
+  const { where, queryParams } = getOrderFilters(req);
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   // Dynamic Sorting

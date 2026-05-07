@@ -9,7 +9,9 @@ export default function BulkActions({
   handleBulkSyncCourier,
   handleBulkRevert,
   handleBulkUpdateStatus,
-  handleBulkWhatsApp
+  handleBulkWhatsApp,
+  totalMatching,
+  handleSelectAllMatching
 }) {
   if (selectedIds.length === 0) return null
 
@@ -26,6 +28,16 @@ export default function BulkActions({
       boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
     }}>
       <div className="font-bold">📦 {selectedIds.length} selected</div>
+      
+      {totalMatching > selectedIds.length && (
+        <button 
+          onClick={handleSelectAllMatching}
+          className="btn btn-sm"
+          style={{ background: 'white', color: 'black', border: '1px solid black' }}
+        >
+          Select all {totalMatching} matching orders
+        </button>
+      )}
       
       <button 
         disabled={bulkActionLoading}
@@ -71,6 +83,7 @@ export default function BulkActions({
         value=""
       >
         <option value="" disabled>🏷️ BULK STATUS...</option>
+        <option value="Return Received">Return Received</option>
         <option value="Delivered">Delivered</option>
         <option value="Returned">Returned</option>
         <option value="RTO">RTO</option>
