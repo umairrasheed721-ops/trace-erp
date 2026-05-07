@@ -1,4 +1,5 @@
 import React from 'react'
+import { useApp } from '../context/AppContext'
 
 export default function BulkActions({
   selectedIds,
@@ -13,6 +14,7 @@ export default function BulkActions({
   totalMatching,
   handleSelectAllMatching
 }) {
+  const { user } = useApp()
   if (selectedIds.length === 0) return null
 
   return (
@@ -83,8 +85,12 @@ export default function BulkActions({
         value=""
       >
         <option value="" disabled>🏷️ BULK STATUS...</option>
-        <option value="Return Received">Return Received</option>
-        <option value="Delivered">Delivered</option>
+        {(user?.role === 'admin' || user?.can_set_final_status === 1) && (
+          <>
+            <option value="Return Received">Return Received</option>
+            <option value="Delivered">Delivered</option>
+          </>
+        )}
         <option value="Returned">Returned</option>
         <option value="RTO">RTO</option>
         <option value="Cancelled">Cancelled</option>

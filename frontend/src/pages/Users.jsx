@@ -158,7 +158,7 @@ export default function Users() {
                 <option value="agent">Agent (Order Lookup Only)</option>
               </select>
             </div>
-            <div className="form-group" style={{ gridColumn: 'span 3' }}>
+            <div className="form-group" style={{ gridColumn: 'span 3', display: 'flex', gap: 20 }}>
               <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
                 <input 
                   type="checkbox" 
@@ -167,6 +167,16 @@ export default function Users() {
                   onChange={e => setEditUser({...editUser, can_override_erp_status: e.target.checked ? 1 : 0})} 
                 />
                 <span style={{ fontSize: '0.85rem' }}>Allow manual ERP status override (Authority)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
+                <input 
+                  type="checkbox" 
+                  checked={editUser.role === 'admin' || editUser.can_set_final_status === 1}
+                  disabled={editUser.role === 'admin'}
+                  onChange={e => setEditUser({...editUser, can_set_final_status: e.target.checked ? 1 : 0})} 
+                />
+                <span style={{ fontSize: '0.85rem', color: 'var(--brand)' }}>⚡ Allow Final Status (Delivered / Return Received)</span>
               </label>
             </div>
             <div style={{ gridColumn: 'span 3', textAlign: 'right', marginTop: 10 }}>
@@ -230,7 +240,7 @@ export default function Users() {
                 <option value="agent">Agent (Order Lookup Only)</option>
               </select>
             </div>
-            <div className="form-group" style={{ gridColumn: 'span 3' }}>
+            <div className="form-group" style={{ gridColumn: 'span 3', display: 'flex', gap: 20 }}>
               <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
                 <input 
                   type="checkbox" 
@@ -239,6 +249,16 @@ export default function Users() {
                   onChange={e => setNewUser({...newUser, can_override_erp_status: e.target.checked ? 1 : 0})} 
                 />
                 <span style={{ fontSize: '0.85rem' }}>Allow manual ERP status override (Authority)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer" style={{ marginTop: 10 }}>
+                <input 
+                  type="checkbox" 
+                  checked={newUser.role === 'admin' || newUser.can_set_final_status === 1}
+                  disabled={newUser.role === 'admin'}
+                  onChange={e => setNewUser({...newUser, can_set_final_status: e.target.checked ? 1 : 0})} 
+                />
+                <span style={{ fontSize: '0.85rem', color: 'var(--brand)' }}>⚡ Allow Final Status (Delivered / Return Received)</span>
               </label>
             </div>
             <div style={{ gridColumn: 'span 3', textAlign: 'right', marginTop: 10 }}>

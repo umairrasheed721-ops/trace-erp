@@ -400,6 +400,16 @@ router.post('/bulk-update-status', (req, res) => {
   const { ids, status } = req.body;
   if (!ids || !Array.isArray(ids) || !status) return res.status(400).json({ error: 'ids and status required' });
 
+  // 🛡️ Final Status Permission Check
+  const finalStatuses = ['delivered', 'return received'];
+  const targetStatus = status.toLowerCase();
+  const isFinal = finalStatuses.includes(targetStatus);
+  const hasPermission = req.user?.role === 'admin' || req.user?.can_set_final_status === 1;
+  
+  if (isFinal && !hasPermission) {
+    return res.status(403).json({ error: `You do not have permission to mark orders as "${status}". Only authorized users or Super Admins can set final statuses.` });
+  }
+
   try {
     const stmt = db.prepare("UPDATE orders SET delivery_status = ?, status_date = datetime('now') WHERE id = ?");
     const today = new Date().toISOString().split('T')[0];
@@ -577,7 +587,17 @@ router.patch('/:id/erp-status', (req, res) => {
   const { erp_status, force } = req.body;
   if (!erp_status) return res.status(400).json({ error: 'erp_status required' });
 
-  // Permission check
+  // 🛡️ Final Status Permission Check
+  const finalStatuses = ['delivered', 'return received'];
+  const targetStatus = erp_status.toLowerCase();
+  const isFinal = finalStatuses.includes(targetStatus);
+  const hasPermission = req.user?.role === 'admin' || req.user?.can_set_final_status === 1;
+
+  if (isFinal && !hasPermission) {
+    return res.status(403).json({ error: `You do not have permission to mark orders as "${erp_status}". Only authorized users or Super Admins can set final statuses.` });
+  }
+
+  // Permission check for non-final overrides
   const canOverride = req.user?.role === 'admin' || req.user?.can_override_erp_status === 1;
   if (!canOverride) return res.status(403).json({ error: 'You do not have authority to manually change ERP status. Contact your admin.' });
 

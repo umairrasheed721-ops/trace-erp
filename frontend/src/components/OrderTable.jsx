@@ -469,7 +469,11 @@ export default function OrderTable({
                                       textAlign: 'center'
                                     }}
                                   >
-                                    {ERP_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
+                                    {ERP_STATUSES.filter(st => {
+                                      const isFinal = ['Delivered', 'Return Received'].includes(st);
+                                      if (!isFinal) return true;
+                                      return user?.role === 'admin' || user?.can_set_final_status === 1;
+                                    }).map(st => <option key={st} value={st}>{st}</option>)}
                                   </select>
                                 )}
                               </div>
