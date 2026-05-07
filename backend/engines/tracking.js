@@ -434,6 +434,21 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.status;
               }
 
+              // 🚀 HUMAN FALLBACK: If API is silent, scrape the public portal
+              if (!rawStatus) {
+                const publicUrl = `https://one.instaworld.pk/track/${order.tracking_number}`;
+                const publicRes = await fetch(publicUrl, { 
+                  headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36' },
+                  timeout: 10000 
+                });
+                if (publicRes.ok) {
+                  const html = await publicRes.text();
+                  // Extract status using regex (searching for common status patterns in the HTML)
+                  const match = html.match(/class="status-text"[^>]*>([^<]+)<\/span>/i) || html.match(/Status:\s*([^<]+)/i);
+                  if (match && match[1]) rawStatus = match[1].trim();
+                }
+              }
+
               if (rawStatus) {
                 let courierName = null;
                 if (Array.isArray(data) && data.length > 0) {
