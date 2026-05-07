@@ -180,7 +180,11 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     return { updated: 0 };
   }
 
-  const trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+  let trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+  // 🛡️ Auto-Correction: If the user saved a portal URL, force it to the API endpoint
+  if (trackUrl.includes('one.instaworld.pk/track')) {
+    trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+  }
   const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
   const orders = db.prepare(`
@@ -374,7 +378,10 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
 
   // 2. Sync Others (Instaworld engine)
   if (otherOrders.length && store.instaworld_key) {
-    const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+    let trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+    if (trackUrl.includes('one.instaworld.pk/track')) {
+      trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+    }
     const apiKeys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
     const statusMap = loadStatusMaps();
 
