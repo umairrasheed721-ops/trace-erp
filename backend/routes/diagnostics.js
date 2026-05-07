@@ -35,13 +35,23 @@ router.get('/force-update/:tracking', async (req, res) => {
         if (!order) return res.status(404).json({ error: 'Order not found in Cloud DB' });
 
         const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
-        if (!store) return res.status(404).json({ error: 'No store found in Cloud DB' });
+        
+        // 🔍 DEBUG TRAP: See raw response from Instaworld during the sync
+        const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        const rawRes = await fetch(trackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tracking_number: tracking, api_key: store.instaworld_key })
+        });
+        const rawBody = await rawRes.text();
 
         const updatedCount = await syncSpecificCourierOrders(store, [order.id]);
         
         const final = db.prepare("SELECT delivery_status, courier_status FROM orders WHERE id = ?").get(order.id);
         res.json({ 
             message: '✅ Cloud Force Sync Triggered', 
+            courierRawStatus: rawRes.status,
+            courierRawBody: rawBody.substring(0, 500),
             updatedCount, 
             finalState: final 
         });
