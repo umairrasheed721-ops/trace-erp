@@ -482,9 +482,11 @@ function runMigrations(db) {
     ['all',         'pickup done',                        'Booked'],
     ['all',         'arrival at insta-hub',               'Booked'],
     ['all',         'handover to courier',                'In Transit'],
+    ['Leopards',    'returned to shipper',                'Returned'],
+    ['Leopards',    'delivered',                          'Delivered'],
   ];
   const insertMapping = db.prepare(
-    `INSERT OR IGNORE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
+    `INSERT OR REPLACE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
   );
   seeds.forEach(([courier, cs, erp]) => insertMapping.run(courier, cs, erp));
 
