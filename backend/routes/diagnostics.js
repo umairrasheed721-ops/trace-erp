@@ -25,4 +25,27 @@ router.get('/check-status/:tracking', (req, res) => {
     }
 });
 
+// 🚀 CLOUD-FORCE: Force the Railway server to fetch from courier and SAVE
+router.get('/force-update/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const { syncSpecificCourierOrders } = require('../engines/tracking');
+        
+        const order = db.prepare("SELECT id FROM orders WHERE tracking_number = ?").get(tracking);
+        if (!order) return res.status(404).json({ error: 'Order not found in Cloud DB' });
+
+        const store = db.prepare('SELECT * FROM stores WHERE id = 1').get();
+        const updatedCount = await syncSpecificCourierOrders(store, [order.id]);
+        
+        const final = db.prepare("SELECT delivery_status, courier_status FROM orders WHERE id = ?").get(order.id);
+        res.json({ 
+            message: '✅ Cloud Force Sync Triggered', 
+            updatedCount, 
+            finalState: final 
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
