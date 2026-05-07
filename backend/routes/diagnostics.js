@@ -34,7 +34,9 @@ router.get('/force-update/:tracking', async (req, res) => {
         const order = db.prepare("SELECT id FROM orders WHERE tracking_number = ?").get(tracking);
         if (!order) return res.status(404).json({ error: 'Order not found in Cloud DB' });
 
-        const store = db.prepare('SELECT * FROM stores WHERE id = 1').get();
+        const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        if (!store) return res.status(404).json({ error: 'No store found in Cloud DB' });
+
         const updatedCount = await syncSpecificCourierOrders(store, [order.id]);
         
         const final = db.prepare("SELECT delivery_status, courier_status FROM orders WHERE id = ?").get(order.id);
