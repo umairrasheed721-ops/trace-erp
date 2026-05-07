@@ -249,6 +249,7 @@ app.use((req, res, next) => {
 });
 
 // --- 📊 SYSTEM STATUS API — replaces needing Railway agent for debugging ---
+app.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
 app.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
