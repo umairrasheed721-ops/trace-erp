@@ -442,7 +442,10 @@ export default function SearchTool() {
       } else {
         addToast(`❌ Sync Failed: ${data.error}`, 'error')
       }
-    } catch { addToast('Network error', 'error') }  const handleExportTracking = () => {
+    } catch { addToast('Network error', 'error') }
+  }
+
+  const handleExportTracking = () => {
     // If we have selections, export only those. Otherwise export all filtered orders.
     const targetOrders = selectedIds.length > 0 
       ? allOrders.filter(o => selectedIds.includes(o.id))
