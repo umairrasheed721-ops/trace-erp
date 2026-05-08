@@ -165,9 +165,14 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
         failed_attempts = failed_attempts + ?
     WHERE id = ?
   `);
+  const { broadcast } = require('../sse');
   const updateMany = db.transaction(items => {
-    for (const u of items)
+    for (const u of items) {
       updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment || 0, u.id);
+      if (u.erp_status) {
+        broadcast('message', { type: 'order_updated', orderId: u.id, status: u.erp_status });
+      }
+    }
   });
   updateMany(updatesToApply);
 
@@ -321,9 +326,14 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     WHERE id = ?
   `);
 
+  const { broadcast } = require('../sse');
   const updateMany = db.transaction(items => {
-    for (const u of items)
+    for (const u of items) {
       updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment||0, u.id);
+      if (u.erp_status) {
+        broadcast('message', { type: 'order_updated', orderId: u.id, status: u.erp_status });
+      }
+    }
   });
   updateMany(updatesToApply);
 

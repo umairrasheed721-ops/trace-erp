@@ -11,6 +11,9 @@ export default function StatusMappingManager() {
   const [editingId, setEditingId] = useState(null)
   const [editData, setEditData] = useState({})
 
+  const [schedules, setSchedules] = useState([])
+  const [schedulerLoading, setSchedulerLoading] = useState(true)
+
   const fetchMappings = async () => {
     try {
       const res = await fetch('/api/status-mappings')
@@ -28,8 +31,21 @@ export default function StatusMappingManager() {
     }
   }
 
+  const fetchSchedules = async () => {
+    try {
+      const res = await fetch('/api/scheduler/schedules')
+      const data = await res.json()
+      if (res.ok) setSchedules(data)
+    } catch (e) {
+      addToast('Failed to load schedules', 'error')
+    } finally {
+      setSchedulerLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchMappings()
+    fetchSchedules()
   }, [])
 
   const handleAdd = async (e) => {
@@ -95,6 +111,31 @@ export default function StatusMappingManager() {
     } catch (e) { addToast('Network error', 'error') }
   }
 
+  const handleUpdateSchedule = async (id, interval, active) => {
+    try {
+      const res = await fetch(`/api/scheduler/schedules/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval_minutes: interval, is_active: active })
+      })
+      if (res.ok) {
+        addToast('Schedule updated', 'success')
+        fetchSchedules()
+      }
+    } catch (e) { addToast('Update failed', 'error') }
+  }
+
+  const handleTriggerSync = async (id) => {
+    try {
+      addToast('Sync triggered...', 'info')
+      const res = await fetch(`/api/scheduler/trigger/${id}`, { method: 'POST' })
+      if (res.ok) {
+        addToast('Sync complete!', 'success')
+        fetchSchedules()
+      }
+    } catch (e) { addToast('Sync failed', 'error') }
+  }
+
   if (user?.role !== 'admin') {
     return (
       <div className="page-container" style={{ textAlign: 'center', paddingTop: 100 }}>
@@ -115,6 +156,61 @@ export default function StatusMappingManager() {
         <button className="btn btn-primary" onClick={() => setShowAdd(!showAdd)}>
           {showAdd ? 'Close' : 'Add New Mapping'}
         </button>
+      </div>
+
+      {/* ⏰ SYNC SCHEDULER DASHBOARD */}
+      <div className="card" style={{ marginBottom: 32, border: '1px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+            ⏰ Automation Scheduler
+            <span className="badge badge-delivered" style={{ fontSize: '0.7rem' }}>BETA</span>
+          </h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Configure background sync frequency</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+          {schedulerLoading ? (
+            <p>Loading automation settings...</p>
+          ) : schedules.map(s => (
+            <div key={s.id} className="stat-card" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{s.courier} <small style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({s.sync_type})</small></h4>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                    Last Run: {s.last_run_at ? new Date(s.last_run_at).toLocaleTimeString() : 'Never'}
+                  </p>
+                </div>
+                <div 
+                  className={`badge ${s.is_active ? 'badge-delivered' : 'badge-pending'}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleUpdateSchedule(s.id, s.interval_minutes, !s.is_active)}
+                >
+                  {s.is_active ? 'ENABLED' : 'DISABLED'}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Interval (Minutes)</label>
+                  <input 
+                    type="number" 
+                    className="form-input btn-sm"
+                    value={s.interval_minutes}
+                    onChange={e => handleUpdateSchedule(s.id, parseInt(e.target.value), s.is_active)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <button 
+                  className="btn btn-secondary btn-sm" 
+                  style={{ marginTop: 18 }}
+                  onClick={() => handleTriggerSync(s.id)}
+                >
+                  🔄 Sync Now
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {showAdd && (

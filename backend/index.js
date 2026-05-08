@@ -101,6 +101,7 @@ const templatesRoutes   = safeRequire('./routes/templates',    'Templates');
 const diagnosticsRoutes = safeRequire('./routes/diagnostics',  'Diagnostics');
 const statusMappingsRoutes = safeRequire('./routes/status-mappings', 'StatusMappings');
 const schedulerInit     = safeRequire('./scheduler',           'Scheduler');
+const schedulerRoutes   = safeRequire('./routes/scheduler',    'SchedulerAPI');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -332,6 +333,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/status-mappings', statusMappingsRoutes);
+app.use('/api/scheduler', schedulerRoutes);
 
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
