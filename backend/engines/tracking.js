@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const path = require('path');
 const db = require('../db');
+const { instaworldFetch } = require('./instaworld_http');
 
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
@@ -77,7 +78,12 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const toProcess = orders.filter(o => {
     const st = (o.delivery_status || '').toLowerCase();
     if (DEAD_STATUSES.includes(st)) return false;
-    if (syncType === 'SMART' && EARLY_STATUSES.includes(st)) return false;
+    // SMART: skip "early" pipeline — but if we already have a tracking #, keep syncing (Booked + TN = with courier)
+    if (syncType === 'SMART' && EARLY_STATUSES.includes(st)) {
+      const tn = String(o.tracking_number || '').trim();
+      const hasRealTracking = tn && tn !== '—';
+      if (!hasRealTracking) return false;
+    }
     return true;
   });
 
@@ -203,7 +209,12 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const toProcess = orders.filter(o => {
     const st = (o.delivery_status || '').toLowerCase();
     if (DEAD_STATUSES.includes(st)) return false;
-    if (syncType === 'SMART' && EARLY_STATUSES.includes(st)) return false;
+    // SMART: skip "early" pipeline — but if we already have a tracking #, keep syncing (Booked + TN = with courier)
+    if (syncType === 'SMART' && EARLY_STATUSES.includes(st)) {
+      const tn = String(o.tracking_number || '').trim();
+      const hasRealTracking = tn && tn !== '—';
+      if (!hasRealTracking) return false;
+    }
     return true;
   });
 
@@ -214,13 +225,14 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
   const trackOne = async (order, apiKey) => {
     try {
-      const res = await fetch(trackUrl, {
+      const res = await instaworldFetch(trackUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          tracking_number: String(order.tracking_number).trim(), 
-          api_key: apiKey 
-        })
+        body: JSON.stringify({
+          tracking_number: String(order.tracking_number).trim(),
+          api_key: apiKey
+        }),
+        proxyUrl: store.gas_proxy_url,
       });
 
       if (!res.ok) return { status: res.status, order, newStatus: null };
@@ -401,11 +413,12 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           if (success) break;
           try {
             const trimmedKey = String(key).trim();
-            const res = await fetch(trackUrl, {
+            const res = await instaworldFetch(trackUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
-              timeout: 30000
+              timeout: 30000,
+              proxyUrl: store.gas_proxy_url,
             });
 
             if (res.ok) {
@@ -421,23 +434,6 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                 rawStatus = data.history[data.history.length - 1].status;
               } else if (data?.status) {
                 rawStatus = data.status;
-              }
-
-              // 🚀 GOOGLE SHIELD: Fallback to GAS Proxy if direct fails
-              if (!rawStatus && store.gas_proxy_url) {
-                try {
-                   const gasRes = await fetch(store.gas_proxy_url, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
-                      timeout: 15000
-                   });
-                   if (gasRes.ok) {
-                      const gasData = await gasRes.json();
-                      if (Array.isArray(gasData) && gasData.length > 0) rawStatus = gasData[gasData.length - 1].status;
-                      else if (gasData?.status) rawStatus = gasData.status;
-                   }
-                } catch (e) {}
               }
 
               if (rawStatus) {

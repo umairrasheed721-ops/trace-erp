@@ -283,7 +283,7 @@ export default function FinanceManager() {
 
       <div style={{ display: 'flex', gap: 24 }}>
         <div style={{ flex: '0 0 350px' }}>
-          <div className="stat-card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="stat-card">
             <div>
               <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Master Key</label>
               <select 
@@ -356,7 +356,10 @@ export default function FinanceManager() {
                   resize: 'vertical',
                   fontFamily: 'monospace',
                   fontSize: 12,
-                  whiteSpace: 'pre'
+                  whiteSpace: 'pre-wrap',
+                  position: 'relative',
+                  zIndex: 1,
+                  transition: 'all 0.2s ease'
                 }}
               />
             </div>
@@ -561,7 +564,7 @@ export default function FinanceManager() {
         </div>
 
         <div style={{ flex: 1 }}>
-          <div className="stat-card" style={{ height: '100%', minHeight: 500, display: 'flex', flexDirection: 'column' }}>
+          <div className="stat-card" style={{ height: '100%', minHeight: 500 }}>
             <h3 style={{ margin: '0 0 16px 0' }}>Detailed Results Log</h3>
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {results.length === 0 ? (

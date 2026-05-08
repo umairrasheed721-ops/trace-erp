@@ -411,6 +411,7 @@ try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch(e) {}
 try { db.prepare("ALTER TABLE stores ADD COLUMN instaworld_key_3 TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE stores ADD COLUMN gas_proxy_url TEXT").run(); } catch(e) {}
 
 function runMigrations(db) {
   const migrations = [

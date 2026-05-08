@@ -774,10 +774,12 @@ router.post('/logistics/sync-cities', async (req, res) => {
   const { syncCourierCities } = require('../engines/logistics');
   
   try {
-    const stores = db.prepare('SELECT id, postex_token, instaworld_key FROM stores').all();
+    const stores = db.prepare('SELECT id, postex_token, instaworld_key, gas_proxy_url FROM stores').all();
     for (const store of stores) {
       if (store.postex_token) await syncCourierCities('PostEx', fetchPostExCities, store.postex_token);
-      if (store.instaworld_key) await syncCourierCities('Instaworld', fetchInstaworldCities, store.instaworld_key);
+      if (store.instaworld_key) {
+        await syncCourierCities('Instaworld', async (t) => fetchInstaworldCities(t, store), store.instaworld_key);
+      }
     }
     res.json({ success: true });
   } catch (err) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const fetch = require('node-fetch');
+const { instaworldFetch } = require('../engines/instaworld_http');
 
 // 🔍 SECURE DIAGNOSTICS: Check any parcel's REAL status in the Cloud DB
 router.get('/check-status/:tracking', (req, res) => {
@@ -32,17 +32,19 @@ router.get('/force-update/:tracking', async (req, res) => {
         const { tracking } = req.params;
         const { syncSpecificCourierOrders } = require('../engines/tracking');
         
-        const order = db.prepare("SELECT id FROM orders WHERE tracking_number = ?").get(tracking);
+        const order = db.prepare("SELECT id, store_id FROM orders WHERE tracking_number = ?").get(tracking);
         if (!order) return res.status(404).json({ error: 'Order not found in Cloud DB' });
 
-        const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (!store) return res.status(404).json({ error: 'Store not found' });
         
         // 🔍 DEBUG TRAP: See raw response from Instaworld during the sync
         const trackUrl = store.instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-        const rawRes = await fetch(trackUrl, {
+        const rawRes = await instaworldFetch(trackUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tracking_number: tracking, api_key: store.instaworld_key })
+            body: JSON.stringify({ tracking_number: tracking, api_key: store.instaworld_key }),
+            proxyUrl: store.gas_proxy_url,
         });
         const rawBody = await rawRes.text();
 
@@ -65,11 +67,11 @@ router.get('/force-update/:tracking', async (req, res) => {
 router.get('/test-v2/:tracking', async (req, res) => {
     try {
         const { tracking } = req.params;
-        const fetch = require('node-fetch');
         const v2Url = `https://one-be.instaworld.pk/v2/public/track/${tracking}`;
-        const v2Res = await fetch(v2Url, { 
+        const v2Res = await instaworldFetch(v2Url, {
+            method: 'GET',
             headers: { 'User-Agent': 'Mozilla/5.0' },
-            timeout: 10000 
+            timeout: 10000,
         });
         const data = await v2Res.json();
         res.json({ url: v2Url, status: v2Res.status, data });

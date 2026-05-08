@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const { instaworldFetch } = require('./instaworld_http');
 
 /**
  * Creates a booking in Instaworld (Supports TCS, LCS, etc.)
@@ -25,13 +25,14 @@ async function createInstaworldOrder(store, order, courierName = 'TCS') {
     service_type: 'Overnight'
   };
 
-  const response = await fetch(url, {
+  const response = await instaworldFetch(url, {
     method: 'POST',
     headers: {
       'api-key': instaworld_key,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    proxyUrl: store.gas_proxy_url,
   });
 
   const data = await response.json();
@@ -51,13 +52,14 @@ async function cancelInstaworldOrder(store, trackingNumber) {
   if (!instaworld_key) throw new Error('Instaworld API Key missing');
 
   const url = 'https://one-be.instaworld.pk/logistics/v1/cancelOrder';
-  const response = await fetch(url, {
+  const response = await instaworldFetch(url, {
     method: 'POST',
     headers: {
       'api-key': instaworld_key,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ tracking_number: trackingNumber })
+    body: JSON.stringify({ tracking_number: trackingNumber }),
+    proxyUrl: store.gas_proxy_url,
   });
 
   const data = await response.json();
@@ -67,10 +69,12 @@ async function cancelInstaworldOrder(store, trackingNumber) {
 /**
  * Fetch official Instaworld city list
  */
-async function fetchInstaworldCities(token) {
+async function fetchInstaworldCities(token, store = null) {
   const url = 'https://one-be.instaworld.pk/logistics/v1/getCities';
-  const response = await fetch(url, {
-    headers: { 'api-key': token }
+  const response = await instaworldFetch(url, {
+    method: 'GET',
+    headers: { 'api-key': token },
+    proxyUrl: store && store.gas_proxy_url,
   });
   const data = await response.json();
   return data.cities || [];

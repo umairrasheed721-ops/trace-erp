@@ -58,7 +58,7 @@ export default function ReturnsManager() {
 
       <div style={{ display: 'flex', gap: 24 }}>
         <div style={{ flex: 1 }}>
-          <div className="stat-card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="stat-card">
             <div>
               <label style={{ display: 'block', marginBottom: 8, fontWeight: 600 }}>Tracking Numbers (Scan Here)</label>
               <textarea
@@ -104,7 +104,7 @@ export default function ReturnsManager() {
         </div>
 
         <div style={{ flex: 1 }}>
-          <div className="stat-card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div className="stat-card" style={{ height: '100%' }}>
             <h3 style={{ margin: '0 0 16px 0' }}>Results Log</h3>
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {results.length === 0 ? (

@@ -76,7 +76,8 @@ export default function Connect() {
         instaworld_key_3: store.instaworld_key_3 || '',
         sync_start_date: store.sync_start_date || '',
         postex_track_url: store.postex_track_url || '',
-        instaworld_track_url: store.instaworld_track_url || ''
+        instaworld_track_url: store.instaworld_track_url || '',
+        gas_proxy_url: store.gas_proxy_url || ''
       })
     })
     if (res.ok) { addToast('✅ Credentials updated', 'success'); setEditingStore(null); refreshStores(true) }
@@ -350,8 +351,9 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Instaworld Key 3 (Optional)</label>
-            <input className="form-input font-mono" placeholder="3rd API Key" value={local.instaworld_key_3 || ''} onChange={setL('instaworld_key_3')} />
+            <label className="form-label">Instaworld proxy (Google Apps Script URL)</label>
+            <input className="form-input font-mono" placeholder="Optional — or set INSTAWORLD_PROXY_URL on the server" value={local.gas_proxy_url || ''} onChange={setL('gas_proxy_url')} />
+            <small style={{ color: 'var(--text-muted)' }}>Use when Instaworld blocks your hosting IP (e.g. Railway). Per-store overrides server env.</small>
           </div>
           <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>

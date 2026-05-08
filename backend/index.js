@@ -33,6 +33,10 @@ if (missing.length > 0) {
   process.exit(1);
 }
 console.log('✅ Environment Health Check Passed.');
+if (process.env.INSTAWORLD_PROXY_URL) {
+  const fmt = process.env.INSTAWORLD_PROXY_FORMAT || 'simple (default when proxy set)';
+  console.log(`🌐 Instaworld tracking → proxy (${fmt}). Book/cancel/cities use direct API unless INSTAWORLD_PROXY_FORMAT=relay.`);
+}
 
 // --- 📊 LIVE PULSE LOG BUFFER (structured) ---
 const LOG_BUFFER_SIZE = 500;
