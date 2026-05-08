@@ -166,15 +166,22 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     WHERE id = ?
   `);
   const { broadcast } = require('../sse');
+  const lookupStmt = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
       updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment || 0, u.id);
-      if (u.erp_status) {
-        broadcast('message', { type: 'order_updated', orderId: u.id, status: u.erp_status });
-      }
     }
   });
   updateMany(updatesToApply);
+  // Broadcast AFTER transaction so DB is committed and the frontend fetch gets fresh data
+  for (const u of updatesToApply) {
+    if (u.erp_status) {
+      try {
+        const row = lookupStmt.get(u.id);
+        if (row) broadcast('order_updated', { storeId: row.store_id, shopifyOrderId: row.shopify_order_id });
+      } catch(e) {}
+    }
+  }
 
   console.log(`✅ PostEx [${store.shop_domain}] [${syncType}]: Updated ${updatesToApply.length} / ${toProcess.length} orders`);
   return { updated: updatesToApply.length };
@@ -327,15 +334,22 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   `);
 
   const { broadcast } = require('../sse');
+  const lookupStmt2 = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
       updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment||0, u.id);
-      if (u.erp_status) {
-        broadcast('message', { type: 'order_updated', orderId: u.id, status: u.erp_status });
-      }
     }
   });
   updateMany(updatesToApply);
+  // Broadcast AFTER transaction so DB is committed and the frontend fetch gets fresh data
+  for (const u of updatesToApply) {
+    if (u.erp_status) {
+      try {
+        const row = lookupStmt2.get(u.id);
+        if (row) broadcast('order_updated', { storeId: row.store_id, shopifyOrderId: row.shopify_order_id });
+      } catch(e) {}
+    }
+  }
 
   console.log(`✅ Instaworld [${store.shop_domain}]: Updated ${updatesToApply.length} orders`);
   return { updated: updatesToApply.length };
