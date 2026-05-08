@@ -93,4 +93,19 @@ router.get('/provision', async (req, res) => {
     }
 });
 
+// 🌐 IP DIAGNOSTIC: Get the outbound IP of the Railway server
+router.get('/my-ip', async (req, res) => {
+    try {
+        const fetch = require('node-fetch');
+        const r = await fetch('https://ifconfig.me/ip');
+        const ip = await r.text();
+        res.json({ 
+            outbound_ip: ip.trim(),
+            note: "Send this IP to Instaworld for whitelisting."
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Failed to fetch IP", details: err.message });
+    }
+});
+
 module.exports = router;
