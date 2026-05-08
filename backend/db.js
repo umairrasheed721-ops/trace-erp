@@ -495,4 +495,31 @@ function runMigrations(db) {
   try {
     db.exec(`UPDATE users SET can_override_erp_status = 1 WHERE role = 'admin'`);
   } catch (e) {}
+
+  // ── Sync Scheduler Table ─────────────────────────────────────────────
+  // Stores per-courier sync intervals; read every minute by the dynamic scheduler
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      courier TEXT NOT NULL,
+      sync_type TEXT NOT NULL,
+      interval_minutes INTEGER NOT NULL DEFAULT 30,
+      is_active INTEGER DEFAULT 1,
+      last_run_at TEXT,
+      next_run_at TEXT,
+      UNIQUE(courier, sync_type)
+    );
+  `);
+
+  // Seed default schedule rows if not already present
+  const scheduleSeeds = [
+    ['PostEx',     'SMART', 30],
+    ['PostEx',     'FULL',  360],
+    ['Instaworld', 'SMART', 15],
+    ['Instaworld', 'FULL',  360],
+  ];
+  const insertSchedule = db.prepare(
+    `INSERT OR IGNORE INTO sync_schedules (courier, sync_type, interval_minutes) VALUES (?, ?, ?)`
+  );
+  scheduleSeeds.forEach(([courier, type, mins]) => insertSchedule.run(courier, type, mins));
 }
