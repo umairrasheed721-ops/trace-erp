@@ -482,8 +482,8 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
       for (const u of items) {
         updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
         // 🚀 REAL-TIME PUSH: Tell the frontend to update this row
-        broadcast({ 
-          type: 'ORDER_UPDATED', 
+        broadcast('message', { 
+          type: 'order_updated', 
           orderId: u.id, 
           status: u.delivery_status,
           courier_status: u.courier_status

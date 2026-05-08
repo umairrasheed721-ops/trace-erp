@@ -43,8 +43,8 @@ module.exports = function schedulerInit() {
     }
   });
 
-  // Every hour (offset by 45 min): Instaworld sync
-  cron.schedule('45 * * * *', async () => {
+  // Every 15 minutes: Instaworld sync
+  cron.schedule('*/15 * * * *', async () => {
     console.log('🚚 [CRON] Instaworld sync starting...');
     for (const store of getAllStores()) {
       try { await syncInstaworld(store, 'SMART'); } catch (e) { console.error(e.message); }
