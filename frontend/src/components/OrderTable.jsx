@@ -50,7 +50,9 @@ export default function OrderTable({
   const fetchBreakdown = async (orderId) => {
     setLoadingBreakdown(true)
     try {
-      const res = await fetch(`/api/cost-manager/breakdown/${orderId}`)
+      const res = await fetch(`/api/cost-manager/breakdown/${orderId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
       const data = await res.json()
       setBreakdown(data)
     } catch (e) { console.error(e) }
