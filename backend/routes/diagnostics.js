@@ -109,10 +109,12 @@ router.get('/test-direct/:tracking', async (req, res) => {
         const response = await fetch(url, {
             method: 'POST',
             headers: { 
-                'api-key': store.instaworld_key,
                 'Content-Type': 'application/json' 
             },
-            body: JSON.stringify({ tracking_number: tracking }),
+            body: JSON.stringify({ 
+                tracking_number: tracking,
+                api_key: store.instaworld_key 
+            }),
             timeout: 15000
         });
         const duration = Date.now() - start;
