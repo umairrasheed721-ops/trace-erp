@@ -43,6 +43,56 @@ export default function OrderTable({
   const canSeeFinancials = user?.role === 'admin'
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
+  const [hoveredOrderId, setHoveredOrderId] = useState(null)
+  const [breakdown, setBreakdown] = useState(null)
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+
+  const fetchBreakdown = async (orderId) => {
+    setLoadingBreakdown(true)
+    try {
+      const res = await fetch(`/api/cost-manager/breakdown/${orderId}`)
+      const data = await res.json()
+      setBreakdown(data)
+    } catch (e) { console.error(e) }
+    finally { setLoadingBreakdown(false) }
+  }
+
+  const CostBreakdownTooltip = ({ orderId }) => {
+    if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
+    if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
+
+    const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
+    const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
+
+    return (
+      <div className="cost-tooltip shadow-xl">
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
+          <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
+        </div>
+        <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
+          {breakdown.map((item, i) => (
+            <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
+                <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
+                <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span>Landed Total:</span>
+            <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
+            <span>Pkg Total:</span>
+            <span>Rs {totalPkg.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleManualStatusChange = async (orderId, newStatus) => {
     if (!newStatus) return
@@ -540,14 +590,34 @@ export default function OrderTable({
                     }
                     if (col.id === 'courier_fee') return canSeeFinancials ? <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td> : <td key={col.id}>—</td>
                     if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
-                    if (col.id === 'cost') return canSeeFinancials ? <td key={col.id}><CostCell order={o} onSave={updateOrderField} /></td> : null
+                    if (col.id === 'cost') return canSeeFinancials ? (
+                      <td 
+                        key={col.id} 
+                        style={{ position: 'relative' }}
+                        onMouseEnter={() => { setHoveredOrderId(o.id); fetchBreakdown(o.id); }}
+                        onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
+                      >
+                        <CostCell order={o} onSave={updateOrderField} />
+                        {hoveredOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                      </td>
+                    ) : null
                     if (col.id === 'profit') {
                       if (!canSeeFinancials) return null
                       const fee = parseFloat(o.courier_fee) || 0
                       const cost = parseFloat(o.cost) || 0
                       const price = parseFloat(o.price) || 0
                       const profit = price - cost - fee
-                      return <td key={col.id} style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)' }}>Rs {Math.round(profit).toLocaleString()}</td>
+                      return (
+                        <td 
+                          key={col.id} 
+                          style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)', position: 'relative' }}
+                          onMouseEnter={() => { if (!breakdown) { setHoveredOrderId(o.id); fetchBreakdown(o.id); } }}
+                          onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
+                        >
+                          Rs {Math.round(profit).toLocaleString()}
+                          {hoveredOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                        </td>
+                      )
                     }
                     if (col.id === 'order_source') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.order_source || 'Shopify'}</td>
                     if (col.id === 'status_date') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.status_date ? new Date(o.status_date).toLocaleDateString() : '—'}</td>
@@ -584,6 +654,26 @@ export default function OrderTable({
           </button>
         </div>
       )}
+      <style>{`
+        .cost-tooltip {
+          position: absolute;
+          bottom: 100%;
+          right: 0;
+          background: #1a1a1a;
+          border: 1px solid rgba(255,255,255,0.15);
+          width: 260px;
+          border-radius: 10px;
+          z-index: 1000;
+          margin-bottom: 8px;
+          box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+          animation: tooltipFade 0.2s ease;
+          overflow: hidden;
+        }
+        @keyframes tooltipFade {
+          from { opacity: 0; transform: translateY(5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </>
   )
 }

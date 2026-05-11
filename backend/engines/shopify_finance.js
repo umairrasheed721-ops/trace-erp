@@ -230,6 +230,7 @@ async function getShopifyInventoryCosts(store) {
             node {
               id
               title
+              sku
               price
               product {
                 title
@@ -291,6 +292,7 @@ async function getShopifyInventoryCosts(store) {
     if (!aggregated[key]) {
       aggregated[key] = { 
         shopify_variant_id: variantId,
+        sku: node.sku || '',
         parent_name: parentName, 
         variant_name: variantName, 
         shopify_cost: cost, 

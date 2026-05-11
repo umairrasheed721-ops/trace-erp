@@ -47,8 +47,38 @@ function getOrderFilters(req) {
   if (end_date) { whereClauses.push('o.order_date <= ?'); queryParams.push(end_date); }
   
   if (search) {
-    whereClauses.push('(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ?)');
-    queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    const kw = search.trim().toLowerCase().replace(/^#/, '');
+    const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || [];
+    
+    tokens.forEach(token => {
+      token = token.replace(/['"]/g, '');
+      const isNegated = token.startsWith('-');
+      const actualToken = isNegated ? token.slice(1) : token;
+      if (!actualToken) return;
+
+      let clause = '';
+      if (actualToken.includes(':')) {
+        const [field, value] = actualToken.split(':');
+        const target = ['city','phone','courier','ref','status','note'].includes(field) ? field : null;
+        if (target === 'city') clause = 'o.city LIKE ?';
+        else if (target === 'phone') clause = 'o.phone LIKE ?';
+        else if (target === 'courier') clause = 'o.courier LIKE ?';
+        else if (target === 'status') clause = 'o.delivery_status LIKE ?';
+        else if (target === 'note') clause = 'o.notes LIKE ?';
+        else if (target === 'ref') clause = '(o.ref_number LIKE ? OR o.shopify_order_id LIKE ?)';
+        
+        if (clause) {
+          whereClauses.push(isNegated ? `NOT (${clause})` : clause);
+          queryParams.push(`%${value}%`);
+          if (target === 'ref') queryParams.push(`%${value}%`);
+        }
+      } else {
+        clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR o.product_titles LIKE ?)';
+        whereClauses.push(isNegated ? `NOT (${clause})` : clause);
+        const searchVal = `%${actualToken}%`;
+        queryParams.push(searchVal, searchVal, searchVal, searchVal, searchVal, searchVal);
+      }
+    });
   }
 
   // Column-specific filters
@@ -66,6 +96,30 @@ function getOrderFilters(req) {
 
   return { where: whereClauses.join(' AND '), queryParams };
 }
+
+// GET /api/orders/history-search - Deep search customer history across ALL stores
+router.get('/history-search', (req, res) => {
+  const { phone, email, name } = req.query;
+  if (!phone && !email && !name) return res.status(400).json({ error: 'Search term required' });
+
+  try {
+    let where = [];
+    let params = [];
+    if (phone) { where.push('o.phone LIKE ?'); params.push(`%${phone}%`); }
+    if (email) { where.push('o.email LIKE ?'); params.push(`%${email}%`); }
+    if (name) { where.push('o.customer_name LIKE ?'); params.push(`%${name}%`); }
+
+    const orders = db.prepare(`
+      SELECT o.*, s.shop_domain 
+      FROM orders o 
+      JOIN stores s ON o.store_id = s.id 
+      WHERE ${where.join(' OR ')}
+      ORDER BY o.order_date DESC 
+      LIMIT 100
+    `).all(...params);
+    res.json({ orders });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // GET /api/orders/all-ids?store_id=1&... (same filters as /)
 router.get('/all-ids', (req, res) => {
@@ -85,7 +139,7 @@ router.get('/', (req, res) => {
   const offset = (parseInt(page) - 1) * parseInt(limit);
 
   // Dynamic Sorting
-  const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name'];
+  const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost'];
   const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
   const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
   const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
@@ -104,7 +158,8 @@ router.get('/', (req, res) => {
     orders, 
     total: total.count, 
     page: parseInt(page), 
-    limit: parseInt(limit)
+    limit: parseInt(limit),
+    debugWhere: where
   });
 });
 

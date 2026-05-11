@@ -450,12 +450,15 @@ export default function CostManager() {
                       }}>
                         <td></td>
                         <td style={{ padding: '12px 15px 12px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {v.variant_title || 'Default'}
-                            {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
-                            {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                              <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
-                            )}
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {v.variant_title || 'Default'}
+                              {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
+                              {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
+                              )}
+                            </div>
+                            {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}
                           </div>
                         </td>
                         <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>

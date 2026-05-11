@@ -102,6 +102,7 @@ const diagnosticsRoutes = safeRequire('./routes/diagnostics',  'Diagnostics');
 const statusMappingsRoutes = safeRequire('./routes/status-mappings', 'StatusMappings');
 const schedulerInit     = safeRequire('./scheduler',           'Scheduler');
 const schedulerRoutes   = safeRequire('./routes/scheduler',    'SchedulerAPI');
+const costManagerRoutes = safeRequire('./routes/cost-manager', 'CostManager');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -126,6 +127,7 @@ const ROUTE_MAP = {
   'WhatsApp':    ['/api/whatsapp',    './routes/whatsapp'],
   'Templates':   ['/api/templates',   './routes/templates'],
   'Diagnostics': ['/api/diagnostics', './routes/diagnostics'],
+  'CostManager': ['/api/cost-manager', './routes/cost-manager'],
 };
 
 setInterval(() => {
@@ -333,6 +335,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/status-mappings', statusMappingsRoutes);
+app.use('/api/cost-manager', costManagerRoutes);
 app.use('/api/scheduler', schedulerRoutes);
 
 

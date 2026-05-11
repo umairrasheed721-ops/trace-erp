@@ -246,6 +246,7 @@ function initDb() {
       shopify_variant_id TEXT,
       parent_title TEXT NOT NULL,
       variant_title TEXT NOT NULL DEFAULT '',
+      sku TEXT,
       unit_cost REAL DEFAULT 0,
       previous_unit_cost REAL DEFAULT 0,
       packaging_cost REAL DEFAULT 0,
@@ -424,6 +425,7 @@ function runMigrations(db) {
     { table: 'product_master_costs', column: 'shopify_variant_id', type: 'TEXT' },
     { table: 'whatsapp_templates', column: 'status', type: "TEXT DEFAULT 'active'" },
     { table: 'users', column: 'can_override_erp_status', type: 'INTEGER DEFAULT 0' },  // manual ERP status authority
+    { table: 'product_master_costs', column: 'sku', type: 'TEXT' },
   ];
 
   migrations.forEach(m => {

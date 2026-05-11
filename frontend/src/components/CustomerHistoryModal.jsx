@@ -1,10 +1,38 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 
-export default function CustomerHistoryModal({ phone, allOrders, onClose }) {
-  const orders = allOrders
-    .filter(o => o.phone === phone)
-    .sort((a, b) => new Date(b.order_date) - new Date(a.order_date))
+export default function CustomerHistoryModal({ phone, onClose }) {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (phone) {
+      fetch(`/api/orders/history-search?phone=${encodeURIComponent(phone)}`)
+        .then(res => res.json())
+        .then(data => {
+          setOrders(Array.isArray(data) ? data : [])
+          setLoading(false)
+        })
+        .catch(err => {
+          console.error('History fetch failed:', err)
+          setLoading(false)
+        })
+    }
+  }, [phone])
+
+  if (loading) {
+    return (
+      <div
+        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
+      >
+        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+          <div className="loading-spinner" style={{ marginBottom: 15 }}></div>
+          <div style={{ color: 'var(--text-muted)' }}>Fetching deep history...</div>
+        </div>
+      </div>
+    )
+  }
 
   const customerName = orders[0]?.customer_name || 'Unknown Customer'
 

@@ -686,6 +686,7 @@ router.post('/sync-shopify-costs', async (req, res) => {
           db.prepare(`
             UPDATE product_master_costs SET
               shopify_variant_id = ?,
+              sku = ?,
               parent_title = ?,
               variant_title = ?,
               shopify_cost = ?,
@@ -693,13 +694,13 @@ router.post('/sync-shopify-costs', async (req, res) => {
               inventory_qty = ?,
               updated_at = datetime('now')
             WHERE id = ?
-          `).run(p.shopify_variant_id, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
         } else {
           // Insert new record
           db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, parent_title, variant_title, shopify_cost, selling_price, inventory_qty)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(Number(store_id), p.shopify_variant_id, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(Number(store_id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
         }
       }
     })();

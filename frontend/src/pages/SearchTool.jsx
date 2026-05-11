@@ -1336,7 +1336,6 @@ export default function SearchTool() {
       {customerHistoryPhone && (
         <CustomerHistoryModal
           phone={customerHistoryPhone}
-          allOrders={allOrders}
           onClose={() => setCustomerHistoryPhone(null)}
         />
       )}

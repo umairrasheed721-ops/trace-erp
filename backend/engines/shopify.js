@@ -100,9 +100,11 @@ const registryLookupStmt = db.prepare(`
   WHERE store_id = ? 
   AND (
     shopify_variant_id = ? 
+    OR sku = ?
     OR (parent_title = ? AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL))
   )
   ORDER BY (CASE WHEN shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+           (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC,
            (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
   LIMIT 1
 `);
@@ -125,7 +127,7 @@ function calculateOrderCost(storeId, lineItems, costMap) {
     const pName = parts[0].trim();
     const vName = parts.length > 1 ? parts[1].trim() : '';
     
-    const registry = registryLookupStmt.get(storeId, variantId, pName, vName, variantId, vName);
+    const registry = registryLookupStmt.get(storeId, variantId, item.sku || '', pName, vName, variantId, item.sku || '', vName);
     
     if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
       unitCost = registry.landed_cost || registry.shopify_cost || 0;
