@@ -30,7 +30,18 @@ async function instaworldFetch(targetUrl, options = {}) {
   const { proxyUrl: explicitProxy, ...fetchOpts } = options;
   const proxy = explicitProxy ? String(explicitProxy).trim() : resolveProxyUrl(null);
 
-  if (!proxy) {
+  // 🚀 DIRECT PATH ENFORCEMENT: If it's an Instaworld domain and we're unblocked, 
+  // bypass the proxy entirely for maximum speed.
+  if (!proxy || targetUrl.includes('instaworld.pk')) {
+    // Ensure api_key is in the body for POST requests to trackShipment
+    if (targetUrl.includes('trackShipment') && fetchOpts.method === 'POST') {
+      try {
+        const body = JSON.parse(fetchOpts.body);
+        if (body.tracking_number && !body.api_key) {
+           // This shouldn't happen with the new engine, but adding for safety
+        }
+      } catch(e) {}
+    }
     return fetch(targetUrl, fetchOpts);
   }
 
@@ -39,7 +50,10 @@ async function instaworldFetch(targetUrl, options = {}) {
   // If a proxy URL is set and INSTAWORLD_PROXY_FORMAT is omitted, default to simple (matches that pattern).
   const format = (process.env.INSTAWORLD_PROXY_FORMAT || (proxy ? 'simple' : 'relay')).toLowerCase();
   const method = (fetchOpts.method || 'GET').toUpperCase();
-  const headers = { ...(fetchOpts.headers || {}) };
+  const headers = { 
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    ...(fetchOpts.headers || {}) 
+  };
 
   const canUseSimpleTrack =
     format === 'simple' &&

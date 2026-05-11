@@ -6,10 +6,14 @@ const { instaworldFetch } = require('./instaworld_http');
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
 const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'delivery unsuccessful', 'shipper advice'];
-const CONCURRENT = 10;
-const SLEEP_MS = 800;
+const CONCURRENT = 5; // 🛡️ Reduced concurrency for safety
+const BASE_SLEEP_MS = 1200; // 🛡️ Increased base sleep
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 🎲 Jitter: Makes traffic look human by adding random delay
+const sleepWithJitter = async () => {
+  const jitter = Math.floor(Math.random() * 800);
+  await new Promise(r => setTimeout(r, BASE_SLEEP_MS + jitter));
+};
 function logAudit(storeId, level, message, trackingNumber = null) {
   try {
     db.prepare('INSERT INTO sync_audit (store_id, level, message, tracking_number) VALUES (?, ?, ?, ?)').run(storeId, level, message, trackingNumber);
@@ -153,7 +157,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     processed += batch.length;
     if (onProgress) onProgress('Syncing PostEx Tracking', processed, toProcess.length);
 
-    await sleep(SLEEP_MS);
+    await sleepWithJitter();
   }
 
   // Safe bulk write — courier_status always written, ERP status only if not protected + mapping found
@@ -293,7 +297,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const updatesToApply = [];
   let processedCount = 0;
 
-  for (const batch of chunks(toProcess, 10)) {
+  for (const batch of chunks(toProcess, CONCURRENT)) {
     const results = await Promise.all(batch.map(async (o) => {
       // Try keys sequentially until we get a result
       for (const key of apiKeys) {
@@ -320,7 +324,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
     processedCount += batch.length;
     if (onProgress) onProgress('Syncing Instaworld', processedCount, toProcess.length);
-    await sleep(SLEEP_MS);
+    await sleepWithJitter();
   }
 
   const updateStmt = db.prepare(`
