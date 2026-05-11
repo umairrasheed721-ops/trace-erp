@@ -93,18 +93,43 @@ router.get('/provision', async (req, res) => {
     }
 });
 
-// 🌐 IP DIAGNOSTIC: Get the outbound IP of the Railway server
-router.get('/my-ip', async (req, res) => {
+// 🛡️ DIRECT TEST: Explicitly bypass proxy to check IP whitelisting
+router.get('/test-direct/:tracking', async (req, res) => {
     try {
+        const { tracking } = req.params;
+        const order = db.prepare("SELECT store_id FROM orders WHERE tracking_number = ?").get(tracking);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+
         const fetch = require('node-fetch');
-        const r = await fetch('https://ifconfig.me/ip');
-        const ip = await r.text();
-        res.json({ 
-            outbound_ip: ip.trim(),
-            note: "Send this IP to Instaworld for whitelisting."
+        const url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        
+        console.log(`📡 Testing direct connection to Instaworld for ${tracking}...`);
+        const start = Date.now();
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 
+                'api-key': store.instaworld_key,
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({ tracking_number: tracking }),
+            timeout: 15000
+        });
+        const duration = Date.now() - start;
+        const body = await response.text();
+
+        res.json({
+            direct_test: true,
+            status: response.status,
+            duration: `${duration}ms`,
+            response: body.substring(0, 1000)
         });
     } catch (err) {
-        res.status(500).json({ error: "Failed to fetch IP", details: err.message });
+        res.status(500).json({ 
+            direct_test: false,
+            error: err.message,
+            tip: "If this times out or gives 403, Instaworld hasn't whitelisted the IP yet."
+        });
     }
 });
 
