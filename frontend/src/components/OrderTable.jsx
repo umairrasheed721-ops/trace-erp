@@ -595,7 +595,7 @@ export default function OrderTable({
                     if (col.id === 'cost') return canSeeFinancials ? (
                       <td 
                         key={col.id} 
-                        style={{ position: 'relative' }}
+                        style={{ position: 'relative', overflow: 'visible' }}
                         onMouseEnter={() => { setHoveredOrderId(o.id); fetchBreakdown(o.id); }}
                         onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
                       >
@@ -612,8 +612,8 @@ export default function OrderTable({
                       return (
                         <td 
                           key={col.id} 
-                          style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)', position: 'relative' }}
-                          onMouseEnter={() => { if (!breakdown) { setHoveredOrderId(o.id); fetchBreakdown(o.id); } }}
+                          style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)', position: 'relative', overflow: 'visible' }}
+                          onMouseEnter={() => { setHoveredOrderId(o.id); fetchBreakdown(o.id); }}
                           onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
                         >
                           Rs {Math.round(profit).toLocaleString()}
