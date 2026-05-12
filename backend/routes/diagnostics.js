@@ -304,12 +304,12 @@ router.get('/test-direct/:tracking', async (req, res) => {
         if (!order) return res.status(404).json({ error: 'Order not found' });
         const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
 
-        const fetch = require('node-fetch');
+        const { instaworldFetch } = require('../engines/instaworld_http');
         const url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
         
-        console.log(`📡 Testing direct connection to Instaworld for ${tracking}...`);
+        console.log(`📡 Testing connection to Instaworld for ${tracking}...`);
         const start = Date.now();
-        const response = await fetch(url, {
+        const response = await instaworldFetch(url, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json' 
@@ -318,7 +318,8 @@ router.get('/test-direct/:tracking', async (req, res) => {
                 tracking_number: tracking,
                 api_key: store.instaworld_key 
             }),
-            timeout: 15000
+            timeout: 15000,
+            proxyUrl: store.gas_proxy_url
         });
         const duration = Date.now() - start;
         const body = await response.text();

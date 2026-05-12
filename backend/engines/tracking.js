@@ -273,7 +273,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       
       if (!courierName && order.tracking_number) {
         const tn = String(order.tracking_number).toUpperCase();
-        if (tn.startsWith('LE') || tn.startsWith('LCS')) courierName = 'LCS';
+        if (tn.startsWith('LE') || tn.startsWith('LCS')) courierName = 'Leopards';
         else if (tn.match(/^[0-9]{11,12}$/)) courierName = 'TCS';
       }
 

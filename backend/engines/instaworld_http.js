@@ -30,9 +30,8 @@ async function instaworldFetch(targetUrl, options = {}) {
   const { proxyUrl: explicitProxy, ...fetchOpts } = options;
   const proxy = explicitProxy ? String(explicitProxy).trim() : resolveProxyUrl(null);
 
-  // 🚀 DIRECT PATH ENFORCEMENT: If it's an Instaworld domain and we're unblocked, 
-  // bypass the proxy entirely for maximum speed.
-  if (!proxy || targetUrl.includes('instaworld.pk')) {
+  // 🚀 PROXY ENFORCEMENT: If a proxy is set, use it. Only bypass if no proxy exists.
+  if (!proxy) {
     // Ensure api_key is in the body for POST requests to trackShipment
     if (targetUrl.includes('trackShipment') && fetchOpts.method === 'POST') {
       try {
