@@ -24,6 +24,13 @@ class WhatsAppBot {
     this.qrCode = null;
     this.status = 'DISCONNECTED';
     this.reconnectAttempts = 0;
+    
+    // --- 🛡️ ANTI-BAN THROTTLING SYSTEM ---
+    this.queue = [];
+    this.isProcessing = false;
+    this.hourlyCount = 0;
+    this.lastResetTime = Date.now();
+    this.MAX_PER_HOUR = 60; // Safety cap
 
     setTimeout(() => this._connect(), 5000);
   }
@@ -141,36 +148,72 @@ class WhatsAppBot {
   }
 
   async sendMessage(phone, message) {
-    if (this.status !== 'CONNECTED' || !this.sock) {
-      const reason = `Bot not connected (status: ${this.status})`;
-      console.warn(reason);
-      return { success: false, error: reason };
+    // Add to queue instead of sending immediately
+    return new Promise((resolve) => {
+      this.queue.push({ phone, message, resolve });
+      console.log(`📥 Message queued for ${phone}. Queue size: ${this.queue.length}`);
+      this._processQueue();
+    });
+  }
+
+  async _processQueue() {
+    if (this.isProcessing || this.queue.length === 0) return;
+    if (this.status !== 'CONNECTED') {
+      console.warn('⏳ Queue paused: Bot not connected');
+      return;
     }
 
-    try {
-      let cleaned = phone.replace(/\D/g, '');
-      if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-      else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    this.isProcessing = true;
 
-      const jid = cleaned + '@s.whatsapp.net';
-      console.log(`📱 Checking ${cleaned} on WhatsApp...`);
-
-      const [reg] = await this.sock.onWhatsApp(jid);
-      if (!reg?.exists) {
-        const reason = `+${cleaned} is not registered on WhatsApp`;
-        console.warn(`⚠️ ${reason}`);
-        return { success: false, error: reason };
+    while (this.queue.length > 0) {
+      // 1. Check Hourly Limit
+      const now = Date.now();
+      if (now - this.lastResetTime > 3600000) {
+        this.hourlyCount = 0;
+        this.lastResetTime = now;
       }
 
-      await this.sock.sendMessage(jid, { text: message });
-      console.log(`✉️ Sent to ${cleaned}`);
-      return { success: true };
+      if (this.hourlyCount >= this.MAX_PER_HOUR) {
+        console.warn(`🛑 Hourly limit (${this.MAX_PER_HOUR}) reached. Throttling for 10 minutes...`);
+        await new Promise(r => setTimeout(r, 600000)); // Wait 10 mins
+        this.hourlyCount = 0; // Reset after wait
+        this.lastResetTime = Date.now();
+      }
 
-    } catch (err) {
-      const reason = err.message || 'Unknown WhatsApp error';
-      console.error('❌ sendMessage error:', reason);
-      return { success: false, error: reason };
+      const { phone, message, resolve } = this.queue.shift();
+
+      try {
+        let cleaned = phone.replace(/\D/g, '');
+        if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+        else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+        const jid = cleaned + '@s.whatsapp.net';
+        
+        // 2. Anti-Ban Human Delay (Random 5-15 seconds)
+        const delay = Math.floor(Math.random() * 10000) + 5000;
+        console.log(`⏳ Anti-Ban: Waiting ${delay/1000}s before sending to ${cleaned}...`);
+        await new Promise(r => setTimeout(r, delay));
+
+        const [reg] = await this.sock.onWhatsApp(jid);
+        if (!reg?.exists) {
+          const reason = `+${cleaned} is not registered on WhatsApp`;
+          resolve({ success: false, error: reason });
+          continue;
+        }
+
+        await this.sock.sendMessage(jid, { text: message });
+        this.hourlyCount++;
+        console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
+        resolve({ success: true });
+
+      } catch (err) {
+        const reason = err.message || 'Unknown WhatsApp error';
+        console.error('❌ sendMessage error:', reason);
+        resolve({ success: false, error: reason });
+      }
     }
+
+    this.isProcessing = false;
   }
 
   resetSession() {
