@@ -339,4 +339,45 @@ router.get('/test-direct/:tracking', async (req, res) => {
     }
 });
 
+// 🛡️ RAW DIRECT TEST: Hard-bypass all proxy logic to verify IP whitelisting
+router.get('/test-raw/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const order = db.prepare("SELECT store_id FROM orders WHERE tracking_number = ?").get(tracking);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+
+        const fetch = require('node-fetch');
+        const url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        
+        console.log(`🔌 RAW TEST: Attempting direct connection to Instaworld (BYPASS PROXY) for ${tracking}...`);
+        const start = Date.now();
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                tracking_number: tracking,
+                api_key: store.instaworld_key 
+            }),
+            timeout: 10000
+        });
+        const duration = Date.now() - start;
+        const body = await response.text();
+
+        res.json({
+            raw_direct_test: true,
+            status: response.status,
+            duration: `${duration}ms`,
+            response: body.substring(0, 1000),
+            tip: response.status === 200 ? "✅ Success! They have unblocked the IP." : "❌ Failed. Still blocked or returning error."
+        });
+    } catch (err) {
+        res.status(500).json({ 
+            raw_direct_test: false,
+            error: err.message,
+            tip: "This usually means the Railway IP is still blocked by their firewall."
+        });
+    }
+});
+
 module.exports = router;
