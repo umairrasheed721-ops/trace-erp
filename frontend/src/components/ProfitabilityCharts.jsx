@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area, BarChart, Bar, Cell
@@ -31,7 +31,16 @@ const ProfitabilityCharts = ({ storeId }) => {
     }
   };
 
+  const processedData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    // Filter out today if it has no revenue yet to avoid sharp drops
+    const today = new Date().toISOString().split('T')[0];
+    return data.filter(d => d.date !== today || d.revenue > 0);
+  }, [data]);
+
   if (loading) return <div className="loading-shimmer" style={{ height: 400 }}>Loading Charts...</div>;
+
+  const hasRoasData = processedData.some(d => d.roi > 0);
 
   return (
     <div className="profitability-dashboard" style={{ marginTop: 20 }}>
@@ -57,11 +66,11 @@ const ProfitabilityCharts = ({ storeId }) => {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {/* Main Performance Chart */}
-        <div className="card" style={{ padding: 20, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+        <div className="card" style={{ padding: 20, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border-color)', minWidth: 0 }}>
           <h3 style={{ marginBottom: 15, fontSize: 16 }}>Revenue vs Net Profit</h3>
           <div style={{ height: 350 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data}>
+              <AreaChart data={processedData}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
@@ -109,11 +118,18 @@ const ProfitabilityCharts = ({ storeId }) => {
         </div>
 
         {/* Ad Spend vs ROI */}
-        <div className="card" style={{ padding: 20, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border-color)' }}>
+        <div className="card" style={{ padding: 20, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border-color)', minWidth: 0 }}>
           <h3 style={{ marginBottom: 15, fontSize: 16 }}>Marketing ROI (ROAS)</h3>
-          <div style={{ height: 350 }}>
+          <div style={{ height: 350, position: 'relative' }}>
+            {!hasRoasData && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-surface)', zIndex: 100, borderRadius: 8, flexDirection: 'column', gap: 10, border: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '2.5rem' }}>📈</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Marketing ROI data found</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ROAS will appear when ad spend is recorded</div>
+              </div>
+            )}
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data}>
+              <BarChart data={processedData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
                 <XAxis 
                   dataKey="date" 
@@ -127,7 +143,7 @@ const ProfitabilityCharts = ({ storeId }) => {
                 />
                 <Legend />
                 <Bar dataKey="roi" name="ROI / ROAS" radius={[4, 4, 0, 0]}>
-                  {data.map((entry, index) => (
+                  {processedData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.roi > 3 ? '#10b981' : entry.roi > 1 ? '#f59e0b' : '#ef4444'} />
                   ))}
                 </Bar>

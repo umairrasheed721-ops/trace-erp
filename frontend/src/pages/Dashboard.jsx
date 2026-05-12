@@ -28,10 +28,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!activeStoreId) { setLoading(false); return }
     setLoading(true)
-    const token = localStorage.getItem('trace_token');
-    fetch(`/api/stores/${activeStoreId}/stats`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
+    fetch(`/api/stores/${activeStoreId}/stats`)
       .then(r => r.json())
       .then(data => { setStats(data); setLoading(false) })
       .catch(() => { addToast('Failed to load stats', 'error'); setLoading(false) })

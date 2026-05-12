@@ -12,7 +12,7 @@ export default function DiagnosticCenter() {
     try {
       if (!activeStoreId) return;
       const res = await fetch(`/api/diagnostics/stats?store_id=${activeStoreId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       });
       const data = await res.json();
       setStats(data);
@@ -25,9 +25,7 @@ export default function DiagnosticCenter() {
     setLoading(true);
     try {
       if (!activeStoreId) return;
-      const res = await fetch(`/api/diagnostics/smoke-test?store_id=${activeStoreId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
+      const res = await fetch(`/api/diagnostics/smoke-test?store_id=${activeStoreId}`);
       const data = await res.json();
       setSmokeStatus(data.results);
     } catch (err) {
@@ -42,9 +40,7 @@ export default function DiagnosticCenter() {
     setAuditResult(null);
     try {
       if (!activeStoreId) return;
-      const res = await fetch(`/api/diagnostics/audit/${type}?store_id=${activeStoreId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
+      const res = await fetch(`/api/diagnostics/audit/${type}?store_id=${activeStoreId}`);
       const data = await res.json();
       setAuditResult({ type, data: data.results });
     } catch (err) {
@@ -170,7 +166,6 @@ export default function DiagnosticCenter() {
                   const res = await fetch('/api/diagnostics/heal/zero-costs', {
                     method: 'POST',
                     headers: { 
-                      'Authorization': `Bearer ${localStorage.getItem('token')}`,
                       'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ store_id: activeStoreId })
@@ -197,7 +192,6 @@ export default function DiagnosticCenter() {
                     const res = await fetch('/api/diagnostics/heal/line-items', {
                       method: 'POST',
                       headers: { 
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
                         'Content-Type': 'application/json'
                       },
                       body: JSON.stringify({ store_id: activeStoreId })
@@ -238,7 +232,6 @@ export default function DiagnosticCenter() {
                       const res = await fetch('/api/diagnostics/heal/zero-costs', {
                         method: 'POST',
                         headers: { 
-                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
                           'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({ store_id: activeStoreId })

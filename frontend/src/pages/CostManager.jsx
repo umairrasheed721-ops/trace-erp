@@ -329,7 +329,7 @@ export default function CostManager() {
       )}
 
       <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
-        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, var(--brand) 0%, var(--brand-dim) 100%)', color: '#fff', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 30px var(--brand-glow)' }}>
+        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 20px rgba(79, 70, 229, 0.2)' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value (Accepted)</div>
           <div style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
           <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.8 }}>Asset worth of {totals.acceptedQty} items</div>

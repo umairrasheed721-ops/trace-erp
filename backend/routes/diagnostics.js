@@ -3,6 +3,209 @@ const router = express.Router();
 const db = require('../db');
 const { instaworldFetch } = require('../engines/instaworld_http');
 
+// 📊 SYSTEM STATS: Quick pulse check for the dashboard
+router.get('/stats', (req, res) => {
+    try {
+        const { store_id } = req.query;
+        if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+        const orders = db.prepare('SELECT COUNT(*) as count FROM orders WHERE store_id = ?').get(store_id).count;
+        const auditLogs = db.prepare('SELECT COUNT(*) as count FROM audit_logs WHERE store_id = ?').get(store_id).count;
+        const missingItems = db.prepare('SELECT COUNT(*) as count FROM orders WHERE store_id = ? AND (cost IS NULL OR cost = 0)').get(store_id).count;
+        
+        const mem = process.memoryUsage();
+        const memory = mem.rss / 1024 / 1024;
+
+        res.json({
+            orders,
+            auditLogs,
+            missingItems,
+            memory
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 🚀 SMOKE TEST: Connectivity check
+router.get('/smoke-test', async (req, res) => {
+    try {
+        const { store_id } = req.query;
+        if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+        const results = {
+            database: 'OK',
+            shopify: []
+        };
+
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+        if (store) {
+            try {
+                const shopifyRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/shop.json`, {
+                    headers: { 'X-Shopify-Access-Token': store.access_token }
+                });
+                results.shopify.push({
+                    domain: store.shop_domain,
+                    status: shopifyRes.ok ? 'OK' : 'ERROR (' + shopifyRes.status + ')'
+                });
+            } catch (e) {
+                results.shopify.push({ domain: store.shop_domain, status: 'FAILED' });
+            }
+        }
+
+        res.json({ results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 🔍 AUDIT: Find data inconsistencies
+router.get('/audit/:type', (req, res) => {
+    try {
+        const { type } = req.params;
+        const { store_id } = req.query;
+        if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+        let results = [];
+        if (type === 'zero-costs') {
+            results = db.prepare(`
+                SELECT id, ref_number, customer_name, order_date, price, delivery_status 
+                FROM orders 
+                WHERE store_id = ? AND price > 0 AND (cost IS NULL OR cost = 0)
+                ORDER BY order_date DESC LIMIT 500
+            `).all(store_id);
+        } else if (type === 'orphaned-costs') {
+            results = db.prepare(`
+                SELECT mc.id, mc.parent_title, mc.variant_title, mc.sku, mc.unit_cost 
+                FROM product_master_costs mc
+                LEFT JOIN products p ON mc.shopify_variant_id = p.shopify_variant_id
+                WHERE mc.store_id = ? AND p.id IS NULL
+                LIMIT 500
+            `).all(store_id);
+        } else if (type === 'duplicates') {
+            results = db.prepare(`
+                SELECT ref_number, COUNT(*) as count 
+                FROM orders 
+                WHERE store_id = ? AND ref_number IS NOT NULL AND ref_number != ''
+                GROUP BY ref_number HAVING count > 1
+                LIMIT 500
+            `).all(store_id);
+        } else if (type === 'missing-master-costs') {
+            results = db.prepare(`
+                SELECT p.shopify_variant_id, p.title, p.sku, p.price
+                FROM products p
+                LEFT JOIN product_master_costs mc ON p.shopify_variant_id = mc.shopify_variant_id
+                WHERE p.store_id = ? AND mc.id IS NULL
+                LIMIT 500
+            `).all(store_id);
+        } else if (type === 'profit-anomalies') {
+            results = db.prepare(`
+                SELECT id, ref_number, price, cost, (price - cost) as profit
+                FROM orders 
+                WHERE store_id = ? AND (price - cost) < 0 AND price > 0
+                LIMIT 500
+            `).all(store_id);
+        }
+
+        res.json({ results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ✨ HEAL: Automated repair operations
+router.post('/heal/zero-costs', (req, res) => {
+    try {
+        const { store_id } = req.body;
+        if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+        // Logic: Try to find costs from master registry for zero-cost orders
+        const orders = db.prepare(`
+            SELECT o.id, o.line_items 
+            FROM orders o 
+            WHERE o.store_id = ? AND (o.cost IS NULL OR o.cost = 0)
+        `).all(store_id);
+
+        let healedCount = 0;
+        const masterCosts = db.prepare('SELECT shopify_variant_id, unit_cost, packaging_cost FROM product_master_costs WHERE store_id = ?').all(store_id);
+        const costMap = new Map(masterCosts.map(c => [c.shopify_variant_id, (c.unit_cost || 0) + (c.packaging_cost || 0)]));
+
+        const updateStmt = db.prepare('UPDATE orders SET cost = ? WHERE id = ?');
+
+        for (const order of orders) {
+            try {
+                const items = JSON.parse(order.line_items || '[]');
+                let totalCost = 0;
+                let foundAll = true;
+                for (const item of items) {
+                    const c = costMap.get(String(item.variant_id));
+                    if (c !== undefined) {
+                        totalCost += c * (item.quantity || 1);
+                    } else {
+                        foundAll = false;
+                    }
+                }
+                if (totalCost > 0) {
+                    updateStmt.run(totalCost, order.id);
+                    healedCount++;
+                }
+            } catch (e) {}
+        }
+
+        res.json({ success: true, healedCount });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/heal/line-items', async (req, res) => {
+    try {
+        const { store_id } = req.body;
+        if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+        const batchSize = 10;
+        const orders = db.prepare(`
+            SELECT id, shopify_order_id 
+            FROM orders 
+            WHERE store_id = ? AND (line_items IS NULL OR line_items = '[]')
+            LIMIT ?
+        `).all(store_id, batchSize);
+
+        let healedCount = 0;
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+
+        if (store) {
+            for (const order of orders) {
+                try {
+                    // Fetch from Shopify
+                    const shopifyUrl = `https://${store.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+                    const sRes = await fetch(shopifyUrl, { headers: { 'X-Shopify-Access-Token': store.access_token } });
+                    const sData = await sRes.json();
+                    if (sData.order && sData.order.line_items) {
+                        const lineItems = sData.order.line_items.map(item => ({
+                            id: item.id,
+                            variant_id: item.variant_id,
+                            title: item.title,
+                            sku: item.sku,
+                            quantity: item.quantity,
+                            price: item.price,
+                            variant_title: item.variant_title
+                        }));
+                        db.prepare('UPDATE orders SET line_items = ? WHERE id = ?').run(JSON.stringify(lineItems), order.id);
+                        healedCount++;
+                    }
+                } catch (e) {}
+            }
+        }
+
+        const remaining = db.prepare('SELECT COUNT(*) as count FROM orders WHERE store_id = ? AND (line_items IS NULL OR line_items = "[]")').get(store_id).count;
+
+        res.json({ success: true, healedCount, remaining: remaining > 0 });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // 🔍 SECURE DIAGNOSTICS: Check any parcel's REAL status in the Cloud DB
 router.get('/check-status/:tracking', (req, res) => {
     try {

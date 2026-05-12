@@ -419,14 +419,16 @@ export default function Reports() {
       <style>{`
         .reports-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; text-align: right; white-space: nowrap; }
         .reports-table th { padding: 12px 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; font-weight: 700; color: var(--text-primary); text-transform: uppercase; cursor: pointer; user-select: none; }
-        .reports-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
-        .reports-table tr:hover { background-color: var(--bg-hover); }
-        .editable-input { width: 90px; padding: 6px; text-align: right; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-weight: 600; }
-        .head-sales { background-color: #854d0e !important; color: white !important; }
-        .head-out { background-color: #6b21a8 !important; color: white !important; }
-        .head-pnl { background-color: #065f46 !important; color: white !important; }
+        .reports-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-primary); transition: background 0.1s; }
+        .reports-table tr:nth-child(even) { background-color: rgba(255,255,255,0.02); }
+        .reports-table tr:hover { background-color: var(--bg-active) !important; }
+        .editable-input { width: 90px; padding: 6px; text-align: right; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-weight: 600; transition: all 0.2s; }
+        .editable-input:focus { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-glow); outline: none; background: var(--bg-surface); }
+        .head-sales { background-color: #854d0e !important; color: white !important; border-right: 1px solid rgba(255,255,255,0.1); }
+        .head-out { background-color: #6b21a8 !important; color: white !important; border-right: 1px solid rgba(255,255,255,0.1); }
+        .head-pnl { background-color: #065f46 !important; color: white !important; border-right: 1px solid rgba(255,255,255,0.1); }
         .head-kpi { background-color: var(--bg-active) !important; color: var(--text-primary) !important; }
-        .sticky-col { position: sticky; left: 0; background-color: var(--bg-surface) !important; z-index: 20; border-right: 2px solid var(--border); text-align: left !important; font-weight: 800; color: var(--text-primary); }
+        .sticky-col { position: sticky; left: 0; background-color: var(--bg-surface) !important; z-index: 20; border-right: 3px solid var(--border); text-align: left !important; font-weight: 800; color: var(--text-primary); box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
         .column-picker { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; width: 250px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 400px; overflow-y: auto; }
         .view-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
       `}</style>

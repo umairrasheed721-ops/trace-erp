@@ -10,9 +10,7 @@ export default function OrderHistoryModal({ order, onClose }) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`/api/orders/${order.id}/history`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
+      const res = await fetch(`/api/orders/${order.id}/history`);
       const data = await res.json();
       setHistory(data.history || []);
     } catch (err) {

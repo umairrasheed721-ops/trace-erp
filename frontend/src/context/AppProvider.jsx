@@ -48,7 +48,9 @@ export default function AppProvider({ children }) {
   
   const fetchPermissions = () => {
     if (!token) return
-    fetch('/api/users/permissions')
+    fetch('/api/users/permissions', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setPermissions(data)
