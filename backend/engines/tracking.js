@@ -2,6 +2,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const db = require('../db');
 const { instaworldFetch } = require('./instaworld_http');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
