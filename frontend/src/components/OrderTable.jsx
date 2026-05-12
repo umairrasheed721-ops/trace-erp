@@ -155,7 +155,7 @@ export default function OrderTable({
         <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
-            {/* Debug SQL hidden */}
+            {debugWhere && <span style={{ marginLeft: 10, color: 'var(--text-muted)', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
           </span>
           {(keyword || status !== 'All Statuses') && (
             <button 
@@ -192,7 +192,12 @@ export default function OrderTable({
                   style={{ cursor: 'pointer', userSelect: 'none' }}
                 >
                   <div className="flex items-center gap-1">
-                    {col.label}
+                    {col.id === 'cost' || col.id === 'profit' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {col.label}
+                      <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>ℹ️</span>
+                    </div>
+                  ) : col.label}
                     {sortKey === col.id && (
                       <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
                         {sortDir === 'asc' ? '▲' : '▼'}

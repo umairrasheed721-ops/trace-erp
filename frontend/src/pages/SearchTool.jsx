@@ -1182,7 +1182,20 @@ export default function SearchTool() {
       <div className="sticky-controls">
         <div className="page-header" style={{ marginBottom: compactMode ? 8 : 16 }}>
           <div>
-            <h2 style={{ fontSize: compactMode ? '1.1rem' : '1.5rem', margin: 0 }}>🔍 Command Center</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h2 style={{ fontSize: compactMode ? '1.1rem' : '1.5rem', margin: 0 }}>🔍 Command Center</h2>
+              <span style={{ 
+                fontSize: '0.65rem', 
+                background: 'rgba(96, 165, 250, 0.1)', 
+                color: '#60a5fa', 
+                padding: '2px 8px', 
+                borderRadius: '12px', 
+                fontWeight: 800,
+                border: '1px solid rgba(96, 165, 250, 0.3)'
+              }}>
+                v1.8.0: SKU & TOOLTIP LIVE
+              </span>
+            </div>
             {!compactMode && <p style={{ margin: '4px 0 0', opacity: 0.6 }}>Advanced search, filter, and logistics management</p>}
           </div>
           <div className="flex gap-2">
