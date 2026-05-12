@@ -175,20 +175,29 @@ setInterval(() => {
 // --- 🚨 ERROR RATE ALERTING — hooks into console.error, no redeclarations ---
 let recentErrorTimes = [];
 let lastAlertTime = 0;
-const _prevConsoleError = console.error; // Already overridden above (calls pushLog + originalError)
+let isInternalError = false;
+const _prevConsoleError = console.error; 
 console.error = (...a) => {
-  _prevConsoleError.apply(console, a); // Keeps pushLog + terminal output intact
-  // Error rate tracking
-  const now = Date.now();
-  recentErrorTimes.push(now);
-  recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000);
-  if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
-    lastAlertTime = now;
-    const msg = a.map(x => String(x)).join(' ').substring(0, 200);
-    try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
+  _prevConsoleError.apply(console, a); 
+  
+  if (isInternalError) return; // Prevent recursion
+  isInternalError = true;
+
+  try {
+    const now = Date.now();
+    recentErrorTimes.push(now);
+    recentErrorTimes = recentErrorTimes.filter(t => now - t < 60000);
+    
+    if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
+      lastAlertTime = now;
+      const msg = a.map(x => String(x)).join(' ').substring(0, 200);
+      try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
+    }
+    // Persist errors to SQLite (survives restarts)
+    try { logSystemError('ERROR', a.map(x => String(x)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
+  } finally {
+    isInternalError = false;
   }
-  // Persist errors to SQLite (survives restarts)
-  try { logSystemError('ERROR', a.map(x => String(x)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
 };
 
 
