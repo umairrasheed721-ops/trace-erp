@@ -542,11 +542,10 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
             }
           } catch (e) {
              if(key === apiKeys[apiKeys.length-1]) logs.push({ type: 'Instaworld', tracking_number: order.tracking_number, status: 'Failed', details: `API Error: ${e.message}` });
-          } finally {
-            processed++;
-            if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
           }
         }
+        processed++;
+        if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
       }));
       await sleep(1500); 
     }
