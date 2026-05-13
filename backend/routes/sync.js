@@ -25,24 +25,29 @@ router.get('/history/:id/download', (req, res) => {
     if (!log) return res.status(404).send('Log not found');
 
     const data = JSON.parse(log.log_data || '[]');
-    if (data.length === 0) return res.status(404).send('No audit data available');
 
-    // Generate CSV
+    // Build rows from detail logs, or a summary row if empty
+    let rows;
+    if (data.length === 0) {
+      rows = [[log.type, `${log.success} succeeded`, `${log.failed} failed`, `Total: ${log.total}`]];
+    } else {
+      rows = data.map(item => [
+        item.id || item.tracking || 'N/A',
+        item.status || 'FAILED',
+        item.message || '',
+        item.details || ''
+      ]);
+    }
+
     const headers = ['Order/Tracking ID', 'Status', 'Message', 'Details'];
-    const rows = data.map(item => [
-      item.id || item.tracking || 'N/A',
-      item.status || 'FAILED',
-      item.message || '',
-      item.details || ''
-    ]);
-
     const csvContent = [
       headers.join(','),
       ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
+    const filename = `Sync_Audit_${(log.type || 'report').replace(/\s+/g, '_')}_${log.id}.csv`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=Sync_Audit_${log.type}_${log.id}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csvContent);
   } catch (error) {
     res.status(500).send(error.message);

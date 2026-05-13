@@ -43,8 +43,11 @@ export default function Topbar() {
   
   const downloadAuditReport = async (logId, logType) => {
     try {
-      const res = await fetch(`/api/sync/history/${logId}/download`)
-      if (!res.ok) throw new Error('Download failed')
+      const token = localStorage.getItem('trace_token')
+      const res = await fetch(`/api/sync/history/${logId}/download`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
