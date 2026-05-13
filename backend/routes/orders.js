@@ -544,7 +544,7 @@ router.post('/bulk-book-postex', async (req, res) => {
 // POST /api/orders/bulk-sync-status
 router.post('/bulk-sync-status', async (req, res) => {
   const { ids } = req.body;
-  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });\n
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
   const { broadcast } = require('../sse');
   
   try {
