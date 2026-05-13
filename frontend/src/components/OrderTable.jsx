@@ -614,7 +614,7 @@ export default function OrderTable({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (activeTooltipOrderId === o.id) {
+                              if (String(activeTooltipOrderId) === String(o.id)) {
                                 setActiveTooltipOrderId(null);
                                 setBreakdown(null);
                               } else {
@@ -633,7 +633,7 @@ export default function OrderTable({
                             ℹ️
                           </button>
                         </div>
-                        {activeTooltipOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                        {String(activeTooltipOrderId) === String(o.id) && <CostBreakdownTooltip orderId={o.id} />}
                       </td>
                     ) : null
                     if (col.id === 'profit') {

@@ -16,11 +16,11 @@ async function createPostExOrder(store, order) {
   const payload = {
     customerName: order.customer_name,
     customerPhone: order.phone,
-    address: order.address,
+    deliveryAddress: order.address,
     cityName: city,
     orderDetail: order.product_titles || 'General Items',
     orderRefNumber: order.ref_number || String(order.shopify_order_id),
-    orderAmount: parseFloat(order.price) || 0,
+    invoicePayment: parseFloat(order.price) || 0,
     orderType: 'COD', // Default to Cash on Delivery
     itemsCount: order.items_count || 1,
     weight: order.postex_weight || 0.5
