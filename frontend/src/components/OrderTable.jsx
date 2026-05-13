@@ -43,6 +43,7 @@ export default function OrderTable({
   const canSeeFinancials = user?.role === 'admin'
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
+  const [activeTooltipOrderId, setActiveTooltipOrderId] = useState(null)
   const [hoveredOrderId, setHoveredOrderId] = useState(null)
   const [breakdown, setBreakdown] = useState(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
@@ -68,8 +69,14 @@ export default function OrderTable({
 
     return (
       <div className="cost-tooltip shadow-xl">
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
           <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setActiveTooltipOrderId(null); setBreakdown(null); }}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px', opacity: 0.6 }}
+          >
+            ✖
+          </button>
         </div>
         <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
           {breakdown.map((item, i) => (
@@ -601,11 +608,32 @@ export default function OrderTable({
                       <td 
                         key={col.id} 
                         style={{ position: 'relative', overflow: 'visible' }}
-                        onMouseEnter={() => { setHoveredOrderId(o.id); fetchBreakdown(o.id); }}
-                        onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
                       >
-                        <CostCell order={o} onSave={updateOrderField} />
-                        {hoveredOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <CostCell order={o} onSave={updateOrderField} />
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (activeTooltipOrderId === o.id) {
+                                setActiveTooltipOrderId(null);
+                                setBreakdown(null);
+                              } else {
+                                setActiveTooltipOrderId(o.id);
+                                fetchBreakdown(o.id);
+                              }
+                            }}
+                            style={{ 
+                              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', 
+                              borderRadius: '50%', width: 20, height: 20, display: 'flex', 
+                              alignItems: 'center', justifyContent: 'center', cursor: 'pointer', 
+                              fontSize: '0.7rem', color: 'var(--brand)', transition: 'all 0.2s'
+                            }}
+                            title="View itemized cost breakdown"
+                          >
+                            ℹ️
+                          </button>
+                        </div>
+                        {activeTooltipOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
                       </td>
                     ) : null
                     if (col.id === 'profit') {
@@ -618,11 +646,32 @@ export default function OrderTable({
                         <td 
                           key={col.id} 
                           style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)', position: 'relative', overflow: 'visible' }}
-                          onMouseEnter={() => { setHoveredOrderId(o.id); fetchBreakdown(o.id); }}
-                          onMouseLeave={() => { setHoveredOrderId(null); setBreakdown(null); }}
                         >
-                          Rs {Math.round(profit).toLocaleString()}
-                          {hoveredOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>Rs {Math.round(profit).toLocaleString()}</span>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (activeTooltipOrderId === o.id) {
+                                  setActiveTooltipOrderId(null);
+                                  setBreakdown(null);
+                                } else {
+                                  setActiveTooltipOrderId(o.id);
+                                  fetchBreakdown(o.id);
+                                }
+                              }}
+                              style={{ 
+                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', 
+                                borderRadius: '50%', width: 20, height: 20, display: 'flex', 
+                                alignItems: 'center', justifyContent: 'center', cursor: 'pointer', 
+                                fontSize: '0.7rem', color: profit > 0 ? 'var(--green)' : 'var(--red)', transition: 'all 0.2s',
+                                opacity: 0.6
+                              }}
+                            >
+                              ℹ️
+                            </button>
+                          </div>
+                          {activeTooltipOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
                         </td>
                       )
                     }
