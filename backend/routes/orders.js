@@ -39,8 +39,14 @@ function getOrderFilters(req) {
     } else if (s.includes('MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else {
-      whereClauses.push('LOWER(o.delivery_status) = ?');
-      queryParams.push(status.toLowerCase());
+      const statuses = status.split(',').map(st => st.trim().toLowerCase());
+      if (statuses.length > 1) {
+        whereClauses.push(`LOWER(o.delivery_status) IN (${statuses.map(() => '?').join(',')})`);
+        statuses.forEach(st => queryParams.push(st));
+      } else {
+        whereClauses.push('LOWER(o.delivery_status) = ?');
+        queryParams.push(statuses[0]);
+      }
     }
   }
 
