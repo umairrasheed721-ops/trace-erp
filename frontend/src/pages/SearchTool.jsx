@@ -981,8 +981,14 @@ export default function SearchTool() {
       try {
         const data = JSON.parse(e.data);
         if (String(data.storeId) === String(activeStoreId)) {
-          setSyncProgress(data);
-          if (data.current === data.total) {
+          // Normalize both old format {current/total/message} and new format {processed/total/status}
+          const normalized = {
+            current: data.current ?? data.processed ?? 0,
+            total: data.total ?? 0,
+            message: data.message || data.status || 'Processing Orders...'
+          };
+          setSyncProgress(normalized);
+          if (normalized.current >= normalized.total && normalized.total > 0) {
             setTimeout(() => setSyncProgress(null), 3000);
           }
         }
@@ -1152,7 +1158,7 @@ export default function SearchTool() {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1.2rem' }}>{syncProgress.current === syncProgress.total ? '✅' : '⚡'}</span>
+              <span style={{ fontSize: '1.2rem' }}>{syncProgress.current >= syncProgress.total && syncProgress.total > 0 ? '✅' : '⚡'}</span>
               <div>
                 <div style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                   {syncProgress.message || 'Processing Orders...'}
@@ -1163,14 +1169,14 @@ export default function SearchTool() {
               </div>
             </div>
             <div style={{ fontWeight: 900, fontSize: '1.1rem', color: 'var(--brand)' }}>
-              {Math.round((syncProgress.current / syncProgress.total) * 100)}%
+              {syncProgress.total > 0 ? Math.min(Math.round((syncProgress.current / syncProgress.total) * 100), 100) : 0}%
             </div>
           </div>
           <div style={{ height: 6, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ 
               height: '100%', 
               background: 'linear-gradient(90deg, var(--brand) 0%, #fff 100%)', 
-              width: `${(syncProgress.current / syncProgress.total) * 100}%`,
+              width: `${syncProgress.total > 0 ? Math.min((syncProgress.current / syncProgress.total) * 100, 100) : 0}%`,
               transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
               boxShadow: '0 0 15px var(--brand)'
             }}></div>
