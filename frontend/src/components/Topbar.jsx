@@ -9,7 +9,7 @@ export default function Topbar() {
     isFocusMode, toggleFocusMode
   } = useApp()
   const location = useLocation()
-  const isCommandCenter = location.pathname === '/'
+  const isCommandCenter = location.pathname === '/search'
   
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationRef = useRef(null)
