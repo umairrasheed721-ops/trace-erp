@@ -484,7 +484,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         
         if (isProtected) {
           // Stay protected
-        } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned') {
+        } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
           newDeliveryStatus = mappedStatus;
         } else if (fresh.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
           newDeliveryStatus = 'Booked';
@@ -519,7 +519,23 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
 function mapShopifyStatus(order) {
   if (order.cancelled_at) return 'Cancelled';
   if (order.financial_status === 'voided') return 'Voided';
-  if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') return 'Returned';
+  
+  // 1. Returns / Refunds
+  if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') {
+    return 'Returned';
+  }
+  
+  // 2. Deliveries (The "Shopify Payout Sync" logic)
+  // If order is Fulfilled AND Paid, it's considered Delivered for inactive couriers
+  if (order.fulfillment_status === 'fulfilled' && order.financial_status === 'paid') {
+    return 'Delivered';
+  }
+
+  // 3. Shopify shipment_status check (fallback)
+  const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+  const lastFul = fulfillments[fulfillments.length - 1];
+  if (lastFul?.shipment_status === 'delivered') return 'Delivered';
+
   if (order.fulfillment_status === 'fulfilled') return 'Booked';
   return 'Pending';
 }
@@ -739,7 +755,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
     if (isProtected) {
       // Stay protected
-    } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned') {
+    } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
       newDeliveryStatus = mappedStatus;
     } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
       newDeliveryStatus = 'Booked';
