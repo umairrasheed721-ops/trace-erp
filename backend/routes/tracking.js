@@ -3,6 +3,18 @@ const router = express.Router();
 const db = require('../db');
 const { syncPostEx, syncInstaworld } = require('../engines/tracking');
 const { fetchShopifyOrders, refreshShopifyUpdates } = require('../engines/shopify');
+const { broadcast } = require('../sse');
+
+const saveSyncLog = (type, total, success, failed, logData) => {
+  try {
+    const stmt = db.prepare('INSERT INTO sync_history (type, total, success, failed, log_data) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(type, total, success, failed, JSON.stringify(logData));
+    db.prepare("DELETE FROM sync_history WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
+    broadcast('sync_history_updated', { type });
+  } catch (e) {
+    console.error('Failed to save sync log:', e.message);
+  }
+};
 
 const getStore = (storeId) => db.prepare('SELECT * FROM stores WHERE id = ?').get(storeId);
 
@@ -88,6 +100,7 @@ router.post('/sync-shopify', async (req, res) => {
   const updateProgress = (stage, processed, total) => {
     if (global.syncProgress[store_id]) {
       global.syncProgress[store_id] = { status: stage, processed, total };
+      broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
     }
   };
 
@@ -95,13 +108,12 @@ router.post('/sync-shopify', async (req, res) => {
 
   (async () => {
     try {
-      updateProgress('Fetching New Shopify Orders', 0, 100);
-      await fetchShopifyOrders(store, updateProgress);
-
+      const r1 = await fetchShopifyOrders(store, updateProgress);
       updateProgress('Refreshing Shopify Data & Costs', 0, 100);
-      await refreshShopifyUpdates(store, updateProgress);
+      const r2 = await refreshShopifyUpdates(store, updateProgress);
 
       updateProgress('Sync Complete', 100, 100);
+      saveSyncLog('Shopify Sync', (r1.total || 0), (r1.added || 0), (r1.failed || 0), [...(r1.logs || []), ...(r2.logs || [])]);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
@@ -123,6 +135,7 @@ router.post('/sync-couriers', async (req, res) => {
   const updateProgress = (stage, processed, total) => {
     if (global.syncProgress[store_id]) {
       global.syncProgress[store_id] = { status: stage, processed, total };
+      broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
     }
   };
 
@@ -131,12 +144,13 @@ router.post('/sync-couriers', async (req, res) => {
   (async () => {
     try {
       updateProgress('Syncing PostEx Tracking', 0, 100);
-      await syncPostEx(store, 'FULL', updateProgress);
+      const r1 = await syncPostEx(store, 'FULL', updateProgress);
 
       updateProgress('Syncing Instaworld Tracking', 0, 100);
-      await syncInstaworld(store, 'FULL', updateProgress);
+      const r2 = await syncInstaworld(store, 'FULL', updateProgress);
 
       updateProgress('Sync Complete', 100, 100);
+      saveSyncLog('Courier Sync', (r1.total || 0) + (r2.total || 0), (r1.updated || 0) + (r2.updated || 0), (r1.failed || 0) + (r2.failed || 0), [...(r1.logs || []), ...(r2.logs || [])]);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
@@ -159,6 +173,7 @@ router.post('/sync-all', async (req, res) => {
   const updateProgress = (stage, processed, total) => {
     if (global.syncProgress[store_id]) {
       global.syncProgress[store_id] = { status: stage, processed, total };
+      broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
     }
   };
 
@@ -168,20 +183,24 @@ router.post('/sync-all', async (req, res) => {
   (async () => {
     try {
       updateProgress('Fetching Shopify (New Orders)', 0, 100);
-      await fetchShopifyOrders(store, updateProgress);
+      const r1 = await fetchShopifyOrders(store, updateProgress);
       
       updateProgress('Refreshing Shopify Updates', 0, 100);
-      await refreshShopifyUpdates(store, updateProgress);
+      const r2 = await refreshShopifyUpdates(store, updateProgress);
       
       updateProgress('Syncing PostEx Tracking', 0, 100);
-      await syncPostEx(store, 'FULL', updateProgress);
+      const r3 = await syncPostEx(store, 'FULL', updateProgress);
       
       updateProgress('Syncing Instaworld Tracking', 0, 100);
-      await syncInstaworld(store, 'FULL', updateProgress);
+      const r4 = await syncInstaworld(store, 'FULL', updateProgress);
 
       updateProgress('Sync Complete', 100, 100);
-      
-      // Clear progress after 5 seconds so UI resets
+      saveSyncLog('Global Store Sync', 
+        (r1.total || 0) + (r3.total || 0) + (r4.total || 0), 
+        (r1.added || 0) + (r3.updated || 0) + (r4.updated || 0), 
+        (r1.failed || 0) + (r3.failed || 0) + (r4.failed || 0), 
+        [...(r1.logs || []), ...(r2.logs || []), ...(r3.logs || []), ...(r4.logs || [])]
+      );
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Full sync error for ${store.shop_domain}: ${e.message}`);

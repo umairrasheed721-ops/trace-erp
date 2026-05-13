@@ -103,6 +103,7 @@ const statusMappingsRoutes = safeRequire('./routes/status-mappings', 'StatusMapp
 const schedulerInit     = safeRequire('./scheduler',           'Scheduler');
 const schedulerRoutes   = safeRequire('./routes/scheduler',    'SchedulerAPI');
 const costManagerRoutes = safeRequire('./routes/cost-manager', 'CostManager');
+const syncRoutes        = safeRequire('./routes/sync',         'Sync');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -346,6 +347,7 @@ app.use('/api/templates', templatesRoutes);
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/status-mappings', statusMappingsRoutes);
 app.use('/api/cost-manager', costManagerRoutes);
+app.use('/api/sync', syncRoutes);
 app.use('/api/scheduler', schedulerRoutes);
 
 

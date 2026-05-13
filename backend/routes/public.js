@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { db, logAction } = require('../db');
+const { addClient } = require('../sse');
+
+// SSE Endpoint for Global Progress and Notifications
+router.get('/sse', (req, res) => addClient(req, res));
 
 // Public Order Confirmation
 router.get('/confirm-order/:token', (req, res) => {

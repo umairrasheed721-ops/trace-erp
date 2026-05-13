@@ -154,15 +154,16 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
   if (!access_token || access_token === 'PENDING') return { added: 0 };
 
   // --- 🚀 PRE-FLIGHT SMOKE TEST ---
+  const auditLogs = [];
   const isHealthy = await smokeTestShopify(shop_domain, access_token);
   if (!isHealthy) {
-    const errorMsg = `🛑 [Sync Aborted] Shopify API for ${shop_domain} is unreachable or unauthorized.`;
+    const errorMsg = `🛑 [Sync Aborted] Shopify API unreachable or unauthorized.`;
+    auditLogs.push({ id: 'API', status: 'FAILED', message: 'Connectivity check failed', details: shop_domain });
     console.error(errorMsg);
     if (onProgress) onProgress(errorMsg);
     logAudit(storeId, 'CRITICAL', errorMsg);
-    // Alert via WhatsApp (Emergency Only)
-    bot.sendEmergencyAlert(`*Sync Failure:* ${shop_domain} connectivity check failed. Check Internet/API Token.`);
-    return { added: 0 };
+    bot.sendEmergencyAlert(`*Sync Failure:* ${shop_domain} connectivity check failed.`);
+    return { added: 0, logs: auditLogs, failed: 1 };
   }
 
   const updateStatus = (status, progress, processed = 0, total = 0) => {
@@ -232,6 +233,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         count++;
       } catch (e) {
+        auditLogs.push({ id: order.name || order.id, status: 'SKIPPED', message: e.message, details: 'Order Processing Error' });
         console.error(`Skip order ${order.id}: ${e.message}`);
       }
     }
@@ -319,11 +321,12 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
     console.log(`✅ Shopify Fetch [${shop_domain}]: Finished. Total added: ${totalAdded}`);
     updateStatus('idle', `Finished. Added ${totalAdded} orders.`);
-    return { added: totalAdded };
+    return { added: totalAdded, logs: auditLogs, total: totalScanned, failed: auditLogs.length };
   } catch (err) {
+    auditLogs.push({ id: 'CRITICAL', status: 'FAILED', message: err.message, details: 'Fatal Sync Error' });
     console.error(`Sync error for ${shop_domain}:`, err.message);
     updateStatus('error', `Sync failed: ${err.message}`);
-    throw err;
+    return { added: totalAdded || 0, logs: auditLogs, total: totalScanned || 0, failed: auditLogs.length };
   }
 }
 

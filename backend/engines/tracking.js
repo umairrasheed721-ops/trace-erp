@@ -99,7 +99,9 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
   console.log(`🔄 PostEx [${store.shop_domain}]: Syncing ${toProcess.length} orders...`);
   const updatesToApply = [];
+  const auditLogs = [];
   let processed = 0;
+  let failedCount = 0;
   const statusMap = loadStatusMaps();
 
   for (const batch of chunks(toProcess, CONCURRENT)) {
@@ -117,18 +119,24 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
               continue;
             }
 
-            if (!res.ok) return null; // 404 = tracking not found yet, skip
-
+            if (!res.ok) {
+              auditLogs.push({ id: order.tracking_number, status: 'FAILED', message: `API Error ${res.status}`, details: `Courier: PostEx` });
+              return null;
+            }
+  
             const data = await res.json();
-
+  
             // PostEx v1 individual response format
             let rawStatus = data?.dist?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
               || data?.statusDescription
               || null;
-
-            if (!rawStatus) return null;
+  
+            if (!rawStatus) {
+              auditLogs.push({ id: order.tracking_number, status: 'FAILED', message: 'Status Missing in Response', details: JSON.stringify(data).substring(0, 200) });
+              return null;
+            }
             
             const mappedStatus = applyMap(statusMap, 'PostEx', rawStatus);
             return { id: order.id, oldStatus: order.delivery_status, rawStatus, mappedStatus };
@@ -189,7 +197,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   }
 
   console.log(`✅ PostEx [${store.shop_domain}] [${syncType}]: Updated ${updatesToApply.length} / ${toProcess.length} orders`);
-  return { updated: updatesToApply.length };
+  return { updated: updatesToApply.length, logs: auditLogs, total: toProcess.length, failed: auditLogs.length };
 }
 
 // ─────────────────────────────────────────
@@ -200,7 +208,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const { id: storeId, instaworld_key, instaworld_key_backup, instaworld_track_url } = store;
   if (!instaworld_key) {
     console.log(`⚠️ Instaworld: No key for store ${store.shop_domain}`);
-    return { updated: 0 };
+    return { updated: 0, logs: [{ id: 'CONFIG', status: 'FAILED', message: 'No Instaworld Key', details: 'Check store settings' }], failed: 1 };
   }
 
   let trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
@@ -237,8 +245,10 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
   if (!toProcess.length) {
     console.log(`ℹ️ Instaworld [${store.shop_domain}]: No orders to sync`);
-    return { updated: 0 };
+    return { updated: 0, logs: [], total: 0, failed: 0 };
   }
+  
+  const auditLogs = [];
 
   const trackOne = async (order, apiKey) => {
     try {
@@ -252,7 +262,10 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         proxyUrl: store.gas_proxy_url,
       });
 
-      if (!res.ok) return { status: res.status, order, newStatus: null };
+      if (!res.ok) {
+        auditLogs.push({ id: order.tracking_number, status: 'FAILED', message: `API Error ${res.status}`, details: `Courier: Instaworld` });
+        return { status: res.status, order, newStatus: null };
+      }
 
       const data = await res.json();
       let rawStatus = null;
@@ -278,7 +291,10 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         else if (tn.match(/^[0-9]{11,12}$/)) courierName = 'TCS';
       }
 
-      if (!rawStatus) return { status: 200, order, newStatus: null, courierName };
+      if (!rawStatus) {
+        auditLogs.push({ id: order.tracking_number, status: 'FAILED', message: 'Status Missing in Response', details: JSON.stringify(data).substring(0, 200) });
+        return { status: 200, order, newStatus: null, courierName };
+      }
 
       const lowerRaw = String(rawStatus).toLowerCase();
       const statusMap = loadStatusMaps();

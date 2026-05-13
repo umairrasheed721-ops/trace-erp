@@ -1,178 +1,162 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function Topbar() {
-  const { activeStore, activeStoreId, addToast, theme, toggleTheme } = useApp()
-  const [syncingShopify, setSyncingShopify] = useState(false)
-  const [syncingCouriers, setSyncingCouriers] = useState(false)
-  const [progress, setProgress] = useState(null)
+  const { 
+    activeStore, activeStoreId, addToast, theme, toggleTheme,
+    syncState, syncHistory, fetchSyncHistory 
+  } = useApp()
+  
+  const [showNotifications, setShowNotifications] = useState(false)
+  const notificationRef = useRef(null)
 
-  const syncing = syncingShopify || syncingCouriers
-
+  // Close notifications on outside click
   useEffect(() => {
-    if (!activeStoreId) return
-    let isComplete = false
-
-    const check = async () => {
-      try {
-        const token = localStorage.getItem('trace_token');
-        const res = await fetch(`/api/tracking/progress?store_id=${activeStoreId}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        const data = await res.json()
-        if (data && data.status && data.status !== 'idle') {
-          if (data.status === 'Sync Complete') {
-            if (!isComplete) {
-              addToast('✅ Sync complete! Refreshing...', 'success')
-              isComplete = true
-              setSyncingShopify(false)
-              setSyncingCouriers(false)
-              setProgress(null)
-              setTimeout(() => window.location.reload(), 1500)
-            }
-          } else {
-            setProgress(data)
-            isComplete = false
-          }
-        } else {
-          setSyncingShopify(false)
-          setSyncingCouriers(false)
-          setProgress(null)
-        }
-      } catch (e) {}
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false)
+      }
     }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
-    check()
-    const iv = setInterval(check, 2000)
-    return () => clearInterval(iv)
-  }, [activeStoreId, addToast])
-
-  const handleShopifySync = async () => {
-    if (!activeStoreId || syncing) return
-    setSyncingShopify(true)
-    addToast('🛒 Shopify sync started...', 'info')
+  const handleSync = async (type) => {
+    if (!activeStoreId || syncState) return
+    const endpoint = type === 'shopify' ? '/api/tracking/sync-shopify' : '/api/tracking/sync-couriers'
+    addToast(`${type === 'shopify' ? '🛒' : '🚚'} Sync started...`, 'info')
     try {
-      const token = localStorage.getItem('trace_token');
-      await fetch('/api/tracking/sync-shopify', {
+      await fetch(endpoint, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId })
       })
     } catch (e) {
-      addToast('❌ Shopify sync failed to start', 'error')
-      setSyncingShopify(false)
+      addToast('❌ Sync failed to start', 'error')
     }
   }
 
-  const handleCourierSync = async () => {
-    if (!activeStoreId || syncing) return
-    setSyncingCouriers(true)
-    addToast('🚚 Courier sync started...', 'info')
-    try {
-      const token = localStorage.getItem('trace_token');
-      await fetch('/api/tracking/sync-couriers', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ store_id: activeStoreId })
-      })
-    } catch (e) {
-      addToast('❌ Courier sync failed to start', 'error')
-      setSyncingCouriers(false)
-    }
-  }
-
-  const percent = progress?.total ? Math.round((progress.processed / progress.total) * 100) : 0
+  const percent = syncState?.total ? Math.round((syncState.processed / syncState.total) * 100) : 0
+  const hasErrors = syncHistory.some(log => log.failed > 0)
 
   return (
-    <header className="topbar" style={{ position: 'relative', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div>
-            <div className="topbar-title">{activeStore?.store_name || activeStore?.shop_domain || 'No Store Connected'}</div>
-            {activeStore?.last_synced_at && (
-              <div className="sync-indicator" style={{ marginTop: 2 }}>
-                <span className="sync-dot"></span>
-                Last synced: {new Date(activeStore.last_synced_at).toLocaleString()}
-              </div>
-            )}
+    <header className="topbar" style={{ position: 'relative', borderBottom: 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', height: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+          <div className="topbar-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
+            {activeStore?.store_name || activeStore?.shop_domain || 'Select Store'}
           </div>
-
-          {/* Global Compact Progress Badge */}
-          {syncing && progress && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 10, 
-              background: 'var(--brand-glow)', 
-              padding: '6px 14px', 
-              borderRadius: '20px',
-              border: '1px solid var(--brand)',
-              fontSize: '0.78rem',
-              color: 'var(--brand)',
-              fontWeight: 600,
-              animation: 'slideUp 0.3s ease'
+          
+          {/* 💊 SYNC CAPSULE (Global Progress) */}
+          {syncState && (
+            <div className="sync-capsule" style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)',
+              borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--brand)',
+              animation: 'pulse-glow 2s infinite'
             }}>
-              <span className="loading-spinner" style={{ width: 12, height: 12, borderWidth: '1.5px' }}></span>
-              <span style={{ whiteSpace: 'nowrap' }}>{progress.status}</span>
-              <span style={{ opacity: 0.8, fontSize: '0.7rem', background: 'var(--brand)', color: 'white', padding: '1px 6px', borderRadius: '10px' }}>
-                {progress.total > 0 ? `${percent}%` : progress.processed}
+              <span className="loading-spinner" style={{ width: 12, height: 12 }}></span>
+              <span>{syncState.status}</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                {syncState.processed} / {syncState.total} ({percent}%)
               </span>
             </div>
           )}
         </div>
 
-        <div className="topbar-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button 
-            onClick={toggleTheme} 
-            className="btn btn-secondary btn-sm"
-            style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', borderRadius: '50%' }}
-            title={theme === 'dark' ? 'Switch to Light Mode (Eye-Care)' : 'Switch to Dark Mode'}
-          >
+        <div className="topbar-actions" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button onClick={() => handleSync('shopify')} disabled={!!syncState} className="btn btn-secondary btn-sm">
+            🛒 Shopify Sync
+          </button>
+          <button onClick={() => handleSync('courier')} disabled={!!syncState} className="btn btn-secondary btn-sm">
+            🚚 Courier Sync
+          </button>
+
+          <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 5px' }}></div>
+
+          {/* 🔔 NOTIFICATION HUB */}
+          <div style={{ position: 'relative' }} ref={notificationRef}>
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="btn btn-secondary btn-sm"
+              style={{ width: 36, height: 36, borderRadius: '50%', padding: 0, position: 'relative' }}
+            >
+              🔔
+              {hasErrors && <span style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)' }}></span>}
+            </button>
+
+            {showNotifications && (
+              <div style={{
+                position: 'absolute', top: '120%', right: 0, width: 320, 
+                background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', zIndex: 1000,
+                maxHeight: 450, overflowY: 'auto', padding: 15
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Sync History (3d)</h4>
+                  <button onClick={fetchSyncHistory} style={{ fontSize: '0.7rem', background: 'none', border: 'none', color: 'var(--brand)', cursor: 'pointer' }}>Refresh</button>
+                </div>
+                
+                {syncHistory.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20, fontSize: '0.8rem' }}>No recent sync logs</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {syncHistory.map(log => (
+                      <div key={log.id} style={{ 
+                        padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 8,
+                        borderLeft: `3px solid ${log.failed > 0 ? 'var(--red)' : 'var(--green)'}`
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 600, marginBottom: 4 }}>
+                          <span>{log.type}</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                          ✅ {log.success} Success | {log.failed > 0 ? <span style={{ color: 'var(--red)' }}>❌ {log.failed} Failed</span> : '🎉 0 Failed'}
+                        </div>
+                        {log.failed > 0 && (
+                          <a 
+                            href={`/api/sync/history/${log.id}/download`} 
+                            target="_blank" rel="noreferrer"
+                            className="btn btn-primary btn-sm" 
+                            style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', textDecoration: 'none', textAlign: 'center', display: 'block' }}
+                          >
+                            📊 Download Audit Report
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button onClick={toggleTheme} className="btn btn-secondary btn-sm" style={{ width: 36, height: 36, borderRadius: '50%', padding: 0 }}>
             {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={handleShopifySync}
-            disabled={syncing || !activeStoreId}
-          >
-            {syncingShopify ? <><span className="loading-spinner"></span> Starting...</> : '🛒 Shopify Sync'}
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={handleCourierSync}
-            disabled={syncing || !activeStoreId}
-          >
-            {syncingCouriers ? <><span className="loading-spinner"></span> Starting...</> : '🚚 Courier Sync'}
           </button>
         </div>
       </div>
 
-      {/* Slim Global Progress Line */}
-      {syncing && progress && (
-        <div style={{ 
-          position: 'absolute', 
-          bottom: 0, 
-          left: 0, 
-          right: 0, 
-          height: '3px', 
-          background: 'rgba(255,255,255,0.05)',
-          zIndex: 10
+      {/* 📏 GLOBAL PROGRESS RAIL */}
+      {syncState && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
+          background: 'rgba(255,255,255,0.1)', overflow: 'hidden'
         }}>
-          <div style={{ 
-            height: '100%', 
-            background: 'var(--brand)', 
-            width: `${percent}%`, 
-            transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-            boxShadow: '0 0 10px var(--brand)'
+          <div style={{
+            height: '100%', background: 'var(--brand)', 
+            width: `${percent}%`, transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
           }}></div>
         </div>
       )}
+
+      <style>{`
+        @keyframes pulse-glow {
+          0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+          70% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+      `}</style>
     </header>
   )
 }

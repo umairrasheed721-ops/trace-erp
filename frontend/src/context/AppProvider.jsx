@@ -14,6 +14,8 @@ export default function AppProvider({ children }) {
     try { return JSON.parse(localStorage.getItem('trace_user')) } catch(e) { return null }
   })
   const [permissions, setPermissions] = useState([])
+  const [syncState, setSyncState] = useState(null)
+  const [syncHistory, setSyncHistory] = useState([])
 
   const addToast = (message, type = 'info', duration = 3500) => {
     const id = Date.now()
@@ -59,9 +61,44 @@ export default function AppProvider({ children }) {
       .catch(() => setPermissions([]))
   }
 
+  const fetchSyncHistory = () => {
+    if (!token) return
+    fetch('/api/sync/history')
+      .then(r => r.json())
+      .then(setSyncHistory)
+      .catch(() => {})
+  }
+
   useEffect(() => {
-    if (token) fetchPermissions()
+    if (token) {
+      fetchPermissions()
+      fetchSyncHistory()
+    }
   }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    
+    // Connect to global SSE stream
+    const eventSource = new EventSource('/api/public/sse')
+    
+    eventSource.addEventListener('sync_progress', (e) => {
+      const data = JSON.parse(e.data)
+      // Only show progress if it's for the current store
+      if (data.storeId === activeStoreId) {
+        setSyncState(data)
+        if (data.status === 'Sync Complete') {
+          setTimeout(() => setSyncState(null), 5000)
+        }
+      }
+    })
+
+    eventSource.addEventListener('sync_history_updated', () => {
+      fetchSyncHistory()
+    })
+
+    return () => eventSource.close()
+  }, [token, activeStoreId])
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -128,7 +165,8 @@ export default function AppProvider({ children }) {
     sidebarCollapsed, toggleSidebar,
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
-    permissions, setPermissions, fetchPermissions
+    permissions, setPermissions, fetchPermissions,
+    syncState, syncHistory, fetchSyncHistory
   }
 
   return (
