@@ -524,4 +524,18 @@ function runMigrations(db) {
     `INSERT OR IGNORE INTO sync_schedules (courier, sync_type, interval_minutes) VALUES (?, ?, ?)`
   );
   scheduleSeeds.forEach(([courier, type, mins]) => insertSchedule.run(courier, type, mins));
+
+  // ── Sync History / Notification Hub ──────────────────────────────────
+  // Stores per-sync session results for the 🔔 Notification Hub in the Topbar
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      total INTEGER DEFAULT 0,
+      success INTEGER DEFAULT 0,
+      failed INTEGER DEFAULT 0,
+      log_data TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+  `);
 }
