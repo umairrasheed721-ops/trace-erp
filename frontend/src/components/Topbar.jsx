@@ -41,6 +41,22 @@ export default function Topbar() {
   const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
   const percent = Math.min(rawPercent, 100)
   
+  const downloadAuditReport = async (logId, logType) => {
+    try {
+      const res = await fetch(`/api/sync/history/${logId}/download`)
+      if (!res.ok) throw new Error('Download failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Sync_Audit_${(logType || 'report').replace(/\s+/g, '_')}_${logId}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      addToast('❌ Download failed', 'error')
+    }
+  }
+
   const hasErrors = Array.isArray(syncHistory) && syncHistory.some(log => log.failed > 0)
 
   return (
@@ -118,14 +134,13 @@ export default function Topbar() {
                           ✅ {log.success} Success | {log.failed > 0 ? <span style={{ color: 'var(--red)' }}>❌ {log.failed} Failed</span> : '🎉 0 Failed'}
                         </div>
                         {log.failed > 0 && (
-                          <a 
-                            href={`/api/sync/history/${log.id}/download`} 
-                            target="_blank" rel="noreferrer"
+                          <button
+                            onClick={() => downloadAuditReport(log.id, log.type)}
                             className="btn btn-primary btn-sm" 
-                            style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', textDecoration: 'none', textAlign: 'center', display: 'block' }}
+                            style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', cursor: 'pointer' }}
                           >
                             📊 Download Audit Report
-                          </a>
+                          </button>
                         )}
                       </div>
                     ))}
