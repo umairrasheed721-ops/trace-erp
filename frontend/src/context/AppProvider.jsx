@@ -80,8 +80,20 @@ export default function AppProvider({ children }) {
   }, [token])
 
   useEffect(() => {
-    if (!token) return
+    if (!token || !activeStoreId) return
     
+    // Check if there is an active sync already running on the server
+    fetch(`/api/tracking/progress?store_id=${activeStoreId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.status !== 'idle' && data.status !== 'Sync Complete') {
+          setSyncState(data)
+        }
+      })
+      .catch(() => {})
+
     // Connect to global SSE stream
     const eventSource = new EventSource('/api/public/sse')
     
