@@ -30,6 +30,7 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN (tracking_number IS NULL OR tracking_number = '') AND delivery_status != 'Cancelled' THEN 1 ELSE 0 END) as without_tracking_id,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) THEN 1 ELSE 0 END) as cost_gaps,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count
       FROM orders
@@ -161,7 +162,8 @@ router.get('/daily', (req, res) => {
         withoutTrackingId: day.without_tracking_id || 0,
         paymentPaid,
         diffCorrection,
-        deliveredPaymentPending: day.delivered_payment_pending || 0
+        deliveredPaymentPending: day.delivered_payment_pending || 0,
+        costGaps: day.cost_gaps || 0
       };
     });
 
@@ -195,7 +197,7 @@ router.get('/daily', (req, res) => {
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
-            deliveredPaymentPending: 0
+            deliveredPaymentPending: 0, costGaps: 0
           });
         }
         curr.setDate(curr.getDate() + 1);
