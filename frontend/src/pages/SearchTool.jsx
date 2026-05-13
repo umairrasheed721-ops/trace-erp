@@ -234,6 +234,11 @@ export default function SearchTool() {
     setPage(1)
   }, [debouncedKeyword, debouncedColFilters, status, preset, customStart, customEnd])
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('search_compact') === 'true')
+  const [showKPIs, setShowKPIs] = useState(() => localStorage.getItem('search_show_kpis') !== 'false')
+  const toggleKPIs = () => setShowKPIs(prev => {
+    localStorage.setItem('search_show_kpis', !prev)
+    return !prev
+  })
   const [editingOrder, setEditingOrder] = useState(null)
   const [editorLoading, setEditorLoading] = useState(false)
   const [bookingId, setBookingId] = useState(null)
@@ -1234,6 +1239,8 @@ export default function SearchTool() {
           setShowNameDialog={setShowNameDialog}
           sortMode={sortMode}
           setSortMode={setSortMode}
+          showKPIs={showKPIs}
+          toggleKPIs={toggleKPIs}
         />
       </div>
 
