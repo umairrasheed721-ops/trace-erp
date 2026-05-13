@@ -1144,45 +1144,6 @@ export default function SearchTool() {
   return (
     <div className={compactMode ? 'ultra-compact' : ''}>
       <ApiStatusBanner />
-      {/* REAL-TIME SYNC PROGRESS BAR */}
-      {syncProgress && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
-          background: 'var(--bg-surface)', 
-          opacity: 0.98,
-          backdropFilter: 'blur(10px)',
-          padding: '12px 24px', 
-          borderBottom: '2px solid var(--brand)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-          animation: 'slideDown 0.3s ease'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1.2rem' }}>{syncProgress.current >= syncProgress.total && syncProgress.total > 0 ? '✅' : '⚡'}</span>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                  {syncProgress.message || 'Processing Orders...'}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                  {syncProgress.current} of {syncProgress.total} orders synced
-                </div>
-              </div>
-            </div>
-            <div style={{ fontWeight: 900, fontSize: '1.1rem', color: 'var(--brand)' }}>
-              {syncProgress.total > 0 ? Math.min(Math.round((syncProgress.current / syncProgress.total) * 100), 100) : 0}%
-            </div>
-          </div>
-          <div style={{ height: 6, background: 'var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ 
-              height: '100%', 
-              background: 'linear-gradient(90deg, var(--brand) 0%, #fff 100%)', 
-              width: `${syncProgress.total > 0 ? Math.min((syncProgress.current / syncProgress.total) * 100, 100) : 0}%`,
-              transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-              boxShadow: '0 0 15px var(--brand)'
-            }}></div>
-          </div>
-        </div>
-      )}
 
       {/* Main Page Header */}
       <div className="sticky-controls">

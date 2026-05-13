@@ -88,7 +88,7 @@ export default function AppProvider({ children }) {
     eventSource.addEventListener('sync_progress', (e) => {
       const data = JSON.parse(e.data)
       // Only show progress if it's for the current store
-      if (data.storeId === activeStoreId) {
+      if (String(data.storeId) === String(activeStoreId)) {
         setSyncState(data)
         if (data.status === 'Sync Complete') {
           setTimeout(() => setSyncState(null), 5000)
