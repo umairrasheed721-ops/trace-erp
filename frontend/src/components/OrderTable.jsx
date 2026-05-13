@@ -647,31 +647,7 @@ export default function OrderTable({
                           key={col.id} 
                           style={{ fontWeight: 800, color: profit > 0 ? 'var(--green)' : 'var(--red)', position: 'relative', overflow: 'visible' }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>Rs {Math.round(profit).toLocaleString()}</span>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (activeTooltipOrderId === o.id) {
-                                  setActiveTooltipOrderId(null);
-                                  setBreakdown(null);
-                                } else {
-                                  setActiveTooltipOrderId(o.id);
-                                  fetchBreakdown(o.id);
-                                }
-                              }}
-                              style={{ 
-                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', 
-                                borderRadius: '50%', width: 20, height: 20, display: 'flex', 
-                                alignItems: 'center', justifyContent: 'center', cursor: 'pointer', 
-                                fontSize: '0.7rem', color: profit > 0 ? 'var(--green)' : 'var(--red)', transition: 'all 0.2s',
-                                opacity: 0.6
-                              }}
-                            >
-                              ℹ️
-                            </button>
-                          </div>
-                          {activeTooltipOrderId === o.id && <CostBreakdownTooltip orderId={o.id} />}
+                          Rs {Math.round(profit).toLocaleString()}
                         </td>
                       )
                     }

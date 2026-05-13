@@ -841,15 +841,9 @@ input:checked + .slider:before {
   display: inline-block;
 }
 
-.cost-cell-container:hover .cost-tooltip {
-  visibility: visible;
-  opacity: 1;
-  transform: translateY(0);
-}
-
 .cost-tooltip {
   position: absolute;
-  bottom: 110%;
+  bottom: 120%;
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-elevated);
@@ -860,7 +854,7 @@ input:checked + .slider:before {
   width: 260px;
   z-index: 2000;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
+  pointer-events: auto; /* Enable clicking close button */
   text-align: left;
   overflow: hidden;
   backdrop-filter: blur(10px);
