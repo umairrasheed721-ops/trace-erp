@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Topbar() {
   const { 
     activeStore, activeStoreId, addToast, theme, toggleTheme,
-    syncState, syncHistory, fetchSyncHistory 
+    syncState, syncHistory, fetchSyncHistory,
+    isFocusMode, toggleFocusMode
   } = useApp()
+  const location = useLocation()
+  const isCommandCenter = location.pathname === '/'
   
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationRef = useRef(null)
@@ -208,6 +212,23 @@ export default function Topbar() {
               </div>
             )}
           </div>
+
+          {isCommandCenter && (
+            <button 
+              onClick={toggleFocusMode} 
+              className={`btn btn-sm ${isFocusMode ? 'btn-brand' : 'btn-secondary'}`}
+              title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode (Hide Filters & Stats)"}
+              style={{ 
+                width: 38, height: 38, borderRadius: '50%', padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isFocusMode ? 'var(--brand-glow)' : 'rgba(255,255,255,0.05)', 
+                border: isFocusMode ? '1px solid var(--brand)' : '1px solid var(--border)',
+                boxShadow: isFocusMode ? '0 0 15px rgba(99, 102, 241, 0.4)' : 'none'
+              }}
+            >
+              <span style={{ fontSize: '1.2rem' }}>🎯</span>
+            </button>
+          )}
 
           <button 
             onClick={toggleTheme} 

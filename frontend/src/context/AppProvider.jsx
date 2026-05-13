@@ -16,6 +16,15 @@ export default function AppProvider({ children }) {
   const [permissions, setPermissions] = useState([])
   const [syncState, setSyncState] = useState(null)
   const [syncHistory, setSyncHistory] = useState([])
+  const [isFocusMode, setIsFocusMode] = useState(() => localStorage.getItem('trace_focus_mode') === 'true')
+
+  const toggleFocusMode = () => {
+    setIsFocusMode(prev => {
+      const next = !prev
+      localStorage.setItem('trace_focus_mode', next)
+      return next
+    })
+  }
 
   const addToast = (message, type = 'info', duration = 3500) => {
     const id = Date.now()
@@ -181,7 +190,8 @@ export default function AppProvider({ children }) {
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
     permissions, setPermissions, fetchPermissions,
-    syncState, syncHistory, fetchSyncHistory
+    syncState, syncHistory, fetchSyncHistory,
+    isFocusMode, toggleFocusMode
   }
 
   return (
