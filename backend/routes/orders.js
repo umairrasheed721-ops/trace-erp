@@ -544,18 +544,20 @@ router.post('/bulk-book-postex', async (req, res) => {
 // POST /api/orders/bulk-sync-status
 router.post('/bulk-sync-status', async (req, res) => {
   const { ids } = req.body;
-  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
-
-  const { refreshShopifyUpdates } = require('../engines/shopify');
+  if (!ids || !Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });\n
+  const { broadcast } = require('../sse');
   
   try {
-    // We fetch the store for the first order
     const firstOrder = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
     if (!firstOrder) throw new Error('No orders found');
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(firstOrder.store_id);
+    const storeId = store.id;
 
-    // Instead of a full scan, we refresh specific orders
-    // We'll process them in small batches to avoid timeouts
+    // Activate global Topbar capsule
+    global.syncProgress = global.syncProgress || {};
+    global.syncProgress[storeId] = { status: 'Bulk Shopify Status Sync...', processed: 0, total: ids.length };
+    broadcast('sync_progress', { storeId, status: 'Bulk Shopify Status Sync...', processed: 0, total: ids.length });
+
     let updatedCount = 0;
     const batchSize = 50;
     
@@ -564,11 +566,28 @@ router.post('/bulk-sync-status', async (req, res) => {
       const ordersToSync = db.prepare(`SELECT shopify_order_id FROM orders WHERE id IN (${batchIds.map(() => '?').join(',')})`).all(...batchIds);
       const shopifyIds = ordersToSync.map(o => o.shopify_order_id);
       
-      // We pass specific IDs to a new optimized engine function
       const { syncSpecificOrders } = require('../engines/shopify');
       const count = await syncSpecificOrders(store, shopifyIds);
       updatedCount += count;
+
+      const p = Math.min(i + batchSize, ids.length);
+      global.syncProgress[storeId] = { status: `Syncing batch ${Math.ceil(p/batchSize)}...`, processed: p, total: ids.length };
+      broadcast('sync_progress', { storeId, status: `Syncing batch ${Math.ceil(p/batchSize)}...`, processed: p, total: ids.length });
     }
+
+    // Mark complete
+    global.syncProgress[storeId] = { status: 'Sync Complete', processed: ids.length, total: ids.length };
+    broadcast('sync_progress', { storeId, status: 'Sync Complete', processed: ids.length, total: ids.length });
+    setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
+
+    // Save to notification hub
+    try {
+      db.prepare('INSERT INTO sync_history (type, total, success, failed, log_data) VALUES (?, ?, ?, ?, ?)').run(
+        'Bulk Shopify Sync', ids.length, updatedCount, 0, JSON.stringify([])
+      );
+      db.prepare("DELETE FROM sync_history WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
+      broadcast('sync_history_updated', { type: 'Bulk Shopify Sync' });
+    } catch(e) {}
 
     res.json({ success: true, count: updatedCount });
   } catch (err) {
@@ -588,19 +607,39 @@ router.post('/bulk-sync-courier', async (req, res) => {
     const firstOrder = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0]);
     if (!firstOrder) throw new Error('No orders found');
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(firstOrder.store_id);
+    const storeId = store.id;
 
-    // Call sync with progress callback
+    // Set global progress state so Topbar capsule activates
+    global.syncProgress = global.syncProgress || {};
+    global.syncProgress[storeId] = { status: 'Bulk Courier Sync...', processed: 0, total: ids.length };
+    broadcast('sync_progress', { storeId, status: 'Bulk Courier Sync...', processed: 0, total: ids.length });
+
     const updatedCount = await syncSpecificCourierOrders(store, ids, (current, total, message) => {
-      broadcast('sync_progress', { 
-        storeId: store.id,
-        current, 
-        total, 
-        message 
-      });
+      const p = Number(current) || 0;
+      const t = Number(total) || 0;
+      global.syncProgress[storeId] = { status: message || 'Syncing...', processed: p, total: t };
+      // Broadcast in unified format so global Topbar capsule picks it up
+      broadcast('sync_progress', { storeId, status: message || 'Syncing...', processed: p, total: t });
     });
+
+    // Mark complete and save to Notification Hub
+    global.syncProgress[storeId] = { status: 'Sync Complete', processed: ids.length, total: ids.length };
+    broadcast('sync_progress', { storeId, status: 'Sync Complete', processed: ids.length, total: ids.length });
+    setTimeout(() => { if (global.syncProgress) delete global.syncProgress[storeId]; }, 5000);
+
+    // Save to notification hub log
+    try {
+      db.prepare('INSERT INTO sync_history (type, total, success, failed, log_data) VALUES (?, ?, ?, ?, ?)').run(
+        'Bulk Courier Sync', ids.length, updatedCount, ids.length - updatedCount, JSON.stringify([])
+      );
+      db.prepare("DELETE FROM sync_history WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
+      broadcast('sync_history_updated', { type: 'Bulk Courier Sync' });
+    } catch(e) {}
 
     res.json({ success: true, count: updatedCount });
   } catch (err) {
+    const storeId = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(ids[0])?.store_id;
+    if (storeId && global.syncProgress) delete global.syncProgress[storeId];
     res.status(500).json({ error: err.message });
   }
 });
