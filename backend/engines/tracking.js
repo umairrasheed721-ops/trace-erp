@@ -105,6 +105,12 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const statusMap = loadStatusMaps();
 
   for (const batch of chunks(toProcess, CONCURRENT)) {
+    if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+      console.log(`🛑 PostEx Sync aborted by user`);
+      auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Processed ${processed}/${toProcess.length}` });
+      break;
+    }
+
     const results = await Promise.allSettled(
       batch.map(async order => {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -315,6 +321,12 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   let processedCount = 0;
 
   for (const batch of chunks(toProcess, CONCURRENT)) {
+    if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+      console.log(`🛑 Instaworld Sync aborted by user`);
+      auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Processed ${processedCount}/${toProcess.length}` });
+      break;
+    }
+
     const results = await Promise.all(batch.map(async (o) => {
       // Try keys sequentially until we get a result
       for (const key of apiKeys) {
@@ -388,6 +400,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   const total = orders.length;
   let processed = 0;
   const updatesToApply = [];
+  const logs = []; // Initialize detailed audit logs
 
   // Group by type
   const postexOrders = orders.filter(o => (o.courier || '').toLowerCase().includes('postex'));
@@ -402,6 +415,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     
     const batchSize = 5;
     for (let i = 0; i < postexOrders.length; i += batchSize) {
+      const storeId = store.id;
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Bulk Courier Sync (PostEx) aborted by user`);
+        logs.push({ type: 'SYSTEM', tracking_number: 'ABORTED', status: 'Failed', details: 'Sync stopped by user' });
+        break;
+      }
+
       const batch = postexOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
         try {
@@ -412,22 +432,28 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           if (res.ok) {
             const data = await res.json();
             const rawStatus = data?.dist?.transactionStatus || data?.transactionStatus || data?.data?.transactionStatus || data?.statusDescription;
-            if (rawStatus) {
-              const statusMap = loadStatusMaps();
-              const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
-              const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((newStatus||rawStatus).toLowerCase());
-              updatesToApply.push({ 
-                id: order.id, 
-                courier_status: rawStatus, 
-                delivery_status: newStatus, 
-                courier: 'PostEx',
-                failed_attempt_increment: isAttemptFailure ? 1 : 0 
-              });
+              if (rawStatus) {
+                const statusMap = loadStatusMaps();
+                const newStatus = applyMap(statusMap, 'PostEx', rawStatus);
+                const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((newStatus||rawStatus).toLowerCase());
+                updatesToApply.push({ 
+                  id: order.id, 
+                  courier_status: rawStatus, 
+                  delivery_status: newStatus, 
+                  courier: 'PostEx',
+                  failed_attempt_increment: isAttemptFailure ? 1 : 0 
+                });
+                logs.push({ type: 'PostEx', tracking_number: order.tracking_number, status: 'Success', details: `Status: ${rawStatus}` });
+              } else {
+                logs.push({ type: 'PostEx', tracking_number: order.tracking_number, status: 'Failed', details: `API OK, but no status found in response` });
+              }
+            } else {
+               logs.push({ type: 'PostEx', tracking_number: order.tracking_number, status: 'Failed', details: `API HTTP ${res.status}` });
             }
-          }
-        } catch (e) {
-          console.error(`PostEx Sync Error [${order.tracking_number}]:`, e.message);
-        } finally {
+          } catch (e) {
+            console.error(`PostEx Sync Error [${order.tracking_number}]:`, e.message);
+            logs.push({ type: 'PostEx', tracking_number: order.tracking_number, status: 'Failed', details: `API Error: ${e.message}` });
+          } finally {
           processed++;
           if (onProgress) onProgress(processed, total, `Syncing PostEx tracking...`);
         }
@@ -450,6 +476,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     const logFile = path.join(__dirname, '../sync_debug.log');
 
     for (let i = 0; i < otherOrders.length; i += batchSize) {
+      const storeId = store.id;
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Bulk Courier Sync (Instaworld) aborted by user`);
+        logs.push({ type: 'SYSTEM', tracking_number: 'ABORTED', status: 'Failed', details: 'Sync stopped by user' });
+        break;
+      }
+
       const batch = otherOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
         let success = false;
@@ -500,8 +533,15 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
                   failed_attempt_increment: isAttemptFailure ? 1 : 0 
                 });
                 success = true;
+                logs.push({ type: 'Instaworld', tracking_number: order.tracking_number, status: 'Success', details: `Status: ${rawStatus}` });
+              } else {
+                 if(key === apiKeys[apiKeys.length-1]) logs.push({ type: 'Instaworld', tracking_number: order.tracking_number, status: 'Failed', details: `API OK, but no status found` });
               }
+            } else {
+               if(key === apiKeys[apiKeys.length-1]) logs.push({ type: 'Instaworld', tracking_number: order.tracking_number, status: 'Failed', details: `API HTTP ${res.status}` });
             }
+          } catch (e) {
+             if(key === apiKeys[apiKeys.length-1]) logs.push({ type: 'Instaworld', tracking_number: order.tracking_number, status: 'Failed', details: `API Error: ${e.message}` });
           } finally {
             processed++;
             if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
@@ -538,7 +578,7 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     updateMany(updatesToApply);
   }
 
-  return updatesToApply.length;
+  return { updatedCount: updatesToApply.length, logs };
 }
 
 module.exports = { syncPostEx, syncInstaworld, syncSpecificCourierOrders, loadStatusMaps, applyMap };

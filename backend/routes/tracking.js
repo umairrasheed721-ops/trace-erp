@@ -88,6 +88,19 @@ router.get('/progress', (req, res) => {
   res.json(global.syncProgress[store_id] || { status: 'idle', total: 0, processed: 0 });
 });
 
+// POST /api/tracking/cancel-sync
+router.post('/cancel-sync', (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  
+  if (global.syncProgress && global.syncProgress[store_id]) {
+    global.syncProgress[store_id].abort = true;
+    res.json({ success: true, message: 'Cancellation signal sent.' });
+  } else {
+    res.json({ success: false, message: 'No active sync found.' });
+  }
+});
+
 // POST /api/tracking/sync-shopify - Shopify data only (new orders + refresh + costs)
 router.post('/sync-shopify', async (req, res) => {
   const { store_id } = req.body;

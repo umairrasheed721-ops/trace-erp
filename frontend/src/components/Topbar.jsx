@@ -41,6 +41,22 @@ export default function Topbar() {
   const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
   const percent = Math.min(rawPercent, 100)
   
+  const handleCancelSync = async () => {
+    if (!activeStore?.id) return;
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch('/api/tracking/cancel-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ store_id: activeStore.id })
+      });
+      if (res.ok) {
+        addToast('🛑 Stopping sync...', 'info');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
   const downloadAuditReport = async (logId, logType) => {
     try {
       const token = localStorage.getItem('trace_token') || '';
@@ -83,6 +99,17 @@ export default function Topbar() {
               <span style={{ color: 'var(--text-muted)', fontWeight: 400, whiteSpace: 'nowrap' }}>
                 {processed} / {Math.max(processed, total)} ({percent}%)
               </span>
+              <button 
+                onClick={handleCancelSync}
+                title="Stop Sync"
+                style={{
+                  background: 'var(--red)', border: 'none', color: 'white', borderRadius: '50%',
+                  width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', marginLeft: 8, padding: 0, fontSize: '0.6rem', lineHeight: 1
+                }}
+              >
+                ✖
+              </button>
             </div>
           )}
         </div>

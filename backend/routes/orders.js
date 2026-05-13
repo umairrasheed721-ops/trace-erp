@@ -562,6 +562,11 @@ router.post('/bulk-sync-status', async (req, res) => {
     const batchSize = 50;
     
     for (let i = 0; i < ids.length; i += batchSize) {
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Bulk Shopify Sync aborted by user`);
+        break;
+      }
+
       const batchIds = ids.slice(i, i + batchSize);
       const ordersToSync = db.prepare(`SELECT shopify_order_id FROM orders WHERE id IN (${batchIds.map(() => '?').join(',')})`).all(...batchIds);
       const shopifyIds = ordersToSync.map(o => o.shopify_order_id);
@@ -614,7 +619,7 @@ router.post('/bulk-sync-courier', async (req, res) => {
     global.syncProgress[storeId] = { status: 'Bulk Courier Sync...', processed: 0, total: ids.length };
     broadcast('sync_progress', { storeId, status: 'Bulk Courier Sync...', processed: 0, total: ids.length });
 
-    const updatedCount = await syncSpecificCourierOrders(store, ids, (current, total, message) => {
+    const { updatedCount, logs } = await syncSpecificCourierOrders(store, ids, (current, total, message) => {
       const p = Number(current) || 0;
       const t = Number(total) || 0;
       global.syncProgress[storeId] = { status: message || 'Syncing...', processed: p, total: t };
@@ -630,7 +635,7 @@ router.post('/bulk-sync-courier', async (req, res) => {
     // Save to notification hub log
     try {
       db.prepare('INSERT INTO sync_history (type, total, success, failed, log_data) VALUES (?, ?, ?, ?, ?)').run(
-        'Bulk Courier Sync', ids.length, updatedCount, ids.length - updatedCount, JSON.stringify([])
+        'Bulk Courier Sync', ids.length, updatedCount, ids.length - updatedCount, JSON.stringify(logs || [])
       );
       db.prepare("DELETE FROM sync_history WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
       broadcast('sync_history_updated', { type: 'Bulk Courier Sync' });

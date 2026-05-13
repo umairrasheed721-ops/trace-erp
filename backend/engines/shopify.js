@@ -261,6 +261,12 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
     // ── STREAMING SYNC: Process batch-by-batch to save memory ─────────
     while (nextUrl) {
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Shopify Fetch Sync aborted by user`);
+        auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Added ${totalAdded}/${totalScanned}` });
+        break;
+      }
+
       const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
 
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
@@ -357,6 +363,12 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     let updatedOrders = [];
 
     while (nextUrl) {
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Shopify Refresh Sync aborted by user`);
+        // Note: For refresh, auditLogs aren't accumulated natively, but we can break the loop safely.
+        break;
+      }
+
       const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
       if (rateLimit) {
