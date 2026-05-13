@@ -31,7 +31,9 @@ export default function SearchFilters({
   SORT_OPTIONS,
   setShowSaveDialog,
   setShowColPicker,
-  setShowNameDialog
+  setShowNameDialog,
+  sortMode,
+  setSortMode
 }) {
   return (
     <div style={{ marginBottom: 16 }}>
@@ -208,6 +210,13 @@ export default function SearchFilters({
          <div style={{ display: 'flex', gap: 8 }}>
             <button className={`btn btn-sm ${compactMode ? 'btn-primary' : 'btn-secondary'}`} onClick={toggleCompact}>
               {compactMode ? '📱 Ultra Compact' : '🖥️ Standard View'}
+            </button>
+            <button 
+              className={`btn btn-sm ${sortMode === 'instant' ? 'btn-primary' : 'btn-secondary'}`} 
+              onClick={() => setSortMode(sortMode === 'instant' ? 'deep' : 'instant')}
+              title={sortMode === 'instant' ? "Sorting only the current page (blazing fast)" : "Sorting entire database (slower but deep)"}
+            >
+              {sortMode === 'instant' ? '⚡ Instant Mode' : '🌐 Deep Mode'}
             </button>
             <button className="btn btn-secondary btn-sm" onClick={toggleAgingBar}>
               {showAgingBar ? '📊 Hide Aging' : '📊 Show Aging'}

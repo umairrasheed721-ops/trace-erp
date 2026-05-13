@@ -162,6 +162,7 @@ export default function SearchTool() {
   const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [debugWhere, setDebugWhere] = useState('')
+  const lastSearchRef = useRef('')
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -186,8 +187,15 @@ export default function SearchTool() {
   const [keyword, setKeyword] = useState(location.state?.keyword || '')
   const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
-  const [sortKey, setSortKey] = useState('order_date')
-  const [sortDir, setSortDir] = useState('desc')
+  const [sortKey, setSortKey] = useState(() => localStorage.getItem('sort_key') || 'order_date')
+  const [sortDir, setSortDir] = useState(() => localStorage.getItem('sort_dir') || 'desc')
+  const [sortMode, setSortMode] = useState(() => localStorage.getItem('sort_mode') || 'instant')
+
+  useEffect(() => {
+    localStorage.setItem('sort_key', sortKey)
+    localStorage.setItem('sort_dir', sortDir)
+    localStorage.setItem('sort_mode', sortMode)
+  }, [sortKey, sortDir, sortMode])
 
   const handleHeaderSort = (key) => {
     if (sortKey === key) {
@@ -197,7 +205,24 @@ export default function SearchTool() {
       setSortDir('desc')
     }
     setSort('Custom')
+    if (sortMode === 'deep') setPage(1)
   }
+
+  const displayedOrders = useMemo(() => {
+    if (sortMode === 'deep') return allOrders;
+    return [...allOrders].sort((a, b) => {
+      let valA = a[sortKey], valB = b[sortKey];
+      if (sortKey === 'price' || sortKey === 'cost') {
+        valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0;
+      }
+      if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+      if (sortKey !== 'order_date') {
+        return new Date(b.order_date) - new Date(a.order_date);
+      }
+      return 0;
+    });
+  }, [allOrders, sortKey, sortDir, sortMode]);
 
   const [colFilters, setColFilters] = useState({
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
@@ -895,27 +920,32 @@ export default function SearchTool() {
   // Load all orders for the active store (we filter client-side for instant search)
   useEffect(() => {
     if (!activeStoreId) return
+
+    // Hybrid Logic: Detect if ONLY sort changed
+    const searchConfig = JSON.stringify({ activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters });
+    const isSortOnlyChange = lastSearchRef.current === searchConfig;
+    lastSearchRef.current = searchConfig;
+
+    if (sortMode === 'instant' && isSortOnlyChange) {
+      return; // Skip server fetch, useMemo will handle local re-sort
+    }
+
     setLoading(true)
-    
     const controller = new AbortController();
     const signal = controller.signal;
     
-    // If it's a special mode (in brackets), we now pass it to backend for efficient filtering
     const queryStatus = status === 'All Statuses' ? '' : status
-    
     const kw = debouncedKeyword ? debouncedKeyword.trim().replace(/^#/, '') : ''
     const dateRange = getDateRange(preset, customStart, customEnd)
     const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
     const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
 
     const limit = 250
-    // Encode colFilters into query string
     const colFilterParams = Object.entries(debouncedColFilters)
       .filter(([_, v]) => v && v.trim())
       .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
       .join('')
 
-    // Map sortKey to backend columns
     const backendSortMap = {
       'order_date': 'order_date',
       'cost': 'cost',
@@ -939,7 +969,7 @@ export default function SearchTool() {
       })
       
       return () => controller.abort();
-  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir])
+  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir, sortMode])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -999,7 +1029,7 @@ export default function SearchTool() {
   }, [activeStoreId]);
 
   const filteredOrders = useMemo(() => {
-    let result = [...allOrders];
+    let result = [...displayedOrders];
 
     // Filter by Aging Bucket if one is selected
     if (activeAgingBucket) {
@@ -1202,6 +1232,8 @@ export default function SearchTool() {
           setShowSaveDialog={setShowSaveDialog}
           setShowColPicker={setShowColPicker}
           setShowNameDialog={setShowNameDialog}
+          sortMode={sortMode}
+          setSortMode={setSortMode}
         />
       </div>
 
