@@ -68,7 +68,7 @@ export default function Reports() {
     let filters = {
       preset: 'Custom Range',
       customStart: isMonthly ? `${dateStr}-01` : dateStr,
-      customEnd: isMonthly ? new Date(dateStr.split('-')[0], parseInt(dateStr.split('-')[1]), 0).toISOString().split('T')[0] : dateStr, 
+      customEnd: isMonthly ? new Date(parseInt(dateStr.split('-')[0]), parseInt(dateStr.split('-')[1]), 0).toLocaleDateString('en-CA') : dateStr, 
       status: 'All Statuses'
     };
 
