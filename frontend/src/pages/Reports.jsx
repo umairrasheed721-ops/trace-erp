@@ -68,7 +68,7 @@ export default function Reports() {
     let filters = {
       preset: 'Custom Range',
       customStart: isMonthly ? `${dateStr}-01` : dateStr,
-      customEnd: isMonthly ? `${dateStr}-31` : dateStr, 
+      customEnd: isMonthly ? new Date(dateStr.split('-')[0], parseInt(dateStr.split('-')[1]), 0).toISOString().split('T')[0] : dateStr, 
       status: 'All Statuses'
     };
 
@@ -84,7 +84,7 @@ export default function Reports() {
     else if (colId === 'fakeReturns') filters.status = '[WATCHDOG FRAUD]';
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
-    else if (colId === 'costGaps') filters.status = 'MISSING COST';
+    else if (colId === 'costGaps') filters.status = '[MISSING COST]';
 
     navigate('/search', { state: filters });
   };
