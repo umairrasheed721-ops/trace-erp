@@ -778,7 +778,7 @@ router.post('/:id/book-postex', async (req, res) => {
     const trackingNumber = await createPostExOrder(order, order);
     
     // 2. Update local database
-    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = "Booked", status_date = datetime("now") WHERE id = ?')
+    db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, 'PostEx', req.params.id);
 
     // 3. Fulfill in Shopify
@@ -817,7 +817,7 @@ router.post('/:id/book-instaworld', async (req, res) => {
     const trackingNumber = await createInstaworldOrder(order, order, courier_name || 'TCS');
     
     // 2. Update local database
-    db.prepare('UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = "Booked", status_date = datetime("now") WHERE id = ?')
+    db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, courier_name || 'Instaworld', req.params.id);
 
     // 3. Fulfill in Shopify

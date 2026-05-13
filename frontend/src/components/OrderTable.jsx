@@ -199,7 +199,7 @@ export default function OrderTable({
                   style={{ cursor: 'pointer', userSelect: 'none' }}
                 >
                   <div className="flex items-center gap-1">
-                    {col.id === 'cost' || col.id === 'profit' ? (
+                    {col.id === 'cost' ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       {col.label}
                       <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>ℹ️</span>
