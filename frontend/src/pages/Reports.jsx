@@ -85,6 +85,7 @@ export default function Reports() {
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
     else if (colId === 'costGaps') filters.status = '[MISSING COST]';
+    else if (colId === 'overduePayoutCount') filters.status = 'OVERDUE PAYOUT';
 
     navigate('/search', { state: filters });
   };
@@ -293,7 +294,7 @@ export default function Reports() {
           estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
-          paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0
+          paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0
         };
       }
       const m = acc[month];
@@ -320,6 +321,8 @@ export default function Reports() {
       m.diffCorrection += row.diffCorrection || 0;
       m.deliveredPaymentPending += row.deliveredPaymentPending || 0;
       m.costGaps += row.costGaps || 0;
+      m.unpaidAmount += row.unpaidAmount || 0;
+      m.overduePayoutCount += row.overduePayoutCount || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
       m.totalSale += (row.roasMeta * totalMarketing);
       return acc;
@@ -398,7 +401,9 @@ export default function Reports() {
     { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },
     { id: 'diffCorrection', label: 'Correction', group: 'kpi' },
     { id: 'deliveredPaymentPending', label: 'Unpaid Del', group: 'kpi' },
-    { id: 'costGaps', label: 'Cost Gaps', group: 'kpi' }
+    { id: 'costGaps', label: 'Cost Gaps', group: 'kpi' },
+    { id: 'unpaidAmount', label: 'Unpaid Payouts', group: 'kpi' },
+    { id: 'overduePayoutCount', label: 'Overdue 10+', group: 'kpi' }
   ];
 
   const visibleCols = columns.filter(c => !hiddenColumns.includes(c.id));
@@ -557,7 +562,7 @@ export default function Reports() {
                     if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                     
                     if (col.id === 'pnl') style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
-                    const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps'].includes(col.id);
+                    const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount'].includes(col.id);
 
                     return (
                       <td 
@@ -565,8 +570,8 @@ export default function Reports() {
                         style={{ 
                           ...style, 
                           cursor: isClickable ? 'pointer' : 'default',
-                          color: (col.id === 'costGaps' && row.costGaps > 0) ? 'var(--red)' : style.color,
-                          fontWeight: (col.id === 'costGaps' && row.costGaps > 0) ? 'bold' : style.fontWeight
+                          color: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0)) ? 'var(--red)' : style.color,
+                          fontWeight: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0)) ? 'bold' : style.fontWeight
                         }} 
                         onClick={() => isClickable && handleDrilldown(row, col.id)}
                       >
