@@ -65,8 +65,11 @@ export default function AppProvider({ children }) {
     if (!token) return
     fetch('/api/sync/history')
       .then(r => r.json())
-      .then(setSyncHistory)
-      .catch(() => {})
+      .then(data => {
+        if (Array.isArray(data)) setSyncHistory(data)
+        else setSyncHistory([])
+      })
+      .catch(() => setSyncHistory([]))
   }
 
   useEffect(() => {

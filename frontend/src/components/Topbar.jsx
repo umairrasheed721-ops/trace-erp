@@ -37,7 +37,7 @@ export default function Topbar() {
   }
 
   const percent = syncState?.total ? Math.round((syncState.processed / syncState.total) * 100) : 0
-  const hasErrors = syncHistory.some(log => log.failed > 0)
+  const hasErrors = Array.isArray(syncHistory) && syncHistory.some(log => log.failed > 0)
 
   return (
     <header className="topbar" style={{ position: 'relative', borderBottom: 'none' }}>
