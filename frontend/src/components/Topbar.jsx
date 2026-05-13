@@ -36,7 +36,11 @@ export default function Topbar() {
     }
   }
 
-  const percent = syncState?.total ? Math.round((syncState.processed / syncState.total) * 100) : 0
+  const processed = syncState?.processed || 0
+  const total = syncState?.total || 0
+  const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
+  const percent = Math.min(rawPercent, 100)
+  
   const hasErrors = Array.isArray(syncHistory) && syncHistory.some(log => log.failed > 0)
 
   return (
@@ -55,10 +59,10 @@ export default function Topbar() {
               borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--brand)',
               animation: 'pulse-glow 2s infinite'
             }}>
-              <span className="loading-spinner" style={{ width: 12, height: 12 }}></span>
-              <span>{syncState.status}</span>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
-                {syncState.processed} / {syncState.total} ({percent}%)
+              <span className="loading-spinner" style={{ width: 12, height: 12, borderWeight: '2px' }}></span>
+              <span style={{ whiteSpace: 'nowrap' }}>{syncState.status}</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, whiteSpace: 'nowrap' }}>
+                {processed} / {Math.max(processed, total)} ({percent}%)
               </span>
             </div>
           )}

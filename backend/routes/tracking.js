@@ -99,8 +99,10 @@ router.post('/sync-shopify', async (req, res) => {
 
   const updateProgress = (stage, processed, total) => {
     if (global.syncProgress[store_id]) {
-      global.syncProgress[store_id] = { status: stage, processed, total };
-      broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
+      const p = Number(processed) || 0;
+      const t = Number(total) || 0;
+      global.syncProgress[store_id] = { status: stage, processed: p, total: t };
+      broadcast('sync_progress', { storeId: store_id, status: stage, processed: p, total: t });
     }
   };
 
