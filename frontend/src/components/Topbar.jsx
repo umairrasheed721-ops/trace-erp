@@ -114,25 +114,54 @@ export default function Topbar() {
           )}
         </div>
 
-        <div className="topbar-actions" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <button onClick={() => handleSync('shopify')} disabled={!!syncState} className="btn btn-secondary btn-sm">
-            🛒 Shopify Sync
-          </button>
-          <button onClick={() => handleSync('courier')} disabled={!!syncState} className="btn btn-secondary btn-sm">
-            🚚 Courier Sync
+        <div className="topbar-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button 
+            onClick={() => handleSync('shopify')} 
+            disabled={!!syncState} 
+            className="btn btn-secondary btn-sm"
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', height: 38,
+              borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
+            }}
+          >
+            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🛒</span>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Shopify Sync</span>
           </button>
 
-          <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 5px' }}></div>
+          <button 
+            onClick={() => handleSync('courier')} 
+            disabled={!!syncState} 
+            className="btn btn-secondary btn-sm"
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', height: 38,
+              borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
+            }}
+          >
+            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🚚</span>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Courier Sync</span>
+          </button>
+
+          <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 8px', opacity: 0.5 }}></div>
 
           {/* 🔔 NOTIFICATION HUB */}
           <div style={{ position: 'relative' }} ref={notificationRef}>
             <button 
               onClick={() => setShowNotifications(!showNotifications)}
               className="btn btn-secondary btn-sm"
-              style={{ width: 36, height: 36, borderRadius: '50%', padding: 0, position: 'relative' }}
+              style={{ 
+                width: 38, height: 38, borderRadius: '50%', padding: 0, position: 'relative',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
+              }}
             >
-              🔔
-              {hasErrors && <span style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)' }}></span>}
+              <span style={{ fontSize: '1.2rem' }}>🔔</span>
+              {hasErrors && (
+                <span style={{ 
+                  position: 'absolute', top: -2, right: -2, width: 12, height: 12, 
+                  background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)',
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)'
+                }}></span>
+              )}
             </button>
 
             {showNotifications && (
@@ -180,8 +209,16 @@ export default function Topbar() {
             )}
           </div>
 
-          <button onClick={toggleTheme} className="btn btn-secondary btn-sm" style={{ width: 36, height: 36, borderRadius: '50%', padding: 0 }}>
-            {theme === 'dark' ? '☀️' : '🌙'}
+          <button 
+            onClick={toggleTheme} 
+            className="btn btn-secondary btn-sm" 
+            style={{ 
+              width: 38, height: 38, borderRadius: '50%', padding: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
+            }}
+          >
+            <span style={{ fontSize: '1.2rem' }}>{theme === 'dark' ? '☀️' : '🌙'}</span>
           </button>
         </div>
       </div>
