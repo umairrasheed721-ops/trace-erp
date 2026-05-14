@@ -12,6 +12,9 @@ export default function BulkActions({
   handleBulkUpdateStatus,
   handleBulkWhatsApp,
   handleExportTracking,
+  handleBulkBookPostEx,
+  handleBulkBookInstaworld,
+  handleBulkCancel,
   totalMatching,
   handleSelectAllMatching
 }) {
@@ -41,7 +44,37 @@ export default function BulkActions({
           Select all {totalMatching} matching orders
         </button>
       )}
-      
+
+      {/* --- BULK BOOKING CONTROLS --- */}
+      <button 
+        disabled={bulkActionLoading}
+        onClick={handleBulkBookPostEx}
+        className="btn btn-sm" 
+        style={{ background: '#0055ff', color: 'white', fontWeight: 800, border: '2px solid white' }}
+      >
+        🚀 BOOK POSTEX
+      </button>
+
+      <button 
+        disabled={bulkActionLoading}
+        onClick={() => handleBulkBookInstaworld('Trax')}
+        className="btn btn-sm" 
+        style={{ background: '#ff5500', color: 'white', fontWeight: 800, border: '2px solid white' }}
+      >
+        🌐 BOOK TRAX
+      </button>
+
+      <button 
+        disabled={bulkActionLoading}
+        onClick={handleBulkCancel}
+        className="btn btn-sm" 
+        style={{ background: '#ff0000', color: 'white', fontWeight: 800, border: '2px solid white' }}
+      >
+        🛑 CANCEL BOOKING
+      </button>
+
+      <div style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.2)', margin: '0 8px' }} />
+
       <button 
         disabled={bulkActionLoading}
         onClick={handleBulkConfirm}
@@ -53,30 +86,14 @@ export default function BulkActions({
 
       <button 
         disabled={bulkActionLoading}
-        onClick={handleBulkSyncStatus}
-        className="btn btn-sm" 
-        style={{ background: 'black', color: 'white', fontWeight: 700 }}
-      >
-        {bulkActionLoading ? '⌛...' : '🔄 SYNC STATUS (FORCE)'}
-      </button>
-
-      <button 
-        disabled={bulkActionLoading}
-        onClick={handleBulkSyncCourier}
-        className="btn btn-sm" 
-        style={{ background: 'black', color: 'var(--brand)', fontWeight: 700, border: '1px solid var(--brand)' }}
-      >
-        {bulkActionLoading ? '⌛...' : '⚡ SYNC COURIER (FORCE)'}
-      </button>
-
-      <button 
-        disabled={bulkActionLoading}
         onClick={handleBulkRevert}
         className="btn btn-sm" 
         style={{ background: 'black', color: '#ff4444', fontWeight: 700 }}
       >
-        {bulkActionLoading ? '⌛...' : '↩️ REVERT ALL'}
+        {bulkActionLoading ? '⌛...' : '↩️ REVERT TO PENDING'}
       </button>
+
+      <div style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.2)', margin: '0 8px' }} />
 
       <select 
         className="btn btn-sm" 

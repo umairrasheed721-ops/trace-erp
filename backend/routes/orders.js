@@ -195,14 +195,21 @@ router.put('/:id/cs-update', async (req, res) => {
       }
     }
 
+    const newItemsCount = items.reduce((acc, item) => acc + parseInt(item.quantity || 0), 0);
+    const newProductTitles = items.map(i => `${i.title} (x${i.quantity})`).join(', ');
+
     db.db.prepare(`
       UPDATE orders SET 
         line_items = ?,
         price = ?,
         cost = ?,
+        items_count = ?,
+        product_titles = ?,
+        discount_amount = ?,
+        cs_notes = ?,
         notes = json_set(COALESCE(notes, '{}'), '$.cs_discount', ?)
       WHERE id = ?
-    `).run(newItemsStr, price, totalCost, discount_amount, id);
+    `).run(newItemsStr, price, totalCost, newItemsCount, newProductTitles, discount_amount, req.body.cs_notes || '', discount_amount, id);
 
     const newOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     

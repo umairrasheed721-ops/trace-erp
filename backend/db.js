@@ -82,9 +82,21 @@ function initDb() {
       cost_locked INTEGER DEFAULT 0,
       courier_fee_locked INTEGER DEFAULT 0,
       confirmation_token TEXT,
+      cs_notes TEXT,
+      discount_amount REAL DEFAULT 0,
       UNIQUE(store_id, shopify_order_id)
     );
+  `);
 
+  // --- 🔄 DATABASE MIGRATIONS (Add new columns to existing table) ---
+  try {
+    db.exec(`ALTER TABLE orders ADD COLUMN cs_notes TEXT`);
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0`);
+  } catch (e) { /* Column already exists */ }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,

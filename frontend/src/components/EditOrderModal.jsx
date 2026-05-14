@@ -11,18 +11,24 @@ export default function EditOrderModal({
   // CS Edit State
   const [localItems, setLocalItems] = useState([]);
   const [localDiscount, setLocalDiscount] = useState(0);
+  const [localNotes, setLocalNotes] = useState('');
   const [isSavingCS, setIsSavingCS] = useState(false);
 
   useEffect(() => {
     if (editingOrder) {
       const items = editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []));
       setLocalItems(items);
+      setLocalNotes(editingOrder.cs_notes || '');
       let d = 0;
       if (editingOrder.notes) {
         try {
           const parsedNotes = JSON.parse(editingOrder.notes);
-          d = parsedNotes.cs_discount || 0;
-        } catch(e) {}
+          d = parsedNotes.cs_discount || editingOrder.discount_amount || 0;
+        } catch(e) {
+          d = editingOrder.discount_amount || 0;
+        }
+      } else {
+        d = editingOrder.discount_amount || 0;
       }
       setLocalDiscount(d);
     }
@@ -46,7 +52,8 @@ export default function EditOrderModal({
         body: JSON.stringify({
           line_items: localItems,
           price: newPrice,
-          discount_amount: parseFloat(localDiscount || 0)
+          discount_amount: parseFloat(localDiscount || 0),
+          cs_notes: localNotes
         })
       });
       const data = await res.json();
@@ -197,8 +204,20 @@ export default function EditOrderModal({
                </div>
                <div style={{ marginTop: 16 }}>
                  <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCSUpdate} disabled={isSavingCS}>
-                   {isSavingCS ? 'Saving...' : '💾 Save CS Edit'}
+                   {isSavingCS ? 'Saving...' : '💾 Save & Sync Shopify'}
                  </button>
+               </div>
+
+               <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+                  <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 700 }}>INTERNAL CS NOTES (ERP ONLY)</label>
+                  <textarea 
+                    className="form-textarea"
+                    rows={3}
+                    value={localNotes}
+                    onChange={e => setLocalNotes(e.target.value)}
+                    placeholder="Why was this order edited? e.g. Customer changed size, or item was out of stock."
+                    style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.02)' }}
+                  />
                </div>
 
                <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

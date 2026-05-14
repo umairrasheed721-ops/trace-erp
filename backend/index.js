@@ -353,6 +353,9 @@ app.use('/api/scheduler', schedulerRoutes);
 const citiesRoutes = require('./routes/cities');
 app.use('/api/cities', citiesRoutes);
 
+const bulkRoutes = require('./routes/bulk_booking');
+app.use('/api/bulk', bulkRoutes);
+
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {
   let waBotStatus = 'UNKNOWN';

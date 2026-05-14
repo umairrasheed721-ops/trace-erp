@@ -418,14 +418,17 @@ export default function SearchTool() {
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-revert`, {
+      const res = await fetch(`${apiUrl}/api/bulk/revert`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ ids: selectedIds })
       })
       if (res.ok) {
         addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
-        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending' } : o))
+        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
         setSelectedIds([])
       }
     } catch { addToast('Bulk error', 'error') }
@@ -539,19 +542,22 @@ export default function SearchTool() {
       return
     }
 
-    if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx?`)) return
+    if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx in background?`)) return
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-book-postex`, {
+      const res = await fetch(`${apiUrl}/api/bulk/book`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ ids: selectedIds, courier: 'PostEx' })
       })
       const data = await res.json()
-      addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
+      addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
       setSelectedIds([])
-      runSearch()
+      // Do not runSearch immediately since it's running in background. SSE will update rows.
     } catch { addToast('Bulk booking error', 'error') }
     finally { setBulkActionLoading(false) }
   }
@@ -566,20 +572,43 @@ export default function SearchTool() {
       return
     }
 
-    if (!confirm(`🌐 Book ${selectedIds.length} orders with ${courier}?`)) return
+    if (!confirm(`🌐 Book ${selectedIds.length} orders with ${courier} in background?`)) return
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-book-instaworld`, {
+      const res = await fetch(`${apiUrl}/api/bulk/book`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds, courier_name: courier })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ ids: selectedIds, courier })
       })
       const data = await res.json()
-      addToast(`✅ Bulk Booking complete! Success: ${data.count}, Failed: ${data.failed}`, 'info')
+      addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
       setSelectedIds([])
-      runSearch()
+      // Do not runSearch immediately since it's running in background. SSE will update rows.
     } catch { addToast('Bulk booking error', 'error') }
+    finally { setBulkActionLoading(false) }
+  }
+
+  const handleBulkCancel = async () => {
+    if (selectedIds.length === 0) return
+    if (!confirm(`🛑 Cancel ${selectedIds.length} bookings? This will attempt to void them in the courier portals.`)) return
+    setBulkActionLoading(true)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/bulk/cancel`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ ids: selectedIds })
+      })
+      addToast(`🛑 Background Cancel Started! Check Topbar.`, 'info')
+      setSelectedIds([])
+    } catch { addToast('Bulk cancel error', 'error') }
     finally { setBulkActionLoading(false) }
   }
 
@@ -1247,6 +1276,7 @@ export default function SearchTool() {
         handleBulkUpdateStatus={handleBulkUpdateStatus}
         handleBulkBookPostEx={handleBulkBookPostEx}
         handleBulkBookInstaworld={handleBulkBookInstaworld}
+        handleBulkCancel={handleBulkCancel}
         handleBulkWhatsApp={handleStartWAQueue}
         handleExportTracking={handleExportTracking}
         totalMatching={totalCount}
