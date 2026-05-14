@@ -284,6 +284,10 @@ router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
 
     try {
       // 1. Update ERP
+      if (order.delivery_status === 'Return Received') {
+        results.push({ id, tracking: order.tracking_number, status: '⚠️ Already Verified' });
+        continue;
+      }
       db.prepare("UPDATE orders SET delivery_status = 'Return Received', cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
         .run(`\n[Audit] Return verified on ${new Date().toLocaleDateString()}`, id);
 
@@ -296,10 +300,13 @@ router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
       }
 
       // 3. Log the return
-      db.prepare(`
-        INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
+      const existing = db.prepare('SELECT id FROM returns_log WHERE order_id = ? AND created_at >= datetime("now", "+5 hours", "-30 seconds")').get(order.id);
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
+      }
 
       results.push({ id, tracking: order.tracking_number, status: '✅ Verified', shopifyStatus });
     } catch (e) {
@@ -368,10 +375,13 @@ router.post('/returns', authenticateToken, async (req, res) => {
 
       // Log the return
       if (erpStatus === '✅ Updated') {
-        db.prepare(`
-          INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(store_id, order.id, order.tracking_number, shopifyStatus.includes('✅') ? 1 : 0, req.user?.username || 'system');
+        const existing = db.prepare('SELECT id FROM returns_log WHERE order_id = ? AND created_at >= datetime("now", "+5 hours", "-30 seconds")').get(order.id);
+        if (!existing) {
+          db.prepare(`
+            INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(store_id, order.id, order.tracking_number, shopifyStatus.includes('✅') ? 1 : 0, req.user?.username || 'system');
+        }
       }
     }
 

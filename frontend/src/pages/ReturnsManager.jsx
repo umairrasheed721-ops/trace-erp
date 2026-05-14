@@ -204,7 +204,9 @@ export default function ReturnsManager() {
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {activeTab === 'queue' && selectedIds.length > 0 && (
-                <button className="btn btn-brand btn-sm" onClick={() => handleBulkVerify(selectedIds)}>Verify Selected</button>
+                <button className="btn btn-brand btn-sm" onClick={() => handleBulkVerify(selectedIds)} disabled={isProcessing}>
+                  {isProcessing ? 'Processing...' : 'Verify Selected'}
+                </button>
               )}
             </div>
           </div>
@@ -246,7 +248,9 @@ export default function ReturnsManager() {
                         <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}>{row.delivery_status}</span>
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleBulkVerify([row.id])}>Verify</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleBulkVerify([row.id])} disabled={isProcessing}>
+                          {isProcessing ? '...' : 'Verify'}
+                        </button>
                       </td>
                     </tr>
                   ))}
