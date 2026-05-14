@@ -18,7 +18,7 @@ export default function BulkActions({
   totalMatching,
   handleSelectAllMatching
 }) {
-  const { user } = useApp()
+  const { user, activeStore } = useApp()
   if (selectedIds.length === 0) return null
 
   return (
@@ -46,23 +46,29 @@ export default function BulkActions({
       )}
 
       {/* --- BULK BOOKING CONTROLS --- */}
-      <button 
-        disabled={bulkActionLoading}
-        onClick={handleBulkBookPostEx}
+      <select 
         className="btn btn-sm" 
-        style={{ background: '#0055ff', color: 'white', fontWeight: 800, border: '2px solid white' }}
-      >
-        🚀 BOOK POSTEX
-      </button>
-
-      <button 
+        style={{ background: 'var(--brand)', color: 'black', fontWeight: 800, border: '2px solid black', cursor: 'pointer' }}
         disabled={bulkActionLoading}
-        onClick={() => handleBulkBookInstaworld('Trax')}
-        className="btn btn-sm" 
-        style={{ background: '#ff5500', color: 'white', fontWeight: 800, border: '2px solid white' }}
+        onChange={(e) => {
+          const val = e.target.value;
+          if (val === 'postex') handleBulkBookPostEx();
+          else if (val) handleBulkBookInstaworld(val);
+          e.target.value = ''; // Reset
+        }}
+        value=""
       >
-        🌐 BOOK TRAX
-      </button>
+        <option value="" disabled>🚀 BOOK ORDER...</option>
+        {activeStore?.postex_token && <option value="postex">PostEx</option>}
+        {activeStore?.instaworld_key && (
+          <>
+            <option value="Trax">Trax</option>
+            <option value="Leopards">Leopards</option>
+            <option value="TCS">TCS</option>
+            <option value="M&P">M&P</option>
+          </>
+        )}
+      </select>
 
       <button 
         disabled={bulkActionLoading}

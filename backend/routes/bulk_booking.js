@@ -23,10 +23,10 @@ async function processBulkBooking(storeId, ids, courier) {
     const { createPostExOrder, cancelPostExOrder } = require('../engines/postex');
     createOrderFn = createPostExOrder;
     cancelOrderFn = cancelPostExOrder;
-  } else if (courier === 'Trax' || courier === 'Leopards' || courier === 'CallCourier') {
+  } else if (['Trax', 'Leopards', 'CallCourier', 'TCS', 'M&P'].includes(courier)) {
     const { createInstaworldOrder } = require('../engines/instaworld');
     createOrderFn = createInstaworldOrder;
-    cancelOrderFn = null; // We'll handle generic instaworld cancel if needed
+    cancelOrderFn = null; 
   }
 
   if (!createOrderFn) {
