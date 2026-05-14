@@ -168,16 +168,12 @@ export default function SearchTool() {
   }, [allOrders])
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // Explicit search trigger (mostly for the 'Run Search' button)
   const runSearch = () => {
-    if (page === 1) {
-      // Force a refresh even if page is already 1 by slightly changing a dependency or just relying on the user's intent
-      // For now, let's just ensure page 1 is set which triggers the useEffect
-      setPage(1); 
-    } else {
-      setPage(1);
-    }
+    setRefreshTrigger(prev => prev + 1);
+    setPage(1);
   }
 
   const [preset, setPreset] = useState(location.state?.preset || 'This Month')
@@ -1003,7 +999,7 @@ export default function SearchTool() {
       })
       
       return () => controller.abort();
-  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir, sortMode])
+  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -1219,9 +1215,6 @@ export default function SearchTool() {
                 <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'var(--brand-glow)', color: 'var(--brand)', borderRadius: '12px', border: '1px solid var(--brand)', letterSpacing: '0.05em' }}>v1.8.0: SKU & TOOLTIP LIVE</span>
               </h2>
               {!compactMode && <p style={{ margin: '4px 0 0', opacity: 0.6 }}>Advanced search, filter, and logistics management</p>}
-            </div>
-            <div className="flex gap-2">
-              <button className="btn btn-primary btn-sm" onClick={runSearch}>🔄 Run Search</button>
             </div>
           </div>
 
