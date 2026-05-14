@@ -171,6 +171,66 @@ router.get('/', (req, res) => {
   });
 });
 
+// PUT /api/orders/:id/cs-update - Advanced CS edit (Line items, Discounts, Price)
+router.put('/:id/cs-update', async (req, res) => {
+  const { id } = req.params;
+  const { line_items, price, discount_amount } = req.body;
+
+  try {
+    const oldOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!oldOrder) return res.status(404).json({ error: 'Order not found' });
+
+    const newItemsStr = JSON.stringify(line_items || []);
+    
+    // Calculate new total cost based on new line items
+    const { getCorrectedCity } = require('./cities'); // If needed, but not for items
+    let totalCost = 0;
+    const items = line_items || [];
+    for (const item of items) {
+      if (item.sku) {
+        const costRow = db.db.prepare('SELECT unit_cost FROM product_master_costs WHERE store_id = ? AND sku = ?').get(oldOrder.store_id, item.sku);
+        if (costRow) {
+          totalCost += (costRow.unit_cost * item.quantity);
+        }
+      }
+    }
+
+    db.db.prepare(`
+      UPDATE orders SET 
+        line_items = ?,
+        price = ?,
+        cost = ?,
+        notes = json_set(COALESCE(notes, '{}'), '$.cs_discount', ?)
+      WHERE id = ?
+    `).run(newItemsStr, price, totalCost, discount_amount, id);
+
+    const newOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    
+    db.logOrderChange({
+      order_id: id,
+      user_id: req.user?.id,
+      type: 'CS_EDIT',
+      old_val: oldOrder,
+      new_val: newOrder
+    });
+
+    // Sync to Shopify: Add a note indicating the order was edited via ERP
+    if (newOrder.shopify_order_id && newOrder.store_id) {
+      const store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(newOrder.store_id);
+      if (store) {
+        const { appendShopifyNote } = require('../engines/shopify_finance');
+        const note = `[TRACE ERP] Order manually edited by CS. New Total: Rs ${price}. Discount applied: Rs ${discount_amount}.`;
+        appendShopifyNote(store, newOrder.shopify_order_id, note).catch(console.error);
+      }
+    }
+
+    broadcast('message', { type: 'order_updated', orderId: id });
+    res.json({ success: true, order: newOrder });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PUT /api/orders/:id - Update a single order field (for manual edits)
 router.put('/:id', (req, res) => {
   const { id } = req.params;

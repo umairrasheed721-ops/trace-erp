@@ -208,13 +208,17 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         const addressStr = [addr.address1, addr.address2].filter(Boolean).join(' ').trim();
 
+        const rawCity = addr.city || '';
+        const { getCorrectedCity } = require('../routes/cities');
+        const cleanCity = getCorrectedCity(rawCity);
+
         insertOrder.run(
           storeId, String(order.id), order.name,
           fullName,
           (order.created_at || '').split('T')[0],
           addr.phone || customer.phone || '',
           addressStr || '—',
-          addr.city || '',
+          cleanCity,
           finalPrice, tracking, activeCount, order.note || '',
           productTitles,
           status,
@@ -793,6 +797,10 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       const token = crypto.randomBytes(16).toString('hex');
       const fullName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || '');
       
+      const rawCity = addr.city || '';
+      const { getCorrectedCity } = require('../routes/cities');
+      const cleanCity = getCorrectedCity(rawCity);
+      
       db.prepare(`
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
@@ -804,8 +812,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         fullName,
         (order.created_at || '').split('T')[0],
         addr.phone || customer.phone || '',
-        `${addr.address1 || ''} ${addr.city || ''}`.trim(),
-        addr.city || '',
+        `${addr.address1 || ''} ${cleanCity}`.trim(),
+        cleanCity,
         finalPrice, tracking, activeCount, order.note || '', productTitles,
         lineItemsJson,
         newDeliveryStatus,

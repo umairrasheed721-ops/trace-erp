@@ -37,6 +37,68 @@ export function AddressCell({ order, onSave }) {
   )
 }
 
+export function CityCell({ order, onSave }) {
+  const [val, setVal] = useState(order.city || '')
+  const [isEditing, setIsEditing] = useState(false)
+  const inputRef = useRef(null)
+
+  useEffect(() => { setVal(order.city || '') }, [order.city])
+
+  const handleBlur = async () => {
+    setIsEditing(false)
+    if (val !== order.city) {
+      await onSave(order.id, 'city', val)
+      
+      // Prompt for dictionary mapping
+      if (order.city && val && order.city.trim().toLowerCase() !== val.trim().toLowerCase()) {
+        const confirmSave = window.confirm(`Save city mapping?\n\n"${order.city}" ➔ "${val}"\n\nThis will auto-correct future orders.`);
+        if (confirmSave) {
+          try {
+            const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+            await fetch(`${apiBase}/api/cities/mappings`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+              },
+              body: JSON.stringify({ original_input: order.city, corrected_name: val })
+            });
+            // Optional: show a small toast or just let it succeed silently
+          } catch (e) {
+            console.error('Failed to save city mapping', e);
+          }
+        }
+      }
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        className="form-input"
+        style={{ fontSize: '0.72rem', width: 120, padding: '2px 4px' }}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={e => { if(e.key === 'Enter') inputRef.current.blur() }}
+        autoFocus
+      />
+    )
+  }
+
+  return (
+    <div 
+      onClick={() => setIsEditing(true)}
+      style={{ cursor: 'pointer', minHeight: 20, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)' }}
+      title="Click to edit city"
+    >
+      {order.city || <span style={{ opacity: 0.3 }}>Missing</span>}
+    </div>
+  )
+}
+
 export function PaidAmountCell({ order, onSave }) {
   const [val, setVal] = useState(order.paid_amount || 0)
   const [isEditing, setIsEditing] = useState(false)

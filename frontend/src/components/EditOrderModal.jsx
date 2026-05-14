@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 
 export default function EditOrderModal({
   editingOrder,
@@ -8,7 +8,65 @@ export default function EditOrderModal({
   updateOrderField,
   isCityValid
 }) {
+  // CS Edit State
+  const [localItems, setLocalItems] = useState([]);
+  const [localDiscount, setLocalDiscount] = useState(0);
+  const [isSavingCS, setIsSavingCS] = useState(false);
+
+  useEffect(() => {
+    if (editingOrder) {
+      const items = editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []));
+      setLocalItems(items);
+      let d = 0;
+      if (editingOrder.notes) {
+        try {
+          const parsedNotes = JSON.parse(editingOrder.notes);
+          d = parsedNotes.cs_discount || 0;
+        } catch(e) {}
+      }
+      setLocalDiscount(d);
+    }
+  }, [editingOrder]);
+
+  const handleCSUpdate = async () => {
+    setIsSavingCS(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      
+      // Calc new price
+      const subtotal = localItems.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
+      const newPrice = Math.max(0, subtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder.courier_fee || 250)); // Assumes 250 shipping if unset
+      
+      const res = await fetch(`${apiBase}/api/orders/${editingOrder.id}/cs-update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          line_items: localItems,
+          price: newPrice,
+          discount_amount: parseFloat(localDiscount || 0)
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingOrder(data.order);
+      } else {
+        alert(data.error);
+      }
+    } catch (e) {
+      alert('Failed to save CS update');
+    } finally {
+      setIsSavingCS(false);
+    }
+  };
+
   if (!editingOrder) return null
+
+  // Live Math
+  const liveSubtotal = localItems.reduce((acc, item) => acc + ((parseFloat(item.price)||0) * (parseInt(item.quantity)||0)), 0);
+  const liveTotal = Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder.courier_fee || 250));
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}>
@@ -54,27 +112,61 @@ export default function EditOrderModal({
             
             {/* Products Card */}
             <div className="card" style={{ padding: 0 }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.85rem' }}>🛒 Line Items</div>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>🛒 Line Items</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => {
+                    const sku = prompt('Enter SKU to add:');
+                    if (sku) {
+                      setLocalItems([...localItems, { id: Date.now(), sku, title: 'Custom Item', quantity: 1, price: 0 }]);
+                    }
+                  }}>+ Add Item</button>
+                </div>
+              </div>
               <div style={{ padding: 16 }}>
-                {(editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []))).map(item => (
-                  <div key={item.id} style={{ display: 'flex', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                {localItems.map((item, idx) => (
+                  <div key={item.id || idx} style={{ display: 'flex', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                     <div style={{ width: 50, height: 50, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid var(--border)' }}>
                       {item.image_url ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '0.6rem', fontWeight: 800 }}>{item.sku?.slice(0,3)}</span>}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{item.title}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.variant_title} • SKU: {item.sku || '—'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                        <button style={{ padding: '2px 6px', fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => {
+                          const newItems = [...localItems];
+                          newItems[idx].quantity = Math.max(1, newItems[idx].quantity - 1);
+                          setLocalItems(newItems);
+                        }}>-</button>
+                        <span style={{ fontSize: '0.8rem' }}>{item.quantity}</span>
+                        <button style={{ padding: '2px 6px', fontSize: '0.7rem', cursor: 'pointer' }} onClick={() => {
+                          const newItems = [...localItems];
+                          newItems[idx].quantity += 1;
+                          setLocalItems(newItems);
+                        }}>+</button>
+                        <button style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: '0.7rem', color: 'var(--red)', cursor: 'pointer', border: 'none', background: 'transparent' }} onClick={() => {
+                          setLocalItems(localItems.filter((_, i) => i !== idx));
+                        }}>Remove</button>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
-                      <div>Rs {Math.round(item.price).toLocaleString()} × {item.quantity}</div>
+                    <div style={{ textAlign: 'right', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <input 
+                        type="number"
+                        style={{ width: 80, fontSize: '0.8rem', textAlign: 'right', padding: '2px 4px' }}
+                        value={item.price}
+                        onChange={(e) => {
+                          const newItems = [...localItems];
+                          newItems[idx].price = e.target.value;
+                          setLocalItems(newItems);
+                        }}
+                      />
                       <div style={{ fontWeight: 700 }}>Rs {Math.round(item.price * item.quantity).toLocaleString()}</div>
                     </div>
                   </div>
                 ))}
-                {!editingOrder.line_items?.length && (
+                {!localItems.length && (
                   <div style={{ textAlign: 'center', padding: 20 }}>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No items found locally.</p>
-                    <button className="btn btn-primary btn-sm" onClick={() => fetchOrderDetails(editingOrder.id)}>🔄 Fetch from Shopify</button>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No items.</p>
                   </div>
                 )}
               </div>
@@ -84,18 +176,32 @@ export default function EditOrderModal({
             <div className="card" style={{ padding: 16 }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
                  <span>Subtotal</span>
-                 <span>Rs {Math.round(Math.max(0, (parseFloat(editingOrder.price) || 0) - 250)).toLocaleString()}</span>
+                 <span>Rs {Math.round(liveSubtotal).toLocaleString()}</span>
+               </div>
+               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem', alignItems: 'center' }}>
+                 <span>CS Discount</span>
+                 <input 
+                   type="number"
+                   style={{ width: 80, fontSize: '0.8rem', textAlign: 'right', padding: '2px 4px' }}
+                   value={localDiscount}
+                   onChange={e => setLocalDiscount(e.target.value)}
+                 />
                </div>
                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '0.8rem' }}>
                  <span>Shipping</span>
-                 <span>Rs 250</span>
+                 <span>Rs {editingOrder.courier_fee || 250}</span>
                </div>
                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', borderTop: '1px solid var(--border)', paddingTop: 8, marginBottom: 16 }}>
                  <span>Total Revenue</span>
-                 <span>Rs {Math.round(parseFloat(editingOrder.price) || 0).toLocaleString()}</span>
+                 <span>Rs {Math.round(liveTotal).toLocaleString()}</span>
+               </div>
+               <div style={{ marginTop: 16 }}>
+                 <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleCSUpdate} disabled={isSavingCS}>
+                   {isSavingCS ? 'Saving...' : '💾 Save CS Edit'}
+                 </button>
                </div>
 
-               <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+               <div style={{ borderTop: '1px dashed var(--border)', paddingTop: 16, marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>🚚 Courier Fee</span>
                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

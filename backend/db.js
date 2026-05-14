@@ -274,6 +274,16 @@ function initDb() {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS city_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      original_input TEXT NOT NULL UNIQUE,
+      corrected_name TEXT NOT NULL,
+      usage_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS role_permissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       role_name TEXT NOT NULL,

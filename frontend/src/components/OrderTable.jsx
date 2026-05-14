@@ -1,5 +1,5 @@
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
-import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from './OrderCells'
+import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
 import { useState, useEffect } from 'react'
 
@@ -484,7 +484,7 @@ export default function OrderTable({
                         ) : '—'}
                       </td>
                     )
-                    if (col.id === 'city') return <td key={col.id}>{o.city || '—'}</td>
+                    if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} /></td>
                     if (col.id === 'address') return (
                       <td key={col.id}>
                         <AddressCell order={o} onSave={updateOrderField} />

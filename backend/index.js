@@ -350,6 +350,8 @@ app.use('/api/cost-manager', costManagerRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/scheduler', schedulerRoutes);
 
+const citiesRoutes = require('./routes/cities');
+app.use('/api/cities', citiesRoutes);
 
 // --- 🚑 INDESTRUCTIBLE HEALTH CHECK ---
 app.get('/api/health', (req, res) => {
