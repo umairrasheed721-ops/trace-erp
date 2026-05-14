@@ -56,37 +56,47 @@ function getOrderFilters(req) {
   
   if (search) {
     const kw = search.trim().toLowerCase().replace(/^#/, '');
-    const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || [];
     
-    tokens.forEach(token => {
-      token = token.replace(/['"]/g, '');
-      const isNegated = token.startsWith('-');
-      const actualToken = isNegated ? token.slice(1) : token;
-      if (!actualToken) return;
+    // Detect Bulk ID Search (Multiple space/newline separated IDs)
+    const spaceTokens = kw.split(/[\s,\n\t]+/).filter(Boolean);
+    const isBulkIDSearch = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{4,}$/.test(t) && /\d/.test(t));
 
-      let clause = '';
-      if (actualToken.includes(':')) {
-        const [field, value] = actualToken.split(':');
-        const target = ['city','phone','courier','ref','status','note'].includes(field) ? field : null;
-        if (target === 'city') clause = 'o.city LIKE ?';
-        else if (target === 'phone') clause = 'o.phone LIKE ?';
-        else if (target === 'courier') clause = 'o.courier LIKE ?';
-        else if (target === 'status') clause = 'o.delivery_status LIKE ?';
-        else if (target === 'note') clause = 'o.notes LIKE ?';
-        else if (target === 'ref') clause = '(o.ref_number LIKE ? OR o.shopify_order_id LIKE ?)';
-        
-        if (clause) {
+    if (isBulkIDSearch) {
+      const orClauses = spaceTokens.map(() => '(o.tracking_number = ? OR o.ref_number = ? OR o.shopify_order_id = ?)').join(' OR ');
+      whereClauses.push(`(${orClauses})`);
+      spaceTokens.forEach(t => queryParams.push(t, t, t));
+    } else {
+      const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || [];
+      tokens.forEach(token => {
+        token = token.replace(/['"]/g, '');
+        const isNegated = token.startsWith('-');
+        const actualToken = isNegated ? token.slice(1) : token;
+        if (!actualToken) return;
+
+        let clause = '';
+        if (actualToken.includes(':')) {
+          const [field, value] = actualToken.split(':');
+          const target = ['city','phone','courier','ref','status','note'].includes(field) ? field : null;
+          if (target === 'city') clause = 'o.city LIKE ?';
+          else if (target === 'phone') clause = 'o.phone LIKE ?';
+          else if (target === 'courier') clause = 'o.courier LIKE ?';
+          else if (target === 'status') clause = 'o.delivery_status LIKE ?';
+          else if (target === 'note') clause = 'o.notes LIKE ?';
+          else if (target === 'ref') clause = '(o.ref_number LIKE ? OR o.shopify_order_id LIKE ?)';
+          
+          if (clause) {
+            whereClauses.push(isNegated ? `NOT (${clause})` : clause);
+            queryParams.push(`%${value}%`);
+            if (target === 'ref') queryParams.push(`%${value}%`);
+          }
+        } else {
+          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR o.product_titles LIKE ?)';
           whereClauses.push(isNegated ? `NOT (${clause})` : clause);
-          queryParams.push(`%${value}%`);
-          if (target === 'ref') queryParams.push(`%${value}%`);
+          const searchVal = `%${actualToken}%`;
+          queryParams.push(searchVal, searchVal, searchVal, searchVal, searchVal, searchVal);
         }
-      } else {
-        clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR o.product_titles LIKE ?)';
-        whereClauses.push(isNegated ? `NOT (${clause})` : clause);
-        const searchVal = `%${actualToken}%`;
-        queryParams.push(searchVal, searchVal, searchVal, searchVal, searchVal, searchVal);
-      }
-    });
+      });
+    }
   }
 
   // Column-specific filters
