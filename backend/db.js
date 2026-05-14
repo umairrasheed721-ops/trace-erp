@@ -233,6 +233,15 @@ function initDb() {
       new_value TEXT, -- JSON
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS returns_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      tracking_number TEXT,
+      restocked_shopify INTEGER DEFAULT 0,
+      processed_by TEXT, 
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
   `);
 
 

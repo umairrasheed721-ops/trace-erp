@@ -10,6 +10,7 @@ const {
   captureShopifyPayment,
   removeShopifyNoteLine
 } = require('../engines/shopify_finance');
+const { authenticateToken } = require('./auth');
 
 function formatDate(dStr) {
   if (!dStr) return '';
@@ -201,8 +202,65 @@ router.get('/returns/pending', (req, res) => {
   }
 });
 
+// GET /api/finance/returns/history
+router.get('/returns/history', authenticateToken, (req, res) => {
+  const { store_id, days = 7 } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const logs = db.prepare(`
+      SELECT rl.*, o.ref_number, o.customer_name, o.courier
+      FROM returns_log rl
+      JOIN orders o ON rl.order_id = o.id
+      WHERE rl.store_id = ?
+      AND rl.created_at >= datetime('now', '-${days} days')
+      ORDER BY rl.created_at DESC
+    `).all(Number(store_id));
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/finance/returns/export-csv
+router.get('/returns/export-csv', authenticateToken, (req, res) => {
+  const { store_id, days = 30 } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const logs = db.prepare(`
+      SELECT rl.created_at as verified_at, o.ref_number, o.shopify_order_id, o.customer_name, rl.tracking_number, o.courier, rl.processed_by, 
+             CASE WHEN rl.restocked_shopify = 1 THEN 'Yes' ELSE 'No' END as restocked
+      FROM returns_log rl
+      JOIN orders o ON rl.order_id = o.id
+      WHERE rl.store_id = ?
+      AND rl.created_at >= datetime('now', '-${days} days')
+      ORDER BY rl.created_at DESC
+    `).all(Number(store_id));
+
+    const headers = ['Date', 'Order Ref', 'Shopify ID', 'Customer', 'Tracking', 'Courier', 'Verified By', 'Restocked'];
+    const rows = logs.map(l => [
+      l.verified_at,
+      l.ref_number,
+      l.shopify_order_id,
+      l.customer_name,
+      l.tracking_number,
+      l.courier,
+      l.processed_by,
+      l.restocked
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=returns_audit_${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/finance/returns/bulk-verify
-router.post('/returns/bulk-verify', async (req, res) => {
+router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
   const { store_id, ids, restockShopify } = req.body;
   if (!store_id || !ids || !Array.isArray(ids)) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -231,9 +289,17 @@ router.post('/returns/bulk-verify', async (req, res) => {
 
       // 2. Restock Shopify
       let shopifyStatus = '⏭️ Skipped';
+      let restocked = 0;
       if (restockShopify && order.shopify_order_id) {
         shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+        if (shopifyStatus.includes('✅')) restocked = 1;
       }
+
+      // 3. Log the return
+      db.prepare(`
+        INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
 
       results.push({ id, tracking: order.tracking_number, status: '✅ Verified', shopifyStatus });
     } catch (e) {
@@ -244,7 +310,7 @@ router.post('/returns/bulk-verify', async (req, res) => {
   res.json({ success: true, results });
 });
 
-router.post('/returns', async (req, res) => {
+router.post('/returns', authenticateToken, async (req, res) => {
   const { store_id, trackingNumbers, updateERP, restockShopify } = req.body;
   if (!store_id || !trackingNumbers || !Array.isArray(trackingNumbers)) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -298,8 +364,16 @@ router.post('/returns', async (req, res) => {
       }
     }
 
-    results.push({ tracking: track, erpStatus, shopifyStatus, orderId: order.shopify_order_id });
-  }
+      results.push({ tracking: track, erpStatus, shopifyStatus });
+
+      // Log the return
+      if (erpStatus === '✅ Updated') {
+        db.prepare(`
+          INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(store_id, order.id, order.tracking_number, shopifyStatus.includes('✅') ? 1 : 0, req.user?.username || 'system');
+      }
+    }
 
   res.json({ success: true, results });
 });
