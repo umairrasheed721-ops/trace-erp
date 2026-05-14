@@ -169,6 +169,7 @@ export default function SearchTool() {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, loading: false })
 
   // Explicit search trigger (mostly for the 'Run Search' button)
   const runSearch = () => {
@@ -362,22 +363,28 @@ export default function SearchTool() {
       }
     }
 
-    if (!confirm(`📦 Mark ${selectedIds.length} orders as ${newStatus}?`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-update-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds, status: newStatus })
-      })
-      if (res.ok) {
-        addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
-        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
-        setSelectedIds([])
+    setConfirmDialog({
+      isOpen: true,
+      title: '📦 Update Status',
+      message: `Mark ${selectedIds.length} orders as "${newStatus}"?`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/orders/bulk-update-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: selectedIds, status: newStatus })
+          })
+          if (res.ok) {
+            addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
+            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
+            setSelectedIds([])
+          }
+        } catch { addToast('Status update failed', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
-    } catch { addToast('Bulk update error', 'error') }
-    finally { setBulkActionLoading(false) }
+    })
   }
 
   const handleBulkConfirm = async () => {
@@ -390,45 +397,57 @@ export default function SearchTool() {
       return
     }
 
-    if (!confirm(`✅ Confirm ${selectedIds.length} orders?`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-confirm`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds })
-      })
-      if (res.ok) {
-        addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
-        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
-        setSelectedIds([])
+    setConfirmDialog({
+      isOpen: true,
+      title: '✅ Confirm Orders',
+      message: `Confirm ${selectedIds.length} orders?`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/orders/bulk-confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: selectedIds })
+          })
+          if (res.ok) {
+            addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
+            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
+            setSelectedIds([])
+          }
+        } catch { addToast('Bulk error', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
-    } catch { addToast('Bulk error', 'error') }
-    finally { setBulkActionLoading(false) }
+    })
   }
 
   const handleBulkRevert = async () => {
     if (selectedIds.length === 0) return
-    if (!confirm(`↩️ Revert ${selectedIds.length} orders to Pending?`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/bulk/revert`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ ids: selectedIds })
-      })
-      if (res.ok) {
-        addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
-        setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
-        setSelectedIds([])
+    setConfirmDialog({
+      isOpen: true,
+      title: '↩️ Revert to Pending',
+      message: `Revert ${selectedIds.length} orders to Pending?`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/bulk/revert`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ ids: selectedIds })
+          })
+          if (res.ok) {
+            addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
+            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
+            setSelectedIds([])
+          }
+        } catch { addToast('Bulk error', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
-    } catch { addToast('Bulk error', 'error') }
-    finally { setBulkActionLoading(false) }
+    })
   }
 
   const handleBulkSyncCourier = async () => {
@@ -538,24 +557,28 @@ export default function SearchTool() {
       return
     }
 
-    if (!confirm(`🚀 Book ${selectedIds.length} orders with PostEx in background?`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/bulk/book`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ ids: selectedIds, courier: 'PostEx' })
-      })
-      const data = await res.json()
-      addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
-      setSelectedIds([])
-      // Do not runSearch immediately since it's running in background. SSE will update rows.
-    } catch { addToast('Bulk booking error', 'error') }
-    finally { setBulkActionLoading(false) }
+    setConfirmDialog({
+      isOpen: true,
+      title: '🚀 PostEx Booking',
+      message: `Book ${selectedIds.length} orders with PostEx in background?`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/bulk/book`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ ids: selectedIds, courier: 'PostEx' })
+          })
+          addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
+          setSelectedIds([])
+        } catch { addToast('Bulk booking error', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
+      }
+    })
   }
 
   const handleBulkBookInstaworld = async (courier) => {
@@ -568,44 +591,54 @@ export default function SearchTool() {
       return
     }
 
-    if (!confirm(`🌐 Book ${selectedIds.length} orders with ${courier} in background?`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/bulk/book`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ ids: selectedIds, courier })
-      })
-      const data = await res.json()
-      addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
-      setSelectedIds([])
-      // Do not runSearch immediately since it's running in background. SSE will update rows.
-    } catch { addToast('Bulk booking error', 'error') }
-    finally { setBulkActionLoading(false) }
+    setConfirmDialog({
+      isOpen: true,
+      title: `🌐 ${courier} Booking`,
+      message: `Book ${selectedIds.length} orders with ${courier} in background?`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/bulk/book`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ ids: selectedIds, courier })
+          })
+          addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
+          setSelectedIds([])
+        } catch { addToast('Bulk booking error', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
+      }
+    })
   }
 
   const handleBulkCancel = async () => {
     if (selectedIds.length === 0) return
-    if (!confirm(`🛑 Cancel ${selectedIds.length} bookings? This will attempt to void them in the courier portals.`)) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/bulk/cancel`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ ids: selectedIds })
-      })
-      addToast(`🛑 Background Cancel Started! Check Topbar.`, 'info')
-      setSelectedIds([])
-    } catch { addToast('Bulk cancel error', 'error') }
-    finally { setBulkActionLoading(false) }
+    setConfirmDialog({
+      isOpen: true,
+      title: '🛑 Cancel Booking',
+      message: `Cancel ${selectedIds.length} bookings? This will attempt to void them in the courier portals.`,
+      onConfirm: async () => {
+        setBulkActionLoading(true)
+        try {
+          const apiUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${apiUrl}/api/bulk/cancel`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ ids: selectedIds })
+          })
+          addToast(`🛑 Cancellation sequence started.`, 'info')
+          setSelectedIds([])
+        } catch { addToast('Bulk cancel error', 'error') }
+        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
+      }
+    })
   }
 
   const handleCancelBooking = async (orderId) => {
@@ -1414,6 +1447,48 @@ export default function SearchTool() {
           onClose={() => setHistoryOrder(null)}
         />
       )}
+      {/* Premium Confirm Modal */}
+      {confirmDialog.isOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content glass-panel" style={{ width: '450px', textAlign: 'center', padding: '30px' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '15px' }}>⚡</div>
+            <h3 className="premium-title">{confirmDialog.title}</h3>
+            <p className="premium-subtitle" style={{ fontSize: '1.1rem', marginBottom: '25px' }}>{confirmDialog.message}</p>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ flex: 1, padding: '12px', fontWeight: 700 }}
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                disabled={bulkActionLoading}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                style={{ flex: 1, padding: '12px', fontWeight: 700 }}
+                onClick={confirmDialog.onConfirm}
+                disabled={bulkActionLoading}
+              >
+                {bulkActionLoading ? '⌛ Processing...' : 'Confirm Action'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .modal-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0,0,0,0.8);
+          backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 10000;
+          animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
     </div>
   )
 }
