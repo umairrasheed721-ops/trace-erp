@@ -54,8 +54,9 @@ function getOrderFilters(req) {
   if (start_date) { whereClauses.push('o.order_date >= ?'); queryParams.push(start_date); }
   if (end_date) { whereClauses.push('o.order_date <= ?'); queryParams.push(end_date); }
   
-  if (search) {
+  if (search && search.trim()) {
     const kw = search.trim().toLowerCase().replace(/^#/, '');
+    if (!kw) return { where: whereClauses.join(' AND '), queryParams };
     
     // Detect Bulk ID Search (Multiple space/newline separated IDs)
     const spaceTokens = kw.split(/[\s,\n\t]+/).filter(Boolean);
