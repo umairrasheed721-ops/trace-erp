@@ -13,6 +13,7 @@ export default function ReturnsManager() {
   const [searchTerm, setSearchTerm] = useState('')
   const [results, setResults] = useState([])
   const inputRef = useRef(null)
+  const lastScanRef = useRef({ code: '', time: 0 })
 
   // Load data
   const fetchPending = async () => {
@@ -65,7 +66,7 @@ export default function ReturnsManager() {
   }, [returnHistory, searchTerm])
 
   const handleBulkVerify = async (idsToVerify) => {
-    if (!activeStoreId || idsToVerify.length === 0) return
+    if (!activeStoreId || idsToVerify.length === 0 || isProcessing) return
     setIsProcessing(true)
     try {
       const res = await fetch(`/api/finance/returns/bulk-verify`, {
@@ -82,7 +83,12 @@ export default function ReturnsManager() {
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`✅ Successfully processed ${data.results.filter(r => r.status.includes('✅')).length} returns`, 'success')
+        const verifiedCount = data.results.filter(r => r.status.includes('✅')).length
+        const alreadyCount = data.results.filter(r => r.status.includes('⚠️')).length
+        
+        if (verifiedCount > 0) addToast(`✅ Processed ${verifiedCount} returns`, 'success')
+        if (alreadyCount > 0 && idsToVerify.length === 1) addToast(`⚠️ Already Verified`, 'info')
+
         setResults(prev => [...data.results, ...prev])
         setSelectedIds([])
         fetchPending()
@@ -106,6 +112,14 @@ export default function ReturnsManager() {
     const lines = val.split('\n').map(l => l.trim()).filter(Boolean)
     if (lines.length > 0) {
       const lastScan = lines[lines.length - 1]
+      
+      // Prevent duplicate processing of the same scan in a short window (3 seconds)
+      const now = Date.now()
+      if (lastScan === lastScanRef.current.code && (now - lastScanRef.current.time < 3000)) {
+        return 
+      }
+      lastScanRef.current = { code: lastScan, time: now }
+
       const match = pendingReturns.find(r => r.tracking_number === lastScan)
       if (match) {
         handleBulkVerify([match.id])
@@ -136,18 +150,19 @@ export default function ReturnsManager() {
         <div className="card" style={{ padding: 20, position: 'sticky', top: 20 }}>
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 12, height: 12, background: 'var(--brand)', borderRadius: '50%', boxShadow: '0 0 10px var(--brand)' }}></div>
-              <h3 style={{ margin: 0, fontSize: '1rem' }}>Parcel Scanner</h3>
+              <div style={{ width: 12, height: 12, background: isProcessing ? 'var(--yellow)' : 'var(--brand)', borderRadius: '50%', boxShadow: isProcessing ? '0 0 10px var(--yellow)' : '0 0 10px var(--brand)', transition: 'all 0.3s' }}></div>
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>{isProcessing ? 'Processing...' : 'Parcel Scanner'}</h3>
             </div>
             <textarea
               ref={inputRef}
               value={trackingInput}
               onChange={e => handleScanInput(e.target.value)}
-              placeholder="Scan tracking barcode..."
+              disabled={isProcessing}
+              placeholder={isProcessing ? "Wait..." : "Scan tracking barcode..."}
               style={{
-                width: '100%', height: 120, background: '#000', border: '2px solid var(--border)',
+                width: '100%', height: 120, background: '#000', border: `2px solid ${isProcessing ? 'var(--yellow)' : 'var(--border)'}`,
                 color: 'var(--brand)', padding: 15, borderRadius: 12, fontSize: '1.1rem',
-                fontFamily: 'monospace', outline: 'none'
+                fontFamily: 'monospace', outline: 'none', transition: 'all 0.3s'
               }}
             />
             <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 8 }}>Auto-verifies orders found in the queue.</p>
@@ -156,12 +171,18 @@ export default function ReturnsManager() {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', opacity: 0.7 }}>Last Actions</h4>
             <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {results.map((r, i) => (
-                <div key={i} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: '0.8rem', borderLeft: `3px solid ${r.status.includes('✅') ? 'var(--green)' : 'var(--red)'}` }}>
-                  <div style={{ fontWeight: 700 }}>{r.tracking}</div>
-                  <div style={{ opacity: 0.7 }}>{r.status} | {r.shopifyStatus}</div>
-                </div>
-              ))}
+              {results.map((r, i) => {
+                let borderColor = 'var(--red)'
+                if (r.status.includes('✅')) borderColor = 'var(--green)'
+                if (r.status.includes('⚠️')) borderColor = 'var(--yellow)'
+                
+                return (
+                  <div key={i} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: '0.8rem', borderLeft: `3px solid ${borderColor}` }}>
+                    <div style={{ fontWeight: 700 }}>{r.tracking}</div>
+                    <div style={{ opacity: 0.7 }}>{r.status} | {r.shopifyStatus}</div>
+                  </div>
+                )
+              })}
               {results.length === 0 && <div style={{ opacity: 0.3, fontSize: '0.8rem', textAlign: 'center' }}>No recent scans</div>}
             </div>
           </div>
@@ -204,7 +225,11 @@ export default function ReturnsManager() {
                 onChange={e => setSearchTerm(e.target.value)}
               />
               {activeTab === 'queue' && selectedIds.length > 0 && (
-                <button className="btn btn-brand btn-sm" onClick={() => handleBulkVerify(selectedIds)} disabled={isProcessing}>
+                <button 
+                  className="btn btn-brand btn-sm" 
+                  onClick={() => handleBulkVerify(selectedIds)}
+                  disabled={isProcessing}
+                >
                   {isProcessing ? 'Processing...' : 'Verify Selected'}
                 </button>
               )}
@@ -221,6 +246,7 @@ export default function ReturnsManager() {
                         type="checkbox" 
                         onChange={e => setSelectedIds(e.target.checked ? filteredPending.map(p => p.id) : [])}
                         checked={selectedIds.length > 0 && selectedIds.length === filteredPending.length}
+                        disabled={isProcessing}
                       />
                     </th>
                     <th>Order</th>
@@ -237,6 +263,7 @@ export default function ReturnsManager() {
                           type="checkbox" 
                           checked={selectedIds.includes(row.id)}
                           onChange={e => setSelectedIds(prev => e.target.checked ? [...prev, row.id] : prev.filter(id => id !== row.id))}
+                          disabled={isProcessing}
                         />
                       </td>
                       <td>
@@ -248,12 +275,21 @@ export default function ReturnsManager() {
                         <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}>{row.delivery_status}</span>
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleBulkVerify([row.id])} disabled={isProcessing}>
-                          {isProcessing ? '...' : 'Verify'}
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          onClick={() => handleBulkVerify([row.id])}
+                          disabled={isProcessing}
+                        >
+                          Verify
                         </button>
                       </td>
                     </tr>
                   ))}
+                  {filteredPending.length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No pending returns.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             ) : (
