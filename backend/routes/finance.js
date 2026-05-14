@@ -180,6 +180,70 @@ router.get('/ghost-product-orders', (req, res) => {
 // ==========================================
 // 📦 UNIFIED RETURNS MANAGER
 // ==========================================
+// GET /api/finance/returns/pending?store_id=1
+router.get('/returns/pending', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const orders = db.prepare(`
+      SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, price
+      FROM orders 
+      WHERE store_id = ? 
+      AND LOWER(delivery_status) IN ('returned', 'rto', 'refused', 'undelivered', 'return in progress', 'shipped')
+      AND LOWER(delivery_status) NOT IN ('return received', 'delivered', 'cancelled', 'paid')
+      ORDER BY order_date DESC
+      LIMIT 1000
+    `).all(Number(store_id));
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/returns/bulk-verify
+router.post('/returns/bulk-verify', async (req, res) => {
+  const { store_id, ids, restockShopify } = req.body;
+  if (!store_id || !ids || !Array.isArray(ids)) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  let shopifyLocationId = null;
+  if (restockShopify) {
+    try { shopifyLocationId = await getPrimaryLocationId(store); } catch (e) {}
+  }
+
+  const results = [];
+  for (const id of ids) {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!order) {
+      results.push({ id, status: '❌ Not Found' });
+      continue;
+    }
+
+    try {
+      // 1. Update ERP
+      db.prepare("UPDATE orders SET delivery_status = 'Return Received', cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
+        .run(`\n[Audit] Return verified on ${new Date().toLocaleDateString()}`, id);
+
+      // 2. Restock Shopify
+      let shopifyStatus = '⏭️ Skipped';
+      if (restockShopify && order.shopify_order_id) {
+        shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+      }
+
+      results.push({ id, tracking: order.tracking_number, status: '✅ Verified', shopifyStatus });
+    } catch (e) {
+      results.push({ id, tracking: order.tracking_number, status: '❌ Error: ' + e.message });
+    }
+  }
+
+  res.json({ success: true, results });
+});
+
 router.post('/returns', async (req, res) => {
   const { store_id, trackingNumbers, updateERP, restockShopify } = req.body;
   if (!store_id || !trackingNumbers || !Array.isArray(trackingNumbers)) {
