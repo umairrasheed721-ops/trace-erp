@@ -180,10 +180,10 @@ export default function SearchTool() {
     }
   }
 
-  const [preset, setPreset] = useState(location.state?.preset || 'Last Month')
+  const [preset, setPreset] = useState(location.state?.preset || 'This Month')
   const [customStart, setCustomStart] = useState(location.state?.customStart || '')
   const [customEnd, setCustomEnd] = useState(location.state?.customEnd || '')
-  const [status, setStatus] = useState(location.state?.status || '[ACTIVE PIPELINE]')
+  const [status, setStatus] = useState(location.state?.status || 'Pending')
   const [keyword, setKeyword] = useState(location.state?.keyword || '')
   const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
