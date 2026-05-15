@@ -391,11 +391,11 @@ function logAction({ store_id, order_id, user_id, action, details, snapshot, lev
       INSERT INTO audit_logs (store_id, order_id, user_id, action, details, snapshot, level)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
-      store_id, 
-      order_id, 
-      user_id, 
-      action, 
-      typeof details === 'object' ? JSON.stringify(details) : details, 
+      store_id,
+      order_id,
+      user_id,
+      action,
+      typeof details === 'object' ? JSON.stringify(details) : details,
       typeof snapshot === 'object' ? JSON.stringify(snapshot) : snapshot,
       level
     );
@@ -424,26 +424,26 @@ function logSystemError(level, message, module = 'server') {
   try {
     db.prepare(`INSERT INTO system_logs (level, message, module) VALUES (?, ?, ?)`)
       .run(level, message.substring(0, 2000), module);
-  } catch (_) {} // Never let error logging crash anything
+  } catch (_) { } // Never let error logging crash anything
 }
 
 module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError };
-try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE audit_logs ADD COLUMN snapshot TEXT").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE orders ADD COLUMN packaging_cost REAL DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE product_master_costs ADD COLUMN previous_unit_cost REAL DEFAULT 0").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE sync_audit ADD COLUMN store_id INTEGER").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'").run(); } catch(e) {}
-try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id)").run(); } catch(e) {}
-try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE stores ADD COLUMN instaworld_key_3 TEXT").run(); } catch(e) {}
-try { db.prepare("ALTER TABLE stores ADD COLUMN gas_proxy_url TEXT").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE audit_logs ADD COLUMN snapshot TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE orders ADD COLUMN cost_locked INTEGER DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE orders ADD COLUMN courier_fee_locked INTEGER DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE orders ADD COLUMN packaging_cost REAL DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE product_master_costs ADD COLUMN previous_unit_cost REAL DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE sync_audit ADD COLUMN store_id INTEGER").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id)").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN instaworld_key_3 TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN gas_proxy_url TEXT").run(); } catch (e) { }
 
 function runMigrations(db) {
   const migrations = [
@@ -485,39 +485,39 @@ function runMigrations(db) {
 
   // Seed from the hardcoded maps that used to live in tracking.js
   const seeds = [
-    ['PostEx',      'postex warehouse',                   'In Transit'],
-    ['PostEx',      'out for return',                     'Return Initiated'],
-    ['PostEx',      'inroute',                            'In Transit'],
-    ['PostEx',      'intransit',                          'In Transit'],
-    ['PostEx',      'delivered',                          'Delivered'],
-    ['PostEx',      'return received',                    'Returned'],
-    ['PostEx',      'attempted',                          'Attempted'],
-    ['PostEx',      'shipper advice',                     'Shipper Advice'],
-    ['PostEx',      'refused',                            'Refused'],
-    ['PostEx',      'cancelled',                          'Cancelled'],
-    ['Instaworld',  'delivered',                          'Delivered'],
-    ['Instaworld',  'pickup done',                        'Booked'],
-    ['Instaworld',  'arrival at insta-hub',               'Booked'],
-    ['Instaworld',  'handover to courier',                'In Transit'],
-    ['Instaworld',  'in transit',                         'In Transit'],
-    ['Instaworld',  'returned to shipper',                'Returned'],
-    ['Instaworld',  'return received at insta hub',       'Returned'],
-    ['Instaworld',  'delivery unsuccessful',              'Shipper Advice'],
-    ['Instaworld',  'shipper advice',                     'Shipper Advice'],
-    ['Instaworld',  'uncollected',                        'Pending'],
-    ['Instaworld',  'out for delivery',                   'Out for Delivery'],
-    ['Instaworld',  'attempted delivery',                 'Attempted'],
-    ['all',         'returned to shipper',                'Returned'],
-    ['all',         'return received at insta hub',       'Returned'],
-    ['all',         'at origin warehouse',                'In Transit'],
-    ['all',         'at destination warehouse',           'In Transit'],
-    ['all',         'at warehouse',                       'In Transit'],
-    ['all',         'in transit',                         'In Transit'],
-    ['all',         'pickup done',                        'Booked'],
-    ['all',         'arrival at insta-hub',               'Booked'],
-    ['all',         'handover to courier',                'In Transit'],
-    ['Leopards',    'returned to shipper',                'Returned'],
-    ['Leopards',    'delivered',                          'Delivered'],
+    ['PostEx', 'postex warehouse', 'In Transit'],
+    ['PostEx', 'out for return', 'Return Initiated'],
+    ['PostEx', 'inroute', 'In Transit'],
+    ['PostEx', 'intransit', 'In Transit'],
+    ['PostEx', 'delivered', 'Delivered'],
+    ['PostEx', 'return received', 'Returned'],
+    ['PostEx', 'attempted', 'Attempted'],
+    ['PostEx', 'shipper advice', 'Shipper Advice'],
+    ['PostEx', 'refused', 'Refused'],
+    ['PostEx', 'cancelled', 'Cancelled'],
+    ['Instaworld', 'delivered', 'Delivered'],
+    ['Instaworld', 'pickup done', 'Booked'],
+    ['Instaworld', 'arrival at insta-hub', 'Booked'],
+    ['Instaworld', 'handover to courier', 'In Transit'],
+    ['Instaworld', 'in transit', 'In Transit'],
+    ['Instaworld', 'returned to shipper', 'Returned'],
+    ['Instaworld', 'return received at insta hub', 'Returned'],
+    ['Instaworld', 'delivery unsuccessful', 'Shipper Advice'],
+    ['Instaworld', 'shipper advice', 'Shipper Advice'],
+    ['Instaworld', 'uncollected', 'Pending'],
+    ['Instaworld', 'out for delivery', 'Out for Delivery'],
+    ['Instaworld', 'attempted delivery', 'Attempted'],
+    ['all', 'returned to shipper', 'Returned'],
+    ['all', 'return received at insta hub', 'Returned'],
+    ['all', 'at origin warehouse', 'In Transit'],
+    ['all', 'at destination warehouse', 'In Transit'],
+    ['all', 'at warehouse', 'In Transit'],
+    ['all', 'in transit', 'In Transit'],
+    ['all', 'pickup done', 'Booked'],
+    ['all', 'arrival at insta-hub', 'Booked'],
+    ['all', 'handover to courier', 'In Transit'],
+    ['Leopards', 'returned to shipper', 'Returned'],
+    ['Leopards', 'delivered', 'Delivered'],
   ];
   const insertMapping = db.prepare(
     `INSERT OR REPLACE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
@@ -527,7 +527,7 @@ function runMigrations(db) {
   // Admin user always has ERP status override authority
   try {
     db.exec(`UPDATE users SET can_override_erp_status = 1 WHERE role = 'admin'`);
-  } catch (e) {}
+  } catch (e) { }
 
   // ── Sync Scheduler Table ─────────────────────────────────────────────
   // Stores per-courier sync intervals; read every minute by the dynamic scheduler
@@ -546,10 +546,10 @@ function runMigrations(db) {
 
   // Seed default schedule rows if not already present
   const scheduleSeeds = [
-    ['PostEx',     'SMART', 30],
-    ['PostEx',     'FULL',  360],
+    ['PostEx', 'SMART', 30],
+    ['PostEx', 'FULL', 360],
     ['Instaworld', 'SMART', 15],
-    ['Instaworld', 'FULL',  360],
+    ['Instaworld', 'FULL', 360],
   ];
   const insertSchedule = db.prepare(
     `INSERT OR IGNORE INTO sync_schedules (courier, sync_type, interval_minutes) VALUES (?, ?, ?)`

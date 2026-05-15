@@ -12,6 +12,7 @@ export default function Sidebar() {
     { to: '/whatsapp-bot', icon: '🤖', label: 'WhatsApp Bot', permission: 'admin_only' },
     { to: '/whatsapp-templates', icon: '✍️', label: 'WA Templates', permission: 'admin_only' },
     { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'admin_only' },
+    { to: '/payout-reconciler', icon: '💸', label: 'Payout Reconciler', permission: 'admin_only' },
     { to: '/costing', icon: '💎', label: 'Master Costing', permission: 'admin_only' },
     { to: '/prevention', icon: '🛡️', label: 'Cost Watchdog', permission: 'admin_only' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },

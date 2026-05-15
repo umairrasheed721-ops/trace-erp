@@ -30,6 +30,8 @@ const DiagnosticCenter = lazy(() => import('./pages/DiagnosticCenter'))
 const SystemStatus = lazy(() => import('./pages/SystemStatus'))
 const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
 
+const PayoutReconciler = lazy(() => import('./pages/PayoutReconciler'))
+
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
 
@@ -60,6 +62,7 @@ function AppContent() {
                   <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
                   <Route path="/whatsapp-templates" element={<TemplateManager />} />
                   <Route path="/finance" element={<FinanceManager />} />
+                  <Route path="/payout-reconciler" element={<PayoutReconciler />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/intelligence" element={<CourierIntelligence />} />
                   <Route path="/stuck" element={<StuckMonitor />} />
