@@ -15,16 +15,16 @@ export default function PayoutReconciler() {
   // Mapping Logic for PostEx
   const processPostEx = (rows) => {
     return rows.map(row => {
-      // Very flexible column detection
-      const ref = row.ORDER_REF || row.Order_Ref || row['Order Reference'] || row.Reference || ''
-      const track = row.TRACKING_NUME || row.Tracking_Number || row['Tracking ID'] || row.Tracking || ''
+      // Very flexible column detection based on your screenshot
+      const ref = row.ORDER_REF_NUMBER || row.ORDER_REF || row.Order_Ref || row['Order Reference'] || ''
+      const track = row.TRACKING_NUMBER || row.TRACKING_NUME || row.Tracking_Number || row['Tracking ID'] || ''
       const status = String(row.STATUS || row.Status || '').toLowerCase().includes('delivered') ? 'D' : 'R'
       
-      const cod = parseFloat(row.RESERVE_AN || row.RESERVE_AMOUNT || row.COD_AMOUNT || row.COD || 0)
-      const ship = parseFloat(row.SHIPPING_CH || row.Shipping_Charges || row.Shipping || 0)
+      const cod = parseFloat(row.RESERVE_AMOUNT || row.RESERVE_AN || row.COD_AMOUNT || 0)
+      const ship = parseFloat(row.SHIPPING_CHARGES || row.SHIPPING_CH || row.Shipping_Charges || 0)
       const gst = parseFloat(row.GST || row.GST_Amount || 0)
-      const incomeTax = parseFloat(row.WH_INCOME_ || row.WH_INCOME_TAX || row['WH INCOME'] || 0)
-      const salesTax = parseFloat(row.WH_SALES_1 || row.WH_SALES_TAX || row['WH SALES'] || 0)
+      const incomeTax = parseFloat(row['WH_INCOME_TAX (2%)'] || row.WH_INCOME_ || row.WH_INCOME_TAX || 0)
+      const salesTax = parseFloat(row['WH_SALES_TAX (2%)'] || row.WH_SALES_1 || row.WH_SALES_TAX || 0)
       
       // The Formula: Shipping + GST + both 2% Taxes
       const totalExpense = ship + gst + incomeTax + salesTax
