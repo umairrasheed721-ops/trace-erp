@@ -13,7 +13,7 @@ export default function PayoutReconciler() {
   const fileInputRef = useRef(null)
 
   // Mapping Logic for PostEx
-  const processPostEx = (rows) => {
+  const processPostEx = (rows, cpr, date) => {
     return rows.map(row => {
       // Very flexible column detection based on your screenshot
       const ref = row.ORDER_REF_NUMBER || row.ORDER_REF || row.Order_Ref || row['Order Reference'] || ''
@@ -26,6 +26,9 @@ export default function PayoutReconciler() {
       const incomeTax = parseFloat(row['WH_INCOME_TAX (2%)'] || row.WH_INCOME_ || row.WH_INCOME_TAX || 0)
       const salesTax = parseFloat(row['WH_SALES_TAX (2%)'] || row.WH_SALES_1 || row.WH_SALES_TAX || 0)
       
+      // Auto-detect CPR from file or fallback to manual input
+      const rowCpr = row.PAYMENT_REFERENCE || row.CPR || row.CPR_Reference || row['Payment Reference'] || ''
+      
       // The Formula: Shipping + GST + both 2% Taxes
       const totalExpense = ship + gst + incomeTax + salesTax
 
@@ -35,10 +38,18 @@ export default function PayoutReconciler() {
         'Status': status,
         'Amount Collected': status === 'D' ? cod : 0,
         'Total Expense': totalExpense.toFixed(2),
-        'CPR Reference': cprReference,
-        'Settlement Date': settlementDate
+        'CPR Reference': (rowCpr || cpr).trim(),
+        'Settlement Date': date
       }
     }).filter(r => r['Order ID'] && r['Order ID'] !== 'undefined')
+  }
+
+  // Effect to re-process data when CPR or Date changes
+  const updateNormalizedData = (cpr, date) => {
+    if (rawData.length > 0) {
+      const normalized = courier === 'PostEx' ? processPostEx(rawData, cpr, date) : rawData
+      setNormalizedData(normalized)
+    }
   }
 
   const handleFileUpload = (e) => {
@@ -58,7 +69,7 @@ export default function PayoutReconciler() {
         console.log('Raw Data Headers:', Object.keys(data[0] || {}))
         setRawData(data)
         
-        const normalized = courier === 'PostEx' ? processPostEx(data) : data
+        const normalized = courier === 'PostEx' ? processPostEx(data, cprReference, settlementDate) : data
         setNormalizedData(normalized)
 
         if (normalized.length === 0) {
@@ -119,7 +130,10 @@ export default function PayoutReconciler() {
                 className="form-input" 
                 placeholder="e.g. CPR-EP24789..." 
                 value={cprReference} 
-                onChange={e => setCprReference(e.target.value)}
+                onChange={e => {
+                  setCprReference(e.target.value)
+                  updateNormalizedData(e.target.value, settlementDate)
+                }}
               />
             </div>
             <div className="form-group">
@@ -128,7 +142,10 @@ export default function PayoutReconciler() {
                 type="date" 
                 className="form-input" 
                 value={settlementDate} 
-                onChange={e => setSettlementDate(e.target.value)}
+                onChange={e => {
+                  setSettlementDate(e.target.value)
+                  updateNormalizedData(cprReference, e.target.value)
+                }}
               />
             </div>
           </div>
@@ -220,8 +237,11 @@ export default function PayoutReconciler() {
 
           <div className="card" style={{ padding: 20, background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
             <h4 style={{ margin: '0 0 10px 0', color: '#3b82f6' }}>PostEx Formula Used:</h4>
+            <p style={{ fontSize: '0.8rem', margin: '0 0 10px 0', opacity: 0.9 }}>
+              <b>Expense:</b> <code>SHIPPING_CH</code> + <code>GST</code> + <code>WH_INCOME_TAX (2%)</code> + <code>WH_SALES_TAX (2%)</code>
+            </p>
             <p style={{ fontSize: '0.8rem', margin: 0, opacity: 0.9 }}>
-              Expense = <code>SHIPPING_CH</code> + <code>GST</code> + <code>WH_INCOME_TAX (2%)</code> + <code>WH_SALES_TAX (2%)</code>
+              <b>CPR:</b> Auto-pulled from <code>PAYMENT_REFERENCE</code> or <code>CPR</code> column (falls back to manual input).
             </p>
           </div>
         </div>
