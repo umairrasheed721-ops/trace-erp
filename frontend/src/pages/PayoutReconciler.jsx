@@ -15,30 +15,30 @@ export default function PayoutReconciler() {
   // Mapping Logic for PostEx
   const processPostEx = (rows) => {
     return rows.map(row => {
-      // Find columns by name (PostEx headers can vary slightly)
-      const ref = row.ORDER_REF || row.Order_Ref || ''
-      const track = row.TRACKING_NUME || row.Tracking_Number || ''
-      const status = String(row.STATUS || '').toLowerCase().includes('delivered') ? 'D' : 'R'
+      // Very flexible column detection
+      const ref = row.ORDER_REF || row.Order_Ref || row['Order Reference'] || row.Reference || ''
+      const track = row.TRACKING_NUME || row.Tracking_Number || row['Tracking ID'] || row.Tracking || ''
+      const status = String(row.STATUS || row.Status || '').toLowerCase().includes('delivered') ? 'D' : 'R'
       
-      const cod = parseFloat(row.RESERVE_AN || row.COD_AMOUNT || 0)
-      const ship = parseFloat(row.SHIPPING_CH || row.Shipping_Charges || 0)
-      const gst = parseFloat(row.GST || 0)
-      const incomeTax = parseFloat(row.WH_INCOME_ || row.WH_INCOME_TAX || 0)
-      const salesTax = parseFloat(row.WH_SALES_1 || row.WH_SALES_TAX || 0)
+      const cod = parseFloat(row.RESERVE_AN || row.RESERVE_AMOUNT || row.COD_AMOUNT || row.COD || 0)
+      const ship = parseFloat(row.SHIPPING_CH || row.Shipping_Charges || row.Shipping || 0)
+      const gst = parseFloat(row.GST || row.GST_Amount || 0)
+      const incomeTax = parseFloat(row.WH_INCOME_ || row.WH_INCOME_TAX || row['WH INCOME'] || 0)
+      const salesTax = parseFloat(row.WH_SALES_1 || row.WH_SALES_TAX || row['WH SALES'] || 0)
       
       // The Formula: Shipping + GST + both 2% Taxes
       const totalExpense = ship + gst + incomeTax + salesTax
 
       return {
-        'Order ID': ref,
-        'Tracking Number': track,
+        'Order ID': String(ref).trim(),
+        'Tracking Number': String(track).trim(),
         'Status': status,
         'Amount Collected': status === 'D' ? cod : 0,
         'Total Expense': totalExpense.toFixed(2),
         'CPR Reference': cprReference,
         'Settlement Date': settlementDate
       }
-    }).filter(r => r['Order ID'] || r['Tracking Number'])
+    }).filter(r => r['Order ID'] && r['Order ID'] !== 'undefined')
   }
 
   const handleFileUpload = (e) => {
@@ -55,12 +55,19 @@ export default function PayoutReconciler() {
         const ws = wb.Sheets[wsname]
         const data = XLSX.utils.sheet_to_json(ws)
         
+        console.log('Raw Data Headers:', Object.keys(data[0] || {}))
         setRawData(data)
+        
         const normalized = courier === 'PostEx' ? processPostEx(data) : data
         setNormalizedData(normalized)
-        addToast(`✅ Loaded ${data.length} rows. Ready to convert.`, 'success')
+
+        if (normalized.length === 0) {
+          addToast('⚠️ No valid Order IDs found in this file. Check headers.', 'warn')
+        } else {
+          addToast(`✅ Found ${normalized.length} valid orders.`, 'success')
+        }
       } catch (err) {
-        addToast('Error reading file. Ensure it is a valid CSV or Excel.', 'error')
+        addToast('Error reading file.', 'error')
       } finally {
         setIsProcessing(false)
       }
