@@ -1198,23 +1198,36 @@ router.get('/fetch-live-payouts', async (req, res) => {
   }
 });
 
+// Ensure cpr_settlements table has discrepancy columns for existing databases
+try { db.prepare("ALTER TABLE cpr_settlements ADD COLUMN actual_bank_deposit REAL DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE cpr_settlements ADD COLUMN discrepancy_amount REAL DEFAULT 0").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE cpr_settlements ADD COLUMN discrepancy_reason TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE cpr_settlements ADD COLUMN audit_status TEXT DEFAULT 'CLEARED'").run(); } catch (e) { }
+
 router.post('/lock-cpr', (req, res) => {
-  const { store_id, courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout, orders } = req.body;
+  const { store_id, courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout, actualBankDeposit, discrepancyAmount, discrepancyReason, auditStatus, orders } = req.body;
   if (!store_id || !cpr || !orders) return res.status(400).json({ error: 'Missing required fields' });
 
   const executeLock = db.transaction(() => {
     // 1. Insert into cpr_settlements
     const insertCpr = db.prepare(`
-      INSERT INTO cpr_settlements (store_id, courier, cpr_reference, settlement_date, total_orders, total_cod, total_expense, net_payout, is_locked)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO cpr_settlements (store_id, courier, cpr_reference, settlement_date, total_orders, total_cod, total_expense, net_payout, actual_bank_deposit, discrepancy_amount, discrepancy_reason, audit_status, is_locked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       ON CONFLICT(store_id, courier, cpr_reference) DO UPDATE SET
         settlement_date = excluded.settlement_date,
         total_orders = excluded.total_orders,
         total_cod = excluded.total_cod,
         total_expense = excluded.total_expense,
         net_payout = excluded.net_payout,
+        actual_bank_deposit = excluded.actual_bank_deposit,
+        discrepancy_amount = excluded.discrepancy_amount,
+        discrepancy_reason = excluded.discrepancy_reason,
+        audit_status = excluded.audit_status,
         is_locked = 1
-    `).run(Number(store_id), courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout);
+    `).run(
+      Number(store_id), courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout,
+      parseFloat(actualBankDeposit) || 0, parseFloat(discrepancyAmount) || 0, discrepancyReason || null, auditStatus || 'CLEARED'
+    );
 
     // Get cpr_id (either lastInsertRowid or from select if updated)
     let cprId = insertCpr.lastInsertRowid;

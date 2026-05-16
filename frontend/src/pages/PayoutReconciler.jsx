@@ -26,6 +26,8 @@ export default function PayoutReconciler() {
   const [liveSource, setLiveSource] = useState('')
   const [actualBankDeposit, setActualBankDeposit] = useState('')
   const [isLocking, setIsLocking] = useState(false)
+  const [discrepancyReason, setDiscrepancyReason] = useState('Courier Overcharge / Disputed Fee')
+  const [disputeNotes, setDisputeNotes] = useState('')
 
   // Credentials State
   const [credentials, setCredentials] = useState({
@@ -227,11 +229,13 @@ export default function PayoutReconciler() {
   }
 
   const { totalCod, totalExpense, netPayout } = calcLiveTotals()
-  const isDepositVerified = actualBankDeposit && parseFloat(actualBankDeposit) === parseFloat(netPayout.toFixed(2))
+  const discrepancyAmount = actualBankDeposit ? (parseFloat(actualBankDeposit) - parseFloat(netPayout.toFixed(2))).toFixed(2) : 0
+  const hasDiscrepancy = actualBankDeposit && parseFloat(discrepancyAmount) !== 0
+  const auditStatus = hasDiscrepancy ? 'DISPUTED' : 'CLEARED'
 
   const handleLockCpr = async () => {
-    if (!isDepositVerified) {
-      addToast('⚠️ Please verify the Actual Bank Deposit matches the Net Payout before locking!', 'warn')
+    if (!actualBankDeposit) {
+      addToast('⚠️ Please enter the Actual Bank Deposit amount before locking!', 'warn')
       return
     }
 
@@ -249,6 +253,10 @@ export default function PayoutReconciler() {
           totalCod,
           totalExpense,
           netPayout,
+          actualBankDeposit,
+          discrepancyAmount,
+          discrepancyReason: hasDiscrepancy ? `${discrepancyReason} - ${disputeNotes}` : null,
+          auditStatus,
           orders: liveOrders
         })
       })
@@ -257,6 +265,7 @@ export default function PayoutReconciler() {
         addToast('🔒 ' + data.message, 'success')
         setLiveOrders([])
         setActualBankDeposit('')
+        setDisputeNotes('')
         fetchLedger() // Refresh ledger
       } else {
         addToast(data.error || 'Failed to lock CPR', 'error')
@@ -266,6 +275,27 @@ export default function PayoutReconciler() {
     } finally {
       setIsLocking(false)
     }
+  }
+
+  const handleExportDispute = (batch) => {
+    const wsData = [
+      { 'Field': 'CPR Reference ID', 'Value': batch.cpr_reference },
+      { 'Field': 'Courier', 'Value': batch.courier },
+      { 'Field': 'Settlement Date', 'Value': batch.settlement_date },
+      { 'Field': 'Expected Net Payout', 'Value': `Rs. ${parseFloat(batch.net_payout || 0).toLocaleString()}` },
+      { 'Field': 'Actual Bank Deposit', 'Value': `Rs. ${parseFloat(batch.actual_bank_deposit || 0).toLocaleString()}` },
+      { 'Field': 'Discrepancy Amount', 'Value': `Rs. ${parseFloat(batch.discrepancy_amount || 0).toLocaleString()}` },
+      { 'Field': 'Dispute Reason & Notes', 'Value': batch.discrepancy_reason || 'N/A' },
+      { 'Field': 'Audit Status', 'Value': batch.audit_status },
+      { 'Field': 'Locked Timestamp', 'Value': new Date(batch.created_at).toLocaleString() }
+    ]
+    const ws = XLSX.utils.json_to_sheet(wsData)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Dispute Summary")
+    
+    const fileName = `Dispute_Report_${batch.courier}_${batch.cpr_reference}.xlsx`
+    XLSX.writeFile(wb, fileName)
+    addToast('📥 Dispute Report downloaded successfully!', 'success')
   }
 
   return (
@@ -395,43 +425,81 @@ export default function PayoutReconciler() {
                     </div>
 
                     {/* BANK VERIFICATION STEP */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 20, background: 'rgba(255,255,255,0.03)', padding: 20, borderRadius: 12, border: '1px solid var(--border)' }}>
-                      <div style={{ flex: 1 }}>
-                        <label className="form-label" style={{ fontWeight: 700 }}>Actual Bank Deposit Received (Rs.)</label>
-                        <input 
-                          type="number" 
-                          className="form-input" 
-                          placeholder="Enter exact amount from your bank statement..."
-                          value={actualBankDeposit}
-                          onChange={e => setActualBankDeposit(e.target.value)}
-                          style={{ fontSize: '1.1rem', fontWeight: 700, borderColor: isDepositVerified ? 'var(--green)' : 'var(--border)' }}
-                        />
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, background: 'rgba(255,255,255,0.03)', padding: 20, borderRadius: 12, border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="form-label" style={{ fontWeight: 700 }}>Actual Bank Deposit Received (Rs.)</label>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            placeholder="Enter exact amount from your bank statement..."
+                            value={actualBankDeposit}
+                            onChange={e => setActualBankDeposit(e.target.value)}
+                            style={{ fontSize: '1.1rem', fontWeight: 700, borderColor: actualBankDeposit ? (hasDiscrepancy ? 'var(--red)' : 'var(--green)') : 'var(--border)' }}
+                          />
+                        </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 180 }}>
-                        {actualBankDeposit ? (
-                          isDepositVerified ? (
-                            <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.1)', color: 'var(--green)', fontSize: '0.9rem', padding: '8px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              ✅ Bank Deposit Verified
-                            </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 180 }}>
+                          {actualBankDeposit ? (
+                            !hasDiscrepancy ? (
+                              <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.1)', color: 'var(--green)', fontSize: '0.9rem', padding: '8px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                ✅ Bank Deposit Verified
+                              </span>
+                            ) : (
+                              <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', fontSize: '0.9rem', padding: '8px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                ⚠️ Discrepancy: Rs. {parseFloat(discrepancyAmount).toLocaleString()}
+                              </span>
+                            )
                           ) : (
-                            <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', fontSize: '0.9rem', padding: '8px 16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              ⚠️ Discrepancy Detected
-                            </span>
-                          )
-                        ) : (
-                          <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>Awaiting bank input...</span>
-                        )}
+                            <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>Awaiting bank input...</span>
+                          )}
+                        </div>
+
+                        <button 
+                          className="btn btn-brand" 
+                          style={{ padding: '14px 28px', fontWeight: 700, background: actualBankDeposit ? (hasDiscrepancy ? 'var(--red)' : 'var(--green)') : 'var(--brand)', opacity: actualBankDeposit ? 1 : 0.5 }}
+                          onClick={handleLockCpr}
+                          disabled={!actualBankDeposit || isLocking}
+                        >
+                          {isLocking ? 'Locking...' : (hasDiscrepancy ? '⚠️ Lock Disputed CPR' : '🔒 Mark CPR Cleared & Lock')}
+                        </button>
                       </div>
 
-                      <button 
-                        className="btn btn-brand" 
-                        style={{ padding: '14px 28px', fontWeight: 700, background: isDepositVerified ? 'var(--green)' : 'var(--brand)', opacity: isDepositVerified ? 1 : 0.5 }}
-                        onClick={handleLockCpr}
-                        disabled={!isDepositVerified || isLocking}
-                      >
-                        {isLocking ? 'Locking...' : '🔒 Mark CPR Cleared & Lock'}
-                      </button>
+                      {/* DISCREPANCY REASON & NOTES WORKFLOW */}
+                      {hasDiscrepancy && (
+                        <div style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 10, padding: 20, display: 'flex', flexDirection: 'column', gap: 15 }}>
+                          <h4 style={{ margin: 0, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>⚠️</span> Difference in Payments Workflow
+                          </h4>
+                          <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.8 }}>
+                            Your actual bank deposit differs from the courier payout calculation. Please categorize this difference for your permanent audit trail.
+                          </p>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 20 }}>
+                            <div className="form-group">
+                              <label className="form-label" style={{ fontSize: '0.8rem', color: 'var(--red)' }}>Discrepancy Reason</label>
+                              <select className="form-input" value={discrepancyReason} onChange={e => setDiscrepancyReason(e.target.value)} style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                                <option value="Courier Overcharge / Disputed Fee">Courier Overcharge / Disputed Fee</option>
+                                <option value="Missing COD Payout">Missing COD Payout</option>
+                                <option value="Bank / Wire Transfer Fee Deduction">Bank / Wire Transfer Fee Deduction</option>
+                                <option value="Other / Pending Audit">Other / Pending Audit</option>
+                              </select>
+                            </div>
+
+                            <div className="form-group">
+                              <label className="form-label" style={{ fontSize: '0.8rem', color: 'var(--red)' }}>Dispute Notes & Action Items (Optional)</label>
+                              <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="e.g. Email sent to PostEx rep regarding order #1042 overcharge..." 
+                                value={disputeNotes}
+                                onChange={e => setDisputeNotes(e.target.value)}
+                                style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                   </div>
@@ -612,33 +680,52 @@ export default function PayoutReconciler() {
                   <th>Courier</th>
                   <th>Settlement Date</th>
                   <th>Total Orders</th>
-                  <th>Total COD</th>
-                  <th>Total Expense</th>
-                  <th>Net Payout (Bank Deposit)</th>
+                  <th>Expected Net Payout</th>
+                  <th>Actual Bank Deposit</th>
+                  <th>Difference</th>
                   <th>Status</th>
-                  <th>Locked At</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {ledger.map((row, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 700, color: 'var(--brand)' }}>{row.cpr_reference}</td>
-                    <td>{row.courier}</td>
-                    <td>{row.settlement_date}</td>
-                    <td style={{ fontWeight: 600 }}>{row.total_orders}</td>
-                    <td>Rs. {parseFloat(row.total_cod || 0).toLocaleString()}</td>
-                    <td style={{ color: 'var(--red)' }}>Rs. {parseFloat(row.total_expense || 0).toLocaleString()}</td>
-                    <td style={{ fontWeight: 800, color: 'var(--green)' }}>Rs. {parseFloat(row.net_payout || 0).toLocaleString()}</td>
-                    <td>
-                      <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.1)', color: 'var(--green)', fontWeight: 700 }}>
-                        🟢 Cleared (Locked)
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                      {new Date(row.created_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {ledger.map((row, i) => {
+                  const isDisputed = row.audit_status === 'DISPUTED' || parseFloat(row.discrepancy_amount || 0) !== 0
+                  return (
+                    <tr key={i} style={{ background: isDisputed ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
+                      <td style={{ fontWeight: 700, color: 'var(--brand)' }}>{row.cpr_reference}</td>
+                      <td>{row.courier}</td>
+                      <td>{row.settlement_date}</td>
+                      <td style={{ fontWeight: 600 }}>{row.total_orders}</td>
+                      <td>Rs. {parseFloat(row.net_payout || 0).toLocaleString()}</td>
+                      <td style={{ fontWeight: 700, color: isDisputed ? 'var(--red)' : 'var(--green)' }}>
+                        Rs. {parseFloat(row.actual_bank_deposit || row.net_payout || 0).toLocaleString()}
+                      </td>
+                      <td style={{ color: isDisputed ? 'var(--red)' : 'var(--text)', fontWeight: isDisputed ? 700 : 400 }}>
+                        Rs. {parseFloat(row.discrepancy_amount || 0).toLocaleString()}
+                      </td>
+                      <td>
+                        {isDisputed ? (
+                          <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', fontWeight: 700 }} title={row.discrepancy_reason}>
+                            🔴 Disputed
+                          </span>
+                        ) : (
+                          <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.1)', color: 'var(--green)', fontWeight: 700 }}>
+                            🟢 Cleared (Matched)
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {isDisputed ? (
+                          <button className="btn btn-brand" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={() => handleExportDispute(row)}>
+                            📥 Export Dispute
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', opacity: 0.5 }}>No Action Needed</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

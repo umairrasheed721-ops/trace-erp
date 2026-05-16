@@ -253,6 +253,10 @@ function initDb() {
       total_cod REAL DEFAULT 0,
       total_expense REAL DEFAULT 0,
       net_payout REAL DEFAULT 0,
+      actual_bank_deposit REAL DEFAULT 0,
+      discrepancy_amount REAL DEFAULT 0,
+      discrepancy_reason TEXT,
+      audit_status TEXT DEFAULT 'CLEARED',
       is_locked INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', '+5 hours')),
       UNIQUE(store_id, courier, cpr_reference)
