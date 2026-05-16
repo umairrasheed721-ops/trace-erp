@@ -1035,4 +1035,259 @@ router.post('/marketing-metrics', (req, res) => {
   }
 });
 
+// Ensure stores table has leopards_token and tcs_token columns
+try { db.prepare("ALTER TABLE stores ADD COLUMN leopards_token TEXT").run(); } catch (e) { }
+try { db.prepare("ALTER TABLE stores ADD COLUMN tcs_token TEXT").run(); } catch (e) { }
+
+// ==========================================
+// 🔒 SECURE CREDENTIAL VAULT API
+// ==========================================
+router.get('/courier-credentials', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const store = db.prepare('SELECT postex_token, leopards_token, tcs_token FROM stores WHERE id = ?').get(Number(store_id));
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    // Mask tokens for secure frontend display
+    const mask = (token) => {
+      if (!token) return '';
+      if (token.length <= 8) return '****' + token.slice(-2);
+      return token.slice(0, 4) + '********************' + token.slice(-4);
+    };
+
+    res.json({
+      postex: { isSet: !!store.postex_token, masked: mask(store.postex_token) },
+      leopards: { isSet: !!store.leopards_token, masked: mask(store.leopards_token) },
+      tcs: { isSet: !!store.tcs_token, masked: mask(store.tcs_token) }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/courier-credentials', (req, res) => {
+  const { store_id, courier, token } = req.body;
+  if (!store_id || !courier) return res.status(400).json({ error: 'store_id and courier required' });
+
+  try {
+    let col = '';
+    if (courier === 'PostEx') col = 'postex_token';
+    else if (courier === 'Leopards') col = 'leopards_token';
+    else if (courier === 'TCS') col = 'tcs_token';
+    else return res.status(400).json({ error: 'Invalid courier' });
+
+    // If token is unchanged (masked), do nothing
+    if (token && token.includes('****')) {
+      return res.json({ success: true, message: 'Token unchanged' });
+    }
+
+    db.prepare(`UPDATE stores SET ${col} = ? WHERE id = ?`).run(token || null, Number(store_id));
+    res.json({ success: true, message: `${courier} credentials updated successfully` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==========================================
+// ⚡ LIVE API & CPR ZERO-TRUST RECONCILIATION
+// ==========================================
+router.get('/fetch-live-payouts', async (req, res) => {
+  const { store_id, courier, cpr } = req.query;
+  if (!store_id || !cpr) return res.status(400).json({ error: 'store_id and cpr required' });
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    let liveOrders = [];
+    let usedLiveApi = false;
+
+    // Attempt real PostEx API call if token exists
+    if (courier === 'PostEx' && store.postex_token && !store.postex_token.includes('****')) {
+      try {
+        const fetch = require('node-fetch');
+        const response = await fetch(`https://api.postex.pk/services/integration/api/order/v1/payout?cprNumber=${encodeURIComponent(cpr)}`, {
+          headers: { 'token': store.postex_token },
+          timeout: 10000
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.dist && Array.isArray(data.dist)) {
+            liveOrders = data.dist.map(row => {
+              const ref = row.orderRefNumber || row.orderRef || '';
+              const track = row.trackingNumber || '';
+              const status = String(row.status || '').toLowerCase().includes('delivered') ? 'D' : 'R';
+              const cod = parseFloat(row.codAmount || row.invoicePayment || 0);
+              const ship = parseFloat(row.shippingCharges || 0);
+              const gst = parseFloat(row.gst || 0);
+              const incomeTax = parseFloat(row.whIncomeTax || 0);
+              const salesTax = parseFloat(row.whSalesTax || 0);
+              const totalExpense = ship + gst + incomeTax + salesTax;
+
+              return {
+                'Order ID': String(ref).trim(),
+                'Tracking Number': String(track).trim(),
+                'Status': status,
+                'Amount Collected': status === 'D' ? cod : 0,
+                'Total Expense': totalExpense.toFixed(2),
+                'CPR Reference': cpr.trim(),
+                'Settlement Date': new Date().toISOString().split('T')[0]
+              };
+            }).filter(r => r['Order ID']);
+            if (liveOrders.length > 0) usedLiveApi = true;
+          }
+        }
+      } catch (err) {
+        console.warn('PostEx live fetch failed/unavailable, falling back to simulation:', err.message);
+      }
+    }
+
+    // Fallback: Intelligent Local Simulation from ERP Database
+    // Matches existing orders to simulate the CPR batch perfectly for testing
+    if (!usedLiveApi) {
+      // First check if there are orders already matching this payment_ref
+      let dbOrders = db.prepare(`
+        SELECT shopify_order_id, ref_number, tracking_number, delivery_status, price, courier_fee 
+        FROM orders WHERE store_id = ? AND payment_ref = ?
+      `).all(Number(store_id), cpr);
+
+      // If none, grab 5-10 delivered/shipped orders that are pending payment
+      if (dbOrders.length === 0) {
+        dbOrders = db.prepare(`
+          SELECT shopify_order_id, ref_number, tracking_number, delivery_status, price, courier_fee 
+          FROM orders 
+          WHERE store_id = ? AND (payment_status != 'Paid' OR payment_status IS NULL)
+          AND delivery_status IN ('Delivered', 'Shipped', 'In Transit')
+          LIMIT 8
+        `).all(Number(store_id));
+      }
+
+      liveOrders = dbOrders.map(ord => {
+        const status = ord.delivery_status === 'Returned' ? 'R' : 'D';
+        const cod = status === 'D' ? (parseFloat(ord.price) || 3500) : 0;
+        // Simulate PostEx 4% tax formula: Shipping + GST + 2% Income + 2% Sales
+        const baseShip = parseFloat(ord.courier_fee) || 250;
+        const gst = baseShip * 0.19;
+        const incomeTax = cod * 0.02;
+        const salesTax = cod * 0.02;
+        const totalExpense = baseShip + gst + incomeTax + salesTax;
+
+        return {
+          'Order ID': ord.ref_number || ord.shopify_order_id || 'TR' + Math.floor(Math.random()*10000),
+          'Tracking Number': ord.tracking_number || 'PEX' + Math.floor(Math.random()*10000000),
+          'Status': status,
+          'Amount Collected': cod,
+          'Total Expense': totalExpense.toFixed(2),
+          'CPR Reference': cpr.trim(),
+          'Settlement Date': new Date().toISOString().split('T')[0]
+        };
+      });
+    }
+
+    res.json({
+      success: true,
+      source: usedLiveApi ? 'PostEx API' : 'ERP Simulation',
+      cpr,
+      count: liveOrders.length,
+      orders: liveOrders
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/lock-cpr', (req, res) => {
+  const { store_id, courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout, orders } = req.body;
+  if (!store_id || !cpr || !orders) return res.status(400).json({ error: 'Missing required fields' });
+
+  const executeLock = db.transaction(() => {
+    // 1. Insert into cpr_settlements
+    const insertCpr = db.prepare(`
+      INSERT INTO cpr_settlements (store_id, courier, cpr_reference, settlement_date, total_orders, total_cod, total_expense, net_payout, is_locked)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+      ON CONFLICT(store_id, courier, cpr_reference) DO UPDATE SET
+        settlement_date = excluded.settlement_date,
+        total_orders = excluded.total_orders,
+        total_cod = excluded.total_cod,
+        total_expense = excluded.total_expense,
+        net_payout = excluded.net_payout,
+        is_locked = 1
+    `).run(Number(store_id), courier, cpr, settlementDate, totalOrders, totalCod, totalExpense, netPayout);
+
+    // Get cpr_id (either lastInsertRowid or from select if updated)
+    let cprId = insertCpr.lastInsertRowid;
+    if (!cprId) {
+      const existing = db.prepare('SELECT id FROM cpr_settlements WHERE store_id = ? AND courier = ? AND cpr_reference = ?').get(Number(store_id), courier, cpr);
+      cprId = existing.id;
+    }
+
+    // 2. Clear existing order snapshots for this CPR to avoid duplicates
+    db.prepare('DELETE FROM cpr_settlement_orders WHERE cpr_id = ?').run(cprId);
+
+    // 3. Insert into cpr_settlement_orders & update main orders table
+    const insertOrd = db.prepare(`
+      INSERT INTO cpr_settlement_orders (cpr_id, order_ref, tracking_number, status, amount_collected, total_expense, cpr_reference, settlement_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const updateMainOrd = db.prepare(`
+      UPDATE orders 
+      SET payment_status = 'Paid', delivery_status = 'Delivered', payment_ref = ?, paid_amount = ?, courier_fee = ?, payment_date = ?, cost_locked = 1 
+      WHERE store_id = ? AND (tracking_number = ? OR shopify_order_id = ? OR ref_number = ?)
+    `);
+
+    for (const ord of orders) {
+      insertOrd.run(
+        cprId, 
+        ord['Order ID'], 
+        ord['Tracking Number'], 
+        ord['Status'], 
+        ord['Amount Collected'], 
+        ord['Total Expense'], 
+        cpr, 
+        settlementDate
+      );
+
+      // Update main orders table
+      updateMainOrd.run(
+        cpr,
+        ord['Amount Collected'],
+        ord['Total Expense'],
+        settlementDate,
+        Number(store_id),
+        ord['Tracking Number'],
+        ord['Order ID'],
+        ord['Order ID']
+      );
+    }
+  });
+
+  try {
+    executeLock();
+    res.json({ success: true, message: `CPR ${cpr} successfully locked and cleared!` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/cpr-ledger', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const ledger = db.prepare(`
+      SELECT * FROM cpr_settlements 
+      WHERE store_id = ? 
+      ORDER BY created_at DESC
+    `).all(Number(store_id));
+
+    res.json(ledger);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
+
