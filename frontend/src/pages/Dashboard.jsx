@@ -109,7 +109,113 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+
+          {/* Phase 3: Customer Success & WhatsApp Simulation Panel */}
+          <CustomerSuccessSimulator storeId={activeStoreId} addToast={addToast} />
         </>
+      )}
+    </div>
+  )
+}
+
+function CustomerSuccessSimulator({ storeId, addToast }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [customAddress, setCustomAddress] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  const fetchOrders = () => {
+    if (!storeId) return;
+    setLoading(true);
+    fetch(`/api/customer-success/orders/${storeId}`)
+      .then(r => r.json())
+      .then(data => { setOrders(data.orders || []); setLoading(false); })
+      .catch(() => { setLoading(false); });
+  };
+
+  useEffect(() => { fetchOrders(); }, [storeId]);
+
+  const handleSimulate = (orderId, action, customAddr = '') => {
+    fetch('/api/customer-success/simulate-trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId, action, custom_address: customAddr })
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.error) throw new Error(res.error);
+        addToast(res.message, 'success');
+        fetchOrders();
+      })
+      .catch(err => addToast(err.message || 'Simulation failed', 'error'));
+  };
+
+  const getWaBadge = (status) => {
+    if (status === 'Verified') return <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🟢 Verified</span>;
+    if (status === 'Address_Updated') return <span style={{ background: '#3b82f620', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>✏️ Curated</span>;
+    if (status === 'Cancelled') return <span style={{ background: '#ef444420', color: '#ef4444', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🔴 Cancelled</span>;
+    return <span style={{ background: '#f59e0b20', color: '#f59e0b', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🟡 Pending</span>;
+  };
+
+  return (
+    <div className="card" style={{ marginTop: 24, border: '1px solid #6366f140', background: 'linear-gradient(145deg, var(--bg-elevated), #0f172a)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>💬 Customer Success & WhatsApp Simulator</span>
+            <span style={{ fontSize: '0.7rem', background: '#6366f1', color: '#fff', padding: '2px 8px', borderRadius: 12 }}>Phase 3 Live</span>
+          </div>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Simulate automated WhatsApp verification button clicks and preview the public Tracking Portal rescue flow.</p>
+        </div>
+        <button onClick={fetchOrders} className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '6px 12px' }}>🔄 Refresh List</button>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>Loading recent orders...</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ width: '100%', fontSize: '0.8rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-active)' }}>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Address</th>
+                <th>WhatsApp Status</th>
+                <th>Courier Status</th>
+                <th>Simulation Actions</th>
+                <th>Public Tracking Portal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map(o => (
+                <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ fontWeight: 600 }}>#{o.ref_number || o.shopify_order_id}</td>
+                  <td>{o.customer_name} ({o.phone})</td>
+                  <td style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={o.address}>{o.address}, {o.city}</td>
+                  <td>{getWaBadge(o.wa_verification_status)}</td>
+                  <td>
+                    <span style={{ background: o.delivery_status === 'Attempted' ? '#ef444420' : 'var(--bg-active)', color: o.delivery_status === 'Attempted' ? '#ef4444' : 'var(--text-secondary)', padding: '2px 6px', borderRadius: 4, fontSize: '0.7rem' }}>
+                      {o.delivery_status || 'Pending'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button onClick={() => handleSimulate(o.id, 'SEND_VERIFICATION')} className="btn" style={{ background: '#3b82f620', color: '#3b82f6', border: '1px solid #3b82f640', fontSize: '0.7rem', padding: '4px 8px' }}>Send WA</button>
+                      <button onClick={() => handleSimulate(o.id, 'SIMULATE_CONFIRM')} className="btn" style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140', fontSize: '0.7rem', padding: '4px 8px' }}>Confirm</button>
+                      <button onClick={() => handleSimulate(o.id, 'SIMULATE_CANCEL')} className="btn" style={{ background: '#ef444420', color: '#ef4444', border: '1px solid #ef444440', fontSize: '0.7rem', padding: '4px 8px' }}>Cancel</button>
+                      <button onClick={() => handleSimulate(o.id, 'SIMULATE_ATTEMPTED')} className="btn" style={{ background: '#f59e0b20', color: '#f59e0b', border: '1px solid #f59e0b40', fontSize: '0.7rem', padding: '4px 8px' }}>Fail Attempt</button>
+                    </div>
+                  </td>
+                  <td>
+                    <a href={`/track/${o.tracking_slug || 'tr_mock_slug'}`} target="_blank" rel="noreferrer" className="btn btn-primary" style={{ fontSize: '0.7rem', padding: '4px 10px', textDecoration: 'none', display: 'inline-block' }}>
+                      🌐 Open Portal
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -143,3 +249,4 @@ function StatBar({ label, value, color }) {
     </div>
   )
 }
+

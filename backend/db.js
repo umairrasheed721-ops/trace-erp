@@ -488,6 +488,20 @@ function runMigrations(db) {
     { table: 'whatsapp_templates', column: 'status', type: "TEXT DEFAULT 'active'" },
     { table: 'users', column: 'can_override_erp_status', type: 'INTEGER DEFAULT 0' },  // manual ERP status authority
     { table: 'product_master_costs', column: 'sku', type: 'TEXT' },
+    // Phase 3: WhatsApp Verification & Self-Service Tracking Portal
+    { table: 'orders', column: 'wa_verification_status', type: "TEXT DEFAULT 'Pending'" },
+    { table: 'orders', column: 'wa_message_id', type: 'TEXT' },
+    { table: 'orders', column: 'wa_interaction_logs', type: "TEXT DEFAULT '[]'" },
+    { table: 'orders', column: 'address_quality_score', type: 'INTEGER DEFAULT 100' },
+    { table: 'orders', column: 'tracking_slug', type: 'TEXT' },
+    { table: 'orders', column: 'customer_gps_lat', type: 'REAL' },
+    { table: 'orders', column: 'customer_gps_lng', type: 'REAL' },
+    { table: 'orders', column: 'customer_dispatch_instructions', type: 'TEXT' },
+    { table: 'orders', column: 'rescue_submitted_at', type: 'TEXT' },
+    { table: 'orders', column: 'courier_ticket_id', type: 'TEXT' },
+    { table: 'stores', column: 'wa_phone_number_id', type: 'TEXT' },
+    { table: 'stores', column: 'wa_access_token', type: 'TEXT' },
+    { table: 'stores', column: 'wa_webhook_verify_token', type: 'TEXT' },
   ];
 
   migrations.forEach(m => {

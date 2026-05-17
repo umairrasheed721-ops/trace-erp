@@ -31,9 +31,24 @@ const SystemStatus = lazy(() => import('./pages/SystemStatus'))
 const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
 
 const PayoutReconciler = lazy(() => import('./pages/PayoutReconciler'))
+const TrackingPortal = lazy(() => import('./pages/TrackingPortal'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
+
+  // Public Unauthenticated Tracking Portal Route
+  if (window.location.pathname.startsWith('/track')) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
+          <Routes>
+            <Route path="/track/:slug" element={<TrackingPortal />} />
+          </Routes>
+        </Suspense>
+        <ToastContainer toasts={toasts} />
+      </BrowserRouter>
+    )
+  }
 
   if (!token) {
     return (
@@ -63,6 +78,7 @@ function AppContent() {
                   <Route path="/whatsapp-templates" element={<TemplateManager />} />
                   <Route path="/finance" element={<FinanceManager />} />
                   <Route path="/payout-reconciler" element={<PayoutReconciler />} />
+                  <Route path="/track/:slug" element={<TrackingPortal />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/intelligence" element={<CourierIntelligence />} />
                   <Route path="/stuck" element={<StuckMonitor />} />
