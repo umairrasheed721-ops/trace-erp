@@ -149,6 +149,36 @@ router.get('/all-ids', (req, res) => {
   res.json({ ids: rows.map(r => r.id) });
 });
 
+// GET /api/orders/:id/customer-intelligence
+router.get('/:id/customer-intelligence', (req, res) => {
+  const { id } = req.params;
+  try {
+    const order = db.prepare(`SELECT store_id, phone, customer_name FROM orders WHERE id = ?`).get(id);
+    if (!order || !order.phone) {
+      return res.json({ total: 0, delivered: 0, returned: 0, rto_rate: 0, blacklist: false });
+    }
+
+    const cleanPhone = order.phone.replace(/\D/g, '').slice(-10);
+    const history = db.prepare(`
+      SELECT delivery_status 
+      FROM orders 
+      WHERE store_id = ? AND phone LIKE ?
+    `).all(order.store_id, `%${cleanPhone}%`);
+
+    let total = history.length;
+    let delivered = history.filter(h => (h.delivery_status || '').toLowerCase().includes('delivered')).length;
+    let returned = history.filter(h => (h.delivery_status || '').toLowerCase().includes('returned') || (h.delivery_status || '').toLowerCase().includes('refused')).length;
+    let rto_rate = total > 0 ? Math.round((returned / total) * 100) : 0;
+
+    const bl = db.prepare(`SELECT id FROM blacklist WHERE store_id = ? AND tracking_number IN (SELECT tracking_number FROM orders WHERE store_id = ? AND phone LIKE ?)`).get(order.store_id, order.store_id, `%${cleanPhone}%`);
+
+    res.json({ total, delivered, returned, rto_rate, blacklist: !!bl });
+  } catch (err) {
+    console.error('Customer intelligence error:', err);
+    res.status(500).json({ error: 'Server error fetching customer intelligence' });
+  }
+});
+
 // GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
 router.get('/', (req, res) => {
   const { store_id, page = 1, limit = 100 } = req.query;
