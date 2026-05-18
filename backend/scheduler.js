@@ -3,9 +3,44 @@ const db = require('./db');
 const { fetchShopifyOrders, refreshShopifyUpdates } = require('./engines/shopify');
 const { syncPostEx, syncInstaworld } = require('./engines/tracking');
 const { runWatchdog } = require('./engines/watchdog');
+const { getShopifyInventoryCosts } = require('./engines/shopify_finance');
 
 function getAllStores() {
   return db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+}
+
+async function syncStoreInventoryAndCosts(store) {
+  console.log(`📦 [CRON] Background Inventory & Cost Sync starting for Store ${store.id}...`);
+  try {
+    const products = await getShopifyInventoryCosts(store);
+    db.transaction(() => {
+      for (const p of products) {
+        let existing = null;
+        if (p.shopify_variant_id) {
+          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND shopify_variant_id = ?').get(Number(store.id), p.shopify_variant_id);
+        }
+        if (!existing) {
+          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store.id), p.parent_name, p.variant_name);
+        }
+
+        if (existing) {
+          db.prepare(`
+            UPDATE product_master_costs SET
+              shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?, shopify_cost = ?, selling_price = ?, inventory_qty = ?, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
+        } else {
+          db.prepare(`
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
+        }
+      }
+    })();
+    console.log(`✅ [CRON] Successfully synced ${products.length} catalog items for Store ${store.id}.`);
+  } catch (e) {
+    console.error(`❌ [CRON] Inventory sync failed for Store ${store.id}:`, e.message);
+  }
 }
 
 async function runDynamicScheduler() {
@@ -72,6 +107,14 @@ module.exports = function schedulerInit() {
     console.log('🐕 [CRON] Watchdog audit starting...');
     for (const store of getAllStores()) {
       try { await runWatchdog(store); } catch (e) { console.error(e.message); }
+    }
+  });
+
+  // 5. Every 4 hours: Automated background inventory & cost sync
+  cron.schedule('0 */4 * * *', async () => {
+    console.log('📦 [CRON] Automated 4-hour inventory & cost sync starting...');
+    for (const store of getAllStores()) {
+      try { await syncStoreInventoryAndCosts(store); } catch (e) { console.error(e.message); }
     }
   });
 };
