@@ -223,16 +223,24 @@ export default function EditOrderModal({
     masterProducts.forEach(mp => {
       // Clean parent title in case variant is appended
       let pTitle = (mp.parent_title || 'Unnamed Product').trim();
+      let extractedVariant = '';
       if (pTitle.includes(' - ')) {
-        pTitle = pTitle.split(' - ')[0].trim();
+        const parts = pTitle.split(' - ');
+        pTitle = parts[0].trim();
+        extractedVariant = parts.slice(1).join(' - ').trim();
       }
 
       // Parse variant title for Color and Size
-      const vTitle = (mp.variant_title || '').trim();
+      // If mp.variant_title is 'Default Title' or 'Default' or empty, use extractedVariant from parent_title!
+      let vTitle = (mp.variant_title || '').trim();
+      if (!vTitle || vTitle.toLowerCase().includes('default')) {
+        vTitle = extractedVariant || vTitle;
+      }
+
       let color = 'Default';
       let size = 'One Size';
 
-      if (vTitle && vTitle !== 'Default Title') {
+      if (vTitle && !vTitle.toLowerCase().includes('default')) {
         const parts = vTitle.split(/[\/\-\|]/).map(p => p.trim()).filter(Boolean);
         if (parts.length >= 2) {
           const isSize = (str) => /^(xs|s|m|l|xl|2xl|3xl|4xl|\d+[a-z]*)$/i.test(str);
@@ -310,7 +318,7 @@ export default function EditOrderModal({
     return matrix[b.length][a.length];
   };
 
-  // Helper for Lenient Search (Punctuation, Subsequences, Typos)
+  // Helper for Lenient Search (Punctuation stripping & Smart Levenshtein typo tolerance)
   const isLenientMatch = (query, target) => {
     if (!query || !target) return false;
     const qClean = query.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -318,24 +326,18 @@ export default function EditOrderModal({
     if (!qClean) return true;
     if (!tClean) return false;
 
-    // 1. Direct substring match on cleaned strings (e.g. 'puma' matches 'PUM-A')
+    // 1. Direct substring match on cleaned strings (e.g. 'puma' matches 'PUM-A', 'pum' matches 'PUM-A')
     if (tClean.includes(qClean)) return true;
 
-    // 2. Subsequence match (e.g. 'pma' matches 'puma')
-    let qIdx = 0;
-    for (let i = 0; i < tClean.length; i++) {
-      if (tClean[i] === qClean[qIdx]) qIdx++;
-      if (qIdx === qClean.length) return true;
-    }
-
-    // 3. Typo / Spelling mistake tolerance (Levenshtein distance on words)
+    // 2. Typo / Spelling mistake tolerance (Levenshtein distance on words)
     if (qClean.length >= 3) {
-      const tWords = target.toLowerCase().split(/[\s\-]/).filter(Boolean);
+      const tWords = target.toLowerCase().split(/[\s\-\/\(\)]/).filter(Boolean);
       for (const word of tWords) {
         const wClean = word.replace(/[^a-z0-9]/g, '');
-        if (wClean.length >= 3) {
+        if (wClean.length >= qClean.length - 1 && wClean.length <= qClean.length + 1) {
           const dist = getEditDistance(qClean, wClean);
-          if (dist <= 1 || (qClean.length >= 5 && dist <= 2)) return true;
+          // Allow distance 1 for 3+ chars, distance 2 for 4+ chars (handles transpositions like pmua vs puma)
+          if (dist <= 1 || (qClean.length >= 4 && dist <= 2)) return true;
         }
       }
     }
