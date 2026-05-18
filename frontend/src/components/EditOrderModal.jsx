@@ -183,11 +183,9 @@ export default function EditOrderModal({
       });
   };
 
-  if (!editingOrder) return null;
-
   // Live Math & Profit Margins
   const liveSubtotal = localItems.reduce((acc, item) => acc + ((parseFloat(item.price)||0) * (parseInt(item.quantity)||0)), 0);
-  const liveTotal = Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder.courier_fee || 250));
+  const liveTotal = Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder?.courier_fee || 250));
 
   // Calculate Total Order Cost from Master Products
   let totalOrderCost = 0;
@@ -197,7 +195,7 @@ export default function EditOrderModal({
     totalOrderCost += (parseFloat(unitCost) * (parseInt(item.quantity) || 1));
   });
 
-  const netProfit = liveTotal - totalOrderCost - parseFloat(editingOrder.courier_fee || 250);
+  const netProfit = liveTotal - totalOrderCost - parseFloat(editingOrder?.courier_fee || 250);
   const profitMargin = liveTotal > 0 ? Math.round((netProfit / liveTotal) * 100) : 0;
 
   // AI Address Quality Heuristic Score
@@ -208,7 +206,7 @@ export default function EditOrderModal({
     if (hasNumber && hasStreet && addr.length > 15) return { label: '✅ High Quality (Courier Perfect)', color: '#10b981', bg: 'rgba(16,185,129,0.1)' };
     return { label: '⚠️ Fair Quality (Missing Street/House #)', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
   };
-  const addrScore = getAddressScore(editingOrder.address);
+  const addrScore = getAddressScore(editingOrder?.address);
 
   // WhatsApp Status Badge Helper
   const getWaBadge = (status) => {
@@ -304,6 +302,8 @@ export default function EditOrderModal({
       Object.keys(g.colors).some(c => c.toLowerCase().includes(q))
     );
   }, [groupedProducts, productSearchQuery]);
+
+  if (!editingOrder) return null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
