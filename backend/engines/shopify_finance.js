@@ -239,9 +239,12 @@ async function getShopifyInventoryCosts(store) {
                 unitCost {
                   amount
                 }
-                inventoryLevels(first: 1) {
+                inventoryLevels(first: 10) {
                   edges {
                     node {
+                      location {
+                        isActive
+                      }
                       quantities(names: ["available"]) {
                         quantity
                       }
@@ -286,7 +289,14 @@ async function getShopifyInventoryCosts(store) {
     const rawCost = node.inventoryItem?.unitCost?.amount;
     const cost = rawCost ? parseFloat(rawCost) : 0;
     const sellingPrice = parseFloat(node.price || 0);
-    const qty = node.inventoryItem?.inventoryLevels?.edges?.[0]?.node?.quantities?.[0]?.quantity || 0;
+
+    let qty = 0;
+    const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
+    invEdges.forEach(invEdge => {
+      if (invEdge.node?.location?.isActive !== false) {
+        qty += invEdge.node?.quantities?.[0]?.quantity || 0;
+      }
+    });
     
     const key = variantId || `${parentName}@@@${variantName}`;
     if (!aggregated[key]) {
