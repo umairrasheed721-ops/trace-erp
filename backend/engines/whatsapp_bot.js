@@ -406,15 +406,15 @@ const SILENT_LOGGER = {
   }
 
   getChatHistory(phone) {
-    if (!this.store) return [];
+    if (!this.store || !this.store.messages) return [];
     let cleaned = phone.replace(/\D/g, '');
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
     const jid = cleaned + '@s.whatsapp.net';
     
-    const msgs = this.store.messages[jid]?.array || [];
+    const msgs = this.store.messages[jid] || [];
     return msgs.map(m => {
-      const text = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+      const text = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.buttonsResponseMessage?.selectedDisplayText || m.message?.templateButtonReplyMessage?.selectedDisplayText || '';
       if (!text) return null;
       return {
         id: m.key.id,
@@ -425,6 +425,37 @@ const SILENT_LOGGER = {
         created_at: new Date((Number(m.messageTimestamp) || Date.now()/1000) * 1000).toISOString()
       };
     }).filter(Boolean);
+  }
+
+  async fetchHistoryForPhone(phone) {
+    if (!this.sock) return { success: false, error: 'Bot not connected' };
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const jid = cleaned + '@s.whatsapp.net';
+
+    try {
+      console.log(`📂 Fetching older message chunks from WhatsApp for ${cleaned}...`);
+      let fetched = [];
+      if (typeof this.sock.fetchMessagesFromWA === 'function') {
+        try {
+          fetched = await this.sock.fetchMessagesFromWA(jid, 50) || [];
+          for (const msg of fetched) {
+            if (!msg.message) continue;
+            if (!this.store.messages[jid]) this.store.messages[jid] = [];
+            if (!this.store.messages[jid].some(m => m.key.id === msg.key.id)) {
+              this.store.messages[jid].push(msg);
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ fetchMessagesFromWA error:', e.message);
+        }
+      }
+      return { success: true, count: fetched.length, messages: this.getChatHistory(cleaned) };
+    } catch (err) {
+      console.error('❌ fetchHistory error:', err.message);
+      return { success: false, error: err.message };
+    }
   }
 
   getStatus() {

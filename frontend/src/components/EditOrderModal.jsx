@@ -944,19 +944,34 @@ export default function EditOrderModal({
                       <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{(editingOrder.phone || '').replace(/^\+/, '')} • Baileys WebSocket Active 🟢</div>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => {
-                      setChatLoading(true);
-                      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-                      fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
-                        .then(r => r.json())
-                        .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
-                        .catch(() => setChatLoading(false));
-                    }} 
-                    style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    🔄 Refresh Chat
-                  </button>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button 
+                      onClick={() => {
+                        setChatLoading(true);
+                        const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/fetch-history`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+                          .then(r => r.json())
+                          .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
+                          .catch(() => setChatLoading(false));
+                      }} 
+                      style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b981', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      📂 Fetch Last 30 Days History
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setChatLoading(true);
+                        const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+                          .then(r => r.json())
+                          .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
+                          .catch(() => setChatLoading(false));
+                      }} 
+                      style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      🔄 Refresh Chat
+                    </button>
+                  </div>
                 </div>
 
                 {/* Chat Messages Area */}

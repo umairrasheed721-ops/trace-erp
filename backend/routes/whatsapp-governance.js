@@ -147,4 +147,50 @@ router.post('/chat/:order_id/send', async (req, res) => {
   }
 });
 
+// POST /api/whatsapp-governance/chat/:order_id/fetch-history
+router.post('/chat/:order_id/fetch-history', async (req, res) => {
+  const { order_id } = req.params;
+  try {
+    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    if (typeof bot.fetchHistoryForPhone === 'function') {
+      const result = await bot.fetchHistoryForPhone(cleaned);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error || 'Failed to fetch history' });
+      }
+    }
+
+    // Pull from SQLite DB
+    const dbMessages = db.prepare(`
+      SELECT * FROM whatsapp_messages 
+      WHERE phone LIKE ? OR order_id = ? 
+      ORDER BY id ASC
+    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id);
+
+    // Pull from live Baileys WebSocket memory store
+    const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
+
+    // Merge and deduplicate by message text
+    const merged = [...dbMessages];
+    for (const bm of baileysMessages) {
+      const exists = merged.some(dm => dm.message.trim() === bm.message.trim());
+      if (!exists) {
+        merged.push(bm);
+      }
+    }
+
+    // Sort by created_at ascending
+    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    res.json({ success: true, messages: merged });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
