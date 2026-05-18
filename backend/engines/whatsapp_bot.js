@@ -22,6 +22,7 @@ const SILENT_LOGGER = {
     this.qrCode = null;
     this.status = 'DISCONNECTED';
     this.reconnectAttempts = 0;
+    this.isConnecting = false;
     
     // --- 🛡️ ANTI-BAN THROTTLING SYSTEM ---
     this.queue = [];
@@ -41,9 +42,13 @@ const SILENT_LOGGER = {
   }
 
   async _connect() {
+    if (this.isConnecting) return;
+    this.isConnecting = true;
+
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       console.error('❌ Max reconnect attempts reached. Click Reset Session to retry.');
       this.status = 'FAILURE';
+      this.isConnecting = false;
       return;
     }
 
@@ -118,10 +123,12 @@ const SILENT_LOGGER = {
           this.status = 'CONNECTED';
           this.qrCode = null;
           this.reconnectAttempts = 0;
+          this.isConnecting = false;
           return;
         }
 
         if (connection === 'close') {
+          this.isConnecting = false;
           const err = lastDisconnect?.error;
           const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
 
@@ -351,10 +358,14 @@ const SILENT_LOGGER = {
     this.status = 'DISCONNECTED';
     this.qrCode = null;
     this.reconnectAttempts = 0;
+    this.isConnecting = false;
 
     const oldSock = this.sock;
     this.sock = null;
     if (oldSock) {
+      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
       try { oldSock.logout(); } catch (_) {}
       try { oldSock.end(new Error('reset')); } catch (_) {}
       try { oldSock.ws?.close(); } catch (_) {}
