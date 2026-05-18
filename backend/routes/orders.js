@@ -479,7 +479,17 @@ router.get('/:id/details', async (req, res) => {
 
     res.json(updatedOrder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.warn(`Shopify live fetch failed for order ${order.id}: ${err.message}. Returning local SQLite order.`);
+    let parsedItems = [];
+    try {
+      parsedItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+    } catch(e) {}
+    res.json({
+      ...order,
+      line_items: parsedItems,
+      line_items_parsed: parsedItems,
+      fallback_local: true
+    });
   }
 });
 
