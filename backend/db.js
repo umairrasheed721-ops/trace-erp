@@ -629,6 +629,19 @@ function runMigrations(db) {
       dispatch_template TEXT DEFAULT '📦 Your order #{ref} has been dispatched via {courier}. Tracking number: {tracking}. Track here: {link}',
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      order_id INTEGER,
+      phone TEXT NOT NULL,
+      direction TEXT NOT NULL, -- 'incoming' vs 'outgoing'
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'sent',
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone ON whatsapp_messages(phone);
+    CREATE INDEX IF NOT EXISTS idx_wa_msgs_order ON whatsapp_messages(order_id);
   `);
 
   const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;

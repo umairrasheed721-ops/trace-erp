@@ -32,6 +32,58 @@ export default function EditOrderModal({
   const [trackingData, setTrackingData] = useState(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
 
+  // Pillar 1: Live WhatsApp Chat State
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [newWaMsg, setNewWaMsg] = useState('');
+  const [sendingWaMsg, setSendingWaMsg] = useState(false);
+
+  // Fetch chat messages when activeTab becomes 'whatsapp_chat'
+  useEffect(() => {
+    if (editingOrder && activeTab === 'whatsapp_chat') {
+      setChatLoading(true);
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(r => r.json())
+        .then(data => {
+          setChatMessages(data.messages || []);
+          setChatLoading(false);
+        })
+        .catch(() => setChatLoading(false));
+    }
+  }, [editingOrder, activeTab]);
+
+  const handleSendWaMessage = async (customText) => {
+    const textToSend = customText || newWaMsg;
+    if (!textToSend.trim()) return;
+
+    setSendingWaMsg(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ message: textToSend })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChatMessages(prev => [...prev, data.message]);
+        if (!customText) setNewWaMsg('');
+      } else {
+        alert(data.error || 'Failed to send message');
+      }
+    } catch (err) {
+      alert('Network error sending WhatsApp message');
+    } finally {
+      setSendingWaMsg(false);
+    }
+  };
+
   useEffect(() => {
     if (editingOrder) {
       const items = editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []));
@@ -475,6 +527,27 @@ export default function EditOrderModal({
               <span>🚚</span>
               <span>Courier Logistics & Timeline</span>
             </button>
+            <button 
+              onClick={() => setActiveTab('whatsapp_chat')}
+              style={{ 
+                padding: '12px 20px', 
+                background: activeTab === 'whatsapp_chat' ? '#0f172a' : 'transparent', 
+                color: activeTab === 'whatsapp_chat' ? '#6366f1' : '#94a3b8', 
+                borderTopLeftRadius: 16, 
+                borderTopRightRadius: 16, 
+                border: activeTab === 'whatsapp_chat' ? '1px solid #334155' : 'none', 
+                borderBottom: 'none', 
+                fontWeight: 700, 
+                fontSize: '0.85rem', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+            >
+              <span>💬</span>
+              <span>Live WhatsApp Chat</span>
+            </button>
           </div>
         </div>
 
@@ -850,6 +923,154 @@ export default function EditOrderModal({
                       </a>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Live WhatsApp Chat */}
+          {activeTab === 'whatsapp_chat' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 28, height: 'calc(100vh - 340px)', minHeight: 500 }}>
+              {/* Left Side: Active Chat Window */}
+              <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
+                {/* Chat Header */}
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid #334155', background: '#0f172a', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#6366f120', border: '1px solid #6366f1', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
+                      👤
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{editingOrder.customer_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{editingOrder.phone} • Baileys WebSocket Active 🟢</div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setChatLoading(true);
+                      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+                      fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+                        .then(r => r.json())
+                        .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
+                        .catch(() => setChatLoading(false));
+                    }} 
+                    style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    🔄 Refresh Chat
+                  </button>
+                </div>
+
+                {/* Chat Messages Area */}
+                <div style={{ flex: 1, padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {chatLoading ? (
+                    <div style={{ margin: 'auto', color: '#94a3b8', fontSize: '0.9rem' }}>⏳ Loading chat history from database...</div>
+                  ) : chatMessages.length > 0 ? (
+                    chatMessages.map(msg => {
+                      const isOutgoing = msg.direction === 'outgoing';
+                      return (
+                        <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isOutgoing ? 'flex-end' : 'flex-start', alignSelf: isOutgoing ? 'flex-end' : 'flex-start', maxWidth: '75%' }}>
+                          <div style={{ 
+                            background: isOutgoing ? '#10b981' : '#334155', 
+                            color: '#fff', 
+                            padding: '12px 18px', 
+                            borderRadius: 20, 
+                            borderBottomRightRadius: isOutgoing ? 4 : 20, 
+                            borderBottomLeftRadius: isOutgoing ? 20 : 4,
+                            fontSize: '0.9rem',
+                            lineHeight: 1.5,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                          }}>
+                            {msg.message}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 4, padding: '0 6px' }}>
+                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {isOutgoing ? (msg.status === 'sent' ? '✓ Sent' : '✓✓ Delivered') : 'Customer'}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div style={{ margin: 'auto', textAlign: 'center', color: '#64748b', padding: 40 }}>
+                      <p style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8 }}>No messages found for +{editingOrder.phone}</p>
+                      <p style={{ fontSize: '0.8rem', margin: 0 }}>Start the conversation by typing a message below or clicking a quick reply pill!</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Reply Pills */}
+                <div style={{ padding: '10px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 8, overflowX: 'auto' }}>
+                  {[
+                    "👋 Sir, kindly confirm your nearest landmark for delivery.",
+                    "📦 Aapka parcel PostEx ko hand over kar diya hai.",
+                    "⚠️ Rider aapki location par hai, kindly phone attend karein.",
+                    "✅ Order confirm karne ka shukriya!"
+                  ].map((pillText, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSendWaMessage(pillText)}
+                      disabled={sendingWaMsg}
+                      style={{ 
+                        background: '#334155', 
+                        color: '#f1f5f9', 
+                        border: '1px solid #475569', 
+                        padding: '6px 14px', 
+                        borderRadius: 16, 
+                        fontSize: '0.75rem', 
+                        fontWeight: 600, 
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#475569'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#334155'}
+                    >
+                      ⚡ {pillText.slice(0, 30)}...
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chat Input Bar */}
+                <div style={{ padding: '16px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 12 }}>
+                  <input 
+                    type="text" 
+                    placeholder={`Type a message to ${editingOrder.customer_name}...`}
+                    value={newWaMsg}
+                    onChange={e => setNewWaMsg(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSendWaMessage()}
+                    style={{ flex: 1, background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: '12px 18px', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+                  />
+                  <button
+                    onClick={() => handleSendWaMessage()}
+                    disabled={sendingWaMsg || !newWaMsg.trim()}
+                    style={{ 
+                      background: '#10b981', 
+                      color: '#fff', 
+                      border: 'none', 
+                      padding: '12px 24px', 
+                      borderRadius: 16, 
+                      fontSize: '0.9rem', 
+                      fontWeight: 700, 
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+                      opacity: (!newWaMsg.trim() || sendingWaMsg) ? 0.5 : 1
+                    }}
+                  >
+                    {sendingWaMsg ? '⏳...' : 'Send 🚀'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Side: Agent Guidelines & Shortcuts */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>💡 Agent Best Practices</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <li><strong style={{ color: '#fff' }}>Keep it Conversational</strong>: Speak politely and use local vernacular (e.g. Sir/Ma'am).</li>
+                    <li><strong style={{ color: '#fff' }}>Instant Quick Replies</strong>: Click any pill above the text box to instantly fire standard delivery updates.</li>
+                    <li><strong style={{ color: '#fff' }}>WebSocket Speed</strong>: Messages are sent instantly via Baileys WebSocket without needing WhatsApp Web or Chrome.</li>
+                    <li><strong style={{ color: '#fff' }}>Auto-Verification Check</strong>: If the customer replies with "Confirm" or "Yes", the ERP will automatically update the order status to Verified!</li>
+                  </ul>
+                  <div style={{ background: '#10b98120', border: '1px solid #10b98140', padding: 16, borderRadius: 14, color: '#10b981', fontSize: '0.8rem', fontWeight: 700, marginTop: 8 }}>
+                    🔒 100% Safe 1-on-1 Chatting: Manual agent messages carry zero ban risk.
+                  </div>
                 </div>
               </div>
             </div>

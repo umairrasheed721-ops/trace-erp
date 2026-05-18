@@ -130,6 +130,41 @@ const SILENT_LOGGER = {
         }
       });
 
+      this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        for (const msg of messages) {
+          if (!msg.message || msg.key.fromMe) continue;
+          
+          const remoteJid = msg.key.remoteJid;
+          if (!remoteJid || remoteJid.includes('@g.us')) continue; // Skip groups
+          
+          const fromPhone = remoteJid.split('@')[0];
+          const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+          if (!text) continue;
+
+          console.log(`💬 Incoming WA Message from ${fromPhone}: ${text}`);
+
+          try {
+            const { db } = require('../db');
+            const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
+            const orderId = order ? order.id : null;
+            const storeId = order ? order.store_id : 1;
+
+            db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
+              VALUES (?, ?, ?, 'incoming', ?)
+            `).run(storeId, orderId, fromPhone, text);
+
+            if (orderId && ['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => text.toLowerCase().includes(w))) {
+              db.prepare(`UPDATE orders SET wa_verification_status = 'Verified' WHERE id = ?`).run(orderId);
+              console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
+            }
+          } catch (err) {
+            console.error('❌ Error processing incoming WA message:', err.message);
+          }
+        }
+      });
+
     } catch (err) {
       console.error('❌ _connect() error:', err.message);
       this.status = 'FAILURE';
@@ -217,6 +252,20 @@ const SILENT_LOGGER = {
         this.hourlyCount++;
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
         this._addAuditLog(cleaned, 'Sent', '');
+
+        try {
+          const { db } = require('../db');
+          const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`);
+          const orderId = order ? order.id : null;
+          const storeId = order ? order.store_id : 1;
+          db.prepare(`
+            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
+            VALUES (?, ?, ?, 'outgoing', ?)
+          `).run(storeId, orderId, cleaned, message);
+        } catch (dbErr) {
+          console.error('❌ Error logging outgoing WA message to DB:', dbErr.message);
+        }
+
         resolve({ success: true });
 
       } catch (err) {

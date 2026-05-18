@@ -60,4 +60,67 @@ router.post('/queue/clear', (req, res) => {
   }
 });
 
+// GET /api/whatsapp-governance/chat/:order_id
+router.get('/chat/:order_id', (req, res) => {
+  const { order_id } = req.params;
+  try {
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, wa_verification_status FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    if (!order.phone) {
+      return res.json({ order, messages: [] });
+    }
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const messages = db.prepare(`
+      SELECT * FROM whatsapp_messages 
+      WHERE phone LIKE ? OR order_id = ? 
+      ORDER BY id ASC
+    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id);
+
+    res.json({ order, messages });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chat/:order_id/send
+router.post('/chat/:order_id/send', async (req, res) => {
+  const { order_id } = req.params;
+  const { message } = req.body;
+
+  if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
+
+  try {
+    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    // Queue message via Baileys bot
+    bot.sendMessage(cleaned, message);
+
+    // Return optimistic message object
+    const newMsg = {
+      id: Date.now(),
+      store_id: order.store_id,
+      order_id: order.id,
+      phone: cleaned,
+      direction: 'outgoing',
+      message,
+      status: 'sent',
+      created_at: new Date().toISOString()
+    };
+
+    res.json({ success: true, message: newMsg });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
