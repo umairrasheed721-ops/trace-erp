@@ -68,9 +68,6 @@ router.post('/send-test', authenticateToken, async (req, res) => {
 router.post('/reset', authenticateToken, (req, res) => {
   try {
     getBot().resetSession();
-    // Force reload bot module on next request
-    _bot = null;
-    try { delete require.cache[require.resolve('../engines/whatsapp_bot')]; } catch (_) {}
     res.json({ success: true, message: 'Session reset. QR code will appear shortly.' });
   } catch (err) {
     console.error('WhatsApp /reset error:', err.message);

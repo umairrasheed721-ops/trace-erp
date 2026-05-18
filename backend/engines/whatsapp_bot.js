@@ -355,7 +355,9 @@ const SILENT_LOGGER = {
     const oldSock = this.sock;
     this.sock = null;
     if (oldSock) {
+      try { oldSock.logout(); } catch (_) {}
       try { oldSock.end(new Error('reset')); } catch (_) {}
+      try { oldSock.ws?.close(); } catch (_) {}
     }
 
     try {
