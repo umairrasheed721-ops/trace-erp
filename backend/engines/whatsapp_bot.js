@@ -186,7 +186,7 @@ const SILENT_LOGGER = {
 
           try {
             const { db } = require('../db');
-            const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
+            const order = db.prepare(`SELECT id, store_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
             const orderId = order ? order.id : null;
             const storeId = order ? order.store_id : 1;
 
@@ -195,9 +195,47 @@ const SILENT_LOGGER = {
               VALUES (?, ?, ?, 'incoming', ?)
             `).run(storeId, orderId, fromPhone, text);
 
-            if (orderId && ['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => text.toLowerCase().includes(w))) {
-              db.prepare(`UPDATE orders SET wa_verification_status = 'Verified' WHERE id = ?`).run(orderId);
-              console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
+            if (orderId) {
+              const lowerText = text.toLowerCase();
+              
+              // 1. Verification Intent
+              if (['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => lowerText.includes(w))) {
+                db.prepare(`UPDATE orders SET wa_verification_status = 'Verified' WHERE id = ?`).run(orderId);
+                console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
+              }
+
+              // Check AI Responder Settings
+              const settings = db.prepare('SELECT ai_responder_enabled, ai_tracking_template, ai_landmark_template FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+              if (settings.ai_responder_enabled !== 0) {
+                // 2. Tracking Intent ("kahan hai", "tracking", "status", "kab aayega", "parcel", "where is")
+                if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
+                  const tracking = order.tracking_number || 'N/A';
+                  const courier = order.courier || 'Courier';
+                  const status = order.delivery_status || 'In Transit';
+                  const link = order.courier === 'PostEx' ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
+                  
+                  let reply = (settings.ai_tracking_template || '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}')
+                    .replace(/\{tracking\}/g, tracking)
+                    .replace(/\{courier\}/g, courier)
+                    .replace(/\{status\}/g, status)
+                    .replace(/\{link\}/g, link);
+
+                  this.sendMessage(fromPhone, reply, true);
+                  console.log(`🤖 AI Auto-Responder: Sent Tracking Intent reply to ${fromPhone}`);
+                }
+
+                // 3. Landmark / Address Intent ("near", "opposite", "beside", "gali", "house", "makan", "street", "landmark")
+                else if (['near', 'opposite', 'beside', 'gali', 'house', 'makan', 'street', 'landmark', 'ke paas', 'samne'].some(w => lowerText.includes(w))) {
+                  // Save landmark to cs_notes
+                  db.prepare(`UPDATE orders SET cs_notes = IFNULL(cs_notes, '') || ' [WA Landmark: ' || ? || ']' WHERE id = ?`).run(text, orderId);
+                  
+                  let reply = (settings.ai_landmark_template || '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.')
+                    .replace(/\{landmark\}/g, text);
+
+                  this.sendMessage(fromPhone, reply, true);
+                  console.log(`🤖 AI Auto-Responder: Sent Landmark Intent reply to ${fromPhone}`);
+                }
+              }
             }
           } catch (err) {
             console.error('❌ Error processing incoming WA message:', err.message);
@@ -337,12 +375,15 @@ const SILENT_LOGGER = {
     if (this.auditLogs.length > 100) this.auditLogs.pop();
   }
 
-  setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin }) {
+  setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate }) {
     if (minDelaySec !== undefined) this.minDelaySec = Number(minDelaySec);
     if (maxDelaySec !== undefined) this.maxDelaySec = Number(maxDelaySec);
     if (maxPerHour !== undefined) this.maxPerHour = Number(maxPerHour);
     if (coolingPeriodMin !== undefined) this.coolingPeriodMin = Number(coolingPeriodMin);
-    console.log(`🎛️ Bot pacing updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m`);
+    if (aiResponderEnabled !== undefined) this.aiResponderEnabled = Number(aiResponderEnabled);
+    if (aiTrackingTemplate !== undefined) this.aiTrackingTemplate = aiTrackingTemplate;
+    if (aiLandmarkTemplate !== undefined) this.aiLandmarkTemplate = aiLandmarkTemplate;
+    console.log(`🎛️ Bot pacing & AI updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m | AI Responder: ${this.aiResponderEnabled}`);
   }
 
   togglePause() {

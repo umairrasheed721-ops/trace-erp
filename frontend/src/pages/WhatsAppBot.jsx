@@ -453,6 +453,7 @@ export default function WhatsAppBot() {
               { id: 'cod', label: '💬 COD Verification Template' },
               { id: 'rescue', label: '⚠️ Courier Rescue Template' },
               { id: 'dispatch', label: '📦 Dispatch Alert Template' },
+              { id: 'ai', label: '🤖 AI Auto-Responder Studio' },
             ].map(sub => (
               <button
                 key={sub.id}
@@ -584,6 +585,59 @@ export default function WhatsAppBot() {
                 style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
               />
               <p className="text-muted" style={{ fontSize: '0.8rem' }}>Broadcasted automatically when an order is successfully booked and assigned a tracking airway bill.</p>
+            </div>
+          )}
+
+          {/* Sub-Tab A5: AI Auto-Responder Studio */}
+          {activeSubTabA === 'ai' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                <div>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🤖 AI Intent Classification & Auto-Responder</h4>
+                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>Automatically detect customer intent (Tracking & Landmark Updates) and dispatch instant AI replies.</p>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 800, cursor: 'pointer', fontSize: '1rem', background: settings.ai_responder_enabled === 1 ? 'var(--green-dim)' : 'var(--red-dim)', color: settings.ai_responder_enabled === 1 ? 'var(--green)' : 'var(--red)', padding: '10px 20px', borderRadius: 30, border: `1px solid ${settings.ai_responder_enabled === 1 ? 'var(--green)' : 'var(--red)'}` }}>
+                  <input 
+                    type="checkbox" 
+                    checked={settings.ai_responder_enabled === 1}
+                    onChange={e => setSettings({ ...settings, ai_responder_enabled: e.target.checked ? 1 : 0 })}
+                    style={{ width: 22, height: 22, accentColor: settings.ai_responder_enabled === 1 ? 'var(--green)' : 'var(--red)' }}
+                  />
+                  <span>{settings.ai_responder_enabled === 1 ? 'AI RESPONDER ACTIVE 🟢' : 'AI RESPONDER DISABLED 🔴'}</span>
+                </label>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
+                  <span>📦 AI Tracking Intent Template ("Mera parcel kahan hai?")</span>
+                  <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{tracking}'}, {'{courier}'}, {'{status}'}, {'{link}'}</span>
+                </label>
+                <textarea 
+                  className="premium-input" 
+                  rows={4}
+                  value={settings.ai_tracking_template ?? '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'}
+                  onChange={e => setSettings({ ...settings, ai_tracking_template: e.target.value })}
+                  placeholder="🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}"
+                  style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
+                />
+                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Dispatched automatically when a customer asks about tracking, delivery status, or arrival time.</p>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
+                  <span>📍 AI Landmark & Address Intent Template ("Near Jamia Masjid")</span>
+                  <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{landmark}'}</span>
+                </label>
+                <textarea 
+                  className="premium-input" 
+                  rows={4}
+                  value={settings.ai_landmark_template ?? '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'}
+                  onChange={e => setSettings({ ...settings, ai_landmark_template: e.target.value })}
+                  placeholder="🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai."
+                  style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
+                />
+                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Dispatched instantly when a customer provides delivery instructions, landmarks, or street corrections.</p>
+              </div>
             </div>
           )}
         </div>

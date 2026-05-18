@@ -627,6 +627,9 @@ function runMigrations(db) {
       cod_template TEXT DEFAULT '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!',
       attempted_template TEXT DEFAULT '⚠️ Urgent: Our rider tried to deliver your parcel ({tracking}) today but couldn''t reach you. Please click here to drop your exact GPS location or delivery instructions so we can reattempt delivery tomorrow: {link}',
       dispatch_template TEXT DEFAULT '📦 Your order #{ref} has been dispatched via {courier}. Tracking number: {tracking}. Track here: {link}',
+      ai_responder_enabled INTEGER DEFAULT 1,
+      ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}',
+      ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.',
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -643,6 +646,10 @@ function runMigrations(db) {
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone ON whatsapp_messages(phone);
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_order ON whatsapp_messages(order_id);
   `);
+
+  try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1`); } catch (e) {}
+  try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'`); } catch (e) {}
 
   const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;
   if (waCount === 0) {
