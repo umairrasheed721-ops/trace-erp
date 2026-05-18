@@ -291,15 +291,67 @@ export default function EditOrderModal({
     return Object.values(groups);
   }, [masterProducts]);
 
-  // Filter grouped products by search query
+  // Helper for Levenshtein Distance (Typos & Spelling Mistakes)
+  const getEditDistance = (a, b) => {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+    for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  };
+
+  // Helper for Lenient Search (Punctuation, Subsequences, Typos)
+  const isLenientMatch = (query, target) => {
+    if (!query || !target) return false;
+    const qClean = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const tClean = target.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!qClean) return true;
+    if (!tClean) return false;
+
+    // 1. Direct substring match on cleaned strings (e.g. 'puma' matches 'PUM-A')
+    if (tClean.includes(qClean)) return true;
+
+    // 2. Subsequence match (e.g. 'pma' matches 'puma')
+    let qIdx = 0;
+    for (let i = 0; i < tClean.length; i++) {
+      if (tClean[i] === qClean[qIdx]) qIdx++;
+      if (qIdx === qClean.length) return true;
+    }
+
+    // 3. Typo / Spelling mistake tolerance (Levenshtein distance on words)
+    if (qClean.length >= 3) {
+      const tWords = target.toLowerCase().split(/[\s\-]/).filter(Boolean);
+      for (const word of tWords) {
+        const wClean = word.replace(/[^a-z0-9]/g, '');
+        if (wClean.length >= 3) {
+          const dist = getEditDistance(qClean, wClean);
+          if (dist <= 1 || (qClean.length >= 5 && dist <= 2)) return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
+  // Filter grouped products by search query with lenient fuzzy matching
   const filteredGroups = useMemo(() => {
     if (!productSearchQuery.trim()) return groupedProducts;
-    const q = productSearchQuery.toLowerCase().trim();
+    const q = productSearchQuery.trim();
     return groupedProducts.filter(g => 
-      g.parent_title.toLowerCase().includes(q) ||
-      g.all_skus.some(sku => sku.includes(q)) ||
-      g.all_variants.some(v => v.includes(q)) ||
-      Object.keys(g.colors).some(c => c.toLowerCase().includes(q))
+      isLenientMatch(q, g.parent_title) ||
+      g.all_skus.some(sku => isLenientMatch(q, sku)) ||
+      g.all_variants.some(v => isLenientMatch(q, v)) ||
+      Object.keys(g.colors).some(c => isLenientMatch(q, c))
     );
   }, [groupedProducts, productSearchQuery]);
 
