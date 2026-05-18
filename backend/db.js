@@ -613,5 +613,29 @@ function runMigrations(db) {
       log_data TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mode TEXT DEFAULT 'live', -- 'live', 'simulation'
+      cod_verification_enabled INTEGER DEFAULT 1,
+      attempted_delivery_enabled INTEGER DEFAULT 1,
+      dispatch_alerts_enabled INTEGER DEFAULT 1,
+      min_delay_sec INTEGER DEFAULT 5,
+      max_delay_sec INTEGER DEFAULT 15,
+      max_per_hour INTEGER DEFAULT 60,
+      cooling_period_min INTEGER DEFAULT 15,
+      cod_template TEXT DEFAULT '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!',
+      attempted_template TEXT DEFAULT '⚠️ Urgent: Our rider tried to deliver your parcel ({tracking}) today but couldn''t reach you. Please click here to drop your exact GPS location or delivery instructions so we can reattempt delivery tomorrow: {link}',
+      dispatch_template TEXT DEFAULT '📦 Your order #{ref} has been dispatched via {courier}. Tracking number: {tracking}. Track here: {link}',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
+
+  const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;
+  if (waCount === 0) {
+    db.prepare(`
+      INSERT INTO whatsapp_settings (mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min)
+      VALUES ('live', 1, 1, 1, 5, 15, 60, 15)
+    `).run();
+  }
 }

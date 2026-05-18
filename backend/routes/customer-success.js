@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db, prepare, logAction } = require('../db');
 const crypto = require('crypto');
+const bot = require('../engines/whatsapp_bot');
 
 // Helper to generate a secure tracking slug
 function generateTrackingSlug() {
@@ -230,9 +231,20 @@ router.post('/simulate-trigger', (req, res) => {
     }
 
     if (action === 'SEND_VERIFICATION') {
-      logs.push({ time: new Date().toISOString(), type: 'system', message: 'Sent WhatsApp COD Verification Template' });
+      const settings = db.prepare('SELECT * FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+      const isLive = settings.mode === 'live';
+      const isEnabled = settings.cod_verification_enabled !== 0;
+
+      logs.push({ time: new Date().toISOString(), type: 'system', message: isLive ? 'Dispatched Live WhatsApp COD Verification Template via Baileys' : 'Simulated WhatsApp COD Verification Template' });
       prepare(`UPDATE orders SET wa_verification_status = 'Pending', wa_interaction_logs = ? WHERE id = ?`).run(JSON.stringify(logs), order.id);
-      return res.json({ success: true, message: 'WhatsApp verification template sent! Status set to Pending.' });
+
+      if (isLive && isEnabled && order.phone) {
+        const template = settings.cod_template || '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!';
+        const msg = template.replace('{ref}', order.ref_number || order.shopify_order_id).replace('{amount}', order.price || 0);
+        bot.sendMessage(order.phone, msg);
+      }
+
+      return res.json({ success: true, message: isLive ? 'Live WhatsApp verification queued via Baileys!' : 'WhatsApp verification simulated! Status set to Pending.' });
     } 
     else if (action === 'SIMULATE_CONFIRM') {
       logs.push({ time: new Date().toISOString(), type: 'customer', message: 'Clicked Button: ✅ Confirm Order' });
@@ -251,8 +263,20 @@ router.post('/simulate-trigger', (req, res) => {
       return res.json({ success: true, message: 'Customer curated address! Address updated in database.' });
     }
     else if (action === 'SIMULATE_ATTEMPTED') {
+      const settings = db.prepare('SELECT * FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+      const isLive = settings.mode === 'live';
+      const isEnabled = settings.attempted_delivery_enabled !== 0;
+
       prepare(`UPDATE orders SET delivery_status = 'Attempted', cs_notes = 'Attempted - Customer Unreachable / Address Issue' WHERE id = ?`).run(order.id);
-      return res.json({ success: true, message: 'Simulated Courier Attempted status! Tracking portal will now render the Rescue Form.', slug });
+
+      if (isLive && isEnabled && order.phone) {
+        const template = settings.attempted_template || '⚠️ Urgent: Our rider tried to deliver your parcel ({tracking}) today but couldn\'t reach you. Please click here to drop your exact GPS location or delivery instructions so we can reattempt delivery tomorrow: {link}';
+        const link = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/tracking/${slug}`;
+        const msg = template.replace('{tracking}', order.tracking_number || order.ref_number || order.shopify_order_id).replace('{link}', link);
+        bot.sendMessage(order.phone, msg);
+      }
+
+      return res.json({ success: true, message: isLive ? 'Live Courier Attempted alert queued via Baileys!' : 'Simulated Courier Attempted status! Tracking portal will now render the Rescue Form.', slug });
     }
 
     res.status(400).json({ error: 'Invalid simulation action.' });

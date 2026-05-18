@@ -16,9 +16,7 @@ const SILENT_LOGGER = {
   trace: () => {}, debug: () => {}, info: () => {},
   warn: () => {}, error: () => {}, fatal: () => {},
   child() { return SILENT_LOGGER; },
-};
-
-class WhatsAppBot {
+};class WhatsAppBot {
   constructor() {
     this.sock = null;
     this.qrCode = null;
@@ -30,7 +28,14 @@ class WhatsAppBot {
     this.isProcessing = false;
     this.hourlyCount = 0;
     this.lastResetTime = Date.now();
-    this.MAX_PER_HOUR = 60; // Safety cap
+    
+    // Dynamic governance parameters
+    this.isPaused = false;
+    this.minDelaySec = 5;
+    this.maxDelaySec = 15;
+    this.maxPerHour = 60;
+    this.coolingPeriodMin = 15;
+    this.auditLogs = []; // Buffer of recent delivery audits
 
     setTimeout(() => this._connect(), 5000);
   }
@@ -162,10 +167,14 @@ class WhatsAppBot {
       console.warn('⏳ Queue paused: Bot not connected');
       return;
     }
+    if (this.isPaused) {
+      console.warn('⏳ Queue paused by Master Emergency Switch');
+      return;
+    }
 
     this.isProcessing = true;
 
-    while (this.queue.length > 0) {
+    while (this.queue.length > 0 && !this.isPaused) {
       // 1. Check Hourly Limit
       const now = Date.now();
       if (now - this.lastResetTime > 3600000) {
@@ -173,30 +182,33 @@ class WhatsAppBot {
         this.lastResetTime = now;
       }
 
-      if (this.hourlyCount >= this.MAX_PER_HOUR) {
-        console.warn(`🛑 Hourly limit (${this.MAX_PER_HOUR}) reached. Throttling for 10 minutes...`);
-        await new Promise(r => setTimeout(r, 600000)); // Wait 10 mins
+      if (this.hourlyCount >= this.maxPerHour) {
+        console.warn(`🛑 Hourly limit (${this.maxPerHour}) reached. Throttling for ${this.coolingPeriodMin} minutes...`);
+        await new Promise(r => setTimeout(r, this.coolingPeriodMin * 60000));
         this.hourlyCount = 0; // Reset after wait
         this.lastResetTime = Date.now();
       }
 
       const { phone, message, resolve } = this.queue.shift();
+      let cleaned = phone.replace(/\D/g, '');
 
       try {
-        let cleaned = phone.replace(/\D/g, '');
         if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
         else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
         const jid = cleaned + '@s.whatsapp.net';
         
-        // 2. Anti-Ban Human Delay (Random 5-15 seconds)
-        const delay = Math.floor(Math.random() * 10000) + 5000;
+        // 2. Anti-Ban Human Delay (Dynamic range)
+        const minMs = this.minDelaySec * 1000;
+        const maxMs = this.maxDelaySec * 1000;
+        const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
         console.log(`⏳ Anti-Ban: Waiting ${delay/1000}s before sending to ${cleaned}...`);
         await new Promise(r => setTimeout(r, delay));
 
         const [reg] = await this.sock.onWhatsApp(jid);
         if (!reg?.exists) {
           const reason = `+${cleaned} is not registered on WhatsApp`;
+          this._addAuditLog(cleaned, 'Failed', reason);
           resolve({ success: false, error: reason });
           continue;
         }
@@ -204,16 +216,65 @@ class WhatsAppBot {
         await this.sock.sendMessage(jid, { text: message });
         this.hourlyCount++;
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
+        this._addAuditLog(cleaned, 'Sent', '');
         resolve({ success: true });
 
       } catch (err) {
         const reason = err.message || 'Unknown WhatsApp error';
         console.error('❌ sendMessage error:', reason);
+        this._addAuditLog(cleaned || phone, 'Failed', reason);
         resolve({ success: false, error: reason });
       }
     }
 
     this.isProcessing = false;
+  }
+
+  _addAuditLog(phone, status, error) {
+    this.auditLogs.unshift({
+      time: new Date().toLocaleTimeString(),
+      phone,
+      status,
+      error
+    });
+    if (this.auditLogs.length > 100) this.auditLogs.pop();
+  }
+
+  setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin }) {
+    if (minDelaySec !== undefined) this.minDelaySec = Number(minDelaySec);
+    if (maxDelaySec !== undefined) this.maxDelaySec = Number(maxDelaySec);
+    if (maxPerHour !== undefined) this.maxPerHour = Number(maxPerHour);
+    if (coolingPeriodMin !== undefined) this.coolingPeriodMin = Number(coolingPeriodMin);
+    console.log(`🎛️ Bot pacing updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m`);
+  }
+
+  togglePause() {
+    this.isPaused = !this.isPaused;
+    console.log(`🎛️ Master Emergency Switch: isPaused = ${this.isPaused}`);
+    if (!this.isPaused) {
+      this._processQueue();
+    }
+    return this.isPaused;
+  }
+
+  clearQueue() {
+    const count = this.queue.length;
+    this.queue = [];
+    console.log(`🗑️ Cleared ${count} queued messages.`);
+    return count;
+  }
+
+  getQueueDetails() {
+    return {
+      isPaused: this.isPaused,
+      queueCount: this.queue.length,
+      hourlyCount: this.hourlyCount,
+      maxPerHour: this.maxPerHour,
+      minDelaySec: this.minDelaySec,
+      maxDelaySec: this.maxDelaySec,
+      coolingPeriodMin: this.coolingPeriodMin,
+      auditLogs: this.auditLogs
+    };
   }
 
   resetSession() {
