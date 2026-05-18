@@ -57,8 +57,18 @@ const SILENT_LOGGER = {
         useMultiFileAuthState,
         DisconnectReason,
         fetchLatestBaileysVersion,
+        makeInMemoryStore,
       } = await import('@whiskeysockets/baileys');
       const { Boom } = await import('@hapi/boom');
+
+      if (!this.store) {
+        this.store = makeInMemoryStore({ logger: SILENT_LOGGER });
+        const storePath = path.join(process.cwd(), 'wa_store.json');
+        try { if (fs.existsSync(storePath)) this.store.readFromFile(storePath); } catch (e) {}
+        setInterval(() => {
+          try { this.store.writeToFile(storePath); } catch (e) {}
+        }, 10000);
+      }
 
       if (!fs.existsSync(SESSION_PATH)) fs.mkdirSync(SESSION_PATH, { recursive: true });
 
@@ -84,6 +94,8 @@ const SILENT_LOGGER = {
         keepAliveIntervalMs: 10000,
         getMessage: async () => ({ conversation: '' }),
       });
+
+      this.store.bind(this.sock.ev);
 
       this.sock.ev.on('creds.update', saveCreds);
 
@@ -349,6 +361,28 @@ const SILENT_LOGGER = {
 
     setTimeout(() => this._connect(), 2000);
     return true;
+  }
+
+  getChatHistory(phone) {
+    if (!this.store) return [];
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const jid = cleaned + '@s.whatsapp.net';
+    
+    const msgs = this.store.messages[jid]?.array || [];
+    return msgs.map(m => {
+      const text = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
+      if (!text) return null;
+      return {
+        id: m.key.id,
+        phone: cleaned,
+        direction: m.key.fromMe ? 'outgoing' : 'incoming',
+        message: text,
+        status: m.key.fromMe ? (m.status === 3 ? 'delivered' : 'sent') : 'received',
+        created_at: new Date((Number(m.messageTimestamp) || Date.now()/1000) * 1000).toISOString()
+      };
+    }).filter(Boolean);
   }
 
   getStatus() {

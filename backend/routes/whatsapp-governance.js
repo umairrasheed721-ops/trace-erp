@@ -75,13 +75,29 @@ router.get('/chat/:order_id', (req, res) => {
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
-    const messages = db.prepare(`
+    // 1. Pull from SQLite DB
+    const dbMessages = db.prepare(`
       SELECT * FROM whatsapp_messages 
       WHERE phone LIKE ? OR order_id = ? 
       ORDER BY id ASC
     `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id);
 
-    res.json({ order, messages });
+    // 2. Pull from live Baileys WebSocket memory store
+    const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
+
+    // 3. Merge and deduplicate by message text
+    const merged = [...dbMessages];
+    for (const bm of baileysMessages) {
+      const exists = merged.some(dm => dm.message.trim() === bm.message.trim());
+      if (!exists) {
+        merged.push(bm);
+      }
+    }
+
+    // Sort by created_at ascending
+    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    res.json({ order, messages: merged });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

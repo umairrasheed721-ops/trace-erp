@@ -941,7 +941,7 @@ export default function EditOrderModal({
                     </div>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{editingOrder.customer_name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{editingOrder.phone} • Baileys WebSocket Active 🟢</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{(editingOrder.phone || '').replace(/^\+/, '')} • Baileys WebSocket Active 🟢</div>
                     </div>
                   </div>
                   <button 
@@ -989,7 +989,7 @@ export default function EditOrderModal({
                     })
                   ) : (
                     <div style={{ margin: 'auto', textAlign: 'center', color: '#64748b', padding: 40 }}>
-                      <p style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8 }}>No messages found for +{editingOrder.phone}</p>
+                      <p style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 8 }}>No messages found for +{(editingOrder.phone || '').replace(/^\+/, '')}</p>
                       <p style={{ fontSize: '0.8rem', margin: 0 }}>Start the conversation by typing a message below or clicking a quick reply pill!</p>
                     </div>
                   )}
