@@ -464,8 +464,9 @@ router.get('/:id/details', async (req, res) => {
 
     // Return the flattened object for the frontend
     const updatedOrder = {
-      ...order,
       ...shopifyOrder,
+      ...order,
+      shopify_order_id: shopifyOrder.id || order.shopify_order_id,
       customer_name,
       phone,
       address,
