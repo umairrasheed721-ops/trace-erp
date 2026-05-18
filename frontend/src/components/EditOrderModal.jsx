@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 
 export default function EditOrderModal({
   editingOrder,
@@ -58,7 +58,7 @@ export default function EditOrderModal({
         .then(data => { setCustIntel(data); setCustIntelLoading(false); })
         .catch(() => setCustIntelLoading(false));
 
-      // Fetch Master Products for SKU Intelligence (Fixed endpoint & response mapping)
+      // Fetch Master Products for SKU Intelligence
       const storeId = editingOrder.store_id || localStorage.getItem('activeStoreId') || 1;
       fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`)
         .then(r => r.json())
@@ -218,12 +218,92 @@ export default function EditOrderModal({
     return <span style={{ background: '#f59e0b20', color: '#f59e0b', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>🟡 COD Pending Verification</span>;
   };
 
-  // Filtered Master Products for Search Popover
-  const filteredProducts = masterProducts.filter(mp => 
-    (mp.parent_title || '').toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-    (mp.variant_title || '').toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-    (mp.sku || '').toLowerCase().includes(productSearchQuery.toLowerCase())
-  );
+  // Group master products into Parent -> Colors -> Sizes hierarchy
+  const groupedProducts = useMemo(() => {
+    const groups = {};
+
+    masterProducts.forEach(mp => {
+      // Clean parent title in case variant is appended
+      let pTitle = (mp.parent_title || 'Unnamed Product').trim();
+      if (pTitle.includes(' - ')) {
+        pTitle = pTitle.split(' - ')[0].trim();
+      }
+
+      // Parse variant title for Color and Size
+      const vTitle = (mp.variant_title || '').trim();
+      let color = 'Default';
+      let size = 'One Size';
+
+      if (vTitle && vTitle !== 'Default Title') {
+        const parts = vTitle.split(/[\/\-\|]/).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          const isSize = (str) => /^(xs|s|m|l|xl|2xl|3xl|4xl|\d+[a-z]*)$/i.test(str);
+          if (isSize(parts[0])) {
+            size = parts[0].toUpperCase();
+            color = parts[1];
+          } else if (isSize(parts[1])) {
+            color = parts[0];
+            size = parts[1].toUpperCase();
+          } else {
+            color = parts[0];
+            size = parts[1];
+          }
+        } else if (parts.length === 1) {
+          if (/^(xs|s|m|l|xl|2xl|3xl|4xl|\d+[a-z]*)$/i.test(parts[0])) {
+            size = parts[0].toUpperCase();
+          } else {
+            color = parts[0];
+          }
+        }
+      }
+
+      color = color.charAt(0).toUpperCase() + color.slice(1);
+
+      if (!groups[pTitle]) {
+        groups[pTitle] = {
+          parent_title: pTitle,
+          image_url: mp.image_url,
+          colors: {},
+          all_skus: [],
+          all_variants: [],
+          min_price: mp.selling_price || mp.unit_cost || 0
+        };
+      }
+
+      if (!groups[pTitle].colors[color]) {
+        groups[pTitle].colors[color] = {
+          color_name: color,
+          sizes: []
+        };
+      }
+
+      if (mp.sku) groups[pTitle].all_skus.push(mp.sku.toLowerCase());
+      if (vTitle) groups[pTitle].all_variants.push(vTitle.toLowerCase());
+      if (mp.image_url && !groups[pTitle].image_url) {
+        groups[pTitle].image_url = mp.image_url;
+      }
+
+      groups[pTitle].colors[color].sizes.push({
+        ...mp,
+        clean_size: size,
+        clean_color: color
+      });
+    });
+
+    return Object.values(groups);
+  }, [masterProducts]);
+
+  // Filter grouped products by search query
+  const filteredGroups = useMemo(() => {
+    if (!productSearchQuery.trim()) return groupedProducts;
+    const q = productSearchQuery.toLowerCase().trim();
+    return groupedProducts.filter(g => 
+      g.parent_title.toLowerCase().includes(q) ||
+      g.all_skus.some(sku => sku.includes(q)) ||
+      g.all_variants.some(v => v.includes(q)) ||
+      Object.keys(g.colors).some(c => c.toLowerCase().includes(q))
+    );
+  }, [groupedProducts, productSearchQuery]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
@@ -383,7 +463,7 @@ export default function EditOrderModal({
                             <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>{item.title}</div>
                             <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 2 }}>{item.variant_title} • SKU: {item.sku || '—'}</div>
                             
-                            {/* Live Stock & Margin Badges (Pillar 2) */}
+                            {/* Live Stock & Margin Badges */}
                             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                               <span style={{ background: stockQty > 5 ? '#10b98120' : '#f59e0b20', color: stockQty > 5 ? '#10b981' : '#f59e0b', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
                                 {stockQty > 5 ? `📦 In Stock (${stockQty})` : `⚠️ Low Stock (${stockQty})`}
@@ -473,7 +553,7 @@ export default function EditOrderModal({
                     <span>Rs {Math.round(liveTotal).toLocaleString()}</span>
                   </div>
 
-                  {/* True Net Profit Display (Pillar 2) */}
+                  {/* True Net Profit Display */}
                   <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
                     <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
                       <span>Master Inventory Cost</span>
@@ -535,7 +615,7 @@ export default function EditOrderModal({
                     </div>
                   </div>
 
-                  {/* AI Address Quality Heuristic (Pillar 1) */}
+                  {/* AI Address Quality Heuristic */}
                   <div>
                     <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Delivery Address</label>
@@ -725,59 +805,33 @@ export default function EditOrderModal({
           {showProductSearch && (
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.98)', zIndex: 3000, display: 'flex', flexDirection: 'column', padding: 32, backdropFilter: 'blur(12px)' }}>
               <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>🔍 Smart Auto-Complete Product Selector</h3>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>🔍 Smart Hierarchical Product Selector</h3>
                 <button onClick={() => setShowProductSearch(false)} style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>✕ Close</button>
               </div>
 
               <input 
                 type="text" 
-                placeholder="Search master products by Title or SKU..." 
+                placeholder="Search by Parent Title, Color, Size, or SKU..." 
                 value={productSearchQuery}
                 onChange={e => setProductSearchQuery(e.target.value)}
-                style={{ width: '100%', background: '#0f172a', border: '2px solid #6366f1', borderRadius: 16, padding: '14px 20px', color: '#fff', fontSize: '1rem', outline: 'none', marginBottom: 20, boxSizing: 'border-box' }}
+                style={{ width: '100%', background: '#0f172a', border: '2px solid #6366f1', borderRadius: 16, padding: '14px 20px', color: '#fff', fontSize: '1rem', outline: 'none', marginBottom: 24, boxSizing: 'border-box' }}
                 autoFocus
               />
 
-              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-                {filteredProducts.map(mp => (
-                  <div key={mp.id || mp.sku} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', justifyItems: 'space-between', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginBottom: 4 }}>{mp.parent_title}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 8 }}>{mp.variant_title || 'Default'} • SKU: {mp.sku || '—'}</div>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                        <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
-                          📦 Stock: {mp.inventory_qty ?? mp.stock ?? 10}
-                        </span>
-                        <span style={{ background: '#6366f120', color: '#818cf8', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
-                          Cost: Rs {parseFloat(mp.unit_cost ?? mp.landed_cost ?? 0).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        setLocalItems([
-                          ...localItems, 
-                          { 
-                            id: Date.now(), 
-                            sku: mp.sku, 
-                            title: mp.parent_title, 
-                            variant_title: mp.variant_title || 'Default Title',
-                            quantity: 1, 
-                            price: mp.selling_price || mp.unit_cost || 1000,
-                            image_url: mp.image_url
-                          }
-                        ]);
-                        setShowProductSearch(false);
-                      }}
-                      style={{ width: '100%', background: '#6366f1', color: '#fff', border: 'none', padding: '10px 0', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}
-                    >
-                      + Add to Order
-                    </button>
-                  </div>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
+                {filteredGroups.map(g => (
+                  <ParentProductCard 
+                    key={g.parent_title} 
+                    g={g} 
+                    localItems={localItems} 
+                    setLocalItems={setLocalItems} 
+                    setShowProductSearch={setShowProductSearch} 
+                    productSearchQuery={productSearchQuery} 
+                  />
                 ))}
-                {!filteredProducts.length && (
-                  <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#64748b' }}>
-                    <p style={{ margin: 0, fontSize: '1rem' }}>No master products match your search query.</p>
+                {!filteredGroups.length && (
+                  <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 60, color: '#64748b' }}>
+                    <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>No master products match your search criteria.</p>
                   </div>
                 )}
               </div>
@@ -816,6 +870,129 @@ export default function EditOrderModal({
           </div>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+// Dedicated Sub-Component for Parent Product Card with Color Category Pills & Size Matrix
+function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch, productSearchQuery }) {
+  const colorKeys = Object.keys(g.colors);
+  const [activeColor, setActiveColor] = useState(colorKeys[0] || 'Default');
+
+  // If search query matches a specific color, auto-select it!
+  useEffect(() => {
+    if (productSearchQuery.trim()) {
+      const q = productSearchQuery.toLowerCase().trim();
+      const matchedColor = colorKeys.find(c => c.toLowerCase().includes(q));
+      if (matchedColor) setActiveColor(matchedColor);
+    }
+  }, [productSearchQuery, colorKeys]);
+
+  const activeColorData = g.colors[activeColor] || g.colors[colorKeys[0]];
+  if (!activeColorData) return null;
+
+  return (
+    <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 20, display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
+      {/* Header: Title & Image */}
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+        <div style={{ width: 56, height: 56, borderRadius: 12, background: '#0f172a', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+          {g.image_url ? <img src={g.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.2rem' }}>🏷️</span>}
+        </div>
+        <div>
+          <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>{g.parent_title}</h4>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{colorKeys.length} Color{colorKeys.length > 1 ? 's' : ''} • {g.all_skus.length} Variant{g.all_skus.length > 1 ? 's' : ''}</span>
+        </div>
+      </div>
+
+      {/* Color Category Pills */}
+      {colorKeys.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '12px 0' }}>
+          {colorKeys.map(cName => {
+            const isSelected = activeColor === cName;
+            return (
+              <button
+                key={cName}
+                onClick={() => setActiveColor(cName)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  background: isSelected ? '#6366f1' : '#0f172a',
+                  color: isSelected ? '#fff' : '#94a3b8',
+                  border: `1px solid ${isSelected ? '#6366f1' : '#334155'}`,
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: isSelected ? '0 4px 12px rgba(99,102,241,0.3)' : 'none'
+                }}
+              >
+                {cName}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Size Matrix Buttons */}
+      <div>
+        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Select Size for {activeColor}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+          {activeColorData.sizes.map(sz => {
+            const stockQty = sz.inventory_qty ?? sz.stock ?? 0;
+            const isOutOfStock = stockQty <= 0;
+            const unitCost = sz.unit_cost ?? sz.landed_cost ?? 0;
+
+            return (
+              <button
+                key={sz.id || sz.sku}
+                onClick={() => {
+                  setLocalItems([
+                    ...localItems,
+                    {
+                      id: Date.now() + Math.random(),
+                      sku: sz.sku,
+                      title: g.parent_title,
+                      variant_title: sz.variant_title || `${sz.clean_size} / ${sz.clean_color}`,
+                      quantity: 1,
+                      price: sz.selling_price || sz.unit_cost || 1000,
+                      image_url: sz.image_url || g.image_url
+                    }
+                  ]);
+                  setShowProductSearch(false);
+                }}
+                style={{
+                  background: isOutOfStock ? 'rgba(244,63,94,0.05)' : '#0f172a',
+                  border: `1px solid ${isOutOfStock ? 'rgba(244,63,94,0.3)' : '#334155'}`,
+                  borderRadius: 14,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = isOutOfStock ? '#f43f5e' : '#6366f1'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = isOutOfStock ? 'rgba(244,63,94,0.3)' : '#334155'}
+              >
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: isOutOfStock ? '#f43f5e' : '#fff' }}>
+                  {sz.clean_size}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: isOutOfStock ? '#f43f5e' : '#10b981', fontWeight: 700 }}>
+                  {isOutOfStock ? '⚠️ Out of Stock' : `📦 Stock: ${stockQty}`}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                  Cost: Rs {parseFloat(unitCost).toLocaleString()}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
