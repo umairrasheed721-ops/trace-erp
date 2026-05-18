@@ -118,8 +118,16 @@ router.post('/chat/:order_id/send', async (req, res) => {
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
-    // Queue message via Baileys bot
-    bot.sendMessage(cleaned, message);
+    // Insert into SQLite database immediately so it persists permanently
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
+      `).run(order.store_id, order.id, cleaned, message);
+    } catch (err) {}
+
+    // Queue message via Baileys bot with isManual = true for instant priority delivery
+    bot.sendMessage(cleaned, message, true);
 
     // Return optimistic message object
     const newMsg = {

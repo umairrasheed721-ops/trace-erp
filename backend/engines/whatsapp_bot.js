@@ -199,11 +199,11 @@ const SILENT_LOGGER = {
     }
   }
 
-  async sendMessage(phone, message) {
+  async sendMessage(phone, message, isManual = false) {
     // Add to queue instead of sending immediately
     return new Promise((resolve) => {
-      this.queue.push({ phone, message, resolve });
-      console.log(`📥 Message queued for ${phone}. Queue size: ${this.queue.length}`);
+      this.queue.push({ phone, message, isManual, resolve });
+      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}). Queue size: ${this.queue.length}`);
       this._processQueue();
     });
   }
@@ -236,7 +236,7 @@ const SILENT_LOGGER = {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, resolve } = this.queue.shift();
+      const { phone, message, isManual, resolve } = this.queue.shift();
       let cleaned = phone.replace(/\D/g, '');
 
       try {
@@ -245,19 +245,29 @@ const SILENT_LOGGER = {
 
         const jid = cleaned + '@s.whatsapp.net';
         
-        // 2. Anti-Ban Human Delay (Dynamic range)
-        const minMs = this.minDelaySec * 1000;
-        const maxMs = this.maxDelaySec * 1000;
-        const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-        console.log(`⏳ Anti-Ban: Waiting ${delay/1000}s before sending to ${cleaned}...`);
-        await new Promise(r => setTimeout(r, delay));
+        if (isManual) {
+          // Manual 1-on-1 agent chat: Instant priority delivery, bypass bulk anti-ban delay & flaky onWhatsApp check
+          console.log(`⚡ Manual Agent Chat: Instant priority delivery to ${cleaned}...`);
+          await new Promise(r => setTimeout(r, 500));
+        } else {
+          // Bulk marketing alert: Use dynamic anti-ban pacing & onWhatsApp verification
+          const minMs = this.minDelaySec * 1000;
+          const maxMs = this.maxDelaySec * 1000;
+          const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+          console.log(`⏳ Anti-Ban: Waiting ${delay/1000}s before sending bulk alert to ${cleaned}...`);
+          await new Promise(r => setTimeout(r, delay));
 
-        const [reg] = await this.sock.onWhatsApp(jid);
-        if (!reg?.exists) {
-          const reason = `+${cleaned} is not registered on WhatsApp`;
-          this._addAuditLog(cleaned, 'Failed', reason);
-          resolve({ success: false, error: reason });
-          continue;
+          try {
+            const [reg] = await this.sock.onWhatsApp(jid);
+            if (!reg?.exists) {
+              const reason = `+${cleaned} is not registered on WhatsApp`;
+              this._addAuditLog(cleaned, 'Failed', reason);
+              resolve({ success: false, error: reason });
+              continue;
+            }
+          } catch(e) {
+            console.warn(`⚠️ onWhatsApp check failed/rate-limited for ${cleaned}, proceeding anyway...`);
+          }
         }
 
         await this.sock.sendMessage(jid, { text: message });
@@ -274,9 +284,7 @@ const SILENT_LOGGER = {
             INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
             VALUES (?, ?, ?, 'outgoing', ?)
           `).run(storeId, orderId, cleaned, message);
-        } catch (dbErr) {
-          console.error('❌ Error logging outgoing WA message to DB:', dbErr.message);
-        }
+        } catch (dbErr) {}
 
         resolve({ success: true });
 
