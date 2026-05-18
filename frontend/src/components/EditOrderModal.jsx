@@ -58,11 +58,11 @@ export default function EditOrderModal({
         .then(data => { setCustIntel(data); setCustIntelLoading(false); })
         .catch(() => setCustIntelLoading(false));
 
-      // Fetch Master Products for SKU Intelligence
+      // Fetch Master Products for SKU Intelligence (Fixed endpoint & response mapping)
       const storeId = editingOrder.store_id || localStorage.getItem('activeStoreId') || 1;
-      fetch(`${apiBase}/api/cost-manager/products/${storeId}`)
+      fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`)
         .then(r => r.json())
-        .then(data => setMasterProducts(data.products || []))
+        .then(data => setMasterProducts(Array.isArray(data) ? data : []))
         .catch(() => {});
 
       // Fetch Live Tracking if tracking number exists
@@ -127,7 +127,6 @@ export default function EditOrderModal({
         if (res.error) throw new Error(res.error);
         alert(res.message);
         if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        // Update local state badge
         if (action === 'SIMULATE_CONFIRM') setEditingOrder({ ...editingOrder, wa_verification_status: 'Verified' });
         if (action === 'SIMULATE_CANCEL') setEditingOrder({ ...editingOrder, wa_verification_status: 'Cancelled' });
         if (action === 'SEND_VERIFICATION') setEditingOrder({ ...editingOrder, wa_verification_status: 'Pending' });
@@ -193,8 +192,8 @@ export default function EditOrderModal({
   // Calculate Total Order Cost from Master Products
   let totalOrderCost = 0;
   localItems.forEach(item => {
-    const matched = masterProducts.find(mp => mp.sku === item.sku || mp.title === item.title);
-    const unitCost = matched?.unit_cost || matched?.cost || 0;
+    const matched = masterProducts.find(mp => mp.sku === item.sku || mp.parent_title === item.title);
+    const unitCost = matched?.unit_cost || matched?.landed_cost || 0;
     totalOrderCost += (parseFloat(unitCost) * (parseInt(item.quantity) || 1));
   });
 
@@ -221,17 +220,18 @@ export default function EditOrderModal({
 
   // Filtered Master Products for Search Popover
   const filteredProducts = masterProducts.filter(mp => 
-    (mp.title || '').toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    (mp.parent_title || '').toLowerCase().includes(productSearchQuery.toLowerCase()) ||
+    (mp.variant_title || '').toLowerCase().includes(productSearchQuery.toLowerCase()) ||
     (mp.sku || '').toLowerCase().includes(productSearchQuery.toLowerCase())
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
       <div style={{ width: '100%', maxWidth: 1200, maxHeight: '92vh', background: '#0f172a', border: '1px solid #334155', borderRadius: 24, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUp 0.3s ease-out' }}>
         
         {/* 🚨 Automated RTO Risk Warning Banner (Pillar 1) */}
         {(custIntel.returned > 0 || custIntel.blacklist) && (
-          <div style={{ background: 'linear-gradient(90deg, #9f1239 0%, #be123c 100%)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+          <div style={{ background: 'linear-gradient(90deg, #9f1239 0%, #be123c 100%)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between', color: '#fff' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: '1.5rem' }}>🚨</span>
               <div>
@@ -252,7 +252,7 @@ export default function EditOrderModal({
 
         {/* Modal Header & Navigation Tabs */}
         <div style={{ padding: '20px 28px 0', borderBottom: '1px solid #334155', background: '#1e293b', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#fff' }}>
                 Order #{editingOrder.ref_number || editingOrder.shopify_order_id}
@@ -345,7 +345,7 @@ export default function EditOrderModal({
         </div>
 
         {/* Modal Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 28, background: '#0f172a', color: '#f1f5f9' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 28, background: '#0f172a', color: '#f1f5f9', position: 'relative' }}>
           
           {/* TAB 1: Line Items & Financials */}
           {activeTab === 'financials' && (
@@ -354,7 +354,7 @@ export default function EditOrderModal({
               {/* Left Side: Line Items List */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, overflow: 'hidden' }}>
-                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #334155', display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>🛒 Order Contents</span>
                     <button 
                       onClick={() => setShowProductSearch(true)} 
@@ -366,17 +366,16 @@ export default function EditOrderModal({
 
                   <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {localItems.map((item, idx) => {
-                      // Match against master products for SKU intelligence
-                      const matched = masterProducts.find(mp => mp.sku === item.sku || mp.title === item.title);
+                      const matched = masterProducts.find(mp => mp.sku === item.sku || mp.parent_title === item.title);
                       const stockQty = matched?.inventory_qty ?? matched?.stock ?? 10;
-                      const unitCost = matched?.unit_cost ?? matched?.cost ?? 0;
+                      const unitCost = matched?.unit_cost ?? matched?.landed_cost ?? 0;
                       const itemRevenue = parseFloat(item.price) * parseInt(item.quantity);
                       const itemCost = parseFloat(unitCost) * parseInt(item.quantity);
                       const itemMargin = itemRevenue > 0 ? Math.round(((itemRevenue - itemCost) / itemRevenue) * 100) : 0;
 
                       return (
                         <div key={item.id || idx} style={{ display: 'flex', gap: 16, paddingBottom: 16, borderBottom: idx === localItems.length - 1 ? 'none' : '1px solid #334155' }}>
-                          <div style={{ width: 64, height: 64, borderRadius: 14, background: '#0f172a', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                          <div style={{ width: 64, height: 64, borderRadius: 14, background: '#0f172a', border: '1px solid #334155', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                             {item.image_url ? <img src={item.image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b' }}>{item.sku?.slice(0,3)}</span>}
                           </div>
 
@@ -444,12 +443,12 @@ export default function EditOrderModal({
                 <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>📊 Financial Breakdown</div>
                   
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8' }}>
+                  <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8' }}>
                     <span>Subtotal</span>
                     <span style={{ color: '#fff', fontWeight: 700 }}>Rs {Math.round(liveSubtotal).toLocaleString()}</span>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
                     <span>CS Discount</span>
                     <input 
                       type="number"
@@ -459,7 +458,7 @@ export default function EditOrderModal({
                     />
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
                     <span>Shipping Fee</span>
                     <input 
                       type="number"
@@ -469,18 +468,18 @@ export default function EditOrderModal({
                     />
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 800, color: '#fff', borderTop: '1px solid #334155', paddingTop: 16 }}>
+                  <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 800, color: '#fff', borderTop: '1px solid #334155', paddingTop: 16 }}>
                     <span>Total Revenue</span>
                     <span>Rs {Math.round(liveTotal).toLocaleString()}</span>
                   </div>
 
                   {/* True Net Profit Display (Pillar 2) */}
                   <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
                       <span>Master Inventory Cost</span>
                       <span style={{ color: '#f43f5e', fontWeight: 700 }}>-Rs {Math.round(totalOrderCost).toLocaleString()}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
+                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
                       <span>Estimated Net Profit</span>
                       <span style={{ color: netProfit > 0 ? '#10b981' : '#f43f5e', fontWeight: 800, fontSize: '0.9rem' }}>
                         Rs {Math.round(netProfit).toLocaleString()} ({profitMargin}%)
@@ -523,7 +522,7 @@ export default function EditOrderModal({
                       />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Phone Number</label>
                         {editingOrder.phone && <a href={`tel:${editingOrder.phone}`} style={{ fontSize: '0.75rem', color: '#6366f1', textDecoration: 'none', fontWeight: 700 }}>📞 Call via SIM</a>}
                       </div>
@@ -538,7 +537,7 @@ export default function EditOrderModal({
 
                   {/* AI Address Quality Heuristic (Pillar 1) */}
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Delivery Address</label>
                       <span style={{ background: addrScore.bg, color: addrScore.color, padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
                         {addrScore.label}
@@ -551,7 +550,7 @@ export default function EditOrderModal({
                       onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'address', editingOrder.address)}
                       style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                    <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                       <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Ensure sector, street, and house number are present.</span>
                       <button 
                         onClick={handleAddressCleanse} 
@@ -584,21 +583,21 @@ export default function EditOrderModal({
                     <button 
                       onClick={() => handleWaSimulate('SEND_VERIFICATION')} 
                       disabled={waSimulating}
-                      style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
                     >
                       <span>📲 Send Verification WA Template</span>
                     </button>
                     <button 
                       onClick={() => handleWaSimulate('SIMULATE_CONFIRM')} 
                       disabled={waSimulating}
-                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
                     >
                       <span>✅ Simulate Customer Confirm</span>
                     </button>
                     <button 
                       onClick={() => handleWaSimulate('SIMULATE_CANCEL')} 
                       disabled={waSimulating}
-                      style={{ background: '#f43f5e', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      style={{ background: '#f43f5e', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
                     >
                       <span>❌ Simulate Customer Cancel</span>
                     </button>
@@ -628,7 +627,7 @@ export default function EditOrderModal({
               {/* Left Side: Live Tracking Timeline */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 12 }}>
                     <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff' }}>🚚 Live Courier Tracking Timeline</span>
                     <span style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: 700, background: '#6366f120', padding: '4px 12px', borderRadius: 20 }}>
                       {editingOrder.courier || 'Standard Courier'}
@@ -641,7 +640,7 @@ export default function EditOrderModal({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingLeft: 12 }}>
                       {trackingData.milestones.map((m, idx) => (
                         <div key={m.status} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: m.done ? (m.isError ? '#4c0519' : '#1e1b4b') : '#0f172a', border: `2px solid ${m.done ? (m.isError ? '#f43f5e' : '#6366f1') : '#334155'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', flexShrink: 0 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: m.done ? (m.isError ? '#4c0519' : '#1e1b4b') : '#0f172a', border: `2px solid ${m.done ? (m.isError ? '#f43f5e' : '#6366f1') : '#334155'}`, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', fontSize: '0.8rem', flexShrink: 0 }}>
                             {m.done ? (m.isError ? '⚠️' : '✓') : ''}
                           </div>
                           <div>
@@ -678,7 +677,7 @@ export default function EditOrderModal({
                     <button 
                       onClick={() => handleBookCourier('PostEx')} 
                       disabled={bookingCourier}
-                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #6366f1', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #6366f1', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
                     >
                       <span>🚀 Book with PostEx</span>
                       <span style={{ fontSize: '0.75rem', color: '#818cf8' }}>API Active</span>
@@ -686,7 +685,7 @@ export default function EditOrderModal({
                     <button 
                       onClick={() => handleBookCourier('Instaworld')} 
                       disabled={bookingCourier}
-                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #10b981', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #10b981', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
                     >
                       <span>🚀 Book with Instaworld</span>
                       <span style={{ fontSize: '0.75rem', color: '#34d399' }}>API Active</span>
@@ -694,7 +693,7 @@ export default function EditOrderModal({
                     <button 
                       onClick={() => handleBookCourier('Leopards')} 
                       disabled={bookingCourier}
-                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #f59e0b', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                      style={{ background: '#0f172a', color: '#fff', border: '1px solid #f59e0b', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
                     >
                       <span>🚀 Book with Leopards</span>
                       <span style={{ fontSize: '0.75rem', color: '#fbbf24' }}>API Active</span>
@@ -722,10 +721,73 @@ export default function EditOrderModal({
             </div>
           )}
 
+          {/* Pillar 2: Smart Auto-Complete Product Search Popover/Modal */}
+          {showProductSearch && (
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.98)', zIndex: 3000, display: 'flex', flexDirection: 'column', padding: 32, backdropFilter: 'blur(12px)' }}>
+              <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>🔍 Smart Auto-Complete Product Selector</h3>
+                <button onClick={() => setShowProductSearch(false)} style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>✕ Close</button>
+              </div>
+
+              <input 
+                type="text" 
+                placeholder="Search master products by Title or SKU..." 
+                value={productSearchQuery}
+                onChange={e => setProductSearchQuery(e.target.value)}
+                style={{ width: '100%', background: '#0f172a', border: '2px solid #6366f1', borderRadius: 16, padding: '14px 20px', color: '#fff', fontSize: '1rem', outline: 'none', marginBottom: 20, boxSizing: 'border-box' }}
+                autoFocus
+              />
+
+              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                {filteredProducts.map(mp => (
+                  <div key={mp.id || mp.sku} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', justifyItems: 'space-between', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginBottom: 4 }}>{mp.parent_title}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 8 }}>{mp.variant_title || 'Default'} • SKU: {mp.sku || '—'}</div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                        <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
+                          📦 Stock: {mp.inventory_qty ?? mp.stock ?? 10}
+                        </span>
+                        <span style={{ background: '#6366f120', color: '#818cf8', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
+                          Cost: Rs {parseFloat(mp.unit_cost ?? mp.landed_cost ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setLocalItems([
+                          ...localItems, 
+                          { 
+                            id: Date.now(), 
+                            sku: mp.sku, 
+                            title: mp.parent_title, 
+                            variant_title: mp.variant_title || 'Default Title',
+                            quantity: 1, 
+                            price: mp.selling_price || mp.unit_cost || 1000,
+                            image_url: mp.image_url
+                          }
+                        ]);
+                        setShowProductSearch(false);
+                      }}
+                      style={{ width: '100%', background: '#6366f1', color: '#fff', border: 'none', padding: '10px 0', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}
+                    >
+                      + Add to Order
+                    </button>
+                  </div>
+                ))}
+                {!filteredProducts.length && (
+                  <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#64748b' }}>
+                    <p style={{ margin: 0, fontSize: '1rem' }}>No master products match your search query.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Sticky Bottom Action Bar */}
-        <div style={{ padding: '16px 28px', borderTop: '1px solid #334155', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '16px 28px', borderTop: '1px solid #334155', background: '#1e293b', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
             <span>Editing Store Order • </span>
             <span style={{ color: '#fff', fontWeight: 700 }}>{editingOrder.customer_name}</span>
@@ -753,69 +815,6 @@ export default function EditOrderModal({
             </button>
           </div>
         </div>
-
-        {/* Pillar 2: Smart Auto-Complete Product Search Popover/Modal */}
-        {showProductSearch && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.95)', zIndex: 3000, display: 'flex', flexDirection: 'column', padding: 32 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#fff' }}>🔍 Smart Auto-Complete Product Selector</h3>
-              <button onClick={() => setShowProductSearch(false)} style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>✕ Close</button>
-            </div>
-
-            <input 
-              type="text" 
-              placeholder="Search master products by Title or SKU..." 
-              value={productSearchQuery}
-              onChange={e => setProductSearchQuery(e.target.value)}
-              style={{ width: '100%', background: '#0f172a', border: '2px solid #6366f1', borderRadius: 16, padding: '14px 20px', color: '#fff', fontSize: '1rem', outline: 'none', marginBottom: 20, boxSizing: 'border-box' }}
-              autoFocus
-            />
-
-            <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-              {filteredProducts.map(mp => (
-                <div key={mp.id || mp.sku} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', justifyItems: 'space-between', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', marginBottom: 4 }}>{mp.title}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 8 }}>SKU: {mp.sku || '—'}</div>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                      <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
-                        📦 Stock: {mp.inventory_qty ?? mp.stock ?? 10}
-                      </span>
-                      <span style={{ background: '#6366f120', color: '#818cf8', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>
-                        Cost: Rs {parseFloat(mp.unit_cost ?? mp.cost ?? 0).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setLocalItems([
-                        ...localItems, 
-                        { 
-                          id: Date.now(), 
-                          sku: mp.sku, 
-                          title: mp.title, 
-                          variant_title: mp.variant_title || 'Default Title',
-                          quantity: 1, 
-                          price: mp.price || mp.unit_cost || 1000,
-                          image_url: mp.image_url
-                        }
-                      ]);
-                      setShowProductSearch(false);
-                    }}
-                    style={{ width: '100%', background: '#6366f1', color: '#fff', border: 'none', padding: '10px 0', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }}
-                  >
-                    + Add to Order
-                  </button>
-                </div>
-              ))}
-              {!filteredProducts.length && (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#64748b' }}>
-                  <p style={{ margin: 0, fontSize: '1rem' }}>No master products match your search query.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
       </div>
     </div>
