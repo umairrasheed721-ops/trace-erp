@@ -62,16 +62,20 @@ const SILENT_LOGGER = {
         useMultiFileAuthState,
         DisconnectReason,
         fetchLatestBaileysVersion,
-        makeInMemoryStore,
       } = await import('@whiskeysockets/baileys');
       const { Boom } = await import('@hapi/boom');
 
       if (!this.store) {
-        this.store = makeInMemoryStore({ logger: SILENT_LOGGER });
+        this.store = { messages: {} };
         const storePath = path.join(process.cwd(), 'wa_store.json');
-        try { if (fs.existsSync(storePath)) this.store.readFromFile(storePath); } catch (e) {}
+        try { 
+          if (fs.existsSync(storePath)) {
+            const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+            if (data?.messages) this.store.messages = data.messages;
+          } 
+        } catch (e) {}
         setInterval(() => {
-          try { this.store.writeToFile(storePath); } catch (e) {}
+          try { fs.writeFileSync(storePath, JSON.stringify(this.store), 'utf8'); } catch (e) {}
         }, 10000);
       }
 
@@ -99,8 +103,6 @@ const SILENT_LOGGER = {
         keepAliveIntervalMs: 10000,
         getMessage: async () => ({ conversation: '' }),
       });
-
-      this.store.bind(this.sock.ev);
 
       this.sock.ev.on('creds.update', saveCreds);
 
@@ -149,14 +151,33 @@ const SILENT_LOGGER = {
         }
       });
 
+      this.sock.ev.on('messaging-history.set', async ({ chats, messages, isLatest }) => {
+        console.log(`📦 WhatsApp History Sync received: ${chats?.length || 0} chats, ${messages?.length || 0} messages`);
+        if (messages) {
+          for (const msg of messages) {
+            if (!msg.message) continue;
+            const remoteJid = msg.key?.remoteJid;
+            if (!remoteJid || remoteJid.includes('@g.us')) continue;
+            if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
+            this.store.messages[remoteJid].push(msg);
+          }
+        }
+      });
+
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         for (const msg of messages) {
-          if (!msg.message || msg.key.fromMe) continue;
+          if (!msg.message) continue;
           
-          const remoteJid = msg.key.remoteJid;
+          const remoteJid = msg.key?.remoteJid;
           if (!remoteJid || remoteJid.includes('@g.us')) continue; // Skip groups
           
+          if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
+          this.store.messages[remoteJid].push(msg);
+          if (this.store.messages[remoteJid].length > 100) this.store.messages[remoteJid].shift();
+
+          if (msg.key.fromMe) continue;
+
           const fromPhone = remoteJid.split('@')[0];
           const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
           if (!text) continue;
