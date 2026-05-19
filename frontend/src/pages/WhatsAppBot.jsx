@@ -37,7 +37,7 @@ export default function WhatsAppBot() {
   const [geminiSettings, setGeminiSettings] = useState({
     api_key: '',
     ai_active: 1,
-    model_name: 'gemini-1.5-flash',
+    model_name: 'gemini-2.5-flash',
     system_prompt: '',
     strictness: 'balanced',
     auto_learning_enabled: 1
@@ -980,7 +980,7 @@ export default function WhatsAppBot() {
                     placeholder="AIzaSy..."
                     style={{ fontSize: '0.95rem', padding: '12px 16px' }}
                   />
-                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Required to enable Gemini 1.5 Flash/Pro orchestration and Function Calling.</p>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Required to enable Gemini 2.5 Flash/Pro orchestration and Function Calling.</p>
                 </div>
 
                 <div className="form-group" style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
@@ -991,8 +991,8 @@ export default function WhatsAppBot() {
                     onChange={e => setGeminiSettings({ ...geminiSettings, model_name: e.target.value })}
                     style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.95rem', padding: '12px 16px' }}
                   >
-                    <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash (Ultra-Fast Chat & Tool Use)</option>
-                    <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro (Advanced Reasoning & Deep RAG)</option>
+                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (Ultra-Fast Chat & Tool Use)</option>
+                    <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro (Advanced Reasoning & Deep RAG)</option>
                   </select>
                   <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Flash is recommended for real-time WhatsApp speed. Pro is ideal for complex enterprise analysis.</p>
                 </div>
