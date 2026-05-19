@@ -168,7 +168,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
     });
 
     const apiKey = settings.api_key;
-    const model = settings.model_name || 'gemini-2.5-flash';
+    const model = settings.model_name || 'gemini-1.5-flash';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     // --- FIRST GEMINI FETCH (Check for Tool Call) ---
@@ -303,7 +303,7 @@ Output your analysis strictly in the following JSON format:
 `;
 
     const apiKey = settings.api_key;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`;
 
     let payload = {
       contents: [{ role: 'user', parts: [{ text: auditPrompt }] }],

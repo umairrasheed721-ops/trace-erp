@@ -649,7 +649,7 @@ function runMigrations(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       api_key TEXT DEFAULT '',
       ai_active INTEGER DEFAULT 1,
-      model_name TEXT DEFAULT 'gemini-2.5-flash',
+      model_name TEXT DEFAULT 'gemini-1.5-flash',
       system_prompt TEXT DEFAULT 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.',
       strictness TEXT DEFAULT 'balanced',
       auto_learning_enabled INTEGER DEFAULT 1,
@@ -710,7 +710,7 @@ function runMigrations(db) {
   if (geminiCount === 0) {
     db.prepare(`
       INSERT INTO gemini_bot_settings (api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled)
-      VALUES ('', 1, 'gemini-2.5-flash', 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.', 'balanced', 1)
+      VALUES ('', 1, 'gemini-1.5-flash', 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.', 'balanced', 1)
     `).run();
   }
 
