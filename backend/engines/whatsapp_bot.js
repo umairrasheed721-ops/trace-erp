@@ -195,6 +195,14 @@ const SILENT_LOGGER = {
               VALUES (?, ?, ?, 'incoming', ?)
             `).run(storeId, orderId, fromPhone, text);
 
+            // --- 🧠 GEMINI AUTONOMOUS AI ORCHESTRATION ---
+            const { generateAIResponse } = require('./gemini_engine');
+            const geminiReply = await generateAIResponse(fromPhone, text);
+            if (geminiReply) {
+              this.sendMessage(fromPhone, geminiReply, true);
+              continue; // Gemini handled the conversation completely!
+            }
+
             if (orderId) {
               const lowerText = text.toLowerCase();
               

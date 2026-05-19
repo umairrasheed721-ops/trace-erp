@@ -193,4 +193,90 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
   }
 });
 
+// --- 🧠 GEMINI AUTONOMOUS AI GOVERNANCE ROUTES ---
+
+// GET /api/whatsapp-governance/gemini/settings
+router.get('/gemini/settings', (req, res) => {
+  try {
+    const s = db.prepare('SELECT api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
+    res.json(s || {});
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/gemini/settings
+router.post('/gemini/settings', (req, res) => {
+  const { api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled } = req.body;
+  try {
+    db.prepare(`
+      UPDATE gemini_bot_settings SET
+        api_key = ?, ai_active = ?, model_name = ?, system_prompt = ?, strictness = ?, auto_learning_enabled = ?, updated_at = datetime('now')
+    `).run(api_key || '', ai_active ? 1 : 0, model_name || 'gemini-1.5-flash', system_prompt || '', strictness || 'balanced', auto_learning_enabled ? 1 : 0);
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/gemini/profiles
+router.get('/gemini/profiles', (req, res) => {
+  try {
+    const profiles = db.prepare('SELECT phone, customer_name, preferences, vip_status, total_orders, updated_at FROM customer_profiles ORDER BY updated_at DESC LIMIT 50').all() || [];
+    res.json({ success: true, profiles });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/gemini/memory/:phone
+router.get('/gemini/memory/:phone', (req, res) => {
+  try {
+    let cleaned = req.params.phone.replace(/\D/g, '');
+    const memory = db.prepare('SELECT role, content, created_at FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 50').all(cleaned) || [];
+    res.json({ success: true, memory });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/gemini/audit-logs
+router.get('/gemini/audit-logs', (req, res) => {
+  try {
+    const logs = db.prepare('SELECT audit_date, messages_analyzed, friction_points, prompt_refinements, created_at FROM gemini_audit_logs ORDER BY id DESC LIMIT 30').all() || [];
+    res.json({ success: true, logs });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/gemini/trigger-audit
+router.post('/gemini/trigger-audit', async (req, res) => {
+  try {
+    const { runNightlyAudit } = require('../engines/gemini_engine');
+    const result = await runNightlyAudit();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/gemini/simulate-incoming
+router.post('/gemini/simulate-incoming', async (req, res) => {
+  try {
+    const { phone, message } = req.body;
+    if (!phone || !message) {
+      return res.status(400).json({ success: false, error: 'Phone and message are required.' });
+    }
+
+    const { generateAIResponse } = require('../engines/gemini_engine');
+    const reply = await generateAIResponse(phone, message);
+
+    res.json({ success: true, reply: reply || 'No response generated (check API key or fallback settings).' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

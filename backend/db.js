@@ -422,12 +422,12 @@ function logAction({ store_id, order_id, user_id, action, details, snapshot, lev
       INSERT INTO audit_logs (store_id, order_id, user_id, action, details, snapshot, level)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
-      store_id,
-      order_id,
-      user_id,
-      action,
-      typeof details === 'object' ? JSON.stringify(details) : details,
-      typeof snapshot === 'object' ? JSON.stringify(snapshot) : snapshot,
+      store_id ?? null,
+      order_id ?? null,
+      user_id ?? null,
+      action ?? null,
+      typeof details === 'object' ? JSON.stringify(details) : (details ?? null),
+      typeof snapshot === 'object' ? JSON.stringify(snapshot) : (snapshot ?? null),
       level
     );
   } catch (err) {
@@ -445,7 +445,7 @@ function logOrderChange({ order_id, user_id, type, old_val, new_val }) {
     db.prepare(`
       INSERT INTO order_history (order_id, user_id, change_type, old_value, new_value)
       VALUES (?, ?, ?, ?, ?)
-    `).run(order_id, user_id, type, oldStr, newStr);
+    `).run(order_id ?? null, user_id ?? null, type ?? null, oldStr, newStr);
   } catch (err) {
     console.error('❌ Failed to log order change:', err.message);
   }
@@ -645,6 +645,53 @@ function runMigrations(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone ON whatsapp_messages(phone);
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_order ON whatsapp_messages(order_id);
+    CREATE TABLE IF NOT EXISTS gemini_bot_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      api_key TEXT DEFAULT '',
+      ai_active INTEGER DEFAULT 1,
+      model_name TEXT DEFAULT 'gemini-1.5-flash',
+      system_prompt TEXT DEFAULT 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.',
+      strictness TEXT DEFAULT 'balanced',
+      auto_learning_enabled INTEGER DEFAULT 1,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS gemini_chat_memory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      role TEXT NOT NULL, -- 'user' or 'model'
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_gemini_memory_phone ON gemini_chat_memory(phone);
+
+    CREATE TABLE IF NOT EXISTS customer_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT UNIQUE NOT NULL,
+      customer_name TEXT,
+      preferences TEXT DEFAULT '{}', -- JSON string of extracted traits
+      vip_status INTEGER DEFAULT 0,
+      total_orders INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now', '+5 hours')),
+      updated_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+
+    CREATE TABLE IF NOT EXISTS gemini_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      audit_date TEXT NOT NULL,
+      messages_analyzed INTEGER DEFAULT 0,
+      friction_points TEXT DEFAULT '[]', -- JSON array
+      prompt_refinements TEXT DEFAULT '[]', -- JSON array
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+
+    CREATE TABLE IF NOT EXISTS gemini_knowledge_base (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL, -- 'policy', 'shipping', 'faq'
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
   `);
 
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1`); } catch (e) {}
@@ -657,5 +704,21 @@ function runMigrations(db) {
       INSERT INTO whatsapp_settings (mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min)
       VALUES ('live', 1, 1, 1, 5, 15, 60, 15)
     `).run();
+  }
+
+  const geminiCount = db.prepare('SELECT COUNT(*) as count FROM gemini_bot_settings').get().count;
+  if (geminiCount === 0) {
+    db.prepare(`
+      INSERT INTO gemini_bot_settings (api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled)
+      VALUES ('', 1, 'gemini-1.5-flash', 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.', 'balanced', 1)
+    `).run();
+  }
+
+  const kbCount = db.prepare('SELECT COUNT(*) as count FROM gemini_knowledge_base').get().count;
+  if (kbCount === 0) {
+    const kbInsert = db.prepare('INSERT INTO gemini_knowledge_base (category, title, content) VALUES (?, ?, ?)');
+    kbInsert.run('policy', 'Return & Exchange Policy', 'We offer a 3-day return and exchange policy. Items must be unused and in original packaging. To exchange a size, customer can request via WhatsApp.');
+    kbInsert.run('shipping', 'Courier Delivery Timelines', 'Standard delivery takes 2-4 working days via PostEx or Instaworld. Major cities like Lahore, Karachi, and Islamabad usually receive parcels within 48 hours.');
+    kbInsert.run('faq', 'Payment Methods', 'We accept Cash on Delivery (COD), EasyPaisa, JazzCash, Raast, and direct Bank Transfers.');
   }
 }

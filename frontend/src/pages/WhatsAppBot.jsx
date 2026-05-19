@@ -27,26 +27,91 @@ export default function WhatsAppBot() {
   const [resetting, setResetting] = useState(false)
 
   // --- TABBED NAVIGATION STATE ---
-  const [activeMainTab, setActiveMainTab] = useState('zone_c') // zone_c (Radar), zone_a (Templates), zone_b (Anti-Ban)
-  const [activeSubTabA, setActiveSubTabA] = useState('rules') // rules, cod, rescue, dispatch
+  const [activeMainTab, setActiveMainTab] = useState('zone_c') // zone_c (Radar), zone_a (Templates), zone_b (Anti-Ban), zone_g (Gemini)
+  const [activeSubTabA, setActiveSubTabA] = useState('rules') // rules, cod, rescue, dispatch, ai
   const [activeSubTabB, setActiveSubTabB] = useState('pacing') // pacing, hourly, best_practices
   const [activeSubTabC, setActiveSubTabC] = useState('connection') // connection, metrics, audit
 
+  // --- GEMINI AI STATE ---
+  const [activeSubTabG, setActiveSubTabG] = useState('studio') // studio, profiles, tools, audit
+  const [geminiSettings, setGeminiSettings] = useState({
+    api_key: '',
+    ai_active: 1,
+    model_name: 'gemini-1.5-flash',
+    system_prompt: '',
+    strictness: 'balanced',
+    auto_learning_enabled: 1
+  })
+  const [geminiProfiles, setGeminiProfiles] = useState([])
+  const [geminiAuditLogs, setGeminiAuditLogs] = useState([])
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('')
+  const [customerMemory, setCustomerMemory] = useState([])
+  const [loadingMemory, setLoadingMemory] = useState(false)
+  const [triggeringAudit, setTriggeringAudit] = useState(false)
+
+  // --- SIMULATION SANDBOX STATE ---
+  const [simPhone, setSimPhone] = useState('923001234567')
+  const [simMsg, setSimMsg] = useState('Mera parcel kahan hai?')
+  const [simReply, setSimReply] = useState('')
+  const [simLoading, setSimLoading] = useState(false)
+
+  const handleSimulateIncoming = async () => {
+    if (!simPhone || !simMsg) return addToast('Enter phone and message', 'error')
+    setSimLoading(true)
+    setSimReply('')
+    try {
+      const res = await fetch('/api/whatsapp-governance/gemini/simulate-incoming', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify({ phone: simPhone, message: simMsg })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSimReply(data.reply)
+        addToast('✅ Simulation complete! Check AI reply below.', 'success')
+      } else {
+        setSimReply(`❌ Error: ${data.error}`)
+        addToast(data.error || 'Simulation failed', 'error')
+      }
+    } catch (err) {
+      setSimReply('❌ Network error during simulation')
+      addToast('Network error', 'error')
+    } finally {
+      setSimLoading(false)
+    }
+  }
+
   const fetchData = async () => {
     try {
-      const [statusRes, queueRes, settingsRes] = await Promise.all([
+      const [statusRes, queueRes, settingsRes, gemSetRes, gemProfRes, gemAudRes] = await Promise.all([
         fetch('/api/whatsapp/status', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
         fetch('/api/whatsapp-governance/queue', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
-        fetch('/api/whatsapp-governance/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
+        fetch('/api/whatsapp-governance/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
+        fetch('/api/whatsapp-governance/gemini/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
+        fetch('/api/whatsapp-governance/gemini/profiles', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
+        fetch('/api/whatsapp-governance/gemini/audit-logs', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
       ])
       
       if (statusRes.ok) setStatus(await statusRes.json())
       if (queueRes.ok) setQueueData(await queueRes.json())
       if (settingsRes.ok) {
         const s = await settingsRes.json()
-        if (s && Object.keys(s).length > 0) {
-          setSettings(prev => ({ ...prev, ...s }))
-        }
+        if (s && Object.keys(s).length > 0) setSettings(prev => ({ ...prev, ...s }))
+      }
+      if (gemSetRes.ok) {
+        const gs = await gemSetRes.json()
+        if (gs && Object.keys(gs).length > 0) setGeminiSettings(prev => ({ ...prev, ...gs }))
+      }
+      if (gemProfRes.ok) {
+        const gp = await gemProfRes.json()
+        if (gp?.profiles) setGeminiProfiles(gp.profiles)
+      }
+      if (gemAudRes.ok) {
+        const ga = await gemAudRes.json()
+        if (ga?.logs) setGeminiAuditLogs(ga.logs)
       }
       setLoading(false)
     } catch (err) {
@@ -164,6 +229,69 @@ export default function WhatsAppBot() {
     }
   }
 
+  const handleSaveGeminiSettings = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/whatsapp-governance/gemini/settings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify(geminiSettings)
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast('✅ Gemini AI configuration saved successfully!', 'success')
+      } else {
+        addToast(data.error || 'Failed to save Gemini settings', 'error')
+      }
+    } catch (err) {
+      addToast('Network error saving Gemini settings', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleFetchMemory = async (phone) => {
+    setSelectedCustomerPhone(phone)
+    setLoadingMemory(true)
+    try {
+      const res = await fetch(`/api/whatsapp-governance/gemini/memory/${phone}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCustomerMemory(data.memory || [])
+      }
+    } catch (err) {
+      addToast('Failed to load customer chat memory', 'error')
+    } finally {
+      setLoadingMemory(false)
+    }
+  }
+
+  const handleTriggerAudit = async () => {
+    setTriggeringAudit(true)
+    try {
+      const res = await fetch('/api/whatsapp-governance/gemini/trigger-audit', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast('✅ Nightly AI Audit triggered! System prompt auto-enriched.', 'success')
+        fetchData()
+      } else {
+        addToast(data.error || data.message || 'Audit failed', 'error')
+      }
+    } catch (err) {
+      addToast('Failed to trigger audit', 'error')
+    } finally {
+      setTriggeringAudit(false)
+    }
+  }
+
   if (loading) return <div className="loading-overlay">⌛ Loading WhatsApp Governance Portal...</div>
 
   const isConnected = status?.status === 'CONNECTED'
@@ -212,6 +340,7 @@ export default function WhatsAppBot() {
           { id: 'zone_c', label: '📡 Zone C: Live Radar & Audit', icon: '🔴' },
           { id: 'zone_a', label: '🎛️ Zone A: Authority & Templates', icon: '⚙️' },
           { id: 'zone_b', label: '🛡️ Zone B: Anti-Ban Studio', icon: '🛡️' },
+          { id: 'zone_g', label: '🧠 Zone G: Gemini Autonomous AI', icon: '🧠' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -771,6 +900,343 @@ export default function WhatsAppBot() {
                   <li><strong style={{ color: '#fff' }}>Avoid Unsolicited Cold Outreach:</strong> Only message customers who have actively placed an order or opted in on your store checkout.</li>
                   <li><strong style={{ color: '#fff' }}>Monitor Disconnection Codes:</strong> If Baileys disconnects with a 401/LoggedOut code, do not force-reconnect immediately. Inspect your message content for potential user reports.</li>
                 </ol>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* ZONE G: GEMINI AUTONOMOUS AI               */}
+      {/* ========================================== */}
+      {activeMainTab === 'zone_g' && (
+        <div className="card glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 0.3s ease-in-out' }}>
+          {/* Sub-Tabs Navigation */}
+          <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #334155', paddingBottom: 16, overflowX: 'auto' }}>
+            {[
+              { id: 'studio', label: '🤖 Gemini AI Studio & Prompts' },
+              { id: 'profiles', label: '🗂️ Customer Profiles & Memory' },
+              { id: 'tools', label: '🛠️ Tool Calling & Capabilities' },
+              { id: 'audit', label: '🌙 Nightly Self-Learning Audit' },
+            ].map(sub => (
+              <button
+                key={sub.id}
+                onClick={() => setActiveSubTabG(sub.id)}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: 12,
+                  background: activeSubTabG === sub.id ? '#6366f1' : 'transparent',
+                  color: activeSubTabG === sub.id ? '#fff' : '#64748b',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  border: activeSubTabG === sub.id ? '1px solid #4f46e5' : '1px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-Tab G1: Gemini AI Studio & Prompts */}
+          {activeSubTabG === 'studio' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                <div>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🤖 Gemini 1.5 Autonomous Orchestration Studio</h4>
+                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>Empower your WhatsApp bot with advanced RAG memory, multi-turn dialogue, and dynamic tool execution.</p>
+                </div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 800, cursor: 'pointer', fontSize: '1rem', background: geminiSettings.ai_active === 1 ? 'var(--green-dim)' : 'var(--red-dim)', color: geminiSettings.ai_active === 1 ? 'var(--green)' : 'var(--red)', padding: '10px 20px', borderRadius: 30, border: `1px solid ${geminiSettings.ai_active === 1 ? 'var(--green)' : 'var(--red)'}` }}>
+                    <input 
+                      type="checkbox" 
+                      checked={geminiSettings.ai_active === 1}
+                      onChange={e => setGeminiSettings({ ...geminiSettings, ai_active: e.target.checked ? 1 : 0 })}
+                      style={{ width: 22, height: 22, accentColor: geminiSettings.ai_active === 1 ? 'var(--green)' : 'var(--red)' }}
+                    />
+                    <span>{geminiSettings.ai_active === 1 ? '🟢 GEMINI AUTONOMOUS AI ACTIVE' : '🔴 GEMINI AI DISABLED'}</span>
+                  </label>
+                  <button 
+                    className="btn btn-primary"
+                    disabled={saving}
+                    onClick={handleSaveGeminiSettings}
+                    style={{ padding: '10px 24px', fontWeight: 700, borderRadius: 30 }}
+                  >
+                    {saving ? '⌛ Saving...' : '💾 Save Gemini Settings'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="form-group" style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                  <label style={{ fontWeight: 800, marginBottom: 12, display: 'block', fontSize: '0.95rem' }}>🔑 Google Gemini API Key</label>
+                  <input 
+                    type="password" 
+                    className="premium-input w-full" 
+                    value={geminiSettings.api_key}
+                    onChange={e => setGeminiSettings({ ...geminiSettings, api_key: e.target.value })}
+                    placeholder="AIzaSy..."
+                    style={{ fontSize: '0.95rem', padding: '12px 16px' }}
+                  />
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Required to enable Gemini 1.5 Flash/Pro orchestration and Function Calling.</p>
+                </div>
+
+                <div className="form-group" style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                  <label style={{ fontWeight: 800, marginBottom: 12, display: 'block', fontSize: '0.95rem' }}>🧠 Gemini Model Architecture</label>
+                  <select 
+                    className="premium-input w-full"
+                    value={geminiSettings.model_name}
+                    onChange={e => setGeminiSettings({ ...geminiSettings, model_name: e.target.value })}
+                    style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.95rem', padding: '12px 16px' }}
+                  >
+                    <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash (Ultra-Fast Chat & Tool Use)</option>
+                    <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro (Advanced Reasoning & Deep RAG)</option>
+                  </select>
+                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Flash is recommended for real-time WhatsApp speed. Pro is ideal for complex enterprise analysis.</p>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                <label style={{ fontWeight: 800, marginBottom: 12, display: 'block', fontSize: '0.95rem' }}>📝 Master System Prompt & AI Persona</label>
+                <textarea 
+                  className="premium-input" 
+                  rows={8} 
+                  value={geminiSettings.system_prompt}
+                  onChange={e => setGeminiSettings({ ...geminiSettings, system_prompt: e.target.value })}
+                  placeholder="You are TRACE AI, the elite customer success concierge..."
+                  style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
+                />
+                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: 8 }}>Defines the bot's tone, language capabilities (Urdu/English), and operational boundaries.</p>
+              </div>
+
+              {/* --- 🧪 DIRECT AI SIMULATION & DIAGNOSTIC SANDBOX --- */}
+              <div style={{ background: 'var(--bg-active)', padding: 28, borderRadius: 20, border: '1px solid #6366f1', display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ fontSize: '1.8rem' }}>🧪</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1.1rem', margin: 0, color: '#fff' }}>Direct AI Simulation & Diagnostic Sandbox</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', margin: 0 }}>Simulate incoming customer messages to instantly test Gemini's Tool Calling (`getOrderStatus`, `checkProductStock`) and RAG memory without a real phone.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="form-group">
+                    <label style={{ fontWeight: 800, marginBottom: 8, display: 'block', fontSize: '0.85rem' }}>📱 Simulated Customer Phone</label>
+                    <input 
+                      type="text" 
+                      className="premium-input w-full" 
+                      value={simPhone}
+                      onChange={e => setSimPhone(e.target.value)}
+                      placeholder="923001234567"
+                      style={{ fontSize: '0.9rem', padding: '10px 14px' }}
+                    />
+                  </div>
+                  <div className="form-group md:col-span-2">
+                    <label style={{ fontWeight: 800, marginBottom: 8, display: 'block', fontSize: '0.85rem' }}>💬 Simulated Incoming Message</label>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      <input 
+                        type="text" 
+                        className="premium-input w-full" 
+                        value={simMsg}
+                        onChange={e => setSimMsg(e.target.value)}
+                        placeholder="Mera parcel kahan hai?"
+                        style={{ fontSize: '0.9rem', padding: '10px 14px' }}
+                      />
+                      <button 
+                        className="btn btn-primary"
+                        disabled={simLoading}
+                        onClick={handleSimulateIncoming}
+                        style={{ padding: '10px 24px', fontWeight: 800, whiteSpace: 'nowrap', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        {simLoading ? '⌛ Simulating...' : '🚀 Simulate AI Reply'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {simReply && (
+                  <div style={{ background: '#0f172a', padding: 20, borderRadius: 16, borderLeft: '4px solid var(--green)', display: 'flex', flexDirection: 'column', gap: 8, animation: 'fadeIn 0.3s' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                      🤖 Gemini AI Simulated Response:
+                    </div>
+                    <div style={{ fontSize: '0.95rem', color: '#f8fafc', whiteSpace: 'pre-wrap', lineHeight: 1.6, fontWeight: 500 }}>
+                      {simReply}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab G2: Customer Profiles & Memory */}
+          {activeSubTabG === 'profiles' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div>
+                <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🗂️ Enriched Customer Profiles & Conversational Memory</h4>
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>Inspect long-term preferences, sizing traits, and multi-turn chat history extracted autonomously by Gemini.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left: Customer Profiles Table */}
+                <div className="lg:col-span-2" style={{ maxHeight: 500, overflowY: 'auto', background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)' }}>
+                  <table className="w-full" style={{ fontSize: '0.85rem' }}>
+                    <thead style={{ background: 'var(--bg-header)', position: 'sticky', top: 0, zIndex: 10 }}>
+                      <tr>
+                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Phone</th>
+                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Customer Name</th>
+                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Extracted Preferences</th>
+                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {geminiProfiles.map((p, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-dim)' }}>
+                          <td style={{ padding: '14px 20px', fontWeight: 800 }}>+{p.phone}</td>
+                          <td style={{ padding: '14px 20px', fontWeight: 700 }}>
+                            {p.customer_name || 'Customer'}
+                            {p.vip_status === 1 && <span style={{ marginLeft: 8, background: 'var(--orange-dim)', color: 'var(--orange)', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 800 }}>👑 VIP</span>}
+                          </td>
+                          <td style={{ padding: '14px 20px', opacity: 0.8, fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.preferences}</td>
+                          <td style={{ padding: '14px 20px' }}>
+                            <button 
+                              className="btn btn-secondary"
+                              onClick={() => handleFetchMemory(p.phone)}
+                              style={{ padding: '6px 14px', fontSize: '0.75rem', fontWeight: 700 }}
+                            >
+                              🔍 View Memory
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Right: Active Memory Viewer */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <h5 style={{ fontWeight: 800, fontSize: '1rem', margin: 0, color: 'var(--primary)' }}>
+                    🧠 Active Chat Memory {selectedCustomerPhone ? `(+${selectedCustomerPhone})` : ''}
+                  </h5>
+                  <div style={{ flex: 1, maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {loadingMemory ? (
+                      <div style={{ textAlign: 'center', opacity: 0.5, padding: 40 }}>⌛ Loading memory buffer...</div>
+                    ) : customerMemory.length > 0 ? (
+                      customerMemory.map((m, idx) => (
+                        <div key={idx} style={{ background: m.role === 'model' ? 'var(--bg-header)' : '#334155', padding: 12, borderRadius: 12, borderLeft: `4px solid ${m.role === 'model' ? 'var(--primary)' : 'var(--green)'}` }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 800, opacity: 0.6, marginBottom: 4 }}>
+                            {m.role === 'model' ? '🤖 Gemini AI' : '👤 Customer'} • {m.created_at}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{m.content}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ textAlign: 'center', opacity: 0.5, padding: 40, fontSize: '0.85rem' }}>
+                        Select a customer from the table to inspect their active Gemini RAG conversational memory buffer.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab G3: Tool Calling & Capabilities */}
+          {activeSubTabG === 'tools' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div>
+                <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🛠️ Gemini Function Calling & Tool Capabilities</h4>
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>Explore the live database tools Gemini can autonomously execute during WhatsApp conversations.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📦</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Live Stock & Price Checker (`checkProductStock`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries `product_master_costs` in real-time to answer inventory questions, confirm pricing, and recommend available variants.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📡</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Order Tracking Radar (`getOrderStatus`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini pulls live airway bill numbers, courier names (PostEx/Instaworld), and delivery statuses directly from the `orders` table.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📝</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Autonomous Draft Order Creator (`createDraftOrder`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>When a customer requests to buy via WhatsApp, Gemini conducts an interview, collects complete shipping details, and auto-inserts a Draft order.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>🗂️</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Customer Profile Enricher (`updateCustomerProfile`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini extracts persistent traits (sizing, delivery timing preferences, special landmarks) and saves them into the customer's long-term profile.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab G4: Nightly Self-Learning Audit */}
+          {activeSubTabG === 'audit' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🌙 Nightly AI Self-Learning & Friction Audit</h4>
+                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>Review how Gemini analyzes daily chat logs to identify customer friction points and autonomously refine its own system prompt.</p>
+                </div>
+                <button 
+                  className="btn btn-primary"
+                  disabled={triggeringAudit}
+                  onClick={handleTriggerAudit}
+                  style={{ padding: '10px 24px', fontWeight: 800, borderRadius: 30, display: 'flex', alignItems: 'center', gap: 10 }}
+                >
+                  {triggeringAudit ? '⌛ Analyzing Chat Logs...' : '🚀 Trigger On-Demand AI Audit'}
+                </button>
+              </div>
+
+              <div style={{ maxHeight: 500, overflowY: 'auto', background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)' }}>
+                <table className="w-full" style={{ fontSize: '0.85rem' }}>
+                  <thead style={{ background: 'var(--bg-header)', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Audit Date</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Messages Analyzed</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Identified Friction Points</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Applied Prompt Refinements</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {geminiAuditLogs.map((log, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-dim)' }}>
+                        <td style={{ padding: '14px 20px', fontWeight: 800, whiteSpace: 'nowrap' }}>{log.audit_date}</td>
+                        <td style={{ padding: '14px 20px', fontWeight: 700, color: 'var(--primary)' }}>{log.messages_analyzed} msgs</td>
+                        <td style={{ padding: '14px 20px', opacity: 0.9 }}>
+                          <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {JSON.parse(log.friction_points || '[]').map((f, i) => <li key={i}>{f}</li>)}
+                          </ul>
+                        </td>
+                        <td style={{ padding: '14px 20px', opacity: 0.9, color: 'var(--green)' }}>
+                          <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {JSON.parse(log.prompt_refinements || '[]').map((r, i) => <li key={i}>{r}</li>)}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
