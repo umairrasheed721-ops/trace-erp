@@ -212,7 +212,7 @@ router.post('/gemini/settings', (req, res) => {
     db.prepare(`
       UPDATE gemini_bot_settings SET
         api_key = ?, ai_active = ?, model_name = ?, system_prompt = ?, strictness = ?, auto_learning_enabled = ?, updated_at = datetime('now')
-    `).run(api_key || '', ai_active ? 1 : 0, model_name || 'gemini-1.5-flash', system_prompt || '', strictness || 'balanced', auto_learning_enabled ? 1 : 0);
+    `).run(api_key || '', ai_active ? 1 : 0, model_name || 'gemini-2.5-flash', system_prompt || '', strictness || 'balanced', auto_learning_enabled ? 1 : 0);
 
     res.json({ success: true });
   } catch (e) {
