@@ -380,6 +380,18 @@ router.get('/test-raw/:tracking', async (req, res) => {
     }
 });
 
+const errorLogs = [];
+const originalConsoleError = console.error;
+console.error = (...args) => {
+    errorLogs.push({ time: new Date().toISOString(), message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') });
+    if (errorLogs.length > 100) errorLogs.shift();
+    originalConsoleError(...args);
+};
+
+router.get('/errors', (req, res) => {
+    res.json({ success: true, errors: errorLogs });
+});
+
 router.get('/debug-messages', (req, res) => {
     try {
         const rows = db.prepare('SELECT * FROM whatsapp_messages ORDER BY id DESC LIMIT 15').all();
