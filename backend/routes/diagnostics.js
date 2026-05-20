@@ -380,4 +380,13 @@ router.get('/test-raw/:tracking', async (req, res) => {
     }
 });
 
+router.get('/debug-messages', (req, res) => {
+    try {
+        const rows = db.prepare('SELECT * FROM whatsapp_messages ORDER BY id DESC LIMIT 15').all();
+        res.json({ success: true, messages: rows });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;
