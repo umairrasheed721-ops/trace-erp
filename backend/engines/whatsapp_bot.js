@@ -254,46 +254,66 @@ const SILENT_LOGGER = {
               continue; // Gemini handled the conversation completely!
             }
 
+            // If we reached here, Gemini failed to reply (e.g. rate limit, api key issue, error, etc.)
+            // We implement a comprehensive fallback responder to ensure the bot ALWAYS replies to all messages.
+            const settings = db.prepare('SELECT ai_responder_enabled, ai_tracking_template, ai_landmark_template FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+            
+            // Check if customer has an order
             if (orderId) {
-              const lowerText = text.toLowerCase();
-              
               // 1. Verification Intent
               if (['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => lowerText.includes(w))) {
                 db.prepare(`UPDATE orders SET wa_verification_status = 'Verified' WHERE id = ?`).run(orderId);
                 console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
               }
 
-              // Check AI Responder Settings
-              const settings = db.prepare('SELECT ai_responder_enabled, ai_tracking_template, ai_landmark_template FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+              // Check if AI fallback responder is enabled (or fallback anyway to prevent silence)
               if (settings.ai_responder_enabled !== 0) {
-                // 2. Tracking Intent ("kahan hai", "tracking", "status", "kab aayega", "parcel", "where is")
+                // 2. Tracking Intent
                 if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
                   const tracking = order.tracking_number || 'N/A';
                   const courier = order.courier || 'Courier';
                   const status = order.delivery_status || 'In Transit';
                   const link = order.courier === 'PostEx' ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
                   
-                  let reply = (settings.ai_tracking_template || '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}')
+                  let reply = (settings.ai_tracking_template || '🤖 [TRACE Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}')
                     .replace(/\{tracking\}/g, tracking)
                     .replace(/\{courier\}/g, courier)
                     .replace(/\{status\}/g, status)
                     .replace(/\{link\}/g, link);
 
                   this.sendMessage(fromPhone, reply, true);
-                  console.log(`🤖 AI Auto-Responder: Sent Tracking Intent reply to ${fromPhone}`);
+                  console.log(`🤖 AI Fallback: Sent Tracking Intent reply to ${fromPhone}`);
                 }
-
-                // 3. Landmark / Address Intent ("near", "opposite", "beside", "gali", "house", "makan", "street", "landmark")
+                // 3. Landmark Intent
                 else if (['near', 'opposite', 'beside', 'gali', 'house', 'makan', 'street', 'landmark', 'ke paas', 'samne'].some(w => lowerText.includes(w))) {
-                  // Save landmark to cs_notes
                   db.prepare(`UPDATE orders SET cs_notes = IFNULL(cs_notes, '') || ' [WA Landmark: ' || ? || ']' WHERE id = ?`).run(text, orderId);
                   
-                  let reply = (settings.ai_landmark_template || '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.')
+                  let reply = (settings.ai_landmark_template || '🤖 [TRACE Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.')
                     .replace(/\{landmark\}/g, text);
 
                   this.sendMessage(fromPhone, reply, true);
-                  console.log(`🤖 AI Auto-Responder: Sent Landmark Intent reply to ${fromPhone}`);
+                  console.log(`🤖 AI Fallback: Sent Landmark Intent reply to ${fromPhone}`);
                 }
+                // 4. General fallback message when they have an order but the intent is not recognized
+                else {
+                  const customerName = order.customer_name || 'Customer';
+                  const reply = `🤖 [TRACE Support] Hi *${customerName}*! Humare system mein aapka order exist karta hai. Agar aap apna parcel track karna chahte hain, toh reply mein *'kahan hai'* ya *'status'* likh kar bhejein. Shukriya!`;
+                  this.sendMessage(fromPhone, reply, true);
+                  console.log(`🤖 AI Fallback: Sent general order holder message to ${fromPhone}`);
+                }
+              }
+            } else {
+              // The phone number does not have any order in the database (e.g. general query, new customer, or test number)
+              // 1. Check if they asked for tracking anyway
+              if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
+                const reply = `🤖 [TRACE Support] Aapka phone number humare system mein kisi active order se register nahi mila. Agar aapne order kiya hai, toh kindly humein apna *order number* (e.g. TR12345) message karein taake hum update check kar sakein.`;
+                this.sendMessage(fromPhone, reply, true);
+                console.log(`🤖 AI Fallback: Sent tracking request message to non-order holder ${fromPhone}`);
+              } else {
+                // 2. Generic greeting / helper fallback
+                const reply = `🤖 [TRACE Support] Salam! Aapka message received ho gaya hai. Humare system mein is number se koi current order exist nahi karta. Agar aap new order place karna chahte hain ya agent se baat karna chahte hain, toh apna query reply karein. Humara customer support representative jald hi aapse raabta karega.`;
+                this.sendMessage(fromPhone, reply, true);
+                console.log(`🤖 AI Fallback: Sent general help reply to non-order holder ${fromPhone}`);
               }
             }
           } catch (err) {
