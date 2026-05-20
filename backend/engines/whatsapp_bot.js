@@ -29,6 +29,7 @@ const SILENT_LOGGER = {
     this.isProcessing = false;
     this.hourlyCount = 0;
     this.lastResetTime = Date.now();
+    this.humanCooldowns = {}; // { phone: timestamp }
     
     // Dynamic governance parameters
     this.isPaused = false;
@@ -176,16 +177,66 @@ const SILENT_LOGGER = {
           this.store.messages[remoteJid].push(msg);
           if (this.store.messages[remoteJid].length > 100) this.store.messages[remoteJid].shift();
 
-          if (msg.key.fromMe) continue;
-
           const fromPhone = remoteJid.split('@')[0];
+          if (msg.key.fromMe) {
+            // Human agent manually sent a message: Pause bot replies for 30 minutes for this contact
+            this.humanCooldowns[fromPhone] = Date.now();
+            console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 30 mins.`);
+            continue;
+          }
+
           const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
           if (!text) continue;
 
           console.log(`💬 Incoming WA Message from ${fromPhone}: ${text}`);
 
+          // Check if contact is under active human manual override cooldown
+          const lastHumanMsg = this.humanCooldowns[fromPhone];
+          if (lastHumanMsg && (Date.now() - lastHumanMsg) < 30 * 60 * 1000) {
+            console.log(`⏳ Skipping bot auto-reply for ${fromPhone} due to active human manual override.`);
+            continue;
+          }
+
           try {
             const { db } = require('../db');
+            
+            // Handle Opt-out / Opt-in keywords
+            const lowerText = text.toLowerCase().trim();
+            const optOutKeywords = ['stop', 'unsubscribe', 'opt out', 'optout', 'bas karo', 'tang na karo', 'unsub'];
+            const isOptOut = optOutKeywords.some(keyword => lowerText === keyword || lowerText.startsWith(keyword + ' '));
+            
+            if (isOptOut) {
+              db.prepare(`
+                INSERT INTO customer_profiles (phone, opted_out, updated_at)
+                VALUES (?, 1, datetime('now'))
+                ON CONFLICT(phone) DO UPDATE SET opted_out = 1, updated_at = datetime('now')
+              `).run(fromPhone);
+              console.log(`🔕 Customer ${fromPhone} opted out from bot auto-replies.`);
+              this.sendMessage(fromPhone, "🤖 [TRACE Support] Aapko unsubscribe kar diya gaya hai. Ab aapko automated messages nahi milenge. Agar dobara activate karna ho toh 'Start' reply karein.", true);
+              continue;
+            }
+
+            const optInKeywords = ['start', 'subscribe', 'opt in', 'optin', 'activate', 'dobara activate'];
+            const isOptIn = optInKeywords.some(keyword => lowerText === keyword || lowerText.startsWith(keyword + ' '));
+            
+            if (isOptIn) {
+              db.prepare(`
+                INSERT INTO customer_profiles (phone, opted_out, updated_at)
+                VALUES (?, 0, datetime('now'))
+                ON CONFLICT(phone) DO UPDATE SET opted_out = 0, updated_at = datetime('now')
+              `).run(fromPhone);
+              console.log(`🔔 Customer ${fromPhone} opted in to bot auto-replies.`);
+              this.sendMessage(fromPhone, "🤖 [TRACE Support] Automated help dobara activate kar di gayi hai. Aap kaisa help chahte hain?", true);
+              continue;
+            }
+
+            // Check if opted out
+            const profile = db.prepare('SELECT opted_out FROM customer_profiles WHERE phone = ?').get(fromPhone);
+            if (profile && profile.opted_out === 1) {
+              console.log(`🔕 Skipping bot reply for ${fromPhone} because customer is opted out.`);
+              continue;
+            }
+
             const order = db.prepare(`SELECT id, store_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
             const orderId = order ? order.id : null;
             const storeId = order ? order.store_id : 1;
@@ -274,6 +325,23 @@ const SILENT_LOGGER = {
   }
 
   async sendMessage(phone, message, isManual = false) {
+    if (!isManual) {
+      try {
+        const { db } = require('../db');
+        let cleaned = phone.replace(/\D/g, '');
+        if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+        else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+        const profile = db.prepare('SELECT opted_out FROM customer_profiles WHERE phone = ?').get(cleaned);
+        if (profile && profile.opted_out === 1) {
+          console.log(`🔕 Skipping automated sendMessage to ${cleaned} because customer has opted out.`);
+          return { success: false, error: 'Customer has opted out of automated WhatsApp messages.' };
+        }
+      } catch (e) {
+        console.error('⚠️ Opt-out pre-check failed:', e.message);
+      }
+    }
+
     // Add to queue instead of sending immediately
     return new Promise((resolve) => {
       this.queue.push({ phone, message, isManual, resolve });
@@ -343,6 +411,21 @@ const SILENT_LOGGER = {
             console.warn(`⚠️ onWhatsApp check failed/rate-limited for ${cleaned}, proceeding anyway...`);
           }
         }
+
+        // 1. Send composing (typing) state to emulate human behavior
+        try {
+          await this.sock.sendPresenceUpdate('composing', jid);
+        } catch (e) {}
+
+        // 2. Character-based typing delay simulation (30ms per char + random base, max 6s)
+        const typingDelay = Math.min((message.length * 30) + (Math.floor(Math.random() * 1000) + 500), 6000);
+        console.log(`💬 Simulating typing for ${typingDelay}ms to ${cleaned}...`);
+        await new Promise(r => setTimeout(r, typingDelay));
+
+        // 3. Stop composing state
+        try {
+          await this.sock.sendPresenceUpdate('paused', jid);
+        } catch (e) {}
 
         await this.sock.sendMessage(jid, { text: message });
         this.hourlyCount++;

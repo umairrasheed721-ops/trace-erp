@@ -672,6 +672,7 @@ function runMigrations(db) {
       preferences TEXT DEFAULT '{}', -- JSON string of extracted traits
       vip_status INTEGER DEFAULT 0,
       total_orders INTEGER DEFAULT 0,
+      opted_out INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', '+5 hours')),
       updated_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
@@ -697,6 +698,7 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1`); } catch (e) {}
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'`); } catch (e) {}
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN opted_out INTEGER DEFAULT 0`); } catch (e) {}
 
   const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;
   if (waCount === 0) {
