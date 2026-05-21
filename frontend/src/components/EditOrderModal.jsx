@@ -21,6 +21,7 @@ export default function EditOrderModal({
   const [custIntel, setCustIntel] = useState({ total: 0, delivered: 0, returned: 0, rto_rate: 0, blacklist: false });
   const [custIntelLoading, setCustIntelLoading] = useState(false);
   const [waSimulating, setWaSimulating] = useState(false);
+  const [sendingImages, setSendingImages] = useState(false);
 
   // Pillar 2: Master Products & Product Search State
   const [masterProducts, setMasterProducts] = useState([]);
@@ -187,6 +188,37 @@ export default function EditOrderModal({
         setWaSimulating(false);
         alert(err.message || 'WhatsApp simulation failed');
       });
+  };
+
+  const handleSendItemImages = async () => {
+    setSendingImages(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-images`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        if (activeTab === 'whatsapp_chat') {
+          const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          const chatData = await chatRes.json();
+          if (chatData.messages) setChatMessages(chatData.messages);
+        }
+      } else {
+        alert(data.error || 'Failed to send item images.');
+      }
+    } catch (err) {
+      alert('Network error sending item images.');
+    } finally {
+      setSendingImages(false);
+    }
   };
 
   // Pillar 1: AI Address Cleanse Helper
@@ -808,6 +840,35 @@ export default function EditOrderModal({
                     >
                       <span>❌ Simulate Customer Cancel</span>
                     </button>
+
+                    <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Manual CS Media Actions</label>
+                      <button 
+                        onClick={handleSendItemImages} 
+                        disabled={sendingImages || waSimulating}
+                        style={{ 
+                          background: 'linear-gradient(135deg, #a855f7, #ec4899)', 
+                          color: '#fff', 
+                          border: 'none', 
+                          padding: '12px 16px', 
+                          borderRadius: 12, 
+                          fontSize: '0.8rem', 
+                          fontWeight: 700, 
+                          cursor: 'pointer', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          gap: 8,
+                          boxShadow: '0 4px 12px rgba(236, 72, 153, 0.3)',
+                          transition: 'transform 0.15s ease, opacity 0.15s ease',
+                          opacity: (sendingImages || waSimulating) ? 0.7 : 1
+                        }}
+                        onMouseEnter={(e) => { if (!sendingImages && !waSimulating) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                        onMouseLeave={(e) => { if (!sendingImages && !waSimulating) e.currentTarget.style.transform = 'translateY(0)'; }}
+                      >
+                        <span>{sendingImages ? '⏳ Sending Images...' : '📸 Send Item Images to Customer'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 8 }}>

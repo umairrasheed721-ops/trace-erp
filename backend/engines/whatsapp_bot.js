@@ -344,7 +344,7 @@ const SILENT_LOGGER = {
     }
   }
 
-  async sendMessage(phone, message, isManual = false) {
+  async sendMessage(phone, message, isManual = false, imageUrl = null) {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -364,8 +364,8 @@ const SILENT_LOGGER = {
 
     // Add to queue instead of sending immediately
     return new Promise((resolve) => {
-      this.queue.push({ phone, message, isManual, resolve });
-      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}). Queue size: ${this.queue.length}`);
+      this.queue.push({ phone, message, isManual, imageUrl, resolve });
+      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}, Image: ${!!imageUrl}). Queue size: ${this.queue.length}`);
       this._processQueue();
     });
   }
@@ -398,7 +398,7 @@ const SILENT_LOGGER = {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, resolve } = this.queue.shift();
+      const { phone, message, isManual, imageUrl, resolve } = this.queue.shift();
       let cleaned = phone.replace(/\D/g, '');
 
       try {
@@ -447,7 +447,11 @@ const SILENT_LOGGER = {
           await this.sock.sendPresenceUpdate('paused', jid);
         } catch (e) {}
 
-        await this.sock.sendMessage(jid, { text: message });
+        if (imageUrl) {
+          await this.sock.sendMessage(jid, { image: { url: imageUrl }, caption: message });
+        } else {
+          await this.sock.sendMessage(jid, { text: message });
+        }
         this.hourlyCount++;
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
         this._addAuditLog(cleaned, 'Sent', '');
@@ -457,10 +461,11 @@ const SILENT_LOGGER = {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
+          const dbMessageContent = imageUrl ? `[Image: ${imageUrl}] ${message}` : message;
           db.prepare(`
             INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
             VALUES (?, ?, ?, 'outgoing', ?)
-          `).run(storeId, orderId, cleaned, message);
+          `).run(storeId, orderId, cleaned, dbMessageContent);
         } catch (dbErr) {}
 
         resolve({ success: true });

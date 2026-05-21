@@ -147,6 +147,53 @@ router.post('/chat/:order_id/send', async (req, res) => {
   }
 });
 
+// POST /api/whatsapp-governance/chat/:order_id/send-images
+router.post('/chat/:order_id/send-images', async (req, res) => {
+  const { order_id } = req.params;
+  try {
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, line_items FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.phone) return res.status(400).json({ error: 'Order phone not found' });
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    let lineItems = [];
+    try {
+      lineItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+    } catch (e) {
+      return res.status(400).json({ error: 'Failed to parse order line items' });
+    }
+
+    const itemsWithImages = lineItems.filter(item => item.image_url && item.image_url.trim() !== '');
+
+    if (itemsWithImages.length === 0) {
+      return res.status(400).json({ error: 'No item images found for this order. Please fetch order details from Shopify first to sync variant images.' });
+    }
+
+    let sentCount = 0;
+    for (const item of itemsWithImages) {
+      const caption = `🤖 [TRACE Support] Ordered item: *${item.title}*${item.variant_title ? ` (${item.variant_title})` : ''} — Qty: ${item.quantity}`;
+      const dbMessageContent = `[Image: ${item.image_url}] ${caption}`;
+
+      try {
+        db.prepare(`
+          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
+          VALUES (?, ?, ?, 'outgoing', ?, 'sent')
+        `).run(order.store_id, order.id, cleaned, dbMessageContent);
+      } catch (err) {}
+
+      bot.sendMessage(cleaned, caption, true, item.image_url);
+      sentCount++;
+    }
+
+    res.json({ success: true, message: `Successfully queued ${sentCount} image(s) to send via WhatsApp.` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/whatsapp-governance/chat/:order_id/fetch-history
 router.post('/chat/:order_id/fetch-history', async (req, res) => {
   const { order_id } = req.params;
