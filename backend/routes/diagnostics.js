@@ -92,7 +92,19 @@ router.get('/live-db-diagnose', (req, res) => {
 
         const indexes = db.db.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index'").all();
 
-        const store_id = Number(req.query.store_id || 1);
+        // Get all stores
+        const stores = [];
+        try {
+            const rows = db.db.prepare("SELECT id, shop_domain, store_name FROM stores").all();
+            for (const row of rows) {
+                const count = db.db.prepare("SELECT COUNT(*) as count FROM orders WHERE store_id = ?").get(row.id).count;
+                stores.push({ ...row, orderCount: count });
+            }
+        } catch (e) {
+            stores.push({ error: e.message });
+        }
+
+        const store_id = Number(req.query.store_id || (stores.length > 0 ? stores[0].id : 1));
 
         // Count explain
         let explainCount = [];
@@ -141,6 +153,8 @@ router.get('/live-db-diagnose', (req, res) => {
                 busyTimeout
             },
             tableCounts: counts,
+            stores,
+            activeStoreId: store_id,
             indexes,
             explainCount,
             diagnostics: {
