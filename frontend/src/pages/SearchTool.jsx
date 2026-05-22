@@ -835,7 +835,6 @@ export default function SearchTool() {
   }
 
   const agingBuckets = useMemo(() => getAgingBuckets(), [agingConfig])
-  const today = new Date(); today.setHours(0,0,0,0)
   const [showAgingBar, setShowAgingBar] = useState(() => localStorage.getItem('trace_show_aging') !== 'false')
 
   const toggleAgingBar = () => {
@@ -865,19 +864,19 @@ export default function SearchTool() {
     return status.includes('pending') && !hasTracking && !hasCourier && !isOut
   }
 
-  const getAgingCounts = (orders) => {
+  const agingCounts = useMemo(() => {
     const counts = {}
-    orders.forEach(o => {
+    const todayVal = new Date(); todayVal.setHours(0,0,0,0)
+    allOrders.forEach(o => {
       if (!o.order_date || !isBacklogOrder(o)) return
       
       const d = new Date(o.order_date); d.setHours(0,0,0,0)
-      const diff = Math.floor((today - d) / 86400000)
+      const diff = Math.floor((todayVal - d) / 86400000)
       const b = agingBuckets.find(bucket => diff >= bucket.min && diff <= bucket.max)
       if (b) counts[b.label] = (counts[b.label] || 0) + 1
     })
     return counts
-  }
-  const agingCounts = getAgingCounts(allOrders)
+  }, [allOrders, agingBuckets])
 
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
@@ -977,8 +976,7 @@ export default function SearchTool() {
 
   useEffect(() => { fetchViews() }, [activeStoreId])
 
-  // KPIs
-  const [kpi, setKpi] = useState({ total: 0, sum: 0, delivered: 0, returned: 0, pending: 0 })
+  // KPIs (defined below via useMemo)
 
   // Load all orders for the active store (we filter client-side for instant search)
   useEffect(() => {
@@ -1098,10 +1096,11 @@ export default function SearchTool() {
     if (activeAgingBucket) {
       const bucket = agingBuckets.find(b => b.label === activeAgingBucket);
       if (bucket) {
+        const todayVal = new Date(); todayVal.setHours(0,0,0,0);
         result = result.filter(o => {
           if (!o.order_date || !isBacklogOrder(o)) return false;
           const d = new Date(o.order_date); d.setHours(0,0,0,0);
-          const diff = Math.floor((today - d) / 86400000);
+          const diff = Math.floor((todayVal - d) / 86400000);
           return diff >= bucket.min && diff <= bucket.max;
         });
       }
@@ -1125,9 +1124,9 @@ export default function SearchTool() {
       });
     }
     return result;
-  }, [allOrders, debouncedKeyword, activeAgingBucket, agingBuckets, today]);
+  }, [displayedOrders, debouncedKeyword, activeAgingBucket, agingBuckets]);
 
-  useEffect(() => {
+  const kpi = useMemo(() => {
     let delivered=0, returned=0, pending=0, sum=0
     filteredOrders.forEach(o => {
       const s = (o.delivery_status||'').toLowerCase()
@@ -1136,7 +1135,7 @@ export default function SearchTool() {
       else if (s.includes('return')||s.includes('cancel')) returned++
       else pending++
     })
-    setKpi({ total: totalCount, sum, delivered, returned, pending })
+    return { total: totalCount, sum, delivered, returned, pending }
   }, [filteredOrders, totalCount])
 
   const saveView = async () => {
