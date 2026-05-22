@@ -5,6 +5,7 @@ const { logSystemError } = require('./db');
 // --- 🛡️ GLOBAL CRASH PREVENTERS (BULLETPROOF) ---
 // These handlers catch ALL errors — server NEVER exits due to unhandled errors.
 process.on('uncaughtException', (err) => {
+  if (err && (err.code === 'EIO' || (err.message && err.message.includes('EIO')))) return;
   console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
   try { logSystemError('ERROR', err.message, 'uncaughtException'); } catch (_) {}
   try { sendEmergencyAlert(`*Uncaught Exception*\n${err.message}`); } catch (_) {}
@@ -12,6 +13,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
+  if (reason && (reason.code === 'EIO' || msg.includes('EIO'))) return;
   console.error('🛑 CRITICAL: Unhandled Rejection — server kept alive:', msg);
   try { logSystemError('ERROR', msg, 'unhandledRejection'); } catch (_) {}
   try { sendEmergencyAlert(`*Unhandled Rejection*\n${msg}`); } catch (_) {}
@@ -53,9 +55,9 @@ const pushLog = (level, args) => {
   if (level === 'ERROR') errorCount++;
 };
 
-console.log   = (...a) => { pushLog('INFO',  a); originalLog.apply(console, a); };
-console.error = (...a) => { pushLog('ERROR', a); originalError.apply(console, a); };
-console.warn  = (...a) => { pushLog('WARN',  a); originalWarn.apply(console, a); };
+console.log   = (...a) => { pushLog('INFO',  a); try { originalLog.apply(console, a); } catch (e) { if (e.code !== 'EIO') throw e; } };
+console.error = (...a) => { pushLog('ERROR', a); try { originalError.apply(console, a); } catch (e) { if (e.code !== 'EIO') throw e; } };
+console.warn  = (...a) => { pushLog('WARN',  a); try { originalWarn.apply(console, a); } catch (e) { if (e.code !== 'EIO') throw e; } };
 
 const express = require('express');
 const cors = require('cors');
@@ -181,7 +183,18 @@ let lastAlertTime = 0;
 let isInternalError = false;
 const _prevConsoleError = console.error; 
 console.error = (...a) => {
-  _prevConsoleError.apply(console, a); 
+  const isEio = a.some(x => {
+    if (x instanceof Error) return x.code === 'EIO' || (x.message && x.message.includes('EIO'));
+    return typeof x === 'string' && x.includes('EIO');
+  });
+  if (isEio) return;
+
+  try {
+    _prevConsoleError.apply(console, a); 
+  } catch (e) {
+    if (e.code !== 'EIO') throw e;
+    return;
+  }
   
   if (isInternalError) return; // Prevent recursion
   isInternalError = true;

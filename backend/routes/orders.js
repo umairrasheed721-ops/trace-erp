@@ -181,35 +181,40 @@ router.get('/:id/customer-intelligence', (req, res) => {
 
 // GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
 router.get('/', (req, res) => {
-  const { store_id, page = 1, limit = 100 } = req.query;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  
-  const { where, queryParams } = getOrderFilters(req);
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+  try {
+    const { store_id, page = 1, limit = 100 } = req.query;
+    if (!store_id) return res.status(400).json({ error: 'store_id required' });
+    
+    const { where, queryParams } = getOrderFilters(req);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  // Dynamic Sorting
-  const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost'];
-  const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
-  const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
-  const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    // Dynamic Sorting
+    const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost'];
+    const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
+    const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
+    const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-  const total = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
-  const orders = db.prepare(`
-    SELECT o.*, s.shop_domain 
-    FROM orders o
-    JOIN stores s ON o.store_id = s.id
-    WHERE ${where}
-    ORDER BY o.${safeSort} ${safeDir}
-    LIMIT ? OFFSET ?
-  `).all(...queryParams, parseInt(limit), offset);
+    const total = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
+    const orders = db.prepare(`
+      SELECT o.*, s.shop_domain 
+      FROM orders o
+      JOIN stores s ON o.store_id = s.id
+      WHERE ${where}
+      ORDER BY o.${safeSort} ${safeDir}
+      LIMIT ? OFFSET ?
+    `).all(...queryParams, parseInt(limit), offset);
 
-  res.json({ 
-    orders, 
-    total: total.count, 
-    page: parseInt(page), 
-    limit: parseInt(limit),
-    debugWhere: where
-  });
+    res.json({ 
+      orders, 
+      total: total.count, 
+      page: parseInt(page), 
+      limit: parseInt(limit),
+      debugWhere: where
+    });
+  } catch (err) {
+    console.error('Error fetching orders:', err);
+    res.status(500).json({ error: 'Failed to fetch orders due to database error' });
+  }
 });
 
 // PUT /api/orders/:id/cs-update - Advanced CS edit (Line items, Discounts, Price)

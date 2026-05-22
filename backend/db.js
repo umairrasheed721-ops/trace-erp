@@ -161,6 +161,8 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_customer  ON orders(customer_name);
     CREATE INDEX IF NOT EXISTS idx_orders_store_date ON orders(store_id, order_date DESC);
     CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders(store_id, delivery_status);
+    CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders(store_id, created_timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_timestamp DESC);
     
     CREATE TABLE IF NOT EXISTS sync_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
