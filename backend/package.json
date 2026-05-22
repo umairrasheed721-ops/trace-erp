@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node --experimental-sqlite index.js",
-    "dev": "nodemon --exec 'node --experimental-sqlite' index.js"
+    "start": "node scripts/auto_shrink.js && node --experimental-sqlite index.js",
+    "dev": "node scripts/auto_shrink.js && nodemon --exec 'node --experimental-sqlite' index.js"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
