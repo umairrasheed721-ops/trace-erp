@@ -78,14 +78,15 @@ router.get('/live-db-diagnose', (req, res) => {
         const cacheSize = db.db.prepare('PRAGMA cache_size').get();
         const busyTimeout = db.db.prepare('PRAGMA busy_timeout').get();
 
-        const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+        // Get table counts individually for critical tables
         const counts = {};
-        for (const t of tables) {
+        const tablesToCount = ['stores', 'orders', 'products', 'whatsapp_settings', 'users'];
+        for (const tableName of tablesToCount) {
             try {
-                const r = db.db.prepare(`SELECT COUNT(*) as count FROM ${t.name}`).get();
-                counts[t.name] = r.count;
+                const r = db.db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get();
+                counts[tableName] = r.count;
             } catch (e) {
-                counts[t.name] = 'error: ' + e.message;
+                counts[tableName] = 'error: ' + e.message;
             }
         }
 
