@@ -127,6 +127,9 @@ router.get('/live-db-diagnose', (req, res) => {
         // Fetch time
         const t1 = Date.now();
         let fetchLength = 0;
+        let jsonSize = 0;
+        let maxLineItemsLength = 0;
+        let avgLineItemsLength = 0;
         try {
             const rows = db.db.prepare(`
                 SELECT o.*, s.shop_domain 
@@ -137,6 +140,16 @@ router.get('/live-db-diagnose', (req, res) => {
                 LIMIT 250 OFFSET 0
             `).all(store_id);
             fetchLength = rows.length;
+            const jsonStr = JSON.stringify(rows);
+            jsonSize = jsonStr.length;
+            
+            let totalLineItemsLength = 0;
+            rows.forEach(r => {
+                const len = r.line_items ? r.line_items.length : 0;
+                totalLineItemsLength += len;
+                if (len > maxLineItemsLength) maxLineItemsLength = len;
+            });
+            avgLineItemsLength = fetchLength > 0 ? totalLineItemsLength / fetchLength : 0;
         } catch (e) {
             fetchLength = 'error: ' + e.message;
         }
@@ -161,7 +174,10 @@ router.get('/live-db-diagnose', (req, res) => {
                 countVal,
                 countTimeMs: countTime,
                 fetchLength,
-                fetchTimeMs: fetchTime
+                fetchTimeMs: fetchTime,
+                jsonSize,
+                maxLineItemsLength,
+                avgLineItemsLength
             }
         });
     } catch (err) {
