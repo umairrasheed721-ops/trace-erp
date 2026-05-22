@@ -69,7 +69,7 @@ export function getDateRange(preset, customStart, customEnd) {
     const e = new Date(2023, 11, 31, 23, 59, 59, 999)
     return { start: s, end: e }
   }
-  if (preset === 'All Time') return { start: new Date('2010-01-01'), end }
+  if (preset === 'All Time') return null
   if (preset === 'Custom Range' && customStart) {
     const s = new Date(customStart); s.setHours(0,0,0,0)
     const e = customEnd ? new Date(customEnd) : new Date(s)
