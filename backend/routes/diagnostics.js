@@ -59,6 +59,101 @@ router.get('/smoke-test', async (req, res) => {
     }
 });
 
+// 📊 LIVE DB DIAGNOSTICS: Check DB health and analyze query performance on production
+router.get('/live-db-diagnose', (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../trace_erp.db');
+
+        let dbSizeMB = 0;
+        let dbExists = false;
+        if (fs.existsSync(DB_PATH)) {
+            dbExists = true;
+            dbSizeMB = fs.statSync(DB_PATH).size / 1024 / 1024;
+        }
+
+        const journalMode = db.db.prepare('PRAGMA journal_mode').get();
+        const synchronous = db.db.prepare('PRAGMA synchronous').get();
+        const cacheSize = db.db.prepare('PRAGMA cache_size').get();
+        const busyTimeout = db.db.prepare('PRAGMA busy_timeout').get();
+
+        const tables = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+        const counts = {};
+        for (const t of tables) {
+            try {
+                const r = db.db.prepare(`SELECT COUNT(*) as count FROM ${t.name}`).get();
+                counts[t.name] = r.count;
+            } catch (e) {
+                counts[t.name] = 'error: ' + e.message;
+            }
+        }
+
+        const indexes = db.db.prepare("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index'").all();
+
+        const store_id = Number(req.query.store_id || 1);
+
+        // Count explain
+        let explainCount = [];
+        try {
+            explainCount = db.db.prepare(`EXPLAIN QUERY PLAN SELECT COUNT(*) as count FROM orders o WHERE o.store_id = ?`).all(store_id);
+        } catch (e) {
+            explainCount = ['error: ' + e.message];
+        }
+
+        // Count time
+        const t0 = Date.now();
+        let countVal = null;
+        try {
+            countVal = db.db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE o.store_id = ?`).get(store_id).count;
+        } catch (e) {
+            countVal = 'error: ' + e.message;
+        }
+        const countTime = Date.now() - t0;
+
+        // Fetch time
+        const t1 = Date.now();
+        let fetchLength = 0;
+        try {
+            const rows = db.db.prepare(`
+                SELECT o.*, s.shop_domain 
+                FROM orders o
+                JOIN stores s ON o.store_id = s.id
+                WHERE o.store_id = ?
+                ORDER BY o.created_timestamp DESC
+                LIMIT 250 OFFSET 0
+            `).all(store_id);
+            fetchLength = rows.length;
+        } catch (e) {
+            fetchLength = 'error: ' + e.message;
+        }
+        const fetchTime = Date.now() - t1;
+
+        res.json({
+            dbExists,
+            dbPath: DB_PATH,
+            dbSizeMB: dbSizeMB.toFixed(2),
+            pragmas: {
+                journalMode,
+                synchronous,
+                cacheSize,
+                busyTimeout
+            },
+            tableCounts: counts,
+            indexes,
+            explainCount,
+            diagnostics: {
+                countVal,
+                countTimeMs: countTime,
+                fetchLength,
+                fetchTimeMs: fetchTime
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message, stack: err.stack });
+    }
+});
+
 // 🔍 AUDIT: Find data inconsistencies
 router.get('/audit/:type', (req, res) => {
     try {
