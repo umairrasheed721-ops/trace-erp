@@ -488,6 +488,14 @@ router.get('/test-raw/:tracking', async (req, res) => {
             tip: "This usually means the Railway IP is still blocked by their firewall."
         });
     }
+// 🛡️ SYSTEM LOGS: Read recent error logs
+router.get('/logs', (req, res) => {
+    try {
+        const logs = db.db.prepare("SELECT * FROM system_logs ORDER BY created_at DESC LIMIT 100").all();
+        res.json(logs);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 module.exports = router;
