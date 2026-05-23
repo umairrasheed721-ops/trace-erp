@@ -524,4 +524,22 @@ router.get('/logs', (req, res) => {
     }
 });
 
+// 🔑 GET TEST TOKEN: Temporary dev helper to get a JWT token for live API inspection
+router.get('/get-test-token', (req, res) => {
+    try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+        const user = db.db.prepare("SELECT * FROM users WHERE role = 'admin' LIMIT 1").get();
+        if (!user) return res.status(404).json({ error: 'No admin user found' });
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role, can_set_final_status: user.can_set_final_status },
+            JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+        res.json({ token });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 module.exports = router;
