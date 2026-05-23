@@ -69,11 +69,27 @@ router.get('/breakdown/:orderId', (req, res) => {
     const results = [];
 
     for (const item of items) {
-      // Try to find master cost by variant_id or title
+      const variantId = item.variant_id ? String(item.variant_id) : '';
+      const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+      const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+      const sku = item.sku ? String(item.sku).trim() : '';
+
+      const queryVariantId1 = numericVariantId || '__NONE__';
+      const queryVariantId2 = gidVariantId || '__NONE__';
+      const querySku = sku || '__NONE__';
+
       let cost = db.prepare(`
         SELECT * FROM product_master_costs 
-        WHERE store_id = ? AND (shopify_variant_id = ? OR (parent_title = ? AND variant_title = ?))
-      `).get(order.store_id, String(item.variant_id), item.title, item.variant_title || '');
+        WHERE store_id = ? 
+        AND (
+          shopify_variant_id = ? 
+          OR shopify_variant_id = ? 
+          OR (sku = ? AND sku != '')
+        )
+        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC,
+                 (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+        LIMIT 1
+      `).get(order.store_id, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
 
       results.push({
         title: item.title,

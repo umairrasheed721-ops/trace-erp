@@ -100,12 +100,11 @@ const registryLookupStmt = db.prepare(`
   WHERE store_id = ? 
   AND (
     shopify_variant_id = ? 
-    OR sku = ?
-    OR (parent_title = ? AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL))
+    OR shopify_variant_id = ? 
+    OR (sku = ? AND sku != '')
   )
-  ORDER BY (CASE WHEN shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
-           (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC,
-           (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+  ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+           (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
   LIMIT 1
 `);
 
@@ -118,16 +117,20 @@ function calculateOrderCost(storeId, lineItems, costMap) {
     const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
     if (qty === 0) continue;
 
-    const variantId = String(item.variant_id);
+    const variantId = item.variant_id ? String(item.variant_id) : '';
+    const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+    const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+    const sku = item.sku ? String(item.sku).trim() : '';
+
+    const queryVariantId1 = numericVariantId || '__NONE__';
+    const queryVariantId2 = gidVariantId || '__NONE__';
+    const querySku = sku || '__NONE__';
+
     let unitCost = 0;
     const shopifyCost = costMap[variantId] || 0;
 
     // 🛡️ STRICT COST SHIELD: Check Master Registry FIRST
-    const parts = item.name.split(' - ');
-    const pName = parts[0].trim();
-    const vName = parts.length > 1 ? parts[1].trim() : '';
-    
-    const registry = registryLookupStmt.get(storeId, variantId, item.sku || '', pName, vName, variantId, item.sku || '', vName);
+    const registry = registryLookupStmt.get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
     
     if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
       unitCost = registry.landed_cost || registry.shopify_cost || 0;
@@ -455,21 +458,31 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
             
             let unitCost = costMap[String(item.variant_id)] || 0;
             
-            // 🛡️ FALLBACK: If Shopify returns 0, check our Master Cost Registry
+            // 🛡️ FALLBACK: If Shopify returns 0, check our Master Cost Registry strictly by Variant ID or SKU
             if (unitCost === 0) {
-              const parts = item.name.split(' - ');
-              const pName = parts[0].trim();
-              const vName = parts.length > 1 ? parts[1].trim() : '';
-              
+              const variantId = item.variant_id ? String(item.variant_id) : '';
+              const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+              const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+              const sku = item.sku ? String(item.sku).trim() : '';
+
+              const queryVariantId1 = numericVariantId || '__NONE__';
+              const queryVariantId2 = gidVariantId || '__NONE__';
+              const querySku = sku || '__NONE__';
+
               const registry = db.prepare(`
-                SELECT landed_cost FROM product_master_costs 
-                WHERE store_id = ? AND parent_title = ? 
-                AND (variant_title = ? OR variant_title = '' OR variant_title IS NULL)
-                ORDER BY (CASE WHEN variant_title = ? THEN 0 ELSE 1 END) ASC
+                SELECT landed_cost, shopify_cost FROM product_master_costs 
+                WHERE store_id = ? 
+                AND (
+                  shopify_variant_id = ? 
+                  OR shopify_variant_id = ? 
+                  OR (sku = ? AND sku != '')
+                )
+                ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+                         (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
                 LIMIT 1
-              `).get(storeId, pName, vName, vName);
+              `).get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
               
-              if (registry) unitCost = registry.landed_cost || 0;
+              if (registry) unitCost = registry.landed_cost || registry.shopify_cost || 0;
             }
 
             totalCost += unitCost * qty;

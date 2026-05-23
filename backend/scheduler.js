@@ -16,12 +16,27 @@ async function syncStoreInventoryAndCosts(store) {
     db.transaction(() => {
       for (const p of products) {
         let existing = null;
-        if (p.shopify_variant_id) {
-          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND shopify_variant_id = ?').get(Number(store.id), p.shopify_variant_id);
-        }
-        if (!existing) {
-          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store.id), p.parent_name, p.variant_name);
-        }
+        const variantId = p.shopify_variant_id ? String(p.shopify_variant_id) : '';
+        const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+        const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+        const sku = p.sku ? String(p.sku).trim() : '';
+
+        const queryVariantId1 = numericVariantId || '__NONE__';
+        const queryVariantId2 = gidVariantId || '__NONE__';
+        const querySku = sku || '__NONE__';
+
+        existing = db.prepare(`
+          SELECT id FROM product_master_costs 
+          WHERE store_id = ? 
+          AND (
+            shopify_variant_id = ? 
+            OR shopify_variant_id = ? 
+            OR (sku = ? AND sku != '')
+          )
+          ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+                   (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+          LIMIT 1
+        `).get(Number(store.id), queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
 
         if (existing) {
           db.prepare(`
@@ -31,8 +46,15 @@ async function syncStoreInventoryAndCosts(store) {
           `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
         } else {
           db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
+              shopify_variant_id = excluded.shopify_variant_id,
+              sku = COALESCE(excluded.sku, product_master_costs.sku),
+              shopify_cost = excluded.shopify_cost,
+              selling_price = excluded.selling_price,
+              inventory_qty = excluded.inventory_qty,
+              updated_at = datetime('now')
           `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
         }
       }
