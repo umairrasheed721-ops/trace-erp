@@ -628,7 +628,7 @@ export default function OrderTable({
                               alignItems: 'center', justifyContent: 'center', cursor: 'pointer', 
                               fontSize: '0.7rem', color: 'var(--brand)', transition: 'all 0.2s'
                             }}
-                            title="View itemized cost breakdown"
+                            aria-label="View itemized cost breakdown"
                           >
                             ℹ️
                           </button>

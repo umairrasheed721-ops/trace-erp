@@ -41,7 +41,14 @@ export default function SearchFilters({
     <div style={{ marginBottom: 16 }}>
       {/* Primary Filters Row */}
       <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 10 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: preset === 'Custom Range' 
+            ? 'repeat(auto-fit, minmax(130px, 1fr))' 
+            : 'repeat(auto-fit, minmax(160px, 1fr))', 
+          gap: 12, 
+          alignItems: 'end' 
+        }}>
           <div>
             <label className="form-label">📅 Date Preset</label>
             <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
@@ -49,7 +56,7 @@ export default function SearchFilters({
             </select>
           </div>
           
-          {preset === 'Custom Range' ? (
+          {preset === 'Custom Range' && (
             <>
               <div>
                 <label className="form-label">📆 Start</label>
@@ -60,8 +67,6 @@ export default function SearchFilters({
                 <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
               </div>
             </>
-          ) : (
-            <><div /><div /></>
           )}
 
           <div>
