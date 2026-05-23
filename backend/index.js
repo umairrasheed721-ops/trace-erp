@@ -248,7 +248,6 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/webhooks/')) return next();
   if (req.path.startsWith('/api/public/')) return next();
   if (req.path === '/health' || req.path === '/api/health') return next();
-  if (req.path === '/api/admin/logs') return next();
   if (req.path.includes('/api/diagnostics')) return next();
   if (req.path.includes('/api/users/permissions')) return next();
   if (req.path === '/api/wake-up-test' || req.originalUrl.includes('wake-up-test')) return next();
