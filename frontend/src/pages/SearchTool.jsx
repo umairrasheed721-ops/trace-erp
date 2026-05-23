@@ -167,6 +167,7 @@ export default function SearchTool() {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
   const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(() => parseInt(localStorage.getItem('trace_search_limit')) || 100)
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, loading: false })
@@ -1001,7 +1002,6 @@ export default function SearchTool() {
     const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
     const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
 
-    const limit = 250
     const colFilterParams = Object.entries(debouncedColFilters)
       .filter(([_, v]) => v && v.trim())
       .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
@@ -1030,7 +1030,7 @@ export default function SearchTool() {
       })
       
       return () => controller.abort();
-  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])
+  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -1041,28 +1041,61 @@ export default function SearchTool() {
 
     const source = new EventSource(`/api/live?token=${token}`);
     
-    source.addEventListener('order_updated', async (e) => {
+    let pendingUpdates = [];
+    let flushTimeout = null;
+
+    source.addEventListener('order_updated', (e) => {
       try {
         const data = JSON.parse(e.data);
         if (String(data.storeId) === String(activeStoreId)) {
-          // Fetch the specifically updated row silently
-          const res = await fetch(`/api/orders/by-shopify/${data.shopifyOrderId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          if (!res.ok) return;
-          const updatedOrder = await res.json();
-          if (updatedOrder && updatedOrder.id) {
-            setAllOrders(prev => {
-              const idx = prev.findIndex(o => String(o.shopify_order_id) === String(data.shopifyOrderId));
-              if (idx > -1) {
-                const newOrders = [...prev];
-                newOrders[idx] = updatedOrder;
-                return newOrders;
+          pendingUpdates.push(data.shopifyOrderId);
+          
+          if (!flushTimeout) {
+            flushTimeout = setTimeout(async () => {
+              const idsToFetch = [...new Set(pendingUpdates)];
+              pendingUpdates = [];
+              flushTimeout = null;
+              
+              if (idsToFetch.length > 3) {
+                // If there are many updates, just reload the page in a single query
+                setRefreshTrigger(prev => prev + 1);
+                console.log(`[Live UI] Batch updated ${idsToFetch.length} orders by refreshing page.`);
               } else {
-                return [updatedOrder, ...prev];
+                // Otherwise fetch silently
+                const fetchedOrders = [];
+                await Promise.all(idsToFetch.map(async (shopifyOrderId) => {
+                  try {
+                    const res = await fetch(`/api/orders/by-shopify/${shopifyOrderId}`, {
+                      headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                      const updatedOrder = await res.json();
+                      if (updatedOrder && updatedOrder.id) {
+                        fetchedOrders.push(updatedOrder);
+                      }
+                    }
+                  } catch (err) {
+                    console.error('Failed to fetch silent order update', err);
+                  }
+                }));
+
+                if (fetchedOrders.length > 0) {
+                  setAllOrders(prev => {
+                    const newOrders = [...prev];
+                    fetchedOrders.forEach(updatedOrder => {
+                      const idx = newOrders.findIndex(o => String(o.shopify_order_id) === String(updatedOrder.shopify_order_id));
+                      if (idx > -1) {
+                        newOrders[idx] = updatedOrder;
+                      } else {
+                        newOrders.unshift(updatedOrder);
+                      }
+                    });
+                    return newOrders;
+                  });
+                  console.log(`[Live UI] Silently updated ${fetchedOrders.length} orders: ${fetchedOrders.map(o => o.shopify_order_id).join(', ')}`);
+                }
               }
-            });
-            console.log(`[Live UI] Silently updated order ${data.shopifyOrderId}`);
+            }, 2000); // 2-second buffer window
           }
         }
       } catch (err) { console.error('Live update failed', err) }
@@ -1086,7 +1119,10 @@ export default function SearchTool() {
       } catch (err) { console.error('Sync progress parse failed', err) }
     });
 
-    return () => source.close();
+    return () => {
+      source.close();
+      if (flushTimeout) clearTimeout(flushTimeout);
+    };
   }, [activeStoreId]);
 
   const filteredOrders = useMemo(() => {
@@ -1385,6 +1421,8 @@ export default function SearchTool() {
         setStatus={setStatus}
         page={page}
         setPage={setPage}
+        limit={limit}
+        setLimit={setLimit}
         onViewHistory={(o) => setHistoryOrder(o)}
       />
 

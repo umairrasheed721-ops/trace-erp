@@ -106,14 +106,25 @@ export default function AppProvider({ children }) {
     // Connect to global SSE stream
     const eventSource = new EventSource('/api/public/sse')
     
+    let lastProgressUpdate = 0
     eventSource.addEventListener('sync_progress', (e) => {
-      const data = JSON.parse(e.data)
-      // Only show progress if it's for the current store
-      if (String(data.storeId) === String(activeStoreId)) {
-        setSyncState(data)
-        if (data.status === 'Sync Complete') {
-          setTimeout(() => setSyncState(null), 5000)
+      try {
+        const data = JSON.parse(e.data)
+        // Only show progress if it's for the current store
+        if (String(data.storeId) === String(activeStoreId)) {
+          const now = Date.now()
+          const isComplete = data.status === 'Sync Complete' || (data.processed >= data.total && data.total > 0)
+          
+          if (isComplete || now - lastProgressUpdate > 1500) {
+            setSyncState(data)
+            lastProgressUpdate = now
+            if (isComplete) {
+              setTimeout(() => setSyncState(null), 5000)
+            }
+          }
         }
+      } catch (err) {
+        console.error('Failed to parse sync progress data', err)
       }
     })
 
