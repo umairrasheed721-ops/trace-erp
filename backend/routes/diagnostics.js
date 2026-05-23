@@ -155,6 +155,13 @@ router.get('/live-db-diagnose', (req, res) => {
         }
         const fetchTime = Date.now() - t1;
 
+        let dbUsers = [];
+        try {
+            dbUsers = db.db.prepare("SELECT id, username, role FROM users").all();
+        } catch (e) {
+            dbUsers = ['error: ' + e.message];
+        }
+
         res.json({
             dbExists,
             dbPath: DB_PATH,
@@ -170,6 +177,7 @@ router.get('/live-db-diagnose', (req, res) => {
             activeStoreId: store_id,
             indexes,
             explainCount,
+            dbUsers,
             diagnostics: {
                 countVal,
                 countTimeMs: countTime,
