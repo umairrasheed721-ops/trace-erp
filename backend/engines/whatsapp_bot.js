@@ -6,9 +6,85 @@
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
+const { db } = require('../db');
 
 const SESSION_PATH = path.join(process.cwd(), 'wa_session');
-const MAX_RECONNECT_ATTEMPTS = 10;
+// No hard limit on reconnects — we retry forever with backoff.
+// Only a manual resetSession() or WhatsApp loggedOut (401) clears the session.
+const MAX_RECONNECT_DELAY_MS = 30000; // cap backoff at 30s
+
+/**
+ * DB-backed auth state — stores Baileys creds in SQLite wa_session_store.
+ * This survives Railway container restarts and redeployments.
+ * Falls back to file system only if DB is unavailable.
+ */
+async function useDbAuthState(initAuthCreds) {
+  function readKey(key) {
+    try {
+      const row = db.prepare('SELECT value FROM wa_session_store WHERE key = ?').get(key);
+      return row ? JSON.parse(row.value) : null;
+    } catch (e) { return null; }
+  }
+
+  function writeKey(key, value) {
+    try {
+      db.prepare(`
+        INSERT INTO wa_session_store (key, value, updated_at)
+        VALUES (?, ?, datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+      `).run(key, JSON.stringify(value));
+    } catch (e) { console.error('[WA-DB] Write failed:', e.message); }
+  }
+
+  function deleteKey(key) {
+    try { db.prepare('DELETE FROM wa_session_store WHERE key = ?').run(key); } catch (e) {}
+  }
+
+  let creds = readKey('creds');
+  if (!creds) {
+    creds = initAuthCreds();
+    writeKey('creds', creds);
+    console.log('[WA-DB] ✨ Fresh credentials created and stored in DB');
+  } else {
+    console.log('[WA-DB] ✅ Loaded existing session from DB — no QR scan needed');
+  }
+
+  const state = {
+    creds,
+    keys: {
+      get(type, ids) {
+        const data = {};
+        for (const id of ids) {
+          const val = readKey(`key:${type}:${id}`);
+          if (val) data[id] = val;
+        }
+        return data;
+      },
+      set(data) {
+        for (const category of Object.keys(data)) {
+          for (const id of Object.keys(data[category])) {
+            const value = data[category][id];
+            if (value) writeKey(`key:${category}:${id}`, value);
+            else deleteKey(`key:${category}:${id}`);
+          }
+        }
+      }
+    }
+  };
+
+  const saveCreds = () => {
+    writeKey('creds', state.creds);
+  };
+
+  return { state, saveCreds };
+}
+
+function clearDbSession() {
+  try {
+    db.prepare('DELETE FROM wa_session_store').run();
+    console.log('[WA-DB] ✅ Session cleared from DB');
+  } catch (e) { console.error('[WA-DB] Clear failed:', e.message); }
+}
 
 // Silence Baileys logger
 const SILENT_LOGGER = {
@@ -23,6 +99,7 @@ const SILENT_LOGGER = {
     this.status = 'DISCONNECTED';
     this.reconnectAttempts = 0;
     this.isConnecting = false;
+    this._isLoggedOut = false; // set true only on 401 loggedOut
     
     // --- 🛡️ ANTI-BAN THROTTLING SYSTEM ---
     this.queue = [];
@@ -42,16 +119,24 @@ const SILENT_LOGGER = {
     setTimeout(() => this._connect(), 5000);
   }
 
+  _scheduleReconnect() {
+    // Exponential backoff: 3s, 5s, 7s, ... up to 30s, then stays at 30s forever
+    const delay = Math.min(3000 + this.reconnectAttempts * 2000, MAX_RECONNECT_DELAY_MS);
+    console.log(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts + 1})...`);
+    this.reconnectAttempts++;
+    setTimeout(() => {
+      this.isConnecting = false;
+      this._connect();
+    }, delay);
+  }
+
   async _connect() {
     if (this.isConnecting) return;
-    this.isConnecting = true;
-
-    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('❌ Max reconnect attempts reached. Click Reset Session to retry.');
-      this.status = 'FAILURE';
-      this.isConnecting = false;
+    if (this._isLoggedOut) {
+      console.log('📵 Session was logged out. Waiting for manual QR scan or resetSession().');
       return;
     }
+    this.isConnecting = true;
 
     console.log(`🚀 WhatsApp Bot connecting (attempt ${this.reconnectAttempts + 1})...`);
     this.status = 'CONNECTING';
@@ -61,6 +146,7 @@ const SILENT_LOGGER = {
       const {
         default: makeWASocket,
         useMultiFileAuthState,
+        initAuthCreds,
         DisconnectReason,
         fetchLatestBaileysVersion,
       } = await import('@whiskeysockets/baileys');
@@ -80,9 +166,8 @@ const SILENT_LOGGER = {
         }, 10000);
       }
 
-      if (!fs.existsSync(SESSION_PATH)) fs.mkdirSync(SESSION_PATH, { recursive: true });
-
-      const { state, saveCreds } = await useMultiFileAuthState(SESSION_PATH);
+      // Use DB-backed auth state (survives Railway deploys)
+      const { state, saveCreds } = await useDbAuthState(initAuthCreds);
 
       let version;
       try {
@@ -138,17 +223,18 @@ const SILENT_LOGGER = {
           console.warn(`🔌 Connection closed. Code: ${statusCode}`);
           this.status = 'DISCONNECTED';
 
-          if (statusCode === DisconnectReason.loggedOut) {
-            console.log('📵 Logged out — clearing session for fresh QR');
+          // 401 = explicitly logged out from phone — wipe session and wait for QR scan
+          if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403) {
+            console.log('📵 Logged out from phone — clearing session. Rescan QR to reconnect.');
+            this._isLoggedOut = true;
             this._wipeCreds();
+            clearDbSession(); // Also clear from DB
             this.reconnectAttempts = 0;
+            // Don't schedule reconnect — user must scan QR (status stays DISCONNECTED until resetSession)
           } else {
-            this.reconnectAttempts++;
+            // Network drop, server restart, deploy, timeout, etc. — always reconnect
+            this._scheduleReconnect();
           }
-
-          const delay = Math.min(3000 + this.reconnectAttempts * 2000, 20000);
-          console.log(`🔄 Reconnecting in ${delay / 1000}s...`);
-          setTimeout(() => this._connect(), delay);
         }
       });
 
@@ -325,8 +411,7 @@ const SILENT_LOGGER = {
     } catch (err) {
       console.error('❌ _connect() error:', err.message);
       this.status = 'FAILURE';
-      this.reconnectAttempts++;
-      setTimeout(() => this._connect(), 15000);
+      this._scheduleReconnect();
     }
   }
 
@@ -532,11 +617,12 @@ const SILENT_LOGGER = {
   }
 
   resetSession() {
-    console.log('🗑️ Session reset...');
+    console.log('🗑️ Manual session reset by admin...');
     this.status = 'DISCONNECTED';
     this.qrCode = null;
     this.reconnectAttempts = 0;
     this.isConnecting = false;
+    this._isLoggedOut = false; // Allow reconnect after manual reset
 
     const oldSock = this.sock;
     this.sock = null;
@@ -557,6 +643,9 @@ const SILENT_LOGGER = {
     } catch (e) {
       console.error('⚠️ Clear error:', e.message);
     }
+
+    // Also clear DB-backed session
+    clearDbSession();
 
     setTimeout(() => this._connect(), 2000);
     return true;

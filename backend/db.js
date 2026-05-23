@@ -297,6 +297,15 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_syslogs_created ON system_logs(created_at DESC);
   `);
 
+  // WhatsApp session store — persists Baileys creds across Railway deployments
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wa_session_store (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS product_master_costs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
