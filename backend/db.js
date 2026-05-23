@@ -96,6 +96,18 @@ function initDb() {
   try {
     db.exec(`ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0`);
   } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN message_id TEXT`);
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN media_url TEXT`);
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN media_type TEXT`);
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_msgs_message_id ON whatsapp_messages(message_id)`);
+  } catch (e) { /* Index already exists */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS products (
@@ -655,11 +667,15 @@ function runMigrations(db) {
       phone TEXT NOT NULL,
       direction TEXT NOT NULL, -- 'incoming' vs 'outgoing'
       message TEXT NOT NULL,
+      message_id TEXT,
+      media_url TEXT,
+      media_type TEXT,
       status TEXT DEFAULT 'sent',
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone ON whatsapp_messages(phone);
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_order ON whatsapp_messages(order_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_msgs_message_id ON whatsapp_messages(message_id);
     CREATE TABLE IF NOT EXISTS gemini_bot_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       api_key TEXT DEFAULT '',

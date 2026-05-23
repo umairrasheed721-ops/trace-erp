@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 
 export default function EditOrderModal({
   editingOrder,
@@ -38,8 +38,10 @@ export default function EditOrderModal({
   const [chatLoading, setChatLoading] = useState(false);
   const [newWaMsg, setNewWaMsg] = useState('');
   const [sendingWaMsg, setSendingWaMsg] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // Fetch chat messages when activeTab becomes 'whatsapp_chat'
+  // Fetch chat messages and setup WebSocket
   useEffect(() => {
     if (editingOrder && activeTab === 'whatsapp_chat') {
       setChatLoading(true);
@@ -53,6 +55,41 @@ export default function EditOrderModal({
           setChatLoading(false);
         })
         .catch(() => setChatLoading(false));
+
+      // Setup WebSocket
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
+      const socket = new WebSocket(`${wsProto}//${wsHost}/?token=${localStorage.getItem('token') || ''}`);
+      
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          let cleaned = editingOrder.phone?.replace(/\D/g, '');
+          if (cleaned?.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+          else if (!cleaned?.startsWith('92') && cleaned?.length === 10) cleaned = '92' + cleaned;
+
+          if (data.type === 'typing' && data.payload.phone === cleaned) {
+            setIsTyping(data.payload.isTyping);
+            clearTimeout(window.typingTimeout);
+            if (data.payload.isTyping) {
+              window.typingTimeout = setTimeout(() => setIsTyping(false), 5000);
+            }
+          } else if (data.type === 'message') {
+            if (data.payload.order_id === editingOrder.id || data.payload.message.phone === cleaned) {
+               setChatMessages(prev => {
+                  if (prev.find(m => m.id === data.payload.message.id || (m.message_id && m.message_id === data.payload.message.message_id))) return prev;
+                  return [...prev, data.payload.message];
+               });
+               setIsTyping(false);
+            }
+          }
+        } catch (err) {}
+      };
+
+      return () => {
+        socket.close();
+        clearTimeout(window.typingTimeout);
+      };
     }
   }, [editingOrder, activeTab]);
 
@@ -73,13 +110,49 @@ export default function EditOrderModal({
       });
       const data = await res.json();
       if (data.success) {
-        setChatMessages(prev => [...prev, data.message]);
+        // Message will also be broadcast via WebSocket, but optimistic UI is fine
+        setChatMessages(prev => {
+           if (prev.find(m => m.id === data.message.id)) return prev;
+           return [...prev, data.message];
+        });
         if (!customText) setNewWaMsg('');
       } else {
         alert(data.error || 'Failed to send message');
       }
     } catch (err) {
       alert('Network error sending WhatsApp message');
+    } finally {
+      setSendingWaMsg(false);
+    }
+  };
+
+  const handleFileAttach = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('media', file);
+    formData.append('caption', newWaMsg);
+
+    setSendingWaMsg(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewWaMsg('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        alert(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      alert('Network error uploading file');
     } finally {
       setSendingWaMsg(false);
     }
@@ -1055,7 +1128,15 @@ export default function EditOrderModal({
                             lineHeight: 1.5,
                             boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                           }}>
-                            {msg.message}
+                            {msg.media_url && (
+                              <div style={{ marginBottom: 8 }}>
+                                {msg.media_type === 'image' && <img src={msg.media_url} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {msg.media_type === 'video' && <video src={msg.media_url} controls style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {(msg.media_type === 'audio' || msg.media_type === 'voice') && <audio src={msg.media_url} controls style={{ maxWidth: 220 }} />}
+                                {msg.media_type === 'document' && <a href={msg.media_url} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 'bold' }}>📎 View Document</a>}
+                              </div>
+                            )}
+                            {msg.message?.replace(/\[(IMAGE|AUDIO|VIDEO|DOCUMENT)\]\s*/i, '')}
                           </div>
                           <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 4, padding: '0 6px' }}>
                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {isOutgoing ? (msg.status === 'sent' ? '✓ Sent' : '✓✓ Delivered') : 'Customer'}
@@ -1069,6 +1150,12 @@ export default function EditOrderModal({
                       <p style={{ fontSize: '0.8rem', margin: 0 }}>Start the conversation by typing a message below or clicking a quick reply pill!</p>
                     </div>
                   )}
+                  {isTyping && (
+                    <div style={{ alignSelf: 'flex-start', background: '#334155', color: '#fff', padding: '8px 16px', borderRadius: 20, fontSize: '0.85rem', fontStyle: 'italic', opacity: 0.8 }}>
+                      Customer is typing...
+                    </div>
+                  )}
+                  <div id="chat-end" />
                 </div>
 
                 {/* Quick Reply Pills */}
@@ -1104,7 +1191,20 @@ export default function EditOrderModal({
                 </div>
 
                 {/* Chat Input Bar */}
-                <div style={{ padding: '16px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 12 }}>
+                <div style={{ padding: '16px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ background: '#334155', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    title="Attach File"
+                  >
+                    📎
+                  </button>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    style={{ display: 'none' }} 
+                    onChange={handleFileAttach}
+                  />
                   <input 
                     type="text" 
                     placeholder={`Type a message to ${editingOrder.customer_name}...`}

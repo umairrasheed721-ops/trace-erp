@@ -2,6 +2,23 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
 const bot = require('../engines/whatsapp_bot');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+    cb(null, folderPath);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage });
 
 // GET /api/whatsapp-governance/settings
 router.get('/settings', (req, res) => {
@@ -142,6 +159,45 @@ router.post('/chat/:order_id/send', async (req, res) => {
     };
 
     res.json({ success: true, message: newMsg });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chat/:order_id/upload-media
+router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, res) => {
+  const { order_id } = req.params;
+  const caption = req.body.caption || '';
+  
+  if (!req.file) return res.status(400).json({ error: 'No media file provided' });
+
+  try {
+    const order = db.prepare('SELECT id, store_id, phone FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    // Use full URL or relative path for mediaUrl
+    const baseUrl = req.protocol + '://' + req.get('host');
+    const fileUrl = `/uploads/${req.file.filename}`; // Or `baseUrl + fileUrl` if bot expects absolute. Bot expects relative path and prepends public/ or we can just send the local path
+    // Let's pass the relative URL. The bot uses it as a path to download or we can use the local filesystem path.
+    // Wait, bot expects absolute URL or local path?
+    // Let's pass the absolute URL for the bot to fetch if needed, OR local path.
+    // wait, bot.sendMessage uses { url: mediaUrl } which can be absolute url or local path.
+    // Actually, baileys { url: '...' } expects an http url or absolute file path.
+    // Let's pass the local absolute path for reliable reading.
+    const absolutePath = req.file.path;
+    
+    const mediaType = req.file.mimetype.startsWith('image/') ? 'image' : 
+                      req.file.mimetype.startsWith('audio/') ? 'audio' :
+                      req.file.mimetype.startsWith('video/') ? 'video' : 'document';
+                      
+    // Queue message via Baileys bot with isManual = true
+    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname);
+
+    res.json({ success: true, message: `Media queued successfully` });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

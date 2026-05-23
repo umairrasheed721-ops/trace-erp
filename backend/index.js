@@ -409,10 +409,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+const { initWebSocket } = require('./websocket');
 const server = app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
   schedulerInit();
 });
+initWebSocket(server);
 
 // --- 🛑 GRACEFUL SHUTDOWN ---
 const shutdown = () => {

@@ -92,7 +92,94 @@ const SILENT_LOGGER = {
   trace: () => {}, debug: () => {}, info: () => {},
   warn: () => {}, error: () => {}, fatal: () => {},
   child() { return SILENT_LOGGER; },
-};class WhatsAppBot {
+};
+
+function getMessageMediaDetails(msg) {
+  const m = msg.message;
+  if (!m) return null;
+
+  const content = m.ephemeralMessage?.message || m.viewOnceMessage?.message || m.viewOnceMessageV2?.message || m.documentWithCaptionMessage?.message || m;
+
+  if (content.imageMessage) {
+    return { type: 'image', mimeType: content.imageMessage.mimetype, caption: content.imageMessage.caption || '', fileName: null };
+  } else if (content.documentMessage) {
+    return { type: 'document', mimeType: content.documentMessage.mimetype, caption: content.documentMessage.caption || '', fileName: content.documentMessage.fileName || 'document.pdf' };
+  } else if (content.audioMessage) {
+    return { type: 'audio', mimeType: content.audioMessage.mimetype, caption: '', fileName: content.audioMessage.ptt ? 'voice_note.mp4' : 'audio.mp4' };
+  } else if (content.videoMessage) {
+    return { type: 'video', mimeType: content.videoMessage.mimetype, caption: content.videoMessage.caption || '', fileName: null };
+  }
+  return null;
+}
+
+function getMessageText(msg) {
+  const m = msg.message;
+  if (!m) return '';
+
+  const content = m.ephemeralMessage?.message || m.viewOnceMessage?.message || m.viewOnceMessageV2?.message || m.documentWithCaptionMessage?.message || m;
+
+  return content.conversation || 
+         content.extendedTextMessage?.text || 
+         content.buttonsResponseMessage?.selectedDisplayText || 
+         content.templateButtonReplyMessage?.selectedDisplayText || 
+         content.imageMessage?.caption || 
+         content.documentMessage?.caption || 
+         content.videoMessage?.caption || 
+         '';
+}
+
+async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
+  try {
+    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+
+    const extMap = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'application/pdf': 'pdf',
+      'audio/ogg; codecs=opus': 'ogg',
+      'audio/ogg': 'ogg',
+      'audio/mp4': 'm4a',
+      'audio/mpeg': 'mp3',
+      'video/mp4': 'mp4'
+    };
+
+    let ext = 'bin';
+    if (mediaDetails.mimeType) {
+      const baseMime = mediaDetails.mimeType.split(';')[0].trim();
+      ext = extMap[baseMime] || extMap[mediaDetails.mimeType] || baseMime.split('/')[1] || 'bin';
+    }
+
+    const fileName = `media_${msg.key.id}.${ext}`;
+    const filePath = path.join(folderPath, fileName);
+
+    // If file already exists, don't download it again
+    if (fs.existsSync(filePath)) {
+      return `/uploads/${fileName}`;
+    }
+
+    console.log(`📥 Downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
+    const buffer = await downloadMediaMessage(
+      msg,
+      'buffer',
+      {},
+      { logger: SILENT_LOGGER }
+    );
+
+    if (buffer) {
+      fs.writeFileSync(filePath, buffer);
+      return `/uploads/${fileName}`;
+    }
+  } catch (e) {
+    console.warn(`⚠️ Failed to download media for message ${msg.key.id}:`, e.message);
+  }
+  return null;
+}
+
+class WhatsAppBot {
   constructor() {
     this.sock = null;
     this.qrCode = null;
@@ -193,6 +280,21 @@ const SILENT_LOGGER = {
 
       this.sock.ev.on('creds.update', saveCreds);
 
+      this.sock.ev.on('presence.update', (update) => {
+        const { id, presences } = update;
+        if (!presences) return;
+        for (const key of Object.keys(presences)) {
+          const presence = presences[key];
+          const phone = key.split('@')[0];
+          const isTyping = presence.lastKnownPresence === 'composing' || presence.lastKnownPresence === 'recording';
+          
+          try {
+            const { broadcast } = require('../websocket');
+            broadcast('typing', { phone, isTyping });
+          } catch (e) {}
+        }
+      });
+
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
@@ -213,6 +315,12 @@ const SILENT_LOGGER = {
           this.qrCode = null;
           this.reconnectAttempts = 0;
           this.isConnecting = false;
+
+          // Trigger Deep History Sync in background after connection
+          setTimeout(() => {
+            this.syncDeepHistory().catch(err => console.error('❌ Deep History Sync error:', err.message));
+          }, 8000);
+
           return;
         }
 
@@ -265,15 +373,71 @@ const SILENT_LOGGER = {
           if (this.store.messages[remoteJid].length > 100) this.store.messages[remoteJid].shift();
 
           const fromPhone = remoteJid.split('@')[0];
-          if (msg.key.fromMe) {
+          const text = getMessageText(msg);
+          const mediaDetails = getMessageMediaDetails(msg);
+          if (!text && !mediaDetails) continue;
+
+          const isOutgoing = msg.key.fromMe;
+          
+          // Download media if present
+          let mediaUrl = null;
+          let mediaType = null;
+          if (mediaDetails) {
+            try {
+              const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
+              mediaType = mediaDetails.type;
+              mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+            } catch (mediaErr) {
+              console.error('⚠️ Media download error in messages.upsert:', mediaErr.message);
+            }
+          }
+
+          const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
+
+          const { db } = require('../db');
+          const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
+          const orderId = order ? order.id : null;
+          const storeId = order ? order.store_id : 1;
+
+          let dbMessageId = null;
+          try {
+            const result = db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')
+              ON CONFLICT(message_id) DO NOTHING
+            `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType);
+            dbMessageId = result.lastInsertRowid;
+          } catch (dbErr) {
+            // Already exists or insert failed
+          }
+
+          // Broadcast new message via WebSocket to active agents in real-time
+          try {
+            const { broadcast } = require('../websocket');
+            broadcast('message', {
+              order_id: orderId,
+              message: {
+                id: dbMessageId || Date.now(),
+                store_id: storeId,
+                order_id: orderId,
+                phone: fromPhone,
+                direction: isOutgoing ? 'outgoing' : 'incoming',
+                message: finalMessage,
+                message_id: msg.key.id,
+                media_url: mediaUrl,
+                media_type: mediaType,
+                status: 'sent',
+                created_at: new Date().toISOString()
+              }
+            });
+          } catch (e) {}
+
+          if (isOutgoing) {
             // Human agent manually sent a message: Pause bot replies for 30 minutes for this contact
             this.humanCooldowns[fromPhone] = Date.now();
             console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 30 mins.`);
             continue;
           }
-
-          const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-          if (!text) continue;
 
           console.log(`💬 Incoming WA Message from ${fromPhone}: ${text}`);
 
@@ -430,7 +594,7 @@ const SILENT_LOGGER = {
     }
   }
 
-  async sendMessage(phone, message, isManual = false, imageUrl = null) {
+  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null) {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -450,8 +614,8 @@ const SILENT_LOGGER = {
 
     // Add to queue instead of sending immediately
     return new Promise((resolve) => {
-      this.queue.push({ phone, message, isManual, imageUrl, resolve });
-      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}, Image: ${!!imageUrl}). Queue size: ${this.queue.length}`);
+      this.queue.push({ phone, message, isManual, mediaUrl, mediaType, fileName, resolve });
+      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}, Media: ${!!mediaUrl}). Queue size: ${this.queue.length}`);
       this._processQueue();
     });
   }
@@ -484,7 +648,7 @@ const SILENT_LOGGER = {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, imageUrl, resolve } = this.queue.shift();
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve } = this.queue.shift();
       let cleaned = phone.replace(/\D/g, '');
 
       try {
@@ -533,25 +697,78 @@ const SILENT_LOGGER = {
           await this.sock.sendPresenceUpdate('paused', jid);
         } catch (e) {}
 
-        if (imageUrl) {
-          await this.sock.sendMessage(jid, { image: { url: imageUrl }, caption: message });
-        } else {
-          await this.sock.sendMessage(jid, { text: message });
+        let finalMediaType = mediaType;
+        if (mediaUrl && !finalMediaType) {
+          finalMediaType = 'image';
         }
+
+        let sentMsg;
+        if (mediaUrl) {
+          if (finalMediaType === 'image') {
+            sentMsg = await this.sock.sendMessage(jid, { image: { url: mediaUrl }, caption: message });
+          } else if (finalMediaType === 'document') {
+            sentMsg = await this.sock.sendMessage(jid, { 
+              document: { url: mediaUrl }, 
+              mimetype: 'application/pdf', 
+              fileName: fileName || 'document.pdf', 
+              caption: message 
+            });
+          } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
+            sentMsg = await this.sock.sendMessage(jid, { 
+              audio: { url: mediaUrl }, 
+              mimetype: 'audio/mp4', 
+              ptt: true 
+            });
+          } else {
+            sentMsg = await this.sock.sendMessage(jid, { text: message });
+          }
+        } else {
+          sentMsg = await this.sock.sendMessage(jid, { text: message });
+        }
+
+        const messageId = sentMsg?.key?.id || 'out_' + Date.now();
         this.hourlyCount++;
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
         this._addAuditLog(cleaned, 'Sent', '');
 
+        let dbMessageId = null;
         try {
           const { db } = require('../db');
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = imageUrl ? `[Image: ${imageUrl}] ${message}` : message;
-          db.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-            VALUES (?, ?, ?, 'outgoing', ?)
-          `).run(storeId, orderId, cleaned, dbMessageContent);
+          const dbMessageContent = mediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
+          
+          try {
+            const result = db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type)
+              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?)
+            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, mediaUrl, finalMediaType);
+            dbMessageId = result.lastInsertRowid;
+          } catch (dbErr) {
+            console.error('⚠️ DB insert failed in _processQueue:', dbErr.message);
+          }
+
+          // Broadcast outgoing message to WebSockets
+          try {
+            const { broadcast } = require('../websocket');
+            broadcast('message', {
+              order_id: orderId,
+              message: {
+                id: dbMessageId || Date.now(),
+                store_id: storeId,
+                order_id: orderId,
+                phone: cleaned,
+                direction: 'outgoing',
+                message: dbMessageContent,
+                message_id: messageId,
+                media_url: mediaUrl,
+                media_type: finalMediaType,
+                status: 'sent',
+                created_at: new Date().toISOString()
+              }
+            });
+          } catch (e) {}
         } catch (dbErr) {}
 
         resolve({ success: true });
@@ -703,6 +920,105 @@ const SILENT_LOGGER = {
       console.error('❌ fetchHistory error:', err.message);
       return { success: false, error: err.message };
     }
+  }
+
+  async syncDeepHistory() {
+    if (!this.sock) return;
+    console.log('🔄 Starting Deep History Sync for active customers...');
+    
+    const { db } = require('../db');
+    let downloadMediaMessage;
+    try {
+      const baileys = await import('@whiskeysockets/baileys');
+      downloadMediaMessage = baileys.downloadMediaMessage;
+    } catch (err) {
+      console.error('⚠️ Failed to load downloadMediaMessage from Baileys:', err.message);
+    }
+    
+    // Get last 50 unique order phone numbers
+    const activeCustomers = db.prepare(`
+      SELECT DISTINCT phone, id as order_id, store_id 
+      FROM orders 
+      WHERE phone IS NOT NULL AND phone != ''
+      ORDER BY id DESC 
+      LIMIT 50
+    `).all();
+
+    console.log(`📱 Found ${activeCustomers.length} active customers to sync.`);
+
+    for (const customer of activeCustomers) {
+      let cleaned = customer.phone.replace(/\D/g, '');
+      if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+      else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+      const jid = cleaned + '@s.whatsapp.net';
+
+      try {
+        console.log(`📥 Syncing history for +${cleaned}...`);
+        
+        // Slight delay to avoid hammering WhatsApp API
+        await new Promise(r => setTimeout(r, 600));
+
+        let fetched = [];
+        if (typeof this.sock.fetchMessagesFromWA === 'function') {
+          fetched = await this.sock.fetchMessagesFromWA(jid, 50) || [];
+        } else {
+          console.warn('⚠️ fetchMessagesFromWA is not a function on this.sock');
+          break;
+        }
+
+        let newMsgsCount = 0;
+        for (const msg of fetched) {
+          if (!msg.message) continue;
+          
+          const messageId = msg.key.id;
+          
+          // Check if message already exists
+          const exists = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(messageId);
+          if (exists) continue;
+
+          const isOutgoing = msg.key.fromMe;
+          const text = getMessageText(msg);
+          const mediaDetails = getMessageMediaDetails(msg);
+
+          let mediaUrl = null;
+          let mediaType = null;
+          
+          if (mediaDetails && downloadMediaMessage) {
+            mediaType = mediaDetails.type;
+            mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+          }
+
+          const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
+
+          const timestampSec = Number(msg.messageTimestamp) || Date.now() / 1000;
+          const createdAt = new Date(timestampSec * 1000).toISOString().replace('T', ' ').substring(0, 19);
+
+          db.prepare(`
+            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)
+          `).run(
+            customer.store_id || 1,
+            customer.order_id,
+            cleaned,
+            isOutgoing ? 'outgoing' : 'incoming',
+            finalMessage,
+            messageId,
+            mediaUrl,
+            mediaType,
+            createdAt
+          );
+
+          newMsgsCount++;
+        }
+        
+        if (newMsgsCount > 0) {
+          console.log(`✅ Synced ${newMsgsCount} new messages for +${cleaned}`);
+        }
+      } catch (err) {
+        console.error(`❌ Error syncing history for +${cleaned}:`, err.message);
+      }
+    }
+    console.log('🔄 Deep History Sync completed!');
   }
 
   getStatus() {
