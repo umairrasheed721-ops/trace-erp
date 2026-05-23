@@ -19,11 +19,12 @@ function initDb() {
   // --- ⚡ PERFORMANCE PRAGMAs ---
   db.exec(`PRAGMA journal_mode = WAL`);
   db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
-  db.exec(`PRAGMA cache_size = -20000`);         // 20MB page cache
+  db.exec(`PRAGMA cache_size = -32000`);         // 32MB page cache
   db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
-  db.exec(`PRAGMA mmap_size = 268435456`);       // 256MB memory-mapped I/O
+  db.exec(`PRAGMA mmap_size = 536870912`);       // 512MB memory-mapped I/O
   db.exec(`PRAGMA foreign_keys = ON`);
   db.exec(`PRAGMA busy_timeout = 5000`);         // Wait 5s instead of failing on lock
+  db.exec(`PRAGMA wal_autocheckpoint = 1000`);   // Checkpoint every 1000 pages
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS stores (
@@ -163,6 +164,9 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders(store_id, delivery_status);
     CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders(store_id, created_timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_orders_status_lower ON orders(LOWER(delivery_status));
+    CREATE INDEX IF NOT EXISTS idx_orders_courier_lower ON orders(LOWER(courier));
+    CREATE INDEX IF NOT EXISTS idx_orders_store_status_lower ON orders(store_id, LOWER(delivery_status));
     
     CREATE TABLE IF NOT EXISTS sync_audit (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

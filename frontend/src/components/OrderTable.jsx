@@ -1,275 +1,40 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
-import { useState, useEffect } from 'react'
 
-export default function OrderTable({
-  loading,
-  filteredOrders,
-  allOrders,
-  totalCount,
-  debugWhere,
-  cols,
-  selectedIds,
-  setSelectedIds,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  handleHeaderSort,
-  sortKey,
-  sortDir,
-  colFilters,
-  setColFilters,
-  formatCustomerName,
-  fetchOrderDetails,
-  bookingId,
-  handleConfirmOrder,
-  handleRevertConfirm,
-  handleBookPostEx,
-  handleCancelBooking,
-  handleBookInstaworld,
-  updateOrderField,
-  setCustomerHistoryPhone,
-  setShowNameDialog,
-  setKeyword,
-  setStatus,
-  page,
-  setPage,
-  limit,
-  setLimit,
-  keyword,
-  status,
-  onViewHistory
-}) {
-  const { addToast, user } = useApp()
-  const canSeeFinancials = user?.role === 'admin'
-  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
-  const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
-  const [activeTooltipOrderId, setActiveTooltipOrderId] = useState(null)
-  const [hoveredOrderId, setHoveredOrderId] = useState(null)
-  const [breakdown, setBreakdown] = useState(null)
-  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
 
-  const fetchBreakdown = async (orderId) => {
-    setLoadingBreakdown(true)
-    try {
-      const res = await fetch(`/api/cost-manager/breakdown/${orderId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-      })
-      const data = await res.json()
-      setBreakdown(data)
-    } catch (e) { console.error(e) }
-    finally { setLoadingBreakdown(false) }
-  }
-
-  const CostBreakdownTooltip = ({ orderId }) => {
-    if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
-    if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
-
-    const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
-    const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
-
-    return (
-      <div className="cost-tooltip shadow-xl">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
-          <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
-          <button 
-            onClick={(e) => { e.stopPropagation(); setActiveTooltipOrderId(null); setBreakdown(null); }}
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px', opacity: 0.6 }}
-          >
-            ✖
-          </button>
-        </div>
-        <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
-          {breakdown.map((item, i) => (
-            <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
-                <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
-                <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-            <span>Landed Total:</span>
-            <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
-            <span>Pkg Total:</span>
-            <span>Rs {totalPkg.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const handleManualStatusChange = async (orderId, newStatus) => {
-    if (!newStatus) return
-    setStatusUpdatingId(orderId)
-    try {
-      const res = await fetch(`/api/orders/${orderId}/erp-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ erp_status: newStatus })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (res.status === 409 && data.protected) {
-          if (confirm(`${data.error}\n\nDo you want to FORCE this change? (Admin Only)`)) {
-            const forceRes = await fetch(`/api/orders/${orderId}/erp-status`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ erp_status: newStatus, force: true })
-            })
-            if (!forceRes.ok) throw new Error((await forceRes.json()).error)
-            addToast('Status updated successfully (Forced)', 'success')
-          }
-        } else {
-          throw new Error(data.error || 'Failed to update status')
-        }
-      } else {
-        addToast(`ERP Status updated to ${newStatus}`, 'success')
-      }
-    } catch (err) {
-      addToast(err.message, 'error')
-    } finally {
-      setStatusUpdatingId(null)
-    }
-  }
-
-  const [waTemplates, setWATemplates] = useState([])
-
-  useEffect(() => {
-    fetch('/api/templates', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-    })
-    .then(res => res.json())
-    .then(setWATemplates)
-    .catch(err => console.error('Failed to fetch WA templates', err))
-  }, [])
-
-  if (loading) {
-    return <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
-  }
-
-  if (filteredOrders.length === 0) {
-    return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
-  }
+const OrderRow = React.memo(({ 
+  o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
+  filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
+  handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getPhoneOrderCount,
+  setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
+  fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
+  activeShopDomain
+}) => {
+  const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
+  const isClear = Math.abs(diff) <= 1;
+  const { bg, color } = getStatusColor(o.delivery_status);
+  const s = (o.delivery_status||'').toLowerCase();
+  const orderDate = o.order_date ? new Date(o.order_date) : null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const daysOld = orderDate ? Math.floor((today-orderDate)/86400000) : 0;
+  const isPending = !s.includes('delivered') && !s.includes('return') && !s.includes('cancel');
+  const dateAged = isPending && daysOld >= 5;
 
   return (
-    <>
-      <div className="table-wrapper">
-        <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>
-            💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
-            {debugWhere && <span style={{ marginLeft: 10, color: 'var(--text-muted)', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
-          </span>
-          {(keyword || status !== 'All Statuses') && (
-            <button 
-              onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
-              className="btn btn-primary btn-sm"
-              style={{ padding: '2px 8px', borderRadius: 4, fontWeight: 'bold', fontSize: '0.7rem' }}
-            >
-              CLEAR ALL FILTERS
-            </button>
-          )}
-        </div>
-        
-        <table className="draggable-table">
-          <thead>
-            <tr>
-              <th style={{ width: 40, textAlign: 'center' }}>
-                <input 
-                  type="checkbox" 
-                  checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
-                  onChange={(e) => {
-                    if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id))
-                    else setSelectedIds([])
-                  }}
-                />
-              </th>
-              {cols.map((col, idx) => (
-                <th 
-                  key={col.id}
-                  draggable
-                  onDragStart={() => onDragStart(idx)}
-                  onDragOver={onDragOver}
-                  onDrop={() => onDrop(idx)}
-                  onClick={() => handleHeaderSort(col.id)}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  <div className="flex items-center gap-1">
-                    {col.id === 'cost' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {col.label}
-                      <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>ℹ️</span>
-                    </div>
-                  ) : col.label}
-                    {sortKey === col.id && (
-                      <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                    {col.id === 'customer_name' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
-                        title="Edit Name Rules"
-                      >
-                        🖊️
-                      </button>
-                    )}
-                  </div>
-                </th>
-              ))}
-            </tr>
-            <tr className="header-search-row">
-              <th style={{ padding: '4px 8px' }}></th>
-              {cols.map(col => {
-                const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
-                return (
-                  <th key={col.id} style={{ padding: '4px 8px' }}>
-                    {isFiltered && (
-                      <input 
-                        className="header-search-input"
-                        placeholder="Search..."
-                        value={colFilters[col.id] || ''}
-                        onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
-                      />
-                    )}
-                  </th>
-                )
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredOrders.map(o => {
-              const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0)
-              const isClear = Math.abs(diff) <= 1
-              const { bg, color } = getStatusColor(o.delivery_status)
-              const s = (o.delivery_status||'').toLowerCase()
-              const orderDate = o.order_date ? new Date(o.order_date) : null
-              const today = new Date(); today.setHours(0,0,0,0)
-              const daysOld = orderDate ? Math.floor((today-orderDate)/86400000) : 0
-              const isPending = !s.includes('delivered') && !s.includes('return') && !s.includes('cancel')
-              const dateAged = isPending && daysOld >= 5
-
-              return (
-                <tr key={o.id} className={selectedIds.includes(o.id) ? 'row-selected' : ''}>
+    <tr key={o.id} className={isSelected ? 'row-selected' : ''}>
                   <td style={{ textAlign: 'center' }}>
                     <input 
                       type="checkbox" 
-                      checked={selectedIds.includes(o.id)}
+                      checked={isSelected}
                       onChange={(e) => {
                         const checked = e.target.checked
-                        const currentIndex = filteredOrders.findIndex(order => order.id === o.id)
                         
                         if (e.nativeEvent.shiftKey && lastSelectedIndex !== null) {
                           const start = Math.min(currentIndex, lastSelectedIndex)
                           const end = Math.max(currentIndex, lastSelectedIndex)
-                          const idsInRange = filteredOrders.slice(start, end + 1).map(order => order.id)
+                          const idsInRange = filteredOrdersIds.slice(start, end + 1)
                           
                           if (checked) {
                             setSelectedIds(prev => Array.from(new Set([...prev, ...idsInRange])))
@@ -308,7 +73,7 @@ export default function OrderTable({
                           </button>
 
                           <a 
-                            href={`https://${o.shop_domain || localStorage.getItem('trace_active_shop')}/admin/orders/${o.shopify_order_id}`} 
+                            href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
                             target="_blank" 
                             rel="noreferrer" 
                             style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
@@ -459,7 +224,7 @@ export default function OrderTable({
 
                             <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
                             {(() => {
-                              const count = allOrders.filter(order => order.phone === o.phone).length
+                              const count = getPhoneOrderCount(o.phone)
                               return count > 0 ? (
                                 <span
                                   onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone(o.phone) }}
@@ -661,6 +426,285 @@ export default function OrderTable({
                     return <td key={col.id}>—</td>
                   })}
                 </tr>
+  );
+}, (prev, next) => {
+  // Custom equality check for fast rendering
+  return prev.o.id === next.o.id &&
+         prev.o.delivery_status === next.o.delivery_status &&
+         prev.o.tracking_number === next.o.tracking_number &&
+         prev.isSelected === next.isSelected &&
+         prev.statusUpdatingId === next.statusUpdatingId &&
+         prev.bookingId === next.bookingId &&
+         prev.activeTooltipOrderId === next.activeTooltipOrderId &&
+         prev.cols === next.cols;
+});
+export default function OrderTable({
+  loading,
+  filteredOrders,
+  allOrders,
+  totalCount,
+  debugWhere,
+  cols,
+  selectedIds,
+  setSelectedIds,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  handleHeaderSort,
+  sortKey,
+  sortDir,
+  colFilters,
+  setColFilters,
+  formatCustomerName,
+  fetchOrderDetails,
+  bookingId,
+  handleConfirmOrder,
+  handleRevertConfirm,
+  handleBookPostEx,
+  handleCancelBooking,
+  handleBookInstaworld,
+  updateOrderField,
+  setCustomerHistoryPhone,
+  setShowNameDialog,
+  setKeyword,
+  setStatus,
+  page,
+  setPage,
+  limit,
+  setLimit,
+  keyword,
+  status,
+  onViewHistory
+}) {
+  const { addToast, user } = useApp()
+  const canSeeFinancials = user?.role === 'admin'
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
+  const [activeTooltipOrderId, setActiveTooltipOrderId] = useState(null)
+  const [hoveredOrderId, setHoveredOrderId] = useState(null)
+  const [breakdown, setBreakdown] = useState(null)
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+
+  // Memoize derived arrays/functions to avoid new refs on every render
+  const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
+  const getPhoneOrderCount = useCallback((phone) => allOrders.filter(o => o.phone === phone).length, [allOrders])
+
+  const fetchBreakdown = async (orderId) => {
+    setLoadingBreakdown(true)
+    try {
+      const res = await fetch(`/api/cost-manager/breakdown/${orderId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
+      const data = await res.json()
+      setBreakdown(data)
+    } catch (e) { console.error(e) }
+    finally { setLoadingBreakdown(false) }
+  }
+
+  const CostBreakdownTooltip = ({ orderId }) => {
+    if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
+    if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
+
+    const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
+    const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
+
+    return (
+      <div className="cost-tooltip shadow-xl">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
+          <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
+          <button 
+            onClick={(e) => { e.stopPropagation(); setActiveTooltipOrderId(null); setBreakdown(null); }}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px', opacity: 0.6 }}
+          >
+            ✖
+          </button>
+        </div>
+        <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
+          {breakdown.map((item, i) => (
+            <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
+                <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
+                <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+            <span>Landed Total:</span>
+            <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
+            <span>Pkg Total:</span>
+            <span>Rs {totalPkg.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const handleManualStatusChange = async (orderId, newStatus) => {
+    if (!newStatus) return
+    setStatusUpdatingId(orderId)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/erp-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_status: newStatus })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 409 && data.protected) {
+          if (confirm(`${data.error}\n\nDo you want to FORCE this change? (Admin Only)`)) {
+            const forceRes = await fetch(`/api/orders/${orderId}/erp-status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ erp_status: newStatus, force: true })
+            })
+            if (!forceRes.ok) throw new Error((await forceRes.json()).error)
+            addToast('Status updated successfully (Forced)', 'success')
+          }
+        } else {
+          throw new Error(data.error || 'Failed to update status')
+        }
+      } else {
+        addToast(`ERP Status updated to ${newStatus}`, 'success')
+      }
+    } catch (err) {
+      addToast(err.message, 'error')
+    } finally {
+      setStatusUpdatingId(null)
+    }
+  }
+
+  const [waTemplates, setWATemplates] = useState([])
+
+  useEffect(() => {
+    fetch('/api/templates', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+    })
+    .then(res => res.json())
+    .then(setWATemplates)
+    .catch(err => console.error('Failed to fetch WA templates', err))
+  }, [])
+
+  if (loading) {
+    return <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
+  }
+
+  if (filteredOrders.length === 0) {
+    return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
+  }
+
+  return (
+    <>
+      <div className="table-wrapper">
+        <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>
+            💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
+            {debugWhere && <span style={{ marginLeft: 10, color: 'var(--text-muted)', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
+          </span>
+          {(keyword || status !== 'All Statuses') && (
+            <button 
+              onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
+              className="btn btn-primary btn-sm"
+              style={{ padding: '2px 8px', borderRadius: 4, fontWeight: 'bold', fontSize: '0.7rem' }}
+            >
+              CLEAR ALL FILTERS
+            </button>
+          )}
+        </div>
+        
+        <table className="draggable-table">
+          <thead>
+            <tr>
+              <th style={{ width: 40, textAlign: 'center' }}>
+                <input 
+                  type="checkbox" 
+                  checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
+                  onChange={(e) => {
+                    if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id))
+                    else setSelectedIds([])
+                  }}
+                />
+              </th>
+              {cols.map((col, idx) => (
+                <th 
+                  key={col.id}
+                  draggable
+                  onDragStart={() => onDragStart(idx)}
+                  onDragOver={onDragOver}
+                  onDrop={() => onDrop(idx)}
+                  onClick={() => handleHeaderSort(col.id)}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                >
+                  <div className="flex items-center gap-1">
+                    {col.id === 'cost' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {col.label}
+                      <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>ℹ️</span>
+                    </div>
+                  ) : col.label}
+                    {sortKey === col.id && (
+                      <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
+                        {sortDir === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
+                    {col.id === 'customer_name' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
+                        title="Edit Name Rules"
+                      >
+                        🖊️
+                      </button>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+            <tr className="header-search-row">
+              <th style={{ padding: '4px 8px' }}></th>
+              {cols.map(col => {
+                const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
+                return (
+                  <th key={col.id} style={{ padding: '4px 8px' }}>
+                    {isFiltered && (
+                      <input 
+                        className="header-search-input"
+                        placeholder="Search..."
+                        value={colFilters[col.id] || ''}
+                        onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
+                      />
+                    )}
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredOrders.map((o, index) => {
+              return (
+                <OrderRow 
+                  key={o.id} o={o} cols={cols}
+                  isSelected={selectedIds.includes(o.id)}
+                  currentIndex={index}
+                  lastSelectedIndex={lastSelectedIndex} setSelectedIds={setSelectedIds} setLastSelectedIndex={setLastSelectedIndex}
+                  filteredOrdersLength={filteredOrders.length}
+                  filteredOrdersIds={filteredOrdersIds}
+                  fetchOrderDetails={fetchOrderDetails} onViewHistory={onViewHistory} bookingId={bookingId}
+                  handleConfirmOrder={handleConfirmOrder} handleRevertConfirm={handleRevertConfirm}
+                  handleBookPostEx={handleBookPostEx} handleCancelBooking={handleCancelBooking} handleBookInstaworld={handleBookInstaworld}
+                  formatCustomerName={formatCustomerName} waTemplates={waTemplates} allOrdersCount={allOrders.length}
+                  getPhoneOrderCount={getPhoneOrderCount}
+                  setCustomerHistoryPhone={setCustomerHistoryPhone} updateOrderField={updateOrderField}
+                  canSeeFinancials={canSeeFinancials} activeTooltipOrderId={activeTooltipOrderId}
+                  setActiveTooltipOrderId={setActiveTooltipOrderId} fetchBreakdown={fetchBreakdown}
+                  user={user} statusUpdatingId={statusUpdatingId} handleManualStatusChange={handleManualStatusChange}
+                  ERP_STATUSES={ERP_STATUSES} getStatusColor={getStatusColor}
+                  activeShopDomain={localStorage.getItem('trace_active_shop')}
+                />
               )
             })}
           </tbody>

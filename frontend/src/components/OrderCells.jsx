@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-export function AddressCell({ order, onSave }) {
+export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
   const [val, setVal] = useState(order.address || '')
   const [isEditing, setIsEditing] = useState(false)
   const inputRef = useRef(null)
@@ -35,9 +35,9 @@ export function AddressCell({ order, onSave }) {
       {order.address || <span style={{ opacity: 0.3 }}>Empty Address</span>}
     </div>
   )
-}
+})
 
-export function CityCell({ order, onSave }) {
+export const CityCell = React.memo(function CityCell({ order, onSave }) {
   const [val, setVal] = useState(order.city || '')
   const [isEditing, setIsEditing] = useState(false)
   const inputRef = useRef(null)
@@ -63,7 +63,6 @@ export function CityCell({ order, onSave }) {
               },
               body: JSON.stringify({ original_input: order.city, corrected_name: val })
             });
-            // Optional: show a small toast or just let it succeed silently
           } catch (e) {
             console.error('Failed to save city mapping', e);
           }
@@ -97,9 +96,9 @@ export function CityCell({ order, onSave }) {
       {order.city || <span style={{ opacity: 0.3 }}>Missing</span>}
     </div>
   )
-}
+})
 
-export function PaidAmountCell({ order, onSave }) {
+export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave }) {
   const [val, setVal] = useState(order.paid_amount || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -129,9 +128,9 @@ export function PaidAmountCell({ order, onSave }) {
       Rs {Math.round(parseFloat(order.paid_amount)||0).toLocaleString()}
     </div>
   )
-}
+})
 
-export function CourierFeeCell({ order, onSave }) {
+export const CourierFeeCell = React.memo(function CourierFeeCell({ order, onSave }) {
   const [val, setVal] = useState(order.courier_fee || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -161,9 +160,9 @@ export function CourierFeeCell({ order, onSave }) {
       Rs {Math.round(parseFloat(order.courier_fee)||0).toLocaleString()}
     </div>
   )
-}
+})
 
-export function CostCell({ order, onSave }) {
+export const CostCell = React.memo(function CostCell({ order, onSave }) {
   const [val, setVal] = useState(order.cost || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -193,9 +192,9 @@ export function CostCell({ order, onSave }) {
       Rs {Math.round(parseFloat(order.cost)||0).toLocaleString()}
     </div>
   )
-}
+})
 
-export function NoteCell({ order, onSave }) {
+export const NoteCell = React.memo(function NoteCell({ order, onSave }) {
   const [val, setVal] = useState(order.notes || '')
   const [isEditing, setIsEditing] = useState(false)
 
@@ -227,4 +226,4 @@ export function NoteCell({ order, onSave }) {
       {order.notes || <span style={{ color: 'var(--text-muted)' }}>No Notes</span>}
     </div>
   )
-}
+})

@@ -167,7 +167,7 @@ export default function SearchTool() {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(() => parseInt(localStorage.getItem('trace_search_limit')) || 100)
+  const [limit, setLimit] = useState(() => parseInt(localStorage.getItem('trace_search_limit')) || 50)
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, loading: false })

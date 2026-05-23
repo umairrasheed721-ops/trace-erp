@@ -179,6 +179,10 @@ router.get('/:id/customer-intelligence', (req, res) => {
   }
 });
 
+// Simple in-memory count cache (10s TTL) to avoid double COUNT(*) on same filters
+const _countCache = new Map();
+const COUNT_CACHE_TTL = 10000; // 10 seconds
+
 // GET /api/orders?store_id=1&page=1&limit=100&status=&search=&start_date=&end_date=
 router.get('/', (req, res) => {
   try {
@@ -194,7 +198,24 @@ router.get('/', (req, res) => {
     const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
     const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-    const total = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
+    // COUNT cache: avoid hitting DB on every page change for same filter
+    const cacheKey = `${where}::${JSON.stringify(queryParams)}`;
+    const now = Date.now();
+    let totalCount;
+    const cached = _countCache.get(cacheKey);
+    if (cached && (now - cached.ts) < COUNT_CACHE_TTL) {
+      totalCount = cached.count;
+    } else {
+      const countRow = db.prepare(`SELECT COUNT(*) as count FROM orders o WHERE ${where}`).get(...queryParams);
+      totalCount = countRow.count;
+      _countCache.set(cacheKey, { count: totalCount, ts: now });
+      // Evict old entries if cache grows too large
+      if (_countCache.size > 100) {
+        const oldestKey = _countCache.keys().next().value;
+        _countCache.delete(oldestKey);
+      }
+    }
+
     const orders = db.prepare(`
       SELECT o.*, s.shop_domain 
       FROM orders o
@@ -206,7 +227,7 @@ router.get('/', (req, res) => {
 
     res.json({ 
       orders, 
-      total: total.count, 
+      total: totalCount, 
       page: parseInt(page), 
       limit: parseInt(limit),
       debugWhere: where
