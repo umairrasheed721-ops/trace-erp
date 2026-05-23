@@ -18,11 +18,11 @@ const MAX_RECONNECT_DELAY_MS = 30000; // cap backoff at 30s
  * This survives Railway container restarts and redeployments.
  * Falls back to file system only if DB is unavailable.
  */
-async function useDbAuthState(initAuthCreds) {
+async function useDbAuthState(initAuthCreds, BufferJSON) {
   function readKey(key) {
     try {
       const row = db.prepare('SELECT value FROM wa_session_store WHERE key = ?').get(key);
-      return row ? JSON.parse(row.value) : null;
+      return row ? JSON.parse(row.value, BufferJSON.reviver) : null;
     } catch (e) { return null; }
   }
 
@@ -32,7 +32,7 @@ async function useDbAuthState(initAuthCreds) {
         INSERT INTO wa_session_store (key, value, updated_at)
         VALUES (?, ?, datetime('now'))
         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-      `).run(key, JSON.stringify(value));
+      `).run(key, JSON.stringify(value, BufferJSON.replacer));
     } catch (e) { console.error('[WA-DB] Write failed:', e.message); }
   }
 
@@ -147,6 +147,7 @@ const SILENT_LOGGER = {
         default: makeWASocket,
         useMultiFileAuthState,
         initAuthCreds,
+        BufferJSON,
         DisconnectReason,
         fetchLatestBaileysVersion,
       } = await import('@whiskeysockets/baileys');
@@ -167,7 +168,7 @@ const SILENT_LOGGER = {
       }
 
       // Use DB-backed auth state (survives Railway deploys)
-      const { state, saveCreds } = await useDbAuthState(initAuthCreds);
+      const { state, saveCreds } = await useDbAuthState(initAuthCreds, BufferJSON);
 
       let version;
       try {
