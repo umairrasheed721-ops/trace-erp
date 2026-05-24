@@ -30,6 +30,25 @@ router.get('/settings', (req, res) => {
   }
 });
 
+// GET /api/whatsapp-governance/status
+router.get('/status', (req, res) => {
+  try {
+    const statusObj = bot.getStatus();
+    
+    // Actively verify socket is not zombied
+    if (statusObj.status === 'CONNECTED') {
+      const sock = bot.sock;
+      if (!sock || !sock.authState || !sock.authState.creds || !sock.authState.creds.me) {
+        statusObj.status = 'DISCONNECTED';
+      }
+    }
+    
+    res.json(statusObj);
+  } catch (e) {
+    res.status(500).json({ error: e.message, status: 'DISCONNECTED' });
+  }
+});
+
 // POST /api/whatsapp-governance/settings
 router.post('/settings', (req, res) => {
   const { mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min, cod_template, attempted_template, dispatch_template, ai_responder_enabled, ai_tracking_template, ai_landmark_template } = req.body;
@@ -379,6 +398,294 @@ router.post('/gemini/simulate-incoming', async (req, res) => {
     res.json({ success: true, reply: reply || 'No response generated (check API key or fallback settings).' });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// --- ⚡ RICH QUICK REPLIES CRUD & SEND ENDPOINTS ---
+
+// GET /api/whatsapp-governance/quick-replies
+router.get('/quick-replies', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM whatsapp_quick_replies ORDER BY id DESC').all();
+    res.json({ success: true, quickReplies: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/quick-replies (Upload media and save)
+router.post('/quick-replies', upload.single('media'), (req, res) => {
+  const { title, caption } = req.body;
+  if (!title) return res.status(400).json({ error: 'Title is required' });
+  
+  try {
+    let mediaUrl = null;
+    let mediaType = null;
+    
+    if (req.file) {
+      mediaUrl = `/uploads/${req.file.filename}`;
+      mediaType = req.file.mimetype.startsWith('image/') ? 'image' : 'video';
+    }
+    
+    db.prepare(`
+      INSERT INTO whatsapp_quick_replies (title, media_url, media_type, caption)
+      VALUES (?, ?, ?, ?)
+    `).run(title, mediaUrl, mediaType, caption || '');
+    
+    res.json({ success: true, message: 'Quick reply saved successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/whatsapp-governance/quick-replies/:id
+router.delete('/quick-replies/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    // Delete file from disk if it exists
+    const row = db.prepare('SELECT media_url FROM whatsapp_quick_replies WHERE id = ?').get(Number(id));
+    if (row && row.media_url) {
+      const filePath = path.join(__dirname, '..', 'public', row.media_url);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+    
+    db.prepare('DELETE FROM whatsapp_quick_replies WHERE id = ?').run(Number(id));
+    res.json({ success: true, message: 'Quick reply deleted successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chat/:order_id/send-quick-reply
+router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
+  const { order_id } = req.params;
+  const { replyId } = req.body;
+  
+  if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
+  
+  try {
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, tracking_number, courier FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
+    
+    const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
+    if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
+    
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    
+    // Resolve dynamic variables (e.g. {{customer_name}}, {{order_id}}, {{tracking_number}}, {{courier}})
+    let resolvedCaption = quickReply.caption || '';
+    resolvedCaption = resolvedCaption
+      .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Customer')
+      .replace(/\{\{order_id\}\}/g, order.id || '')
+      .replace(/\{\{tracking_number\}\}/g, order.tracking_number || '')
+      .replace(/\{\{courier\}\}/g, order.courier || '');
+    
+    let absolutePath = null;
+    if (quickReply.media_url) {
+      absolutePath = path.join(__dirname, '..', 'public', quickReply.media_url);
+    }
+    
+    const dbMsgContent = quickReply.media_url 
+      ? `[${quickReply.media_type.toUpperCase()}] ${resolvedCaption}`.trim()
+      : resolvedCaption;
+      
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null);
+    } catch (err) {
+      console.error('Failed to log quick reply message:', err.message);
+    }
+    
+    // Send message via Baileys bot
+    if (quickReply.media_url && absolutePath) {
+      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type);
+    } else {
+      bot.sendMessage(cleaned, resolvedCaption, true);
+    }
+    
+    res.json({ success: true, message: 'Quick reply sent successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- ⚙️ QUICK PILLS CRUD ENDPOINTS ---
+
+// GET /api/whatsapp-governance/quick-pills
+router.get('/quick-pills', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT * FROM whatsapp_quick_pills ORDER BY sort_order ASC').all();
+    res.json({ success: true, quickPills: rows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/quick-pills
+router.post('/quick-pills', (req, res) => {
+  const { pill_text } = req.body;
+  if (!pill_text || !pill_text.trim()) return res.status(400).json({ error: 'Pill text is required' });
+
+  try {
+    const row = db.prepare('SELECT MAX(sort_order) as max_sort FROM whatsapp_quick_pills').get();
+    const nextSort = (row?.max_sort || 0) + 1;
+
+    db.prepare('INSERT INTO whatsapp_quick_pills (pill_text, sort_order) VALUES (?, ?)').run(pill_text, nextSort);
+    res.json({ success: true, message: 'Quick pill saved successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/whatsapp-governance/quick-pills/:id
+router.delete('/quick-pills/:id', (req, res) => {
+  const { id } = req.params;
+  try {
+    db.prepare('DELETE FROM whatsapp_quick_pills WHERE id = ?').run(Number(id));
+    res.json({ success: true, message: 'Quick pill deleted successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- 📄 PDF INVOICE AUTO-SENDER ---
+
+// Helper function to generate professional invoice PDF using pdfkit
+function generateInvoicePdf(order, destPath) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const writeStream = fs.createWriteStream(destPath);
+      doc.pipe(writeStream);
+
+      // Header Brand
+      doc.fillColor('#6366f1').fontSize(20).text('TRACE ERP INVOICE', { align: 'right' });
+      doc.fillColor('#475569').fontSize(10).text(`Date: ${new Date().toLocaleDateString()}`, { align: 'right' });
+      doc.moveDown(1);
+
+      // Store Contact details
+      doc.fillColor('#0f172a').fontSize(12).text('TRACE E-Commerce Store', { bold: true });
+      doc.fontSize(10).text('Support: support@trace.pk');
+      doc.moveDown(1.5);
+
+      // Customer section
+      doc.fontSize(12).text('Bill To:', { underline: true });
+      doc.fontSize(10).text(`Customer Name: ${order.customer_name || 'Valued Customer'}`);
+      doc.text(`Phone: ${order.phone || ''}`);
+      doc.text(`Address: ${order.address || ''}`);
+      doc.text(`City: ${order.city || ''}`);
+      doc.moveDown(2);
+
+      // Table Title
+      doc.fontSize(12).text('Order Items:', { underline: true });
+      doc.moveDown(0.5);
+
+      // Table Header Row
+      const tableTop = doc.y;
+      doc.fontSize(10).text('Item', 50, tableTop, { bold: true });
+      doc.text('SKU', 250, tableTop, { bold: true });
+      doc.text('Qty', 350, tableTop, { align: 'right', bold: true });
+      doc.text('Price', 400, tableTop, { align: 'right', bold: true });
+      doc.text('Total', 480, tableTop, { align: 'right', bold: true });
+
+      doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+      let yPosition = tableTop + 25;
+      let lineItems = [];
+      try {
+        lineItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+      } catch (e) {
+        lineItems = [];
+      }
+
+      lineItems.forEach(item => {
+        doc.text(item.title || 'Product', 50, yPosition, { width: 190 });
+        doc.text(item.sku || '-', 250, yPosition);
+        doc.text(String(item.quantity || 1), 350, yPosition, { align: 'right' });
+        doc.text(`Rs. ${parseFloat(item.price || 0).toFixed(0)}`, 400, yPosition, { align: 'right' });
+        doc.text(`Rs. ${(parseFloat(item.price || 0) * parseInt(item.quantity || 1)).toFixed(0)}`, 480, yPosition, { align: 'right' });
+        yPosition += 25;
+      });
+
+      doc.moveTo(50, yPosition).lineTo(550, yPosition).stroke();
+      yPosition += 15;
+
+      // Summary lines
+      doc.text('Subtotal:', 350, yPosition, { align: 'right' });
+      const subtotal = lineItems.reduce((acc, item) => acc + (parseFloat(item.price || 0) * parseInt(item.quantity || 1)), 0);
+      doc.text(`Rs. ${subtotal.toFixed(0)}`, 480, yPosition, { align: 'right' });
+      yPosition += 15;
+
+      doc.text('Discount:', 350, yPosition, { align: 'right' });
+      doc.text(`Rs. ${parseFloat(order.discount_amount || 0).toFixed(0)}`, 480, yPosition, { align: 'right' });
+      yPosition += 15;
+
+      doc.text('Courier Shipping:', 350, yPosition, { align: 'right' });
+      doc.text(`Rs. ${parseFloat(order.courier_fee || 250).toFixed(0)}`, 480, yPosition, { align: 'right' });
+      yPosition += 20;
+
+      doc.fontSize(12).text('Total Amount:', 350, yPosition, { align: 'right', bold: true });
+      const totalAmount = Math.max(0, subtotal - parseFloat(order.discount_amount || 0) + parseFloat(order.courier_fee || 250));
+      doc.text(`Rs. ${totalAmount.toFixed(0)}`, 480, yPosition, { align: 'right', bold: true });
+
+      // Footer brand notice
+      doc.fontSize(9).fillColor('#64748b').text('Thank you for shopping with us! This is an electronically generated invoice.', 50, 700, { align: 'center' });
+
+      doc.end();
+
+      writeStream.on('finish', () => resolve());
+      writeStream.on('error', (err) => reject(err));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// POST /api/whatsapp-governance/chat/:order_id/send-invoice
+router.post('/chat/:order_id/send-invoice', async (req, res) => {
+  const { order_id } = req.params;
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(order_id));
+    if (!order || !order.phone) return res.status(404).json({ error: 'Order or customer phone not found' });
+
+    let cleaned = order.phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const invoiceFilename = `invoice_${order.id}_${Date.now()}.pdf`;
+    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+    const destPath = path.join(folderPath, invoiceFilename);
+
+    await generateInvoicePdf(order, destPath);
+
+    const relativeUrl = `/uploads/${invoiceFilename}`;
+    const caption = `📄 *Invoice for Order #${order.id || order.ref_number}* — Thank you for your business!`;
+    const dbMsgContent = `[DOCUMENT] ${caption}`;
+
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent')
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl);
+    } catch (err) {
+      console.error('Failed to log invoice message:', err.message);
+    }
+
+    // Send PDF document via Baileys bot
+    bot.sendMessage(cleaned, caption, true, destPath, 'document', `Invoice_${order.id || order.ref_number}.pdf`);
+
+    res.json({ success: true, message: 'Invoice PDF generated and queued successfully' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

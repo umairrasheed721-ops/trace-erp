@@ -372,6 +372,45 @@ function initDb() {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whatsapp_quick_replies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      media_url TEXT,
+      media_type TEXT, -- 'image' or 'video'
+      caption TEXT,
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pill_text TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+  `);
+
+  // Seed default quick-reply pills if empty
+  try {
+    const pillCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_quick_pills').get().count;
+    if (pillCount === 0) {
+      const defaultPills = [
+        "👋 Sir, kindly confirm your nearest landmark for delivery.",
+        "📦 Aapka parcel PostEx ko hand over kar diya hai.",
+        "⚠️ Rider aapki location par hai, kindly phone attend karein.",
+        "✅ Order confirm karne ka shukriya!"
+      ];
+      const insertPill = db.prepare('INSERT INTO whatsapp_quick_pills (pill_text, sort_order) VALUES (?, ?)');
+      defaultPills.forEach((text, index) => {
+        insertPill.run(text, index);
+      });
+      console.log('💊 Seeded default WhatsApp quick-reply pills');
+    }
+  } catch (e) {
+    console.error('Failed to seed quick-reply pills:', e.message);
+  }
+
   // Initial Admin User
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
   if (userCount === 0) {

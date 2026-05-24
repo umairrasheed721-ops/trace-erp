@@ -8,6 +8,8 @@ export default function EditOrderModal({
   updateOrderField,
   isCityValid
 }) {
+  const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
   // Navigation Tabs: 'financials' | 'customer' | 'logistics'
   const [activeTab, setActiveTab] = useState('financials');
 
@@ -36,58 +38,388 @@ export default function EditOrderModal({
   // Pillar 1: Live WhatsApp Chat State
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [botStatus, setBotStatus] = useState('CONNECTING'); // dynamic status
   const [newWaMsg, setNewWaMsg] = useState('');
   const [sendingWaMsg, setSendingWaMsg] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Fetch chat messages and setup WebSocket
+  // Quick Replies states
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [showQuickReplyPanel, setShowQuickReplyPanel] = useState(false);
+  const [quickReplyTitle, setQuickReplyTitle] = useState('');
+  const [quickReplyCaption, setQuickReplyCaption] = useState('');
+  const [quickReplyMedia, setQuickReplyMedia] = useState(null);
+  const [showTemplateCreator, setShowTemplateCreator] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  // Quick Pills and Audio Recording states
+  const [quickPills, setQuickPills] = useState([]);
+  const [showPillsManager, setShowPillsManager] = useState(false);
+  const [newPillText, setNewPillText] = useState('');
+  
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+
+  const fetchQuickPills = async () => {
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await r.json();
+      if (data.quickPills) setQuickPills(data.quickPills);
+    } catch (_) {}
+  };
+
+  const handleCreateQuickPill = async (e) => {
+    e.preventDefault();
+    if (!newPillText.trim()) return;
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ pill_text: newPillText })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewPillText('');
+        fetchQuickPills();
+      } else {
+        alert(data.error);
+      }
+    } catch (_) {
+      alert('Network error saving quick pill');
+    }
+  };
+
+  const handleDeleteQuickPill = async (id) => {
+    if (!confirm('Are you sure you want to delete this quick pill?')) return;
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQuickPills();
+      } else {
+        alert(data.error);
+      }
+    } catch (_) {
+      alert('Network error deleting quick pill');
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([audioBlob], `voice_note_${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        const formData = new FormData();
+        formData.append('media', file);
+        formData.append('caption', '');
+
+        setIsUploadingMedia(true);
+        setSendingWaMsg(true);
+        try {
+          const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+          const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: formData
+          });
+          const data = await res.json();
+          if (data.success) {
+            const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const chatData = await chatRes.json();
+            if (chatData.messages) setChatMessages(chatData.messages);
+          } else {
+            alert(data.error || 'Voice note upload failed');
+          }
+        } catch (err) {
+          alert('Network error sending voice note');
+        } finally {
+          setIsUploadingMedia(false);
+          setSendingWaMsg(false);
+        }
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+    } catch (err) {
+      alert('Could not access microphone: ' + err.message);
+    }
+  };
+
+  const stopRecording = (shouldSend) => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      if (!shouldSend) {
+        mediaRecorder.onstop = () => {};
+      }
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+    setIsRecording(false);
+    setMediaRecorder(null);
+    setRecordingSeconds(0);
+  };
+
+  useEffect(() => {
+    let interval = null;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  const handleSendInvoice = async () => {
+    setSendingInvoice(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-invoice`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ PDF Invoice generated and sent to WhatsApp!');
+        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const chatData = await chatRes.json();
+        if (chatData.messages) setChatMessages(chatData.messages);
+      } else {
+        alert(data.error || 'Failed to send invoice');
+      }
+    } catch (err) {
+      alert('Network error sending invoice');
+    } finally {
+      setSendingInvoice(false);
+    }
+  };
+
+  const fetchQuickReplies = async () => {
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await r.json();
+      if (data.quickReplies) setQuickReplies(data.quickReplies);
+    } catch (_) {}
+  };
+
+  const handleSendQuickReply = async (replyId) => {
+    setSendingWaMsg(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-quick-reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ replyId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Fetch fresh chat history to show the newly sent template message
+        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const chatData = await chatRes.json();
+        if (chatData.messages) setChatMessages(chatData.messages);
+        setShowQuickReplyPanel(false);
+      } else {
+        alert(data.error || 'Failed to send quick reply');
+      }
+    } catch (err) {
+      alert('Network error sending quick reply');
+    } finally {
+      setSendingWaMsg(false);
+    }
+  };
+
+  const handleCreateQuickReply = async (e) => {
+    e.preventDefault();
+    if (!quickReplyTitle.trim()) return alert('Title is required');
+
+    const formData = new FormData();
+    formData.append('title', quickReplyTitle);
+    formData.append('caption', quickReplyCaption);
+    if (quickReplyMedia) {
+      formData.append('media', quickReplyMedia);
+    }
+
+    setSendingWaMsg(true);
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        setQuickReplyTitle('');
+        setQuickReplyCaption('');
+        setQuickReplyMedia(null);
+        setShowTemplateCreator(false);
+        fetchQuickReplies();
+      } else {
+        alert(data.error || 'Failed to create quick reply');
+      }
+    } catch (err) {
+      alert('Network error creating quick reply');
+    } finally {
+      setSendingWaMsg(false);
+    }
+  };
+
+  const handleDeleteQuickReply = async (id) => {
+    if (!confirm('Are you sure you want to delete this quick reply?')) return;
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQuickReplies();
+      } else {
+        alert(data.error || 'Failed to delete');
+      }
+    } catch (_) {
+      alert('Network error deleting quick reply');
+    }
+  };
+
+  // Fetch chat messages, setup WebSocket + 3-second polling fallback
   useEffect(() => {
     if (editingOrder && activeTab === 'whatsapp_chat') {
       setChatLoading(true);
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-      fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-        .then(r => r.json())
-        .then(data => {
-          setChatMessages(data.messages || []);
-          setChatLoading(false);
+      const orderId = editingOrder.id;
+      const token = localStorage.getItem('token') || '';
+
+      let cleaned = editingOrder.phone?.replace(/\D/g, '');
+      if (cleaned?.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+      else if (!cleaned?.startsWith('92') && cleaned?.length === 10) cleaned = '92' + cleaned;
+
+      // ── Initial fetch ──────────────────────────────────────────────────────
+      const loadMessages = () =>
+        fetch(`${apiBase}/api/whatsapp-governance/chat/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
         })
-        .catch(() => setChatLoading(false));
-
-      // Setup WebSocket
-      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
-      const socket = new WebSocket(`${wsProto}//${wsHost}/?token=${localStorage.getItem('token') || ''}`);
-      
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          let cleaned = editingOrder.phone?.replace(/\D/g, '');
-          if (cleaned?.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-          else if (!cleaned?.startsWith('92') && cleaned?.length === 10) cleaned = '92' + cleaned;
-
-          if (data.type === 'typing' && data.payload.phone === cleaned) {
-            setIsTyping(data.payload.isTyping);
-            clearTimeout(window.typingTimeout);
-            if (data.payload.isTyping) {
-              window.typingTimeout = setTimeout(() => setIsTyping(false), 5000);
+          .then(r => r.json())
+          .then(data => {
+            if (data.messages) {
+              setChatMessages(data.messages);
             }
-          } else if (data.type === 'message') {
-            if (data.payload.order_id === editingOrder.id || data.payload.message.phone === cleaned) {
-               setChatMessages(prev => {
-                  if (prev.find(m => m.id === data.payload.message.id || (m.message_id && m.message_id === data.payload.message.message_id))) return prev;
-                  return [...prev, data.payload.message];
-               });
-               setIsTyping(false);
+            setChatLoading(false);
+          })
+          .catch(() => setChatLoading(false));
+
+      loadMessages();
+      fetchQuickReplies();
+      fetchQuickPills();
+
+      // ── Polling every 3 seconds (reliable fallback) ────────────────────────
+      const pollInterval = setInterval(() => {
+        fetch(`${apiBase}/api/whatsapp-governance/chat/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.messages) {
+              setChatMessages(data.messages);
             }
-          }
-        } catch (err) {}
-      };
+          })
+          .catch(() => {});
+
+        fetch(`${apiBase}/api/whatsapp-governance/status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (data.status) setBotStatus(data.status);
+          })
+          .catch(() => setBotStatus('DISCONNECTED'));
+      }, 3000);
+
+      // ── WebSocket (instant updates on top of polling) ─────────────────────
+      let socket = null;
+      try {
+        const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
+        socket = new WebSocket(`${wsProto}//${wsHost}/?token=${token}`);
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'typing' && data.data.phone === cleaned) {
+              setIsTyping(data.data.isTyping);
+              clearTimeout(window.typingTimeout);
+              if (data.data.isTyping) {
+                window.typingTimeout = setTimeout(() => setIsTyping(false), 5000);
+              }
+            } else if (data.event === 'message') {
+              // eslint-disable-next-line eqeqeq
+              if (data.data.order_id == orderId || data.data.message?.phone === cleaned) {
+                setChatMessages(prev => {
+                  const newMsg = data.data.message;
+                  if (prev.find(m => m.id === newMsg.id || (m.message_id && m.message_id === newMsg.message_id))) return prev;
+                  return [...prev, newMsg];
+                });
+                setIsTyping(false);
+              }
+            }
+          } catch (err) {}
+        };
+        socket.onerror = () => {};
+      } catch (e) {}
 
       return () => {
-        socket.close();
+        clearInterval(pollInterval);
+        if (socket) socket.close();
         clearTimeout(window.typingTimeout);
       };
     }
@@ -130,10 +462,18 @@ export default function EditOrderModal({
     const file = e.target.files[0];
     if (!file) return;
 
+    // Validate file size limit: 16MB
+    if (file.size > 16 * 1024 * 1024) {
+      alert('⚠️ File size exceeds the 16MB limit. Please compress your file or upload a smaller one.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     const formData = new FormData();
     formData.append('media', file);
     formData.append('caption', newWaMsg);
 
+    setIsUploadingMedia(true);
     setSendingWaMsg(true);
     try {
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
@@ -148,12 +488,20 @@ export default function EditOrderModal({
       if (data.success) {
         setNewWaMsg('');
         if (fileInputRef.current) fileInputRef.current.value = '';
+        
+        // Fetch fresh chat history to display the new media message
+        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const chatData = await chatRes.json();
+        if (chatData.messages) setChatMessages(chatData.messages);
       } else {
         alert(data.error || 'Upload failed');
       }
     } catch (err) {
       alert('Network error uploading file');
     } finally {
+      setIsUploadingMedia(false);
       setSendingWaMsg(false);
     }
   };
@@ -1068,17 +1416,53 @@ export default function EditOrderModal({
               {/* Left Side: Active Chat Window */}
               <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)' }}>
                 {/* Chat Header */}
-                <div style={{ padding: '16px 24px', borderBottom: '1px solid #334155', background: '#0f172a', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}>
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid #334155', background: '#0f172a', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#6366f120', border: '1px solid #6366f1', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
                       👤
                     </div>
                     <div>
-                      <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{editingOrder.customer_name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{(editingOrder.phone || '').replace(/^\+/, '')} • Baileys WebSocket Active 🟢</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{editingOrder.customer_name}</span>
+                        {editingOrder.wa_verification_status && (
+                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10, background: editingOrder.wa_verification_status === 'Verified' ? '#10b98120' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef444420' : '#f59e0b20', color: editingOrder.wa_verification_status === 'Verified' ? '#10b981' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef4444' : '#f59e0b', fontWeight: 'bold' }}>
+                            {editingOrder.wa_verification_status}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+{(editingOrder.phone || '').replace(/^\+/, '')} • Baileys WebSocket: {botStatus === 'CONNECTED' ? '🟢 Active' : (botStatus === 'DISABLED' ? '🛑 Disabled locally' : '🔴 Disconnected (Refresh Required)')}</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {/* Inline Verification Status Buttons */}
+                    <div style={{ display: 'flex', gap: 6, background: '#1e293b', padding: '4px 8px', borderRadius: 12, border: '1px solid #334155' }}>
+                      <button 
+                        onClick={() => handleWaSimulate('SIMULATE_CONFIRM')}
+                        disabled={waSimulating}
+                        style={{ background: '#10b98120', color: '#10b981', border: 'none', borderRadius: 8, padding: '4px 8px', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer' }}
+                        title="Confirm Verification Status"
+                      >
+                        Confirm ✅
+                      </button>
+                      <button 
+                        onClick={() => handleWaSimulate('SIMULATE_CANCEL')}
+                        disabled={waSimulating}
+                        style={{ background: '#ef444420', color: '#ef4444', border: 'none', borderRadius: 8, padding: '4px 8px', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer' }}
+                        title="Cancel Order via WA"
+                      >
+                        Cancel ❌
+                      </button>
+                    </div>
+
+                    {/* Chat Keyword Search Box */}
+                    <input 
+                      type="text" 
+                      placeholder="🔍 Search messages..."
+                      value={chatSearchQuery}
+                      onChange={e => setChatSearchQuery(e.target.value)}
+                      style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 10, padding: '6px 12px', color: '#fff', fontSize: '0.75rem', outline: 'none', width: 140 }}
+                    />
+
                     <button 
                       onClick={() => {
                         setChatLoading(true);
@@ -1090,7 +1474,7 @@ export default function EditOrderModal({
                       }} 
                       style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b981', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
                     >
-                      📂 Fetch Last 30 Days History
+                      📂 Fetch History
                     </button>
                     <button 
                       onClick={() => {
@@ -1103,7 +1487,7 @@ export default function EditOrderModal({
                       }} 
                       style={{ background: '#334155', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 10, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                     >
-                      🔄 Refresh Chat
+                      🔄 Refresh
                     </button>
                   </div>
                 </div>
@@ -1130,13 +1514,22 @@ export default function EditOrderModal({
                           }}>
                             {msg.media_url && (
                               <div style={{ marginBottom: 8 }}>
-                                {msg.media_type === 'image' && <img src={msg.media_url} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
-                                {msg.media_type === 'video' && <video src={msg.media_url} controls style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
-                                {(msg.media_type === 'audio' || msg.media_type === 'voice') && <audio src={msg.media_url} controls style={{ maxWidth: 220 }} />}
-                                {msg.media_type === 'document' && <a href={msg.media_url} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 'bold' }}>📎 View Document</a>}
+                                {msg.media_type === 'image' && <img src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {msg.media_type === 'video' && <video src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} controls style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {(msg.media_type === 'audio' || msg.media_type === 'voice') && <audio src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} controls style={{ maxWidth: 220 }} />}
+                                {msg.media_type === 'document' && <a href={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 'bold' }}>📎 View Document</a>}
                               </div>
                             )}
-                            {msg.message?.replace(/\[(IMAGE|AUDIO|VIDEO|DOCUMENT)\]\s*/i, '')}
+                             {(() => {
+                              const rawText = msg.message?.replace(/\[(IMAGE|AUDIO|VIDEO|DOCUMENT)\]\s*/i, '') || '';
+                              if (!chatSearchQuery || !chatSearchQuery.trim()) return rawText;
+                              const parts = rawText.split(new RegExp(`(${chatSearchQuery.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi'));
+                              return parts.map((part, i) => 
+                                part.toLowerCase() === chatSearchQuery.toLowerCase() 
+                                  ? <mark key={i} style={{ background: '#f59e0b', color: '#000', padding: '1px 3px', borderRadius: 4, fontWeight: 'bold' }}>{part}</mark> 
+                                  : part
+                              );
+                            })()}
                           </div>
                           <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 4, padding: '0 6px' }}>
                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {isOutgoing ? (msg.status === 'sent' ? '✓ Sent' : '✓✓ Delivered') : 'Customer'}
@@ -1159,83 +1552,325 @@ export default function EditOrderModal({
                 </div>
 
                 {/* Quick Reply Pills */}
-                <div style={{ padding: '10px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 8, overflowX: 'auto' }}>
-                  {[
-                    "👋 Sir, kindly confirm your nearest landmark for delivery.",
-                    "📦 Aapka parcel PostEx ko hand over kar diya hai.",
-                    "⚠️ Rider aapki location par hai, kindly phone attend karein.",
-                    "✅ Order confirm karne ka shukriya!"
-                  ].map((pillText, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSendWaMessage(pillText)}
-                      disabled={sendingWaMsg}
-                      style={{ 
-                        background: '#334155', 
-                        color: '#f1f5f9', 
-                        border: '1px solid #475569', 
-                        padding: '6px 14px', 
-                        borderRadius: 16, 
-                        fontSize: '0.75rem', 
-                        fontWeight: 600, 
-                        whiteSpace: 'nowrap',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#475569'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#334155'}
-                    >
-                      ⚡ {pillText.slice(0, 30)}...
-                    </button>
-                  ))}
+                <div style={{ padding: '10px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', alignItems: 'center', gap: 12, overflowX: 'auto' }}>
+                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', flex: 1 }}>
+                    {quickPills.map((pill) => (
+                      <button
+                        key={pill.id}
+                        onClick={() => handleSendWaMessage(pill.pill_text)}
+                        disabled={sendingWaMsg}
+                        style={{ 
+                          background: '#334155', 
+                          color: '#f1f5f9', 
+                          border: '1px solid #475569', 
+                          padding: '6px 14px', 
+                          borderRadius: 16, 
+                          fontSize: '0.75rem', 
+                          fontWeight: 600, 
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#475569'}
+                        onMouseLeave={e => e.currentTarget.style.background = '#334155'}
+                      >
+                        ⚡ {pill.pill_text.slice(0, 30)}...
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => setShowPillsManager(!showPillsManager)}
+                    style={{ background: showPillsManager ? '#6366f1' : '#334155', border: 'none', borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}
+                    title="Manage Quick Reply Pills"
+                  >
+                    ⚙️ Manage Pills
+                  </button>
                 </div>
+
+                {/* Pills Manager Section */}
+                {showPillsManager && (
+                  <div style={{ background: '#1e293b', borderTop: '1px solid #334155', padding: '12px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.8rem', color: '#fff' }}>⚙️ Manage Quick Reply Pills</div>
+                    <form onSubmit={handleCreateQuickPill} style={{ display: 'flex', gap: 8 }}>
+                      <input 
+                        type="text" 
+                        placeholder="Add new quick pill text..."
+                        value={newPillText}
+                        onChange={e => setNewPillText(e.target.value)}
+                        required
+                        style={{ flex: 1, background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', color: '#fff', fontSize: '0.8rem', outline: 'none' }}
+                      />
+                      <button type="submit" style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}>Add</button>
+                    </form>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                      {quickPills.map(p => (
+                        <div key={p.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: '#fff' }}>
+                          <span>{p.pill_text}</span>
+                          <button onClick={() => handleDeleteQuickPill(p.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem', padding: 0 }}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick Reply Selection Overlay */}
+                {showQuickReplyPanel && (
+                  <div style={{ background: '#1e293b', borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#fff' }}>⚡ Saved Quick Replies (Templates)</span>
+                      <button 
+                        onClick={() => setShowTemplateCreator(!showTemplateCreator)} 
+                        style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {showTemplateCreator ? '✕ Close Creator' : '➕ Create New'}
+                      </button>
+                    </div>
+
+                    {showTemplateCreator && (
+                      <form onSubmit={handleCreateQuickReply} style={{ background: '#0f172a', padding: 16, borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10, border: '1px solid #334155' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#6366f1' }}>Create Quick Reply Template</div>
+                        <input 
+                          type="text" 
+                          placeholder="Template Title (e.g. postex_video_guide)"
+                          value={quickReplyTitle}
+                          onChange={e => setQuickReplyTitle(e.target.value)}
+                          required
+                          style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', color: '#fff', fontSize: '0.8rem', outline: 'none' }}
+                        />
+                        <textarea 
+                          placeholder="Caption / Message Text (use {{customer_name}} or {{order_id}} for dynamic fields)"
+                          value={quickReplyCaption}
+                          onChange={e => setQuickReplyCaption(e.target.value)}
+                          rows={2}
+                          style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, padding: '8px 12px', color: '#fff', fontSize: '0.8rem', outline: 'none', resize: 'vertical' }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Optional Media (Image or Video):</span>
+                          <input 
+                            type="file" 
+                            accept="image/*,video/*"
+                            onChange={e => setQuickReplyMedia(e.target.files[0])}
+                            style={{ fontSize: '0.75rem', color: '#94a3b8' }}
+                          />
+                        </div>
+                        <button 
+                          type="submit" 
+                          disabled={sendingWaMsg}
+                          style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', alignSelf: 'flex-start' }}
+                        >
+                          {sendingWaMsg ? 'Saving...' : 'Save Template'}
+                        </button>
+                      </form>
+                    )}
+
+                    {/* Search templates input */}
+                    <input 
+                      type="text" 
+                      placeholder="🔍 Search templates by title/caption..."
+                      onChange={(e) => {
+                        const q = e.target.value.toLowerCase();
+                        const cards = e.currentTarget.nextSibling.childNodes;
+                        cards.forEach(card => {
+                          const title = card.childNodes[1]?.innerText.toLowerCase() || '';
+                          const caption = card.childNodes[3]?.innerText.toLowerCase() || '';
+                          if (title.includes(q) || caption.includes(q)) {
+                            card.style.display = 'flex';
+                          } else {
+                            card.style.display = 'none';
+                          }
+                        });
+                      }}
+                      style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '6px 12px', color: '#fff', fontSize: '0.75rem', outline: 'none' }}
+                    />
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginTop: 4 }}>
+                      {quickReplies.length > 0 ? (
+                        quickReplies.map(qr => (
+                          <div key={qr.id} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+                            <button 
+                              onClick={() => handleDeleteQuickReply(qr.id)}
+                              style={{ position: 'absolute', top: 8, right: 8, background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.85rem' }}
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                            <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#fff', paddingRight: 20 }}>{qr.title}</div>
+                            
+                            {qr.media_url && (
+                              <div style={{ width: '100%', height: 80, borderRadius: 6, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                {qr.media_type === 'image' ? (
+                                  <img src={qr.media_url.startsWith('http') || qr.media_url.startsWith('blob:') ? qr.media_url : `${apiBase}${qr.media_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <video src={qr.media_url.startsWith('http') || qr.media_url.startsWith('blob:') ? qr.media_url : `${apiBase}${qr.media_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
+                                )}
+                              </div>
+                            )}
+                            
+                            <div style={{ fontSize: '0.75rem', color: '#94a3b8', maxHeight: 40, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal' }}>
+                              {qr.caption || '(No caption)'}
+                            </div>
+                            
+                            <button 
+                              onClick={() => handleSendQuickReply(qr.id)}
+                              disabled={sendingWaMsg}
+                              style={{ background: '#10b98120', color: '#10b981', border: '1px solid #10b98140', borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 'auto' }}
+                            >
+                              ⚡ Send Template
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: '#64748b', fontSize: '0.75rem', padding: '12px 0' }}>No custom media quick replies saved yet. Click "Create New" above to save one.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Chat Input Bar */}
                 <div style={{ padding: '16px 24px', background: '#0f172a', borderTop: '1px solid #334155', display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ background: '#334155', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                    title="Attach File"
-                  >
-                    📎
-                  </button>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    style={{ display: 'none' }} 
-                    onChange={handleFileAttach}
-                  />
-                  <input 
-                    type="text" 
-                    placeholder={`Type a message to ${editingOrder.customer_name}...`}
-                    value={newWaMsg}
-                    onChange={e => setNewWaMsg(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSendWaMessage()}
-                    style={{ flex: 1, background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: '12px 18px', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
-                  />
-                  <button
-                    onClick={() => handleSendWaMessage()}
-                    disabled={sendingWaMsg || !newWaMsg.trim()}
-                    style={{ 
-                      background: '#10b981', 
-                      color: '#fff', 
-                      border: 'none', 
-                      padding: '12px 24px', 
-                      borderRadius: 16, 
-                      fontSize: '0.9rem', 
-                      fontWeight: 700, 
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-                      opacity: (!newWaMsg.trim() || sendingWaMsg) ? 0.5 : 1
-                    }}
-                  >
-                    {sendingWaMsg ? '⏳...' : 'Send 🚀'}
-                  </button>
+                  {!isRecording ? (
+                    <>
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{ background: '#334155', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                        title="Attach File"
+                      >
+                        📎
+                      </button>
+                      <button 
+                        onClick={() => setShowQuickReplyPanel(!showQuickReplyPanel)}
+                        style={{ background: showQuickReplyPanel ? '#6366f1' : '#334155', color: '#fff', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                        title="Quick Reply Templates"
+                      >
+                        ⚡
+                      </button>
+                      <button 
+                        onClick={startRecording}
+                        style={{ background: '#334155', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                        title="Record Voice Note"
+                      >
+                        🎙️
+                      </button>
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        style={{ display: 'none' }} 
+                        accept="image/*,video/*,application/pdf,audio/*"
+                        onChange={handleFileAttach}
+                      />
+                      <input 
+                        type="text" 
+                        placeholder={`Type a message to ${editingOrder.customer_name}...`}
+                        value={newWaMsg}
+                        onChange={e => setNewWaMsg(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSendWaMessage()}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (!items) return;
+                          for (const item of items) {
+                            if (item.type.startsWith('image/')) {
+                              const file = item.getAsFile();
+                              if (file) {
+                                const mockEvent = { target: { files: [file] } };
+                                handleFileAttach(mockEvent);
+                              }
+                            }
+                          }
+                        }}
+                        style={{ flex: 1, background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: '12px 18px', color: '#fff', fontSize: '0.9rem', outline: 'none' }}
+                      />
+                    </>
+                  ) : (
+                    <div style={{ flex: 1, background: '#1e293b', border: '1px solid #334155', borderRadius: 16, padding: '10px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite' }} />
+                        <style>{`
+                          @keyframes pulse {
+                            0% { opacity: 0.3; }
+                            50% { opacity: 1; }
+                            100% { opacity: 0.3; }
+                          }
+                        `}</style>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#ef4444' }}>
+                          Recording Audio: {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, '0')}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12 }}>
+                        <button 
+                          onClick={() => stopRecording(false)} 
+                          style={{ background: '#ef444420', color: '#ef4444', border: '1px solid #ef444440', borderRadius: 8, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          ✕ Cancel
+                        </button>
+                        <button 
+                          onClick={() => stopRecording(true)} 
+                          style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          ✓ Send PTT
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isUploadingMedia && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: '#10b98120', borderRadius: 12, border: '1px solid #10b98140', flexShrink: 0 }}>
+                      <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 700 }}>📤 Sending...</span>
+                    </div>
+                  )}
+                  
+                  {!isRecording && (
+                    <button
+                      onClick={() => handleSendWaMessage()}
+                      disabled={sendingWaMsg || !newWaMsg.trim()}
+                      style={{ 
+                        background: '#10b981', 
+                        color: '#fff', 
+                        border: 'none', 
+                        padding: '12px 24px', 
+                        borderRadius: 16, 
+                        fontSize: '0.9rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+                        opacity: (!newWaMsg.trim() || sendingWaMsg) ? 0.5 : 1,
+                        flexShrink: 0
+                      }}
+                    >
+                      {sendingWaMsg ? '⏳...' : 'Send 🚀'}
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Right Side: Agent Guidelines & Shortcuts */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* PDF Invoice Button Card */}
+                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 8 }}>📄 Financial Invoice Actions</div>
+                  <button 
+                    onClick={handleSendInvoice}
+                    disabled={sendingInvoice}
+                    style={{ 
+                      background: '#6366f1', 
+                      color: '#fff', 
+                      border: 'none', 
+                      padding: '12px 18px', 
+                      borderRadius: 12, 
+                      fontSize: '0.85rem', 
+                      fontWeight: 700, 
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 12px rgba(99,102,241,0.3)',
+                      opacity: sendingInvoice ? 0.7 : 1
+                    }}
+                  >
+                    {sendingInvoice ? '⏳ Generating Invoice...' : '📄 Send PDF Invoice via WA'}
+                  </button>
+                </div>
+
                 <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>💡 Agent Best Practices</div>
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.8, display: 'flex', flexDirection: 'column', gap: 10 }}>

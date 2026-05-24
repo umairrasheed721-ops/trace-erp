@@ -203,6 +203,13 @@ class WhatsAppBot {
     this.coolingPeriodMin = 15;
     this.auditLogs = []; // Buffer of recent delivery audits
 
+    // Prevent local dev from running the bot unless explicitly enabled
+    if (process.env.NODE_ENV !== 'production' && process.env.BOT_ENABLED !== 'true') {
+      console.log('🛑 WhatsApp Bot disabled in local dev to prevent message stealing. Set BOT_ENABLED=true to force.');
+      this.status = 'DISABLED';
+      return;
+    }
+
     setTimeout(() => this._connect(), 5000);
   }
 
@@ -350,18 +357,51 @@ class WhatsAppBot {
       this.sock.ev.on('messaging-history.set', async ({ chats, messages, isLatest }) => {
         console.log(`📦 WhatsApp History Sync received: ${chats?.length || 0} chats, ${messages?.length || 0} messages`);
         if (messages) {
-          for (const msg of messages) {
-            if (!msg.message) continue;
-            const remoteJid = msg.key?.remoteJid;
-            if (!remoteJid || remoteJid.includes('@g.us')) continue;
-            if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
-            this.store.messages[remoteJid].push(msg);
+          const { db } = require('../db');
+          const cutoffTimestamp = (Date.now() / 1000) - (14 * 24 * 60 * 60); // 14 days ago
+          
+          for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i];
+            try {
+              if (i % 500 === 0) await new Promise(r => setTimeout(r, 10)); // Yield to event loop to prevent crash
+
+              if (!msg.message) continue;
+              const msgTimestamp = Number(msg.messageTimestamp);
+              if (msgTimestamp && msgTimestamp < cutoffTimestamp) continue; // Skip old backlog
+
+              const remoteJid = msg.key?.remoteJid;
+              if (!remoteJid || remoteJid.includes('@g.us')) continue;
+              
+              if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
+              this.store.messages[remoteJid].push(msg);
+
+              const fromPhone = remoteJid.split('@')[0];
+              const text = getMessageText(msg);
+              const mediaDetails = getMessageMediaDetails(msg);
+              if (!text && !mediaDetails) continue;
+
+              const isOutgoing = msg.key.fromMe;
+              let mediaType = mediaDetails ? mediaDetails.type : null;
+              const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
+
+              const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
+              if (order) {
+                db.prepare(`
+                  INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
+                  VALUES (?, ?, ?, ?, ?, ?, null, ?, 'sent')
+                  ON CONFLICT(message_id) DO NOTHING
+                `).run(order.store_id, order.id, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaType);
+              }
+            } catch (err) {
+              // Ignore individual message sync errors to keep event loop alive
+            }
           }
+          console.log(`✅ WhatsApp History Sync processed successfully.`);
         }
       });
 
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+        if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
           if (!msg.message) continue;
           
@@ -719,6 +759,12 @@ class WhatsAppBot {
               mimetype: 'audio/mp4', 
               ptt: true 
             });
+          } else if (finalMediaType === 'video') {
+            sentMsg = await this.sock.sendMessage(jid, { 
+              video: { url: mediaUrl }, 
+              mimetype: 'video/mp4', 
+              caption: message 
+            });
           } else {
             sentMsg = await this.sock.sendMessage(jid, { text: message });
           }
@@ -878,13 +924,18 @@ class WhatsAppBot {
     
     const msgs = this.store.messages[jid] || [];
     return msgs.map(m => {
-      const text = m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.buttonsResponseMessage?.selectedDisplayText || m.message?.templateButtonReplyMessage?.selectedDisplayText || '';
-      if (!text) return null;
+      const text = getMessageText(m);
+      const mediaDetails = getMessageMediaDetails(m);
+      if (!text && !mediaDetails) return null;
+      let mediaType = mediaDetails ? mediaDetails.type : null;
+      const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
+
       return {
         id: m.key.id,
         phone: cleaned,
         direction: m.key.fromMe ? 'outgoing' : 'incoming',
-        message: text,
+        message: finalMessage,
+        media_type: mediaType,
         status: m.key.fromMe ? (m.status === 3 ? 'delivered' : 'sent') : 'received',
         created_at: new Date((Number(m.messageTimestamp) || Date.now()/1000) * 1000).toISOString()
       };
