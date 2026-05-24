@@ -407,7 +407,12 @@ class WhatsAppBot {
         }
       });
 
-      this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      this.sock.ev.on('messages.upsert', async (m) => {
+        console.log("========================================");
+        console.log("🚨 [RAW INCOMING BAILEYS EVENT DETECTED]");
+        console.log(JSON.stringify(m, null, 2));
+        console.log("========================================");
+        const { messages, type } = m;
         if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
           if (!msg.message) continue;
