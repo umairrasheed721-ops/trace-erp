@@ -8,7 +8,14 @@ const path = require('path');
 const fs = require('fs');
 const { db } = require('../db');
 
-const SESSION_PATH = path.join(process.cwd(), 'wa_session');
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'trace_erp.db');
+const dbDir = path.dirname(path.resolve(dbPath));
+const SESSION_PATH = path.join(dbDir, 'wa_session');
+
+if (!fs.existsSync(SESSION_PATH)) {
+  fs.mkdirSync(SESSION_PATH, { recursive: true });
+}
+
 // No hard limit on reconnects — we retry forever with backoff.
 // Only a manual resetSession() or WhatsApp loggedOut (401) clears the session.
 const MAX_RECONNECT_DELAY_MS = 30000; // cap backoff at 30s
@@ -249,7 +256,7 @@ class WhatsAppBot {
 
       if (!this.store) {
         this.store = { messages: {} };
-        const storePath = path.join(process.cwd(), 'wa_store.json');
+        const storePath = path.join(dbDir, 'wa_store.json');
         try { 
           if (fs.existsSync(storePath)) {
             const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
@@ -261,8 +268,8 @@ class WhatsAppBot {
         }, 10000);
       }
 
-      // Use DB-backed auth state (survives Railway deploys)
-      const { state, saveCreds } = await useDbAuthState(initAuthCreds, BufferJSON);
+      // Use standard multi-file auth state (survives Railway deploys inside persistent volume)
+      const { state, saveCreds } = await useMultiFileAuthState(SESSION_PATH);
 
       let version;
       try {

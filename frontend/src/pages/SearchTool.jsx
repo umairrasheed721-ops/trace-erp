@@ -436,7 +436,7 @@ export default function SearchTool() {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
             },
             body: JSON.stringify({ ids: selectedIds })
           })
@@ -570,7 +570,7 @@ export default function SearchTool() {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
             },
             body: JSON.stringify({ ids: selectedIds, courier: 'PostEx' })
           })
@@ -604,7 +604,7 @@ export default function SearchTool() {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
             },
             body: JSON.stringify({ ids: selectedIds, courier })
           })
@@ -630,7 +630,7 @@ export default function SearchTool() {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
             },
             body: JSON.stringify({ ids: selectedIds })
           })

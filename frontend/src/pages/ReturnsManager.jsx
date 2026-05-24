@@ -20,7 +20,7 @@ export default function ReturnsManager() {
     if (!activeStoreId) return
     try {
       const res = await fetch(`/api/finance/returns/pending?store_id=${activeStoreId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
       const data = await res.json()
       setPendingReturns(Array.isArray(data) ? data : [])
@@ -33,7 +33,7 @@ export default function ReturnsManager() {
     if (!activeStoreId) return
     try {
       const res = await fetch(`/api/finance/returns/history?store_id=${activeStoreId}&days=7`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
       const data = await res.json()
       setReturnHistory(Array.isArray(data) ? data : [])
@@ -73,7 +73,7 @@ export default function ReturnsManager() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: JSON.stringify({
           store_id: activeStoreId,

@@ -69,7 +69,7 @@ export default function EditOrderModal({
     try {
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
       const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       });
       const data = await r.json();
       if (data.quickPills) setQuickPills(data.quickPills);
@@ -85,7 +85,7 @@ export default function EditOrderModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: JSON.stringify({ pill_text: newPillText })
       });
@@ -108,7 +108,7 @@ export default function EditOrderModal({
       const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         }
       });
       const data = await res.json();
@@ -147,14 +147,14 @@ export default function EditOrderModal({
           const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
             },
             body: formData
           });
           const data = await res.json();
           if (data.success) {
             const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
             });
             const chatData = await chatRes.json();
             if (chatData.messages) setChatMessages(chatData.messages);
@@ -210,14 +210,14 @@ export default function EditOrderModal({
       const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-invoice`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         }
       });
       const data = await res.json();
       if (data.success) {
         alert('✅ PDF Invoice generated and sent to WhatsApp!');
         const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
         });
         const chatData = await chatRes.json();
         if (chatData.messages) setChatMessages(chatData.messages);
@@ -235,7 +235,7 @@ export default function EditOrderModal({
     try {
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
       const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       });
       const data = await r.json();
       if (data.quickReplies) setQuickReplies(data.quickReplies);
@@ -250,7 +250,7 @@ export default function EditOrderModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: JSON.stringify({ replyId })
       });
@@ -258,7 +258,7 @@ export default function EditOrderModal({
       if (data.success) {
         // Fetch fresh chat history to show the newly sent template message
         const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
         });
         const chatData = await chatRes.json();
         if (chatData.messages) setChatMessages(chatData.messages);
@@ -290,7 +290,7 @@ export default function EditOrderModal({
       const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: formData
       });
@@ -318,7 +318,7 @@ export default function EditOrderModal({
       const res = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         }
       });
       const data = await res.json();
@@ -338,7 +338,7 @@ export default function EditOrderModal({
       setChatLoading(true);
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
       const orderId = editingOrder.id;
-      const token = localStorage.getItem('token') || '';
+      const token = localStorage.getItem('trace_token') || '';
 
       let cleaned = editingOrder.phone?.replace(/\D/g, '');
       if (cleaned?.startsWith('0')) cleaned = '92' + cleaned.substring(1);
@@ -436,7 +436,7 @@ export default function EditOrderModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: JSON.stringify({ message: textToSend })
       });
@@ -480,7 +480,7 @@ export default function EditOrderModal({
       const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/upload-media`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: formData
       });
@@ -491,7 +491,7 @@ export default function EditOrderModal({
         
         // Fetch fresh chat history to display the new media message
         const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
         });
         const chatData = await chatRes.json();
         if (chatData.messages) setChatMessages(chatData.messages);
@@ -527,14 +527,18 @@ export default function EditOrderModal({
       // Fetch Customer Intelligence
       setCustIntelLoading(true);
       const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-      fetch(`${apiBase}/api/orders/${editingOrder.id}/customer-intelligence`)
+      fetch(`${apiBase}/api/orders/${editingOrder.id}/customer-intelligence`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
         .then(r => r.json())
         .then(data => { setCustIntel(data); setCustIntelLoading(false); })
         .catch(() => setCustIntelLoading(false));
 
       // Fetch Master Products for SKU Intelligence
       const storeId = editingOrder.store_id || localStorage.getItem('activeStoreId') || 1;
-      fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`)
+      fetch(`${apiBase}/api/cost-manager?store_id=${storeId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
         .then(r => r.json())
         .then(data => setMasterProducts(Array.isArray(data) ? data : []))
         .catch(() => {});
@@ -543,7 +547,9 @@ export default function EditOrderModal({
       if (editingOrder.tracking_number || editingOrder.tracking_slug) {
         setTrackingLoading(true);
         const slug = editingOrder.tracking_slug || 'tr_mock_slug';
-        fetch(`${apiBase}/api/customer-success/tracking/${slug}`)
+        fetch(`${apiBase}/api/customer-success/tracking/${slug}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+        })
           .then(r => r.json())
           .then(data => { setTrackingData(data); setTrackingLoading(false); })
           .catch(() => setTrackingLoading(false));
@@ -563,7 +569,7 @@ export default function EditOrderModal({
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
         body: JSON.stringify({
           line_items: localItems,
@@ -619,7 +625,7 @@ export default function EditOrderModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         }
       });
       const data = await res.json();
@@ -627,7 +633,7 @@ export default function EditOrderModal({
         alert(data.message);
         if (activeTab === 'whatsapp_chat') {
           const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
           });
           const chatData = await chatRes.json();
           if (chatData.messages) setChatMessages(chatData.messages);
@@ -666,7 +672,7 @@ export default function EditOrderModal({
     const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
     fetch(`${apiBase}/api/bulk/book`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` },
       body: JSON.stringify({ order_ids: [editingOrder.id], courier: courierName })
     })
       .then(r => r.json())
@@ -1467,7 +1473,7 @@ export default function EditOrderModal({
                       onClick={() => {
                         setChatLoading(true);
                         const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/fetch-history`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/fetch-history`, { method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
                           .then(r => r.json())
                           .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
                           .catch(() => setChatLoading(false));
@@ -1480,7 +1486,7 @@ export default function EditOrderModal({
                       onClick={() => {
                         setChatLoading(true);
                         const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
-                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+                        fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
                           .then(r => r.json())
                           .then(data => { setChatMessages(data.messages || []); setChatLoading(false); })
                           .catch(() => setChatLoading(false));

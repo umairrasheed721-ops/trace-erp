@@ -59,7 +59,7 @@ export const CityCell = React.memo(function CityCell({ order, onSave }) {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
               },
               body: JSON.stringify({ original_input: order.city, corrected_name: val })
             });

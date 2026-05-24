@@ -72,7 +72,9 @@ export default function AppProvider({ children }) {
 
   const fetchSyncHistory = () => {
     if (!token) return
-    fetch('/api/sync/history')
+    fetch('/api/sync/history', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setSyncHistory(data)
@@ -161,7 +163,9 @@ export default function AppProvider({ children }) {
 
   useEffect(() => {
     if (!token) return
-    fetch('/api/stores')
+    fetch('/api/stores', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => {
         const connected = data.filter(s => s.is_connected)
@@ -179,9 +183,15 @@ export default function AppProvider({ children }) {
     if (!activeStoreId || !token) return
     localStorage.setItem('activeStoreId', activeStoreId)
     Promise.all([
-      fetch(`/api/monitors/stuck?store_id=${activeStoreId}`).then(r => r.json()),
-      fetch(`/api/monitors/advice?store_id=${activeStoreId}`).then(r => r.json()),
-      fetch(`/api/watchdog?store_id=${activeStoreId}`).then(r => r.json()),
+      fetch(`/api/monitors/stuck?store_id=${activeStoreId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json()),
+      fetch(`/api/monitors/advice?store_id=${activeStoreId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json()),
+      fetch(`/api/watchdog?store_id=${activeStoreId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json()),
     ]).then(([stuck, advice, watchdog]) => {
       const fakeCount = Array.isArray(watchdog) ? watchdog.filter(w => w.verdict?.includes('FAKE')).length : 0
       setBadgeCounts({
