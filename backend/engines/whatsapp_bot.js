@@ -186,6 +186,39 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   return null;
 }
 
+function getPhoneFromJid(msg) {
+  if (!msg || !msg.key) return '';
+  const remoteJid = msg.key.remoteJid;
+  if (!remoteJid) return '';
+  
+  const cleanJid = remoteJid.split('@')[0];
+  
+  if (remoteJid.endsWith('@lid')) {
+    if (msg.key.senderPn) {
+      const phone = msg.key.senderPn.split('@')[0];
+      try {
+        const { db } = require('../db');
+        db.prepare(`
+          INSERT INTO wa_lid_mappings (lid, phone)
+          VALUES (?, ?)
+          ON CONFLICT(lid) DO UPDATE SET phone = excluded.phone
+        `).run(cleanJid, phone);
+      } catch (e) {
+        console.error('⚠️ Failed to save LID mapping:', e.message);
+      }
+      return phone;
+    }
+    
+    try {
+      const { db } = require('../db');
+      const row = db.prepare('SELECT phone FROM wa_lid_mappings WHERE lid = ?').get(cleanJid);
+      if (row) return row.phone;
+    } catch (e) {}
+  }
+  
+  return cleanJid;
+}
+
 class WhatsAppBot {
   constructor() {
     this.sock = null;
@@ -299,7 +332,15 @@ class WhatsAppBot {
         if (!presences) return;
         for (const key of Object.keys(presences)) {
           const presence = presences[key];
-          const phone = key.split('@')[0];
+          const cleanJid = key.split('@')[0];
+          let phone = cleanJid;
+          if (key.endsWith('@lid')) {
+            try {
+              const { db } = require('../db');
+              const row = db.prepare('SELECT phone FROM wa_lid_mappings WHERE lid = ?').get(cleanJid);
+              if (row) phone = row.phone;
+            } catch (e) {}
+          }
           const isTyping = presence.lastKnownPresence === 'composing' || presence.lastKnownPresence === 'recording';
           
           try {
@@ -382,7 +423,7 @@ class WhatsAppBot {
               if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
               this.store.messages[remoteJid].push(msg);
 
-              const fromPhone = remoteJid.split('@')[0];
+              const fromPhone = getPhoneFromJid(msg);
               const text = getMessageText(msg);
               const mediaDetails = getMessageMediaDetails(msg);
               if (!text && !mediaDetails) continue;
@@ -424,7 +465,7 @@ class WhatsAppBot {
           this.store.messages[remoteJid].push(msg);
           if (this.store.messages[remoteJid].length > 100) this.store.messages[remoteJid].shift();
 
-          const fromPhone = remoteJid.split('@')[0];
+          const fromPhone = getPhoneFromJid(msg);
           const text = getMessageText(msg);
           const mediaDetails = getMessageMediaDetails(msg);
           // Don't drop immediately; if both are missing, we still want to log/route it to see if it's a hidden protocol message.

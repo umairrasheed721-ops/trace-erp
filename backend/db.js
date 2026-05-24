@@ -316,6 +316,11 @@ function initDb() {
       value TEXT NOT NULL,
       updated_at TEXT DEFAULT (datetime('now'))
     );
+    
+    CREATE TABLE IF NOT EXISTS wa_lid_mappings (
+      lid TEXT PRIMARY KEY,
+      phone TEXT NOT NULL
+    );
   `);
 
   db.exec(`
