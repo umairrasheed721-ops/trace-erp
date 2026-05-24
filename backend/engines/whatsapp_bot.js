@@ -406,7 +406,7 @@ class WhatsAppBot {
           if (!msg.message) continue;
           
           const remoteJid = msg.key?.remoteJid;
-          if (!remoteJid || remoteJid.includes('@g.us')) continue; // Skip groups
+          if (!remoteJid || remoteJid.includes('@g.us') || remoteJid === 'status@broadcast') continue; // Skip groups and status broadcasts
           
           if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
           this.store.messages[remoteJid].push(msg);
@@ -531,11 +531,6 @@ class WhatsAppBot {
             const order = db.prepare(`SELECT id, store_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
             const orderId = order ? order.id : null;
             const storeId = order ? order.store_id : 1;
-
-            db.prepare(`
-              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-              VALUES (?, ?, ?, 'incoming', ?)
-            `).run(storeId, orderId, fromPhone, text);
 
             // --- 🧠 GEMINI AUTONOMOUS AI ORCHESTRATION ---
             const { generateAIResponse } = require('./gemini_engine');
