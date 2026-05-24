@@ -8,7 +8,10 @@ const path = require('path');
 const fs = require('fs');
 const { db } = require('../db');
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'trace_erp.db');
+const defaultDbPath = process.env.NODE_ENV === 'production'
+  ? '/app/data/trace_erp.db'
+  : path.join(__dirname, '..', 'trace_erp.db');
+const dbPath = process.env.DB_PATH || defaultDbPath;
 const dbDir = path.dirname(path.resolve(dbPath));
 const SESSION_PATH = path.join(dbDir, 'wa_session');
 

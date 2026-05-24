@@ -3,7 +3,10 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'trace_erp.db');
+const defaultDbPath = process.env.NODE_ENV === 'production' 
+  ? '/app/data/trace_erp.db' 
+  : path.join(__dirname, 'trace_erp.db');
+const DB_PATH = process.env.DB_PATH || defaultDbPath;
 
 // Ensure the parent directory exists (important for Railway volume mounts)
 const DB_DIR = path.dirname(DB_PATH);
