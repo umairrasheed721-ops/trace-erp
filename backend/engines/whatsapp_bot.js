@@ -6,7 +6,7 @@
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const { db } = require('../db');
+const { db, DB_DIR } = require('../db');
 
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
@@ -149,7 +149,7 @@ function getMessageText(msg) {
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   try {
-    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    const folderPath = path.join(DB_DIR, 'uploads');
     if (!fs.existsSync(folderPath)) {
       fs.mkdirSync(folderPath, { recursive: true });
     }
@@ -823,7 +823,7 @@ class WhatsAppBot {
             });
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
             let sendUrl = mediaUrl;
-            let mime = 'audio/mp4';
+            let mime = 'audio/ogg; codecs=opus';
             
             // If it's a webm voice note, transcode it to Ogg Opus using ffmpeg
             if (mediaUrl && (mediaUrl.endsWith('.webm') || fileName?.includes('voice_note') || finalMediaType === 'voice')) {
@@ -838,7 +838,7 @@ class WhatsAppBot {
                 console.log(`🎵 Transcoding voice note to Ogg Opus: ${mediaUrl} -> ${targetOgg}`);
                 
                 const transcodePromise = () => new Promise((resolveTranscode) => {
-                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -b:a 64k -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
+                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -ar 48000 -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
                   exec(cmd, (error, stdout, stderr) => {
                     if (error) {
                       console.error(`⚠️ ffmpeg transcoding failed: ${error.message}. Stderr: ${stderr}`);
@@ -854,26 +854,27 @@ class WhatsAppBot {
                 if (success && fs.existsSync(targetOgg)) {
                   sendUrl = targetOgg;
                   dbMediaUrl = targetOgg;
-                  mime = 'audio/mp4';
                 }
               } catch (transcodeErr) {
                 console.error('⚠️ Transcoding error:', transcodeErr.message);
               }
             }
 
-            // Read the file into a raw Buffer if it exists locally, or fallback to URL
             const fs = require('fs');
-            let audioPayload;
-            if (fs.existsSync(sendUrl)) {
-              audioPayload = fs.readFileSync(sendUrl);
-            } else {
-              audioPayload = { url: sendUrl };
+            const absoluteSendUrl = path.resolve(sendUrl);
+            let fileSize = 'N/A';
+            try {
+              if (fs.existsSync(absoluteSendUrl)) {
+                fileSize = fs.statSync(absoluteSendUrl).size;
+              }
+            } catch (statErr) {
+              console.warn('⚠️ Telemetry stat failed:', statErr.message);
             }
 
-            console.log(`🎙️ OUTGOING VOICE NOTE DETAILS: isBuffer=${Buffer.isBuffer(audioPayload)}, size=${Buffer.isBuffer(audioPayload) ? audioPayload.length : 'N/A'} bytes, mime=${mime}`);
+            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}`);
 
             sentMsg = await this.sock.sendMessage(jid, { 
-              audio: audioPayload, 
+              audio: { url: absoluteSendUrl }, 
               mimetype: mime, 
               ptt: true 
             });

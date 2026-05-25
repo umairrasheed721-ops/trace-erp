@@ -536,7 +536,7 @@ function logSystemError(level, message, module = 'server') {
   } catch (_) { } // Never let error logging crash anything
 }
 
-module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError };
+module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError, DB_DIR, DB_PATH, isProduction };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch (e) { }

@@ -342,7 +342,9 @@ app.get('/api/admin/logs', (req, res) => {
   res.send(logBuffer.map(l => `[${l.ts}] ${l.level}: ${l.msg}`).join('\n'));
 });
 
-// Serve static frontend files
+// Serve static frontend files and persistent uploads
+const { DB_DIR } = require('./db');
+app.use('/uploads', express.static(path.join(DB_DIR, 'uploads')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Routes

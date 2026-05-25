@@ -1,14 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db');
+const { db, DB_DIR } = require('../db');
 const bot = require('../engines/whatsapp_bot');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const getMediaFilePath = (mediaUrl) => {
+  if (!mediaUrl) return null;
+  if (mediaUrl.startsWith('/uploads/')) {
+    return path.join(DB_DIR, 'uploads', mediaUrl.substring(9));
+  }
+  return path.join(DB_DIR, 'uploads', mediaUrl);
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    const folderPath = path.join(DB_DIR, 'uploads');
     if (!fs.existsSync(folderPath)) {
       fs.mkdirSync(folderPath, { recursive: true });
     }
@@ -445,7 +453,7 @@ router.delete('/quick-replies/:id', (req, res) => {
     // Delete file from disk if it exists
     const row = db.prepare('SELECT media_url FROM whatsapp_quick_replies WHERE id = ?').get(Number(id));
     if (row && row.media_url) {
-      const filePath = path.join(__dirname, '..', 'public', row.media_url);
+      const filePath = getMediaFilePath(row.media_url);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
@@ -486,7 +494,7 @@ router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
     
     let absolutePath = null;
     if (quickReply.media_url) {
-      absolutePath = path.join(__dirname, '..', 'public', quickReply.media_url);
+      absolutePath = getMediaFilePath(quickReply.media_url);
     }
     
     const dbMsgContent = quickReply.media_url 
@@ -659,7 +667,7 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
     const invoiceFilename = `invoice_${order.id}_${Date.now()}.pdf`;
-    const folderPath = path.join(__dirname, '..', 'public', 'uploads');
+    const folderPath = path.join(DB_DIR, 'uploads');
     if (!fs.existsSync(folderPath)) {
       fs.mkdirSync(folderPath, { recursive: true });
     }
