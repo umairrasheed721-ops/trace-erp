@@ -149,6 +149,7 @@ router.get('/chat/:order_id', (req, res) => {
 
 // POST /api/whatsapp-governance/chat/:order_id/send
 router.post('/chat/:order_id/send', async (req, res) => {
+  console.log('INCOMING ERP REQUEST BODY:', JSON.stringify(req.body, null, 2));
   const { order_id } = req.params;
   const { message } = req.body;
 
@@ -193,6 +194,7 @@ router.post('/chat/:order_id/send', async (req, res) => {
 
 // POST /api/whatsapp-governance/chat/:order_id/upload-media
 router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, res) => {
+  console.log('INCOMING ERP UPLOAD BODY:', JSON.stringify(req.body, null, 2));
   const { order_id } = req.params;
   const caption = req.body.caption || '';
   
