@@ -127,6 +127,90 @@ function executeToolCall(name, args) {
   }
 }
 
+// ─── 📏 SMART SIZING EXTRACTOR ───────────────────────────────────────────────
+const SIZE_MAP = [
+  { keys: ['6xl', '6 xl', '6 size', 'six xl', '6'], value: '6XL', bigAndTall: true },
+  { keys: ['5xl', '5 xl', '5 size', 'five xl', '5'], value: '5XL', bigAndTall: false },
+  { keys: ['4xl', '4 xl', '4 size', 'four xl', '4'], value: '4XL', bigAndTall: false },
+  { keys: ['3xl', '3 xl', '3 size', 'triple xl', '3'], value: '3XL', bigAndTall: false },
+  { keys: ['2xl', '2 xl', '2 size', 'double xl', '2'], value: '2XL', bigAndTall: false },
+];
+// Only trigger on size-relevant context words to avoid false positives on order numbers
+const SIZE_CONTEXT_WORDS = ['size', 'siz', 'xl', 'fitting', 'fit', 'length', 'shirt', 'pant', 'trouser', 'kapra', 'kapray', 'suit', 'bada', 'bade', 'mota', 'heavy', 'plus size', 'big'];
+
+function extractSizeFromMessage(phone, text) {
+  if (!text || !phone) return;
+  try {
+    const lower = text.toLowerCase().trim();
+    // Must contain a size context word to prevent triggering on random number messages
+    const hasContext = SIZE_CONTEXT_WORDS.some(w => lower.includes(w));
+    if (!hasContext) return;
+
+    let matched = null;
+    for (const entry of SIZE_MAP) {
+      if (entry.keys.some(k => {
+        // Match whole word or as standalone token
+        const re = new RegExp(`(?:^|\\s|[^a-z0-9])${k.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?:$|\\s|[^a-z0-9])`, 'i');
+        return re.test(lower);
+      })) {
+        matched = entry;
+        break;
+      }
+    }
+
+    if (!matched) return;
+
+    db.prepare(`
+      INSERT INTO customer_profiles (phone, size_preference, is_big_and_tall, size_extracted_at, updated_at)
+      VALUES (?, ?, ?, datetime('now', '+5 hours'), datetime('now', '+5 hours'))
+      ON CONFLICT(phone) DO UPDATE SET
+        size_preference = excluded.size_preference,
+        is_big_and_tall = excluded.is_big_and_tall,
+        size_extracted_at = excluded.size_extracted_at,
+        updated_at = excluded.updated_at
+    `).run(phone, matched.value, matched.bigAndTall ? 1 : 0);
+
+    console.log(`📏 Size extracted for ${phone}: ${matched.value} (Big & Tall: ${matched.bigAndTall})`);
+  } catch (err) {
+    console.error('📏 Size extractor error:', err.message);
+  }
+}
+
+// ─── 🎯 AD ATTRIBUTION CHECKER ──────────────────────────────────────────────
+function checkAdAttribution(phone, text) {
+  if (!phone || !text) return;
+  try {
+    // Only run on first-ever message from this phone
+    const msgCount = db.prepare('SELECT COUNT(*) as c FROM whatsapp_messages WHERE phone = ?').get(phone);
+    if (msgCount && msgCount.c > 1) return; // Not a first message
+
+    const campaigns = db.prepare('SELECT id, name, platform, pattern FROM ad_campaigns WHERE active = 1').all();
+    if (!campaigns || campaigns.length === 0) return;
+
+    const lower = text.toLowerCase();
+    for (const campaign of campaigns) {
+      try {
+        const regex = new RegExp(campaign.pattern, 'i');
+        if (regex.test(lower)) {
+          db.prepare(`
+            INSERT INTO customer_profiles (phone, ad_source, ad_platform, ad_attributed_at, updated_at)
+            VALUES (?, ?, ?, datetime('now', '+5 hours'), datetime('now', '+5 hours'))
+            ON CONFLICT(phone) DO UPDATE SET
+              ad_source = excluded.ad_source,
+              ad_platform = excluded.ad_platform,
+              ad_attributed_at = excluded.ad_attributed_at,
+              updated_at = excluded.updated_at
+          `).run(phone, campaign.name, campaign.platform);
+          console.log(`🎯 Ad attribution: ${phone} → ${campaign.platform}/${campaign.name}`);
+          return; // First match wins
+        }
+      } catch(_){} // Ignore regex errors for individual campaigns
+    }
+  } catch (err) {
+    console.error('🎯 Ad attribution error:', err.message);
+  }
+}
+
 async function generateAIResponse(phone, userMessage) {
   try {
     const settings = db.prepare('SELECT api_key, ai_active, model_name, system_prompt FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
@@ -261,6 +345,13 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
     } catch(memErr){}
 
     console.log(`🤖 Gemini AI Reply to ${cleanedPhone}: ${replyText}`);
+
+    // --- 📏 SIZE EXTRACTOR (Post-AI, fire-and-forget) ---
+    setImmediate(() => extractSizeFromMessage(cleanedPhone, userMessage));
+
+    // --- 🎯 AD ATTRIBUTION (First-message check, fire-and-forget) ---
+    setImmediate(() => checkAdAttribution(cleanedPhone, userMessage));
+
     return replyText;
 
   } catch (err) {
@@ -362,5 +453,7 @@ Output your analysis strictly in the following JSON format:
 
 module.exports = {
   generateAIResponse,
-  runNightlyAudit
+  runNightlyAudit,
+  extractSizeFromMessage,
+  checkAdAttribution,
 };

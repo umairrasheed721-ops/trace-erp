@@ -383,6 +383,17 @@ class WhatsAppBot {
           this.reconnectAttempts = 0;
           this.isConnecting = false;
 
+          // Capture the active phone number from the Baileys user JID
+          // sock.user.id format: "923134725415:15@s.whatsapp.net" — extract digits before the colon
+          try {
+            const rawId = this.sock?.user?.id || '';
+            const digits = rawId.split(':')[0].split('@')[0];
+            this.activeNumber = digits ? `+${digits}` : null;
+            if (this.activeNumber) console.log(`📱 Active WA number: ${this.activeNumber}`);
+          } catch (_) {
+            this.activeNumber = null;
+          }
+
           // Trigger Deep History Sync in background after connection
           setTimeout(() => {
             this.syncDeepHistory().catch(err => console.error('❌ Deep History Sync error:', err.message));
@@ -494,6 +505,40 @@ class WhatsAppBot {
             }
           }
 
+          // 🎙️ STT: Fire-and-forget transcription for incoming voice notes (Rule F)
+          if (mediaType === 'audio' && mediaUrl) {
+            setImmediate(async () => {
+              try {
+                const { transcribeVoiceNote } = require('./stt_engine');
+                // mediaUrl is a relative path like /uploads/filename.ogg — resolve to absolute
+                const { DB_DIR } = require('../db');
+                const absPath = mediaUrl.startsWith('/uploads/')
+                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
+                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
+                // dbMessageId isn't set yet at this point — use message_id from key as lookup
+                const { db: dbStt } = require('../db');
+                const row = dbStt.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
+                if (row) await transcribeVoiceNote(fromPhone, row.id, absPath);
+              } catch(e) { console.error('STT dispatch error:', e.message); }
+            });
+          }
+
+          // 🔍 OCR: Fire-and-forget receipt scan for incoming images (Rule F)
+          if (mediaType === 'image' && mediaUrl) {
+            setImmediate(async () => {
+              try {
+                const { scanReceiptOCR } = require('./ocr_engine');
+                const { DB_DIR } = require('../db');
+                const absPath = mediaUrl.startsWith('/uploads/')
+                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
+                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
+                const { db: dbOcr } = require('../db');
+                const row = dbOcr.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
+                if (row) await scanReceiptOCR(fromPhone, orderId, row.id, absPath);
+              } catch(e) { console.error('OCR dispatch error:', e.message); }
+            });
+          }
+
           const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '[Unsupported Message Format]');
 
           const { db } = require('../db');
@@ -551,6 +596,40 @@ class WhatsAppBot {
             continue;
           }
 
+          // --- 🔐 COD VERIFICATION INTERCEPTOR ---
+          // Must run BEFORE Gemini — intercepts '1' and '2' replies to pending COD verifications
+          try {
+            const { db: dbRef } = require('../db');
+            const pendingCOD = dbRef.prepare(
+              `SELECT * FROM cod_pending_verifications WHERE phone = ? AND status = 'pending'
+               AND expires_at > datetime('now', '+5 hours') ORDER BY id DESC LIMIT 1`
+            ).get(fromPhone);
+
+            if (pendingCOD) {
+              const reply = text ? text.toLowerCase().trim() : '';
+              const isConfirm = reply === '1' || ['confirm', 'yes', 'haan', 'ji', 'ok', 'bilkul'].some(w => reply.includes(w));
+              const isCancel = reply === '2' || ['cancel', 'nahi', 'na', 'no', 'nain'].some(w => reply.includes(w));
+
+              if (isConfirm || isCancel) {
+                const newStatus = isConfirm ? 'confirmed' : 'cancelled';
+                dbRef.prepare(`UPDATE cod_pending_verifications SET status = ?, replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(newStatus, pendingCOD.id);
+                
+                if (isConfirm) {
+                  dbRef.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+                  this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
+                  console.log(`🔐 COD Confirmed: Order ${pendingCOD.order_id} by ${fromPhone}`);
+                } else {
+                  dbRef.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
+                  this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
+                  console.log(`🔐 COD Cancelled: Order ${pendingCOD.order_id} by ${fromPhone}`);
+                }
+                continue; // COD handled — skip Gemini
+              }
+            }
+          } catch (codErr) {
+            console.error('🔐 COD interceptor error:', codErr.message);
+          }
+
           try {
             const { db } = require('../db');
             
@@ -599,6 +678,26 @@ class WhatsAppBot {
               INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
               VALUES (?, ?, ?, 'incoming', ?)
             `).run(storeId, orderId, fromPhone, text);
+
+            // --- 🚚 WISMO FAST-INTERCEPT (pre-Gemini to save API tokens) ---
+            const wismoKeywords = ['kahan', 'kahan hai', 'tracking', 'track', 'status', 'kab aayega', 'kab ayega', 'parcel', 'where is', 'where is my order', 'wismo', 'order kahan', 'consignment', 'delivery kab'];
+            const isWismo = wismoKeywords.some(w => lowerText.includes(w));
+            if (isWismo && orderId) {
+              const { db: dbWismo } = require('../db');
+              const wismoOrder = dbWismo.prepare('SELECT tracking_number, courier, delivery_status, status_date FROM orders WHERE id = ?').get(orderId);
+              if (wismoOrder && wismoOrder.tracking_number) {
+                const tracking = wismoOrder.tracking_number;
+                const courier = wismoOrder.courier || 'Courier';
+                const status = wismoOrder.delivery_status || 'In Transit';
+                const trackLink = courier === 'PostEx'
+                  ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}`
+                  : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
+                const wismoReply = `📦 *Order Status Update*\n\nTracking: *${tracking}* (${courier})\nCurrent Status: *${status}*\n\n🔗 Live Track: ${trackLink}\n\nKoi aur sawaal ho toh zaroor batayein! 😊`;
+                this.sendMessage(fromPhone, wismoReply, true);
+                console.log(`🚚 WISMO fast-intercept replied to ${fromPhone}`);
+                continue;
+              }
+            }
 
             // --- 🧠 GEMINI AUTONOMOUS AI ORCHESTRATION ---
             const { generateAIResponse } = require('./gemini_engine');
@@ -1242,10 +1341,23 @@ class WhatsAppBot {
   }
 
   getStatus() {
+    // Attempt a live re-read of the active number in case sock.user populated after connect
+    let activeNumber = this.activeNumber || null;
+    if (!activeNumber && this.status === 'CONNECTED') {
+      try {
+        const rawId = this.sock?.user?.id || '';
+        const digits = rawId.split(':')[0].split('@')[0];
+        if (digits) {
+          activeNumber = `+${digits}`;
+          this.activeNumber = activeNumber; // Cache it
+        }
+      } catch (_) {}
+    }
     return {
       status: this.status,
       qrCode: this.qrCode,
       reconnectAttempts: this.reconnectAttempts,
+      activeNumber,
     };
   }
 }

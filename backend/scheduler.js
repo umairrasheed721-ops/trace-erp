@@ -4,6 +4,7 @@ const { fetchShopifyOrders, refreshShopifyUpdates } = require('./engines/shopify
 const { syncPostEx, syncInstaworld } = require('./engines/tracking');
 const { runWatchdog } = require('./engines/watchdog');
 const { getShopifyInventoryCosts } = require('./engines/shopify_finance');
+const { runSniperScan } = require('./engines/sniper');
 
 function getAllStores() {
   return db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
@@ -139,4 +140,15 @@ module.exports = function schedulerInit() {
       try { await syncStoreInventoryAndCosts(store); } catch (e) { console.error(e.message); }
     }
   });
+
+  // 6. Every 2 hours: Stuck Parcel Sniper — auto-alert customers with stuck parcels
+  cron.schedule('0 */2 * * *', async () => {
+    console.log('🎯 [CRON] Stuck Parcel Sniper scan starting...');
+    try { await runSniperScan(); } catch (e) { console.error('Sniper cron error:', e.message); }
+  });
+
+  // Fire sniper once on boot (after 60s delay to let bot connect)
+  setTimeout(async () => {
+    try { await runSniperScan(); } catch(e) {}
+  }, 60000);
 };

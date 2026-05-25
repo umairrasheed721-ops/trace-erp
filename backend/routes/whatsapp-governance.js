@@ -1066,4 +1066,223 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AD CAMPAIGNS — Feature 2: Ad-to-Chat Attribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/whatsapp-governance/ad-campaigns
+router.get('/ad-campaigns', (req, res) => {
+  try {
+    const campaigns = db.prepare('SELECT * FROM ad_campaigns ORDER BY id DESC').all();
+    res.json({ success: true, campaigns });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/ad-campaigns
+router.post('/ad-campaigns', (req, res) => {
+  const { name, platform, pattern } = req.body;
+  if (!name || !platform || !pattern) return res.status(400).json({ success: false, error: 'name, platform, and pattern are required' });
+  try {
+    const result = db.prepare('INSERT INTO ad_campaigns (name, platform, pattern) VALUES (?, ?, ?)').run(name, platform, pattern);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// PUT /api/whatsapp-governance/ad-campaigns/:id
+router.put('/ad-campaigns/:id', (req, res) => {
+  const { name, platform, pattern, active } = req.body;
+  try {
+    db.prepare('UPDATE ad_campaigns SET name = COALESCE(?, name), platform = COALESCE(?, platform), pattern = COALESCE(?, pattern), active = COALESCE(?, active) WHERE id = ?')
+      .run(name || null, platform || null, pattern || null, active !== undefined ? (active ? 1 : 0) : null, req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER RISK PROFILE — Feature 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/whatsapp-governance/chats/:phone/risk-profile
+router.get('/chats/:phone/risk-profile', (req, res) => {
+  try {
+    const phone = req.params.phone.replace(/\D/g, '');
+    const suffix = phone.substring(Math.max(0, phone.length - 10));
+
+    const totalOrders = db.prepare(`SELECT COUNT(*) as c FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?`).get(`%${suffix}%`);
+    const returns = db.prepare(`SELECT COUNT(*) as c FROM returns_log WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?`).get(`%${suffix}%`);
+
+    const totalCount = totalOrders?.c || 0;
+    const returnCount = returns?.c || 0;
+    const returnRate = totalCount > 0 ? Math.round((returnCount / totalCount) * 100) : 0;
+
+    // Auto-compute risk flag
+    let autoFlag = 'NORMAL';
+    if (returnCount >= 3 || (returnRate >= 40 && totalCount >= 2)) autoFlag = 'HIGH';
+    else if (returnRate >= 20 && totalCount >= 2) autoFlag = 'WATCH';
+
+    // Fetch stored manual override
+    const profile = db.prepare('SELECT risk_flag, risk_reason FROM customer_profiles WHERE phone = ?').get(phone);
+    const storedFlag = profile?.risk_flag || 'NORMAL';
+    // Manual HIGH/BLOCKED override takes precedence
+    const finalFlag = (storedFlag === 'BLOCKED' || storedFlag === 'HIGH') ? storedFlag : autoFlag;
+
+    res.json({
+      success: true,
+      totalOrders: totalCount,
+      returnCount,
+      returnRate,
+      riskFlag: finalFlag,
+      riskReason: profile?.risk_reason || null,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/risk-flag
+router.post('/chats/:phone/risk-flag', (req, res) => {
+  const { flag, reason } = req.body;
+  const validFlags = ['NORMAL', 'WATCH', 'HIGH', 'BLOCKED'];
+  if (!validFlags.includes(flag)) return res.status(400).json({ success: false, error: 'Invalid flag. Must be NORMAL, WATCH, HIGH, or BLOCKED.' });
+  try {
+    const phone = req.params.phone.replace(/\D/g, '');
+    db.prepare(`
+      INSERT INTO customer_profiles (phone, risk_flag, risk_reason, risk_updated_at, updated_at)
+      VALUES (?, ?, ?, datetime('now', '+5 hours'), datetime('now', '+5 hours'))
+      ON CONFLICT(phone) DO UPDATE SET
+        risk_flag = excluded.risk_flag,
+        risk_reason = excluded.risk_reason,
+        risk_updated_at = excluded.risk_updated_at,
+        updated_at = excluded.updated_at
+    `).run(phone, flag, reason || null);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STUCK PARCEL SNIPER — Feature 8
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/whatsapp-governance/sniper/queue
+router.get('/sniper/queue', async (req, res) => {
+  try {
+    const settings = db.prepare('SELECT stuck_threshold_hours FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
+    const hours = settings?.stuck_threshold_hours || 36;
+    const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender'];
+    const stuck = db.prepare(`
+      SELECT o.id, o.ref_number, o.phone, o.customer_name, o.tracking_number, o.courier,
+             o.delivery_status, o.status_date
+      FROM orders o
+      LEFT JOIN sniper_alerts s
+        ON s.order_id = o.id AND s.alert_type = 'stuck_parcel'
+        AND s.sent_at > datetime('now', '+5 hours', '-48 hours')
+      WHERE o.delivery_status IN (${STUCK_STATUSES.map(() => '?').join(',')})
+        AND (o.status_date IS NULL OR datetime(o.status_date) < datetime('now', '+5 hours', '-' || ? || ' hours'))
+        AND o.phone IS NOT NULL AND o.phone != ''
+        AND s.id IS NULL
+      ORDER BY o.id ASC LIMIT 50
+    `).all(...STUCK_STATUSES, hours);
+    res.json({ success: true, queue: stuck, thresholdHours: hours });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/sniper/fire  (body: { order_id })
+router.post('/sniper/fire', async (req, res) => {
+  const { order_id } = req.body;
+  if (!order_id) return res.status(400).json({ success: false, error: 'order_id required' });
+  try {
+    const { runSniperScan } = require('../engines/sniper');
+    const order = db.prepare('SELECT id, phone, customer_name, ref_number, tracking_number, courier, delivery_status FROM orders WHERE id = ?').get(order_id);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+    // Clear recent sniper block so fire-now works even if recently alerted
+    db.prepare(`DELETE FROM sniper_alerts WHERE order_id = ? AND sent_at > datetime('now', '+5 hours', '-48 hours')`).run(order_id);
+    await runSniperScan();
+    res.json({ success: true, message: `Sniper alert queued for order ${order.ref_number || order.id}` });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/sniper/log
+router.get('/sniper/log', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const logs = db.prepare(`
+      SELECT s.*, o.ref_number, o.customer_name
+      FROM sniper_alerts s
+      LEFT JOIN orders o ON o.id = s.order_id
+      ORDER BY s.sent_at DESC LIMIT ?
+    `).all(limit);
+    res.json({ success: true, logs });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECEIPT OCR — Feature 10
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/whatsapp-governance/chats/:phone/ocr-scans
+router.get('/chats/:phone/ocr-scans', (req, res) => {
+  try {
+    const phone = req.params.phone.replace(/\D/g, '');
+    const scans = db.prepare('SELECT * FROM payment_ocr_scans WHERE phone = ? ORDER BY scanned_at DESC LIMIT 10').all(phone);
+    res.json({ success: true, scans });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/ocr-verify  (body: { scan_id, action: 'confirm'|'reject' })
+router.post('/chats/:phone/ocr-verify', (req, res) => {
+  const { scan_id, action } = req.body;
+  if (!scan_id || !['confirm', 'reject'].includes(action)) return res.status(400).json({ success: false, error: 'scan_id and action (confirm/reject) required' });
+  try {
+    const status = action === 'confirm' ? 'matched' : 'rejected';
+    const scan = db.prepare('SELECT * FROM payment_ocr_scans WHERE id = ?').get(scan_id);
+    db.prepare('UPDATE payment_ocr_scans SET status = ? WHERE id = ?').run(status, scan_id);
+    if (action === 'confirm' && scan?.order_id && scan?.detected_amount) {
+      db.prepare(`UPDATE orders SET payment_status = 'OCR Verified', paid_amount = ?, payment_ref = ? WHERE id = ?`)
+        .run(scan.detected_amount, scan.detected_txn_id || 'Manual OCR', scan.order_id);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COD VERIFICATION TRIGGER — Feature 5 (Manual trigger from portal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/whatsapp-governance/cod-verify/trigger  body: { order_id }
+router.post('/cod-verify/trigger', async (req, res) => {
+  const { order_id } = req.body;
+  if (!order_id) return res.status(400).json({ success: false, error: 'order_id required' });
+  try {
+    const order = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE id = ?').get(order_id);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+    if (!order.phone) return res.status(400).json({ success: false, error: 'Order has no phone number' });
+
+    const { dispatchCODVerification } = require('../engines/cod_verifier');
+    // Fire-and-forget — Rule D
+    setImmediate(() => dispatchCODVerification(order));
+
+    res.json({ success: true, message: `COD verification queued for order ${order.ref_number || order_id}` });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

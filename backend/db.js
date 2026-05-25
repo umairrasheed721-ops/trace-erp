@@ -788,6 +788,50 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'`); } catch (e) {}
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN opted_out INTEGER DEFAULT 0`); } catch (e) {}
 
+  // ─── PHASE 1 MIGRATIONS ─────────────────────────────────────────────────────
+  // Feature 1: Smart Sizing Memory
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN size_preference TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN is_big_and_tall INTEGER DEFAULT 0`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN size_extracted_at TEXT DEFAULT NULL`); } catch(e){}
+
+  // Feature 2: Ad Attribution
+  try { db.exec(`CREATE TABLE IF NOT EXISTS ad_campaigns (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, platform TEXT NOT NULL, pattern TEXT NOT NULL, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN ad_source TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN ad_platform TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN ad_attributed_at TEXT DEFAULT NULL`); } catch(e){}
+
+  // Feature 3: Customer Risk & Return Profiling
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN risk_flag TEXT DEFAULT 'NORMAL'`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN return_rate REAL DEFAULT 0.0`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN risk_updated_at TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN risk_reason TEXT DEFAULT NULL`); } catch(e){}
+
+  // Feature 4B: WhatsApp DP Cache
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN dp_url TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN dp_cached_at TEXT DEFAULT NULL`); } catch(e){}
+
+  // ─── PHASE 2 MIGRATIONS ─────────────────────────────────────────────────────
+  // Feature 5: COD Pending Verifications
+  try { db.exec(`CREATE TABLE IF NOT EXISTS cod_pending_verifications (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, phone TEXT NOT NULL, status TEXT DEFAULT 'pending', vn_path TEXT, sent_at TEXT DEFAULT (datetime('now', '+5 hours')), expires_at TEXT, replied_at TEXT)`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_cod_pending_phone ON cod_pending_verifications(phone, status)`); } catch(e){}
+  try { db.exec(`ALTER TABLE orders ADD COLUMN wa_verification_status TEXT DEFAULT 'pending'`); } catch(e){}
+
+  // Feature 6: Upsell Offers
+  try { db.exec(`CREATE TABLE IF NOT EXISTS upsell_offers (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT NOT NULL, order_id INTEGER, product_id TEXT, offer_text TEXT, status TEXT DEFAULT 'offered', sent_at TEXT DEFAULT (datetime('now', '+5 hours')), converted_at TEXT)`); } catch(e){}
+
+  // ─── PHASE 3 MIGRATIONS ─────────────────────────────────────────────────────
+  // Feature 8: Stuck Parcel Sniper Alerts
+  try { db.exec(`CREATE TABLE IF NOT EXISTS sniper_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, phone TEXT NOT NULL, alert_type TEXT NOT NULL, message_sent TEXT, sent_at TEXT DEFAULT (datetime('now', '+5 hours')), delivery_status_at_send TEXT, outcome TEXT DEFAULT 'sent')`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sniper_alerts_order ON sniper_alerts(order_id, alert_type, sent_at)`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN stuck_threshold_hours INTEGER DEFAULT 36`); } catch(e){}
+
+  // Feature 9: Voice Note Transcription
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN transcript TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN transcript_at TEXT DEFAULT NULL`); } catch(e){}
+
+  // Feature 10: Receipt OCR Payment Scanner
+  try { db.exec(`CREATE TABLE IF NOT EXISTS payment_ocr_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, phone TEXT NOT NULL, image_path TEXT, raw_ocr_result TEXT, detected_amount REAL, detected_txn_id TEXT, detected_bank TEXT, confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', scanned_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
+
   const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;
   if (waCount === 0) {
     db.prepare(`
