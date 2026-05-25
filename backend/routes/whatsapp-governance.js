@@ -43,18 +43,20 @@ router.get('/settings', (req, res) => {
 router.get('/status', (req, res) => {
   try {
     const statusObj = bot.getStatus();
+    const sock = bot.sock;
     
-    // Actively verify socket is not zombied
-    if (statusObj.status === 'CONNECTED') {
-      const sock = bot.sock;
-      if (!sock || !sock.authState || !sock.authState.creds || !sock.authState.creds.me) {
-        statusObj.status = 'DISCONNECTED';
-      }
+    // Heartbeat check: check if Baileys socket object exists and is open
+    const isSocketOpen = !!(sock && sock.user && sock.ws && sock.ws.isOpen);
+    
+    if (statusObj.status === 'CONNECTED' && !isSocketOpen) {
+      statusObj.status = 'DISCONNECTED';
     }
+    
+    statusObj.connected = isSocketOpen;
     
     res.json(statusObj);
   } catch (e) {
-    res.status(500).json({ error: e.message, status: 'DISCONNECTED' });
+    res.status(500).json({ error: e.message, status: 'DISCONNECTED', connected: false });
   }
 });
 
