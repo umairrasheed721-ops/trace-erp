@@ -1514,3 +1514,87 @@ input:checked + .slider:before {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ─── PHASE 1 UI ADDITIONS ─────────────────────────────────────────────── */
+
+/* Filter Tabs */
+.wa-portal-filter-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wa-portal-filter-tabs::-webkit-scrollbar { display: none; }
+
+.wa-filter-tab {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.wa-filter-tab:hover {
+  border-color: var(--accent, #6366f1);
+  color: var(--accent, #6366f1);
+}
+.wa-filter-tab.active {
+  background: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+  color: #fff;
+}
+
+/* Slash Command Palette */
+.slash-cmd-palette {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 8px;
+  background: var(--surface-2, var(--bg-elevated));
+  border: 1px solid var(--border-bright, var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.35);
+  overflow: hidden;
+  z-index: 100;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.slash-cmd-item {
+  display: flex;
+  flex-direction: column;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid var(--border);
+}
+.slash-cmd-item:last-child { border-bottom: none; }
+.slash-cmd-item:hover { background: rgba(99, 102, 241, 0.1); }
+.slash-cmd-label { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.slash-cmd-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.slash-cmd-empty { padding: 10px 14px; font-size: 0.78rem; color: var(--text-muted); text-align: center; }
+
+/* Transcript Bubble */
+.wa-bubble-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.05);
+  border-left: 2px solid rgba(99, 102, 241, 0.5);
+  border-radius: 4px;
+}
+.wa-transcript-text {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  font-style: italic;
+}

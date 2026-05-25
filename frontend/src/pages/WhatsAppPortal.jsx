@@ -28,7 +28,33 @@ export default function WhatsAppPortal() {
   const [wsStatus, setWsStatus] = useState('CONNECTING') // CONNECTING, CONNECTED, DISCONNECTED
   const [typingStatus, setTypingStatus] = useState({}) // { phone: boolean }
   const [zoomedImage, setZoomedImage] = useState(null)
+  const [activeNumber, setActiveNumber] = useState(null) // Bot's own WA number from Baileys
+  const [activeFilter, setActiveFilter] = useState('all') // 'all' | 'unread' | 'high_risk' | 'stuck'
+  const [slashCmd, setSlashCmd] = useState('')
+  const [showSlashMenu, setShowSlashMenu] = useState(false)
   
+  // --- CONSTANTS ---
+  const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
+
+  const SLASH_COMMANDS = [
+    { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); setInputText(''); } },
+    { cmd: '/track', label: '📦 Send Tracking', desc: 'Send order tracking info', action: () => {
+      if (activeChat) {
+        const msg = `📦 Your order tracking is being retrieved...`
+        setInputText(msg)
+        setShowSlashMenu(false)
+      }
+    }},
+    { cmd: '/size', label: '📏 Customer Size', desc: 'Insert stored size preference', action: () => {
+      if (activeChat?.sizePreference) {
+        setInputText(`Your size preference: ${activeChat.sizePreference}`)
+      }
+      setShowSlashMenu(false)
+    }},
+    { cmd: '/quick', label: '⚡ Quick Replies', desc: 'Open quick reply templates', action: () => { setShowQuickReplies(true); setShowSlashMenu(false); setInputText(''); } },
+    { cmd: '/risk', label: '🚩 Risk Flag', desc: 'View/set customer risk profile', action: () => { setShowSlashMenu(false); setInputText(''); } },
+  ]
+
   // --- REFS ---
   const timelineEndRef = useRef(null)
   const wsRef = useRef(null)
@@ -100,6 +126,16 @@ export default function WhatsAppPortal() {
       const data = await res.json()
       if (data.success) setQuickPills(data.quickPills || [])
     } catch (err) {}
+  }
+
+  // --- FETCH BOT STATUS (active number) ---
+  const fetchBotStatus = async () => {
+    try {
+      const res = await fetch('/api/whatsapp-governance/status')
+      const data = await res.json()
+      if (data.activeNumber) setActiveNumber(data.activeNumber)
+      else if (data.status !== 'CONNECTED') setActiveNumber(null)
+    } catch (_) {}
   }
 
   // --- WEBSOCKET CLIENT CONFIGURATION ---
@@ -190,6 +226,24 @@ export default function WhatsAppPortal() {
             typingTimersRef.current[phone] = setTimeout(() => {
               setTypingStatus(prev => ({ ...prev, [phone]: false }))
             }, 3500)
+          }
+        }
+
+        if (wsEvent === 'transcript' && data) {
+          // Update message transcript inline without refetching
+          setMessages(prev => prev.map(m =>
+            m.id === data.messageId ? { ...m, transcript: data.transcript } : m
+          ))
+        }
+
+        if (wsEvent === 'ocr_result' && data) {
+          // Show a toast notification for OCR results
+          if (data.status === 'matched') {
+            addToast(`✅ Payment verified! Rs.${data.detectedAmount} matched — ${data.detectedBank || 'Bank'} TXN ${data.detectedTxnId || 'N/A'}`, 'success')
+          } else if (data.status === 'mismatch') {
+            addToast(`⚠️ Payment amount mismatch — Rs.${data.detectedAmount} received. Manual review needed.`, 'warning')
+          } else if (data.status === 'manual_review') {
+            addToast(`🔍 Payment receipt detected. Please verify manually.`, 'info')
           }
         }
       } catch (err) {
@@ -411,7 +465,11 @@ export default function WhatsAppPortal() {
     fetchChats()
     fetchQuickReplies()
     fetchQuickPills()
+    fetchBotStatus()
     connectWebSocket()
+
+    // Poll bot status every 10 seconds to keep active number fresh
+    const statusInterval = setInterval(fetchBotStatus, 10000)
 
     // Setup heartbeat ping loop
     const pingInterval = setInterval(() => {
@@ -421,6 +479,7 @@ export default function WhatsAppPortal() {
     }, 30000)
 
     return () => {
+      clearInterval(statusInterval)
       clearInterval(pingInterval)
       if (wsRef.current) wsRef.current.close()
       // Clear typing timers
@@ -433,7 +492,12 @@ export default function WhatsAppPortal() {
     const searchLower = searchText.toLowerCase()
     const matchPhone = c.phone.toLowerCase().includes(searchLower)
     const matchName = c.customerName && c.customerName.toLowerCase().includes(searchLower)
-    return matchPhone || matchName
+    const matchSearch = matchPhone || matchName
+    if (!matchSearch) return false
+    if (activeFilter === 'unread') return c.unreadCount > 0
+    if (activeFilter === 'high_risk') return c.riskFlag === 'HIGH' || c.riskFlag === 'BLOCKED'
+    if (activeFilter === 'stuck') return c.deliveryStatus && STUCK_STATUSES.includes(c.deliveryStatus)
+    return true
   })
 
   return (
@@ -452,9 +516,25 @@ export default function WhatsAppPortal() {
                 boxShadow: `0 0 8px ${getStatusColor(wsStatus)}`
               }}
             ></span>
-            <span style={{ textTransform: 'capitalize' }}>
-              WhatsApp: <strong>{wsStatus.toLowerCase()}</strong>
+            <span style={{ flex: 1 }}>
+              WhatsApp: <strong style={{ color: getStatusColor(wsStatus) }}>{wsStatus.toLowerCase()}</strong>
             </span>
+            {activeNumber && wsStatus === 'CONNECTED' && (
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                color: 'var(--green)',
+                background: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.25)',
+                borderRadius: '10px',
+                padding: '2px 8px',
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }} title="Active WhatsApp account number">
+                📱 {activeNumber}
+              </span>
+            )}
           </div>
 
           {/* Search Contacts */}
@@ -466,6 +546,24 @@ export default function WhatsAppPortal() {
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
             />
+          </div>
+
+          {/* Reactive Filter Tabs */}
+          <div className="wa-portal-filter-tabs">
+            {[
+              { key: 'all', label: 'All' },
+              { key: 'unread', label: `Unread ${chats.filter(c => c.unreadCount > 0).length > 0 ? `(${chats.filter(c => c.unreadCount > 0).length})` : ''}`.trim() },
+              { key: 'high_risk', label: '🚩 Risk' },
+              { key: 'stuck', label: '📦 Stuck' },
+            ].map(f => (
+              <button
+                key={f.key}
+                className={`wa-filter-tab ${activeFilter === f.key ? 'active' : ''}`}
+                onClick={() => setActiveFilter(f.key)}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
 
           {/* Threads List */}
@@ -488,8 +586,12 @@ export default function WhatsAppPortal() {
                     className={`wa-portal-thread-item ${isActive ? 'active' : ''}`}
                     onClick={() => selectChat(c)}
                   >
-                    <div className="wa-portal-avatar">
-                      {c.customerName ? c.customerName.substring(0, 2).toUpperCase() : 'WA'}
+                    <div className="wa-portal-avatar" style={{ overflow: 'hidden', padding: c.dpUrl ? 0 : undefined }}>
+                      {c.dpUrl
+                        ? <img src={c.dpUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={e => { e.target.style.display = 'none'; }}
+                          />
+                        : (c.customerName ? c.customerName.substring(0, 2).toUpperCase() : 'WA')
+                      }
                     </div>
                     <div className="wa-portal-thread-info">
                       <div className="wa-portal-thread-header">
@@ -527,6 +629,36 @@ export default function WhatsAppPortal() {
                         {/* Unread badge count */}
                         {c.unreadCount > 0 && (
                           <span className="wa-portal-unread-badge">{c.unreadCount}</span>
+                        )}
+                        {/* Risk flag badge */}
+                        {(c.riskFlag === 'HIGH' || c.riskFlag === 'BLOCKED') && (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            color: 'var(--red, #ef4444)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '8px',
+                            padding: '1px 5px',
+                            fontWeight: 700,
+                            marginLeft: 2,
+                            flexShrink: 0,
+                          }}>🚩</span>
+                        )}
+                        {/* Ad source badge */}
+                        {c.adPlatform && (
+                          <span style={{
+                            fontSize: '0.6rem',
+                            background: c.adPlatform === 'meta' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(236, 72, 153, 0.12)',
+                            color: c.adPlatform === 'meta' ? '#3b82f6' : '#ec4899',
+                            border: `1px solid ${c.adPlatform === 'meta' ? 'rgba(59,130,246,0.3)' : 'rgba(236,72,153,0.3)'}`,
+                            borderRadius: '8px',
+                            padding: '1px 5px',
+                            fontWeight: 600,
+                            marginLeft: 2,
+                            flexShrink: 0,
+                          }}>
+                            {c.adPlatform === 'meta' ? '🎯 Meta' : c.adPlatform === 'tiktok' ? '🎵 TikTok' : `📢 ${c.adPlatform}`}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -612,12 +744,20 @@ export default function WhatsAppPortal() {
                         )}
 
                         {showAudio && (
-                          <audio controls className="wa-media-audio">
-                            <source src={msg.media_url} type="audio/mp4" />
-                            <source src={msg.media_url} type="audio/ogg" />
-                            <source src={msg.media_url} type="audio/mpeg" />
-                            Your browser does not support the audio element.
-                          </audio>
+                          <div>
+                            <audio controls className="wa-media-audio">
+                              <source src={msg.media_url} type="audio/mp4" />
+                              <source src={msg.media_url} type="audio/ogg" />
+                              <source src={msg.media_url} type="audio/mpeg" />
+                              Your browser does not support the audio element.
+                            </audio>
+                            {msg.transcript && (
+                              <div className="wa-bubble-transcript">
+                                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
+                                <span className="wa-transcript-text">{msg.transcript}</span>
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {showDoc && (
@@ -681,6 +821,28 @@ export default function WhatsAppPortal() {
               {/* Chat Input Bar */}
               <div className="wa-portal-chat-input-bar">
                 
+                {/* Slash Command Palette */}
+                {showSlashMenu && (
+                  <div className="slash-cmd-palette">
+                    {SLASH_COMMANDS
+                      .filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/')
+                      .map(c => (
+                        <div
+                          key={c.cmd}
+                          className="slash-cmd-item"
+                          onMouseDown={e => { e.preventDefault(); c.action(); }}
+                        >
+                          <span className="slash-cmd-label">{c.label}</span>
+                          <span className="slash-cmd-desc">{c.desc}</span>
+                        </div>
+                      ))
+                    }
+                    {SLASH_COMMANDS.filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/').length === 0 && (
+                      <div className="slash-cmd-empty">No matching commands</div>
+                    )}
+                  </div>
+                )}
+
                 {/* File Attachment */}
                 <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)">
                   📎
@@ -706,7 +868,17 @@ export default function WhatsAppPortal() {
                   className="wa-portal-input-textarea"
                   placeholder="Type a message..."
                   value={inputText}
-                  onChange={e => setInputText(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value
+                    setInputText(val)
+                    if (val.startsWith('/')) {
+                      setSlashCmd(val.toLowerCase())
+                      setShowSlashMenu(true)
+                    } else {
+                      setShowSlashMenu(false)
+                      setSlashCmd('')
+                    }
+                  }}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
