@@ -861,8 +861,19 @@ class WhatsAppBot {
               }
             }
 
+            // Read the file into a raw Buffer if it exists locally, or fallback to URL
+            const fs = require('fs');
+            let audioPayload;
+            if (fs.existsSync(sendUrl)) {
+              audioPayload = fs.readFileSync(sendUrl);
+            } else {
+              audioPayload = { url: sendUrl };
+            }
+
+            console.log(`🎙️ OUTGOING VOICE NOTE DETAILS: isBuffer=${Buffer.isBuffer(audioPayload)}, size=${Buffer.isBuffer(audioPayload) ? audioPayload.length : 'N/A'} bytes, mime=${mime}`);
+
             sentMsg = await this.sock.sendMessage(jid, { 
-              audio: { url: sendUrl }, 
+              audio: audioPayload, 
               mimetype: mime, 
               ptt: true 
             });
