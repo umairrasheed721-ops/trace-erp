@@ -461,10 +461,6 @@ class WhatsAppBot {
       });
 
       this.sock.ev.on('messages.upsert', async (m) => {
-        console.log("========================================");
-        console.log("🚨 [RAW INCOMING BAILEYS EVENT DETECTED]");
-        console.log(JSON.stringify(m, null, 2));
-        console.log("========================================");
         const { messages, type } = m;
         if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
@@ -814,7 +810,6 @@ class WhatsAppBot {
         if (mediaUrl) {
           if (finalMediaType === 'image') {
             const payload = { image: { url: mediaUrl }, caption: message };
-            console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'document') {
             const payload = { 
@@ -823,7 +818,6 @@ class WhatsAppBot {
               fileName: fileName || 'document.pdf', 
               caption: message 
             };
-            console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
             let sendUrl = mediaUrl;
@@ -916,7 +910,6 @@ class WhatsAppBot {
               mimetype: mime, 
               ptt: true 
             };
-            console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'video') {
             const payload = { 
@@ -924,16 +917,13 @@ class WhatsAppBot {
               mimetype: 'video/mp4', 
               caption: message 
             };
-            console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else {
             const payload = { text: String(message) };
-            console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           }
         } else {
           const payload = { text: String(message) };
-          console.log('FINAL PAYLOAD:', payload);
           sentMsg = await this.sock.sendMessage(jid, payload);
         }
 
