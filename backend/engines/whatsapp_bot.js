@@ -875,8 +875,7 @@ class WhatsAppBot {
 
             sentMsg = await this.sock.sendMessage(jid, { 
               audio: { url: absoluteSendUrl }, 
-              mimetype: mime, 
-              ptt: true 
+              mimetype: 'audio/mp4'
             });
           } else if (finalMediaType === 'video') {
             sentMsg = await this.sock.sendMessage(jid, { 
