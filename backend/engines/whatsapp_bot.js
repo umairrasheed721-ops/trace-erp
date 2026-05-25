@@ -839,19 +839,27 @@ class WhatsAppBot {
                 
                 const transcodePromise = () => new Promise((resolveTranscode) => {
                   const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -ar 48000 -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
-                  exec(cmd, (error, stdout, stderr) => {
-                    if (error) {
-                      console.error(`⚠️ ffmpeg transcoding failed: ${error.message}. Stderr: ${stderr}`);
-                      resolveTranscode(false);
-                    } else {
-                      console.log(`✅ ffmpeg transcoding success!`);
+                  const child = exec(cmd);
+                  
+                  child.on('error', (err) => {
+                    console.error(`⚠️ ffmpeg execution error: ${err.message}`);
+                  });
+                  
+                  child.on('close', (code) => {
+                    if (code === 0) {
+                      console.log(`✅ ffmpeg transcoding success! (close code 0)`);
                       resolveTranscode(true);
+                    } else {
+                      console.error(`⚠️ ffmpeg process closed with error code ${code}`);
+                      resolveTranscode(false);
                     }
                   });
                 });
                 
                 const success = await transcodePromise();
                 if (success && fs.existsSync(targetOgg)) {
+                  console.log(`⏳ FFMPEG complete. Waiting 500ms for file system I/O flush...`);
+                  await new Promise(r => setTimeout(r, 500));
                   sendUrl = targetOgg;
                   dbMediaUrl = targetOgg;
                 }
@@ -863,19 +871,25 @@ class WhatsAppBot {
             const fs = require('fs');
             const absoluteSendUrl = path.resolve(sendUrl);
             let fileSize = 'N/A';
+            let audioPayload;
             try {
               if (fs.existsSync(absoluteSendUrl)) {
                 fileSize = fs.statSync(absoluteSendUrl).size;
+                audioPayload = fs.readFileSync(absoluteSendUrl);
+              } else {
+                audioPayload = { url: absoluteSendUrl };
               }
-            } catch (statErr) {
-              console.warn('⚠️ Telemetry stat failed:', statErr.message);
+            } catch (err) {
+              console.error('⚠️ Failed to resolve audio payload:', err.message);
+              audioPayload = { url: absoluteSendUrl };
             }
 
-            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}`);
+            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}, isBuffer=${Buffer.isBuffer(audioPayload)}`);
 
             sentMsg = await this.sock.sendMessage(jid, { 
-              audio: { url: absoluteSendUrl }, 
-              mimetype: 'audio/mp4'
+              audio: audioPayload, 
+              mimetype: mime, 
+              ptt: true 
             });
           } else if (finalMediaType === 'video') {
             sentMsg = await this.sock.sendMessage(jid, { 
