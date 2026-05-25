@@ -5,6 +5,7 @@ const bot = require('../engines/whatsapp_bot');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const PDFDocument = require('pdfkit');
 
 const getMediaFilePath = (mediaUrl) => {
   if (!mediaUrl) return null;
@@ -320,6 +321,376 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
     merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     res.json({ success: true, messages: merged });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/chats
+router.get('/chats', (req, res) => {
+  try {
+    const uniqueChats = db.prepare(`
+      SELECT phone, MAX(id) as max_id 
+      FROM whatsapp_messages 
+      GROUP BY phone 
+      ORDER BY max_id DESC
+    `).all();
+
+    const chats = [];
+    for (const chat of uniqueChats) {
+      const msg = db.prepare('SELECT * FROM whatsapp_messages WHERE id = ?').get(chat.max_id);
+      if (!msg) continue;
+
+      const last10 = chat.phone.substring(chat.phone.length - 10);
+      const order = db.prepare(`
+        SELECT id, customer_name, wa_verification_status, financial_status, fulfillment_status, total_price 
+        FROM orders 
+        WHERE phone LIKE ? 
+        ORDER BY id DESC LIMIT 1
+      `).get(`%${last10}%`);
+
+      chats.push({
+        phone: chat.phone,
+        lastMessage: msg,
+        order: order || null,
+        customerName: order ? order.customer_name : null
+      });
+    }
+
+    res.json({ success: true, chats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/whatsapp-governance/chats/:phone
+router.get('/chats/:phone', async (req, res) => {
+  const { phone } = req.params;
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+
+    // 1. Pull from SQLite DB
+    const dbMessages = db.prepare(`
+      SELECT * FROM whatsapp_messages 
+      WHERE phone LIKE ? 
+      ORDER BY id ASC
+    `).all(`%${last10}%`);
+
+    // 2. Pull from live Baileys WebSocket memory store
+    const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
+
+    // 3. Merge and deduplicate by message text
+    const merged = [...dbMessages];
+    for (const bm of baileysMessages) {
+      const exists = merged.some(dm => dm.message.trim() === bm.message.trim());
+      if (!exists) {
+        merged.push(bm);
+      }
+    }
+
+    // Sort by created_at ascending
+    merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    // Get order history and customer details
+    const orderHistory = db.prepare(`
+      SELECT id, store_id, customer_name, total_price, financial_status, fulfillment_status, wa_verification_status, created_at, phone
+      FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC
+    `).all(`%${last10}%`);
+
+    const latestOrder = orderHistory[0] || null;
+
+    // Get Gemini Chat Memory
+    let geminiMemory = null;
+    try {
+      geminiMemory = db.prepare('SELECT memory_text FROM gemini_chat_memory WHERE phone = ?').get(cleaned);
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      phone: cleaned,
+      messages: merged,
+      latestOrder,
+      orderHistory,
+      geminiMemory: geminiMemory ? geminiMemory.memory_text : null
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/send
+router.post('/chats/:phone/send', async (req, res) => {
+  console.log('INCOMING CHATS SEND BODY:', JSON.stringify(req.body, null, 2));
+  const { phone } = req.params;
+  const { message } = req.body;
+
+  if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
+
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    // Find latest order for store_id and order_id mapping
+    const order = db.prepare(`
+      SELECT id, store_id FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${last10}%`);
+
+    const storeId = order ? order.store_id : 1; // Fallback to store 1
+    const orderId = order ? order.id : null;
+
+    // Insert into SQLite database immediately so it persists permanently
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
+      `).run(storeId, orderId, cleaned, message);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to save manual chat message:', err.message);
+    }
+
+    // Queue message via Baileys bot with isManual = true for instant priority delivery
+    bot.sendMessage(cleaned, message, true);
+
+    // Return optimistic message object
+    const newMsg = {
+      id: dbMessageId || Date.now(),
+      store_id: storeId,
+      order_id: orderId,
+      phone: cleaned,
+      direction: 'outgoing',
+      message,
+      status: 'sent',
+      created_at: new Date().toISOString()
+    };
+
+    res.json({ success: true, message: newMsg });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/upload-media
+router.post('/chats/:phone/upload-media', upload.single('media'), async (req, res) => {
+  console.log('INCOMING CHATS UPLOAD BODY:', JSON.stringify(req.body, null, 2));
+  const { phone } = req.params;
+  const caption = req.body.caption || '';
+  
+  if (!req.file) return res.status(400).json({ error: 'No media file provided' });
+
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    // Find latest order for store_id and order_id mapping
+    const order = db.prepare(`
+      SELECT id, store_id FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${last10}%`);
+
+    const storeId = order ? order.store_id : 1;
+    const orderId = order ? order.id : null;
+
+    const absolutePath = req.file.path;
+    const relativeUrl = `/uploads/${req.file.filename}`;
+    
+    const mediaType = req.file.mimetype.startsWith('image/') ? 'image' : 
+                      req.file.mimetype.startsWith('audio/') ? 'audio' :
+                      req.file.mimetype.startsWith('video/') ? 'video' : 'document';
+                      
+    const dbMsgContent = mediaType === 'image' ? `[Image] ${caption}` : 
+                         mediaType === 'audio' ? `[Audio] ${caption}` : 
+                         mediaType === 'video' ? `[Video] ${caption}` : `[Document] ${caption}`;
+
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
+      `).run(storeId, orderId, cleaned, dbMsgContent, relativeUrl, mediaType);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to log manual media message:', err.message);
+    }
+
+    // Queue message via Baileys bot with isManual = true
+    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname);
+
+    res.json({ 
+      success: true, 
+      message: {
+        id: dbMessageId || Date.now(),
+        store_id: storeId,
+        order_id: orderId,
+        phone: cleaned,
+        direction: 'outgoing',
+        message: dbMsgContent,
+        media_url: relativeUrl,
+        media_type: mediaType,
+        status: 'sent',
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/send-quick-reply
+router.post('/chats/:phone/send-quick-reply', async (req, res) => {
+  const { phone } = req.params;
+  const { replyId } = req.body;
+  
+  if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
+  
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    // Find latest order
+    const order = db.prepare(`
+      SELECT id, store_id, customer_name, tracking_number, courier FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${last10}%`);
+
+    const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
+    if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
+    
+    // Resolve dynamic variables
+    let resolvedCaption = quickReply.caption || '';
+    resolvedCaption = resolvedCaption
+      .replace(/\{\{customer_name\}\}/g, order ? order.customer_name : 'Customer')
+      .replace(/\{\{order_id\}\}/g, order ? order.id : '')
+      .replace(/\{\{tracking_number\}\}/g, order ? order.tracking_number : '')
+      .replace(/\{\{courier\}\}/g, order ? order.courier : '');
+    
+    let absolutePath = null;
+    if (quickReply.media_url) {
+      absolutePath = getMediaFilePath(quickReply.media_url);
+    }
+    
+    const dbMsgContent = quickReply.media_url 
+      ? `[${quickReply.media_type.toUpperCase()}] ${resolvedCaption}`.trim()
+      : resolvedCaption;
+      
+    const storeId = order ? order.store_id : 1;
+    const orderId = order ? order.id : null;
+
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
+      `).run(storeId, orderId, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to log quick reply message:', err.message);
+    }
+    
+    // Send message via Baileys bot
+    if (quickReply.media_url && absolutePath) {
+      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type);
+    } else {
+      bot.sendMessage(cleaned, resolvedCaption, true);
+    }
+    
+    res.json({ 
+      success: true, 
+      message: {
+        id: dbMessageId || Date.now(),
+        store_id: storeId,
+        order_id: orderId,
+        phone: cleaned,
+        direction: 'outgoing',
+        message: dbMsgContent,
+        media_url: quickReply.media_url || null,
+        media_type: quickReply.media_type || null,
+        status: 'sent',
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/send-invoice
+router.post('/chats/:phone/send-invoice', async (req, res) => {
+  const { phone } = req.params;
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    // Find latest order
+    const order = db.prepare(`
+      SELECT * FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${last10}%`);
+
+    if (!order) return res.status(404).json({ error: 'No order found for this phone number to generate an invoice' });
+
+    const invoiceFilename = `invoice_${order.id}_${Date.now()}.pdf`;
+    const folderPath = path.join(DB_DIR, 'uploads');
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+    const destPath = path.join(folderPath, invoiceFilename);
+
+    await generateInvoicePdf(order, destPath);
+
+    const relativeUrl = `/uploads/${invoiceFilename}`;
+    const caption = `📄 *Invoice for Order #${order.id || order.ref_number}* — Thank you for your business!`;
+    const dbMsgContent = `[DOCUMENT] ${caption}`;
+
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent')
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to log invoice message:', err.message);
+    }
+
+    // Send PDF document via Baileys bot
+    bot.sendMessage(cleaned, caption, true, destPath, 'document', `Invoice_${order.id || order.ref_number}.pdf`);
+
+    res.json({ 
+      success: true, 
+      message: {
+        id: dbMessageId || Date.now(),
+        store_id: order.store_id,
+        order_id: order.id,
+        phone: cleaned,
+        direction: 'outgoing',
+        message: dbMsgContent,
+        media_url: relativeUrl,
+        media_type: 'document',
+        status: 'sent',
+        created_at: new Date().toISOString()
+      }
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -9,6 +9,7 @@ export default function Sidebar() {
     { to: '/', icon: '🏠', label: 'Dashboard' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
+    { to: '/whatsapp-portal', icon: '💬', label: 'WA Live Chat' },
     { to: '/whatsapp-bot', icon: '🤖', label: 'WhatsApp Bot', permission: 'admin_only' },
     { to: '/whatsapp-templates', icon: '✍️', label: 'WA Templates', permission: 'admin_only' },
     { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'admin_only' },
