@@ -827,9 +827,9 @@ class WhatsAppBot {
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
             let sendUrl = mediaUrl;
-            let mime = 'audio/ogg; codecs=opus';
+            let mime = 'audio/mp4';
             
-            // If it's a webm voice note, transcode it to Ogg Opus using ffmpeg
+            // If it's a webm voice note, transcode it to MP4 audio using ffmpeg
             if (mediaUrl && (mediaUrl.endsWith('.webm') || fileName?.includes('voice_note') || finalMediaType === 'voice')) {
               try {
                 const fs = require('fs');
@@ -837,12 +837,12 @@ class WhatsAppBot {
                 const { exec } = require('child_process');
                 
                 const ext = path.extname(mediaUrl);
-                const targetOgg = mediaUrl.replace(ext, '.ogg');
+                const targetMp4 = mediaUrl.replace(ext, '.mp4');
                 
-                console.log(`🎵 Transcoding voice note to Ogg Opus: ${mediaUrl} -> ${targetOgg}`);
+                console.log(`🎵 Transcoding voice note to MP4: ${mediaUrl} -> ${targetMp4}`);
                 
                 const transcodePromise = () => new Promise((resolveTranscode) => {
-                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -ar 48000 -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
+                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a aac -ar 48000 -ac 1 "${targetMp4.replace(/"/g, '\\"')}"`;
                   const child = exec(cmd);
                   
                   const timer = setTimeout(() => {
@@ -874,11 +874,11 @@ class WhatsAppBot {
                 });
                 
                 const success = await transcodePromise();
-                if (success && fs.existsSync(targetOgg)) {
+                if (success && fs.existsSync(targetMp4)) {
                   console.log(`⏳ FFMPEG complete. Waiting 500ms for file system I/O flush...`);
                   await new Promise(r => setTimeout(r, 500));
-                  sendUrl = targetOgg;
-                  dbMediaUrl = targetOgg;
+                  sendUrl = targetMp4;
+                  dbMediaUrl = targetMp4;
                 }
               } catch (transcodeErr) {
                 console.error('⚠️ Transcoding error:', transcodeErr.message);
@@ -899,9 +899,9 @@ class WhatsAppBot {
             console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}`);
 
             const payload = { 
-              document: { url: absoluteSendUrl }, 
-              mimetype: 'audio/ogg', 
-              fileName: `VoiceNote_${Date.now()}.ogg` 
+              audio: { url: absoluteSendUrl }, 
+              mimetype: mime, 
+              ptt: true 
             };
             console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
