@@ -813,14 +813,18 @@ class WhatsAppBot {
         let sentMsg;
         if (mediaUrl) {
           if (finalMediaType === 'image') {
-            sentMsg = await this.sock.sendMessage(jid, { image: { url: mediaUrl }, caption: message });
+            const payload = { image: { url: mediaUrl }, caption: message };
+            console.log('FINAL PAYLOAD:', payload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'document') {
-            sentMsg = await this.sock.sendMessage(jid, { 
+            const payload = { 
               document: { url: mediaUrl }, 
               mimetype: 'application/pdf', 
               fileName: fileName || 'document.pdf', 
               caption: message 
-            });
+            };
+            console.log('FINAL PAYLOAD:', payload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
             let sendUrl = mediaUrl;
             let mime = 'audio/ogg; codecs=opus';
@@ -899,22 +903,30 @@ class WhatsAppBot {
 
             console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}, isBuffer=${Buffer.isBuffer(audioPayload)}`);
 
-            sentMsg = await this.sock.sendMessage(jid, { 
-              audio: audioPayload, 
-              mimetype: mime, 
-              ptt: true 
-            });
+            const payload = { 
+              document: audioPayload, 
+              mimetype: 'audio/ogg', 
+              fileName: `VoiceNote_${Date.now()}.ogg` 
+            };
+            console.log('FINAL PAYLOAD:', payload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           } else if (finalMediaType === 'video') {
-            sentMsg = await this.sock.sendMessage(jid, { 
+            const payload = { 
               video: { url: mediaUrl }, 
               mimetype: 'video/mp4', 
               caption: message 
-            });
+            };
+            console.log('FINAL PAYLOAD:', payload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           } else {
-            sentMsg = await this.sock.sendMessage(jid, { text: message });
+            const payload = { text: message };
+            console.log('FINAL PAYLOAD:', payload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           }
         } else {
-          sentMsg = await this.sock.sendMessage(jid, { text: message });
+          const payload = { text: message };
+          console.log('FINAL PAYLOAD:', payload);
+          sentMsg = await this.sock.sendMessage(jid, payload);
         }
 
         const messageId = sentMsg?.key?.id || 'out_' + Date.now();
