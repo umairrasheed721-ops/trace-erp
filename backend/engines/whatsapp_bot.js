@@ -921,12 +921,18 @@ class WhatsAppBot {
           } else {
             const payload = { text: message };
             console.log('FINAL PAYLOAD:', payload);
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            // FOR TESTING ONLY: Override the text payload completely
+            const overridePayload = { text: "HARDCODED SYSTEM TEST: IF YOU SEE THIS, BAILEYS IS WORKING." };
+            console.log('OVERRIDE PAYLOAD:', overridePayload);
+            sentMsg = await this.sock.sendMessage(jid, overridePayload);
           }
         } else {
           const payload = { text: message };
           console.log('FINAL PAYLOAD:', payload);
-          sentMsg = await this.sock.sendMessage(jid, payload);
+          // FOR TESTING ONLY: Override the text payload completely
+          const overridePayload = { text: "HARDCODED SYSTEM TEST: IF YOU SEE THIS, BAILEYS IS WORKING." };
+          console.log('OVERRIDE PAYLOAD:', overridePayload);
+          sentMsg = await this.sock.sendMessage(jid, overridePayload);
         }
 
         const messageId = sentMsg?.key?.id || 'out_' + Date.now();
