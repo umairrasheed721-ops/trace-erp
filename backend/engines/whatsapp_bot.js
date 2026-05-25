@@ -8,15 +8,24 @@ const path = require('path');
 const fs = require('fs');
 const { db } = require('../db');
 
-const defaultDbPath = process.env.NODE_ENV === 'production'
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.RAILWAY_ENVIRONMENT !== undefined ||
+                     process.env.BOT_ENABLED === 'true';
+
+const defaultDbPath = isProduction
   ? '/app/data/trace_erp.db'
   : path.join(__dirname, '..', 'trace_erp.db');
 const dbPath = process.env.DB_PATH || defaultDbPath;
 const dbDir = path.dirname(path.resolve(dbPath));
 const SESSION_PATH = path.join(dbDir, 'wa_session');
 
-if (!fs.existsSync(SESSION_PATH)) {
-  fs.mkdirSync(SESSION_PATH, { recursive: true });
+try {
+  if (!fs.existsSync(SESSION_PATH)) {
+    fs.mkdirSync(SESSION_PATH, { recursive: true });
+    console.log(`📁 Created session directory: ${SESSION_PATH}`);
+  }
+} catch (e) {
+  console.error(`⚠️ Failed to create session directory ${SESSION_PATH}:`, e.message);
 }
 
 // No hard limit on reconnects — we retry forever with backoff.
@@ -247,7 +256,7 @@ class WhatsAppBot {
     this.auditLogs = []; // Buffer of recent delivery audits
 
     // Prevent local dev from running the bot unless explicitly enabled
-    if (process.env.NODE_ENV !== 'production' && process.env.BOT_ENABLED !== 'true') {
+    if (!isProduction) {
       console.log('🛑 WhatsApp Bot disabled in local dev to prevent message stealing. Set BOT_ENABLED=true to force.');
       this.status = 'DISABLED';
       return;
@@ -748,6 +757,7 @@ class WhatsAppBot {
 
       const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve } = this.queue.shift();
       let cleaned = phone.replace(/\D/g, '');
+      let dbMediaUrl = mediaUrl;
 
       try {
         if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
@@ -812,9 +822,48 @@ class WhatsAppBot {
               caption: message 
             });
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
+            let sendUrl = mediaUrl;
+            let mime = 'audio/mp4';
+            
+            // If it's a webm voice note, transcode it to Ogg Opus using ffmpeg
+            if (mediaUrl && (mediaUrl.endsWith('.webm') || fileName?.includes('voice_note') || finalMediaType === 'voice')) {
+              try {
+                const fs = require('fs');
+                const path = require('path');
+                const { exec } = require('child_process');
+                
+                const ext = path.extname(mediaUrl);
+                const targetOgg = mediaUrl.replace(ext, '.ogg');
+                
+                console.log(`🎵 Transcoding voice note to Ogg Opus: ${mediaUrl} -> ${targetOgg}`);
+                
+                const transcodePromise = () => new Promise((resolveTranscode) => {
+                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -b:a 64k -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
+                  exec(cmd, (error, stdout, stderr) => {
+                    if (error) {
+                      console.error(`⚠️ ffmpeg transcoding failed: ${error.message}. Stderr: ${stderr}`);
+                      resolveTranscode(false);
+                    } else {
+                      console.log(`✅ ffmpeg transcoding success!`);
+                      resolveTranscode(true);
+                    }
+                  });
+                });
+                
+                const success = await transcodePromise();
+                if (success && fs.existsSync(targetOgg)) {
+                  sendUrl = targetOgg;
+                  dbMediaUrl = targetOgg; // update dbMediaUrl so the DB and WS broadcast refer to the .ogg file!
+                  mime = 'audio/ogg; codecs=opus';
+                }
+              } catch (transcodeErr) {
+                console.error('⚠️ Transcoding error:', transcodeErr.message);
+              }
+            }
+
             sentMsg = await this.sock.sendMessage(jid, { 
-              audio: { url: mediaUrl }, 
-              mimetype: 'audio/mp4', 
+              audio: { url: sendUrl }, 
+              mimetype: mime, 
               ptt: true 
             });
           } else if (finalMediaType === 'video') {
@@ -841,13 +890,27 @@ class WhatsAppBot {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = mediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
+          const dbMessageContent = dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
           
+          // Convert absolute local path to relative path /uploads/... for frontend compatibility
+          let finalDbMediaUrl = dbMediaUrl;
+          if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
+            const publicIndex = finalDbMediaUrl.indexOf('/public/');
+            if (publicIndex !== -1) {
+              finalDbMediaUrl = finalDbMediaUrl.substring(publicIndex + 7);
+            } else {
+              const uploadsIndex = finalDbMediaUrl.indexOf('/uploads/');
+              if (uploadsIndex !== -1) {
+                finalDbMediaUrl = finalDbMediaUrl.substring(uploadsIndex);
+              }
+            }
+          }
+
           try {
             const result = db.prepare(`
               INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type)
               VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?)
-            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, mediaUrl, finalMediaType);
+            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType);
             dbMessageId = result.lastInsertRowid;
           } catch (dbErr) {
             console.error('⚠️ DB insert failed in _processQueue:', dbErr.message);
@@ -866,7 +929,7 @@ class WhatsAppBot {
                 direction: 'outgoing',
                 message: dbMessageContent,
                 message_id: messageId,
-                media_url: mediaUrl,
+                media_url: finalDbMediaUrl,
                 media_type: finalMediaType,
                 status: 'sent',
                 created_at: new Date().toISOString()

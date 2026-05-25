@@ -3,7 +3,11 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
-const defaultDbPath = process.env.NODE_ENV === 'production' 
+const isProduction = process.env.NODE_ENV === 'production' || 
+                     process.env.RAILWAY_ENVIRONMENT !== undefined ||
+                     process.env.BOT_ENABLED === 'true';
+
+const defaultDbPath = isProduction 
   ? '/app/data/trace_erp.db' 
   : path.join(__dirname, 'trace_erp.db');
 const DB_PATH = process.env.DB_PATH || defaultDbPath;
