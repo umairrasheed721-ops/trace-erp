@@ -888,23 +888,18 @@ class WhatsAppBot {
             const fs = require('fs');
             const absoluteSendUrl = path.resolve(sendUrl);
             let fileSize = 'N/A';
-            let audioPayload;
             try {
               if (fs.existsSync(absoluteSendUrl)) {
                 fileSize = fs.statSync(absoluteSendUrl).size;
-                audioPayload = fs.readFileSync(absoluteSendUrl);
-              } else {
-                audioPayload = { url: absoluteSendUrl };
               }
             } catch (err) {
-              console.error('⚠️ Failed to resolve audio payload:', err.message);
-              audioPayload = { url: absoluteSendUrl };
+              console.error('⚠️ Failed to resolve audio size:', err.message);
             }
 
-            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}, isBuffer=${Buffer.isBuffer(audioPayload)}`);
+            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}`);
 
             const payload = { 
-              document: audioPayload, 
+              document: { url: absoluteSendUrl }, 
               mimetype: 'audio/ogg', 
               fileName: `VoiceNote_${Date.now()}.ogg` 
             };
@@ -919,20 +914,14 @@ class WhatsAppBot {
             console.log('FINAL PAYLOAD:', payload);
             sentMsg = await this.sock.sendMessage(jid, payload);
           } else {
-            const payload = { text: message };
+            const payload = { text: String(message) };
             console.log('FINAL PAYLOAD:', payload);
-            // FOR TESTING ONLY: Override the text payload completely
-            const overridePayload = { text: "HARDCODED SYSTEM TEST: IF YOU SEE THIS, BAILEYS IS WORKING." };
-            console.log('OVERRIDE PAYLOAD:', overridePayload);
-            sentMsg = await this.sock.sendMessage(jid, overridePayload);
+            sentMsg = await this.sock.sendMessage(jid, payload);
           }
         } else {
-          const payload = { text: message };
+          const payload = { text: String(message) };
           console.log('FINAL PAYLOAD:', payload);
-          // FOR TESTING ONLY: Override the text payload completely
-          const overridePayload = { text: "HARDCODED SYSTEM TEST: IF YOU SEE THIS, BAILEYS IS WORKING." };
-          console.log('OVERRIDE PAYLOAD:', overridePayload);
-          sentMsg = await this.sock.sendMessage(jid, overridePayload);
+          sentMsg = await this.sock.sendMessage(jid, payload);
         }
 
         const messageId = sentMsg?.key?.id || 'out_' + Date.now();
