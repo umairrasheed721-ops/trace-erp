@@ -841,11 +841,24 @@ class WhatsAppBot {
                   const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a libopus -ar 48000 -ac 1 "${targetOgg.replace(/"/g, '\\"')}"`;
                   const child = exec(cmd);
                   
+                  const timer = setTimeout(() => {
+                    console.error('⚠️ FFMPEG Transcoding Timeout after 10s');
+                    try {
+                      child.kill('SIGKILL');
+                    } catch (killErr) {
+                      console.error('⚠️ Failed to kill hung ffmpeg process:', killErr.message);
+                    }
+                    resolveTranscode(false);
+                  }, 10000);
+                  
                   child.on('error', (err) => {
                     console.error(`⚠️ ffmpeg execution error: ${err.message}`);
+                    clearTimeout(timer);
+                    resolveTranscode(false);
                   });
                   
                   child.on('close', (code) => {
+                    clearTimeout(timer);
                     if (code === 0) {
                       console.log(`✅ ffmpeg transcoding success! (close code 0)`);
                       resolveTranscode(true);
