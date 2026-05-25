@@ -403,7 +403,15 @@ app.get('/api/admin/logs', (req, res) => {
 // Serve static frontend files and persistent uploads
 const { DB_DIR } = require('./db');
 app.use('/uploads', express.static(path.join(DB_DIR, 'uploads')));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0,
+  setHeaders: (res, path) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 // Routes
 app.use('/api/auth', authRoutes);
