@@ -251,6 +251,7 @@ app.use((req, res, next) => {
   if (req.path.includes('/api/diagnostics')) return next();
   if (req.path.includes('/api/users/permissions')) return next();
   if (req.path === '/api/wake-up-test' || req.originalUrl.includes('wake-up-test')) return next();
+  if (req.path === '/api/fire-test' || req.originalUrl.includes('fire-test')) return next();
   
   // Live SSE Endpoint handles its own token from query
   if (req.path === '/api/live') {
@@ -284,6 +285,63 @@ app.use((req, res, next) => {
 
 // --- 📊 SYSTEM STATUS API — replaces needing Railway agent for debugging ---
 app.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
+
+app.get('/api/fire-test', async (req, res) => {
+  try {
+    const bot = require('./engines/whatsapp_bot');
+    const sock = bot.sock;
+    if (!sock) {
+      return res.status(500).json({ error: 'WhatsApp bot is not connected. Socket is undefined.' });
+    }
+
+    // Step A: Send text message
+    await sock.sendMessage('923034070779@s.whatsapp.net', { 
+      text: "🤖 AUTOMATED SERVER TEST: Text pipeline is fully operational." 
+    });
+
+    // Step B: Find the latest .mp4 file in persistent volume uploads folder
+    const fs = require('fs');
+    const path = require('path');
+    const { DB_DIR } = require('./db');
+    const uploadsDir = path.join(DB_DIR, 'uploads');
+    
+    let latestMp4 = null;
+    if (fs.existsSync(uploadsDir)) {
+      const files = fs.readdirSync(uploadsDir);
+      let latestTime = 0;
+      files.forEach(file => {
+        if (file.endsWith('.mp4')) {
+          const filePath = path.join(uploadsDir, file);
+          try {
+            const stat = fs.statSync(filePath);
+            if (stat.mtimeMs > latestTime) {
+              latestTime = stat.mtimeMs;
+              latestMp4 = filePath;
+            }
+          } catch (statErr) {}
+        }
+      });
+    }
+
+    if (!latestMp4) {
+      return res.json({ 
+        success: true, 
+        message: "Text message fired, but no .mp4 voice notes were found in persistent storage uploads folder to test." 
+      });
+    }
+
+    // Step C: Send the latest .mp4 file as native audio voice note
+    await sock.sendMessage('923034070779@s.whatsapp.net', { 
+      audio: { url: latestMp4 }, 
+      mimetype: 'audio/mp4', 
+      ptt: true 
+    });
+
+    res.json({ success: true, message: `Test fired to 03034070779! Sent voice note: ${path.basename(latestMp4)}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
