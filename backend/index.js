@@ -237,6 +237,10 @@ app.use(cors({
 
 app.use(express.json({ limit: '2mb' }));
 
+// --- 🌐 MULTI-TENANT ISOLATION MIDDLEWARE ---
+const tenantMiddleware = require('./middleware/tenant');
+app.use(tenantMiddleware);
+
 const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
 

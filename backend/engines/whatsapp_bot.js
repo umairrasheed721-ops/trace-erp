@@ -17,16 +17,7 @@ const defaultDbPath = isProduction
   : path.join(__dirname, '..', 'trace_erp.db');
 const dbPath = process.env.DB_PATH || defaultDbPath;
 const dbDir = path.dirname(path.resolve(dbPath));
-const SESSION_PATH = path.join(dbDir, 'wa_session');
-
-try {
-  if (!fs.existsSync(SESSION_PATH)) {
-    fs.mkdirSync(SESSION_PATH, { recursive: true });
-    console.log(`📁 Created session directory: ${SESSION_PATH}`);
-  }
-} catch (e) {
-  console.error(`⚠️ Failed to create session directory ${SESSION_PATH}:`, e.message);
-}
+const tenantContext = require('../tenant-context');
 
 // No hard limit on reconnects — we retry forever with backoff.
 // Only a manual resetSession() or WhatsApp loggedOut (401) clears the session.
@@ -232,7 +223,8 @@ function getPhoneFromJid(msg) {
 }
 
 class WhatsAppBot {
-  constructor() {
+  constructor(tenantId) {
+    this.tenantId = tenantId || 'default';
     this.sock = null;
     this.qrCode = null;
     this.status = 'DISCONNECTED';
@@ -263,6 +255,22 @@ class WhatsAppBot {
     }
 
     setTimeout(() => this._connect(), 5000);
+  }
+
+  getSessionPath() {
+    const sessionDir = this.tenantId === 'default'
+      ? path.join(dbDir, 'wa_session')
+      : path.join(dbDir, 'sessions', this.tenantId);
+    
+    try {
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true });
+        console.log(`📁 Created session directory for tenant [${this.tenantId}]: ${sessionDir}`);
+      }
+    } catch (e) {
+      console.error(`⚠️ Failed to create session directory ${sessionDir}:`, e.message);
+    }
+    return sessionDir;
   }
 
   _scheduleReconnect() {
@@ -314,7 +322,7 @@ class WhatsAppBot {
       }
 
       // Use standard multi-file auth state (survives Railway deploys inside persistent volume)
-      const { state, saveCreds } = await useMultiFileAuthState(SESSION_PATH);
+      const { state, saveCreds } = await useMultiFileAuthState(this.getSessionPath());
 
       let version;
       try {
@@ -784,12 +792,13 @@ class WhatsAppBot {
 
   _wipeCreds() {
     try {
-      if (fs.existsSync(SESSION_PATH)) {
-        const files = fs.readdirSync(SESSION_PATH);
+      const sessionPath = this.getSessionPath();
+      if (fs.existsSync(sessionPath)) {
+        const files = fs.readdirSync(sessionPath);
         for (const f of files) {
-          if (f.endsWith('.json')) fs.unlinkSync(path.join(SESSION_PATH, f));
+          if (f.endsWith('.json')) fs.unlinkSync(path.join(sessionPath, f));
         }
-        console.log('✅ Session creds wiped');
+        console.log(`✅ Session creds wiped for tenant [${this.tenantId}]`);
       }
     } catch (e) {
       console.error('⚠️ Failed to wipe creds:', e.message);
@@ -1149,7 +1158,7 @@ class WhatsAppBot {
   }
 
   resetSession() {
-    console.log('🗑️ Manual session reset by admin...');
+    console.log(`🗑️ Manual session reset by admin for tenant [${this.tenantId}]...`);
     this.status = 'DISCONNECTED';
     this.qrCode = null;
     this.reconnectAttempts = 0;
@@ -1168,9 +1177,10 @@ class WhatsAppBot {
     }
 
     try {
-      if (fs.existsSync(SESSION_PATH)) {
-        fs.rmSync(SESSION_PATH, { recursive: true, force: true });
-        console.log('✅ Session directory cleared');
+      const sessionPath = this.getSessionPath();
+      if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log(`✅ Session directory cleared for tenant [${this.tenantId}]`);
       }
     } catch (e) {
       console.error('⚠️ Clear error:', e.message);
@@ -1362,5 +1372,36 @@ class WhatsAppBot {
   }
 }
 
-const bot = new WhatsAppBot();
-module.exports = bot;
+const instances = {};
+
+function getBotInstance(tenantId = 'default') {
+  if (!instances[tenantId]) {
+    instances[tenantId] = new WhatsAppBot(tenantId);
+  }
+  return instances[tenantId];
+}
+
+// Pre-initialize default bot instance
+if (isProduction) {
+  getBotInstance('default');
+}
+
+const botProxy = new Proxy({}, {
+  get(target, prop) {
+    const tenantId = tenantContext.getStore() || 'default';
+    const instance = getBotInstance(tenantId);
+    const value = instance[prop];
+    if (typeof value === 'function') {
+      return value.bind(instance);
+    }
+    return value;
+  },
+  set(target, prop, value) {
+    const tenantId = tenantContext.getStore() || 'default';
+    const instance = getBotInstance(tenantId);
+    instance[prop] = value;
+    return true;
+  }
+});
+
+module.exports = botProxy;

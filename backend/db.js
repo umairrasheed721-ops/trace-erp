@@ -2,6 +2,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
+const tenantContext = require('./tenant-context');
 
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
@@ -19,10 +20,44 @@ if (!fs.existsSync(DB_DIR)) {
   console.log(`📁 Created database directory: ${DB_DIR}`);
 }
 
-const db = new DatabaseSync(DB_PATH);
+const dbInstances = {};
+
+function getDbInstance() {
+  const tenantId = tenantContext.getStore() || 'default';
+  if (!dbInstances[tenantId]) {
+    const dbPath = tenantId === 'default'
+      ? DB_PATH
+      : path.join(DB_DIR, `trace_erp_${tenantId}.db`);
+    
+    // Ensure the parent directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    
+    console.log(`🔌 [Multi-Tenant DB] Opening database for tenant [${tenantId}] at: ${dbPath}`);
+    const conn = new DatabaseSync(dbPath);
+    dbInstances[tenantId] = conn;
+    
+    // Initialize schema on the new connection
+    initDb(conn);
+  }
+  return dbInstances[tenantId];
+}
+
+const db = new Proxy({}, {
+  get(target, prop) {
+    const conn = getDbInstance();
+    const val = conn[prop];
+    if (typeof val === 'function') {
+      return val.bind(conn);
+    }
+    return val;
+  }
+});
 
 
-function initDb() {
+function initDb(db) {
   // --- ⚡ PERFORMANCE PRAGMAs ---
   db.exec(`PRAGMA journal_mode = WAL`);
   db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
@@ -438,23 +473,30 @@ function initDb() {
     } catch (e) { console.error('Failed to create default admin:', e.message); }
   }
 
-  console.log('✅ Database initialized at', DB_PATH);
+  console.log('✅ Database initialized at', db.path || DB_PATH);
 }
 
-initDb();
+// Pre-initialize default tenant database
+getDbInstance();
 
 // Helper wrappers to mimic better-sqlite3's API pattern
 // so the rest of the code doesn't need to change
 
 // --- ⚡ PREPARED STATEMENT CACHE ---
-// Compiles each SQL statement ONCE and reuses it — huge speed gain.
-const _prepare_cache = new Map();
+// Compiles each SQL statement ONCE per tenant and reuses it — huge speed gain.
+const _prepare_caches = {};
 
 function getPrepared(sql) {
-  if (!_prepare_cache.has(sql)) {
-    _prepare_cache.set(sql, db.prepare(sql));
+  const tenantId = tenantContext.getStore() || 'default';
+  if (!_prepare_caches[tenantId]) {
+    _prepare_caches[tenantId] = new Map();
   }
-  return _prepare_cache.get(sql);
+  const cache = _prepare_caches[tenantId];
+  if (!cache.has(sql)) {
+    const conn = getDbInstance();
+    cache.set(sql, conn.prepare(sql));
+  }
+  return cache.get(sql);
 }
 
 function prepare(sql) {
