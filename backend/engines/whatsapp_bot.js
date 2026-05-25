@@ -853,8 +853,8 @@ class WhatsAppBot {
                 const success = await transcodePromise();
                 if (success && fs.existsSync(targetOgg)) {
                   sendUrl = targetOgg;
-                  dbMediaUrl = targetOgg; // update dbMediaUrl so the DB and WS broadcast refer to the .ogg file!
-                  mime = 'audio/ogg; codecs=opus';
+                  dbMediaUrl = targetOgg;
+                  mime = 'audio/mp4';
                 }
               } catch (transcodeErr) {
                 console.error('⚠️ Transcoding error:', transcodeErr.message);
