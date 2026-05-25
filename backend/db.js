@@ -92,6 +92,9 @@ function initDb() {
       confirmation_token TEXT,
       cs_notes TEXT,
       discount_amount REAL DEFAULT 0,
+      financial_status TEXT DEFAULT 'pending',
+      fulfillment_status TEXT DEFAULT 'unfulfilled',
+      total_price REAL DEFAULT 0,
       UNIQUE(store_id, shopify_order_id)
     );
   `);
@@ -580,6 +583,9 @@ function runMigrations(db) {
     { table: 'stores', column: 'wa_phone_number_id', type: 'TEXT' },
     { table: 'stores', column: 'wa_access_token', type: 'TEXT' },
     { table: 'stores', column: 'wa_webhook_verify_token', type: 'TEXT' },
+    { table: 'orders', column: 'financial_status', type: "TEXT DEFAULT 'pending'" },
+    { table: 'orders', column: 'fulfillment_status', type: "TEXT DEFAULT 'unfulfilled'" },
+    { table: 'orders', column: 'total_price', type: "REAL DEFAULT 0" },
   ];
 
   migrations.forEach(m => {
