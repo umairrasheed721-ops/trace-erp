@@ -874,6 +874,15 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN transcript_at TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN ai_processed TEXT DEFAULT NULL`); } catch(e){}
 
+  // --- 🔒 FIX: SCHEMA SYNC — Permanently resolves "no such column" crashes ---
+  // Idempotent: try/catch swallows "duplicate column" errors on re-run.
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN tenant_id TEXT DEFAULT 'default'`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN intent TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN created_at TEXT DEFAULT (datetime('now', '+5 hours'))`); } catch(e){}
+  try { db.exec(`ALTER TABLE orders ADD COLUMN tenant_id TEXT DEFAULT 'default'`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_wa_msgs_tenant ON whatsapp_messages(tenant_id)`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)`); } catch(e){}
+
   // Feature 10: Receipt OCR Payment Scanner
   try { db.exec(`CREATE TABLE IF NOT EXISTS payment_ocr_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, phone TEXT NOT NULL, image_path TEXT, raw_ocr_result TEXT, detected_amount REAL, detected_txn_id TEXT, detected_bank TEXT, confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', scanned_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
 

@@ -260,6 +260,12 @@ class WhatsAppBot {
     this.humanHandoffContacts = new Set(); // phones currently in human-intervention mode
     this.consecutiveBotReplies = {};       // phone -> count of consecutive bot replies without a human reply
 
+    // --- 🔒 STABILITY FIX: Global dedup lock + per-phone concurrency guard ---
+    // sentMessages: Map<phone, lastTimestamp> — blocks identical auto-replies within 5s
+    this.sentMessages = new Map();
+    // processingReplies: Set<phone> — prevents concurrent auto-reply execution for same phone
+    this.processingReplies = new Set();
+
     // Prevent local dev from running the bot unless explicitly enabled
     if (!isProduction) {
       console.log('🛑 WhatsApp Bot disabled in local dev to prevent message stealing. Set BOT_ENABLED=true to force.');
@@ -491,6 +497,10 @@ class WhatsAppBot {
           console.log(`✅ WhatsApp History Sync processed successfully.`);
         }
       });
+
+      // --- 🔒 STABILITY FIX: Remove all previous listeners before re-registering
+      // This prevents duplicate listener accumulation across reconnects (dup-loop elimination)
+      this.sock.ev.removeAllListeners('messages.upsert');
 
       this.sock.ev.on('messages.upsert', async (m) => {
         const { messages, type } = m;
@@ -1004,6 +1014,23 @@ class WhatsAppBot {
       // Safe to send! Shift from queue now
       this.queue.shift();
 
+      // --- 🔒 STABILITY FIX: Global dedup lock — block repeat auto-reply within 5 seconds ---
+      if (!isManual) {
+        const dedupKey = `${cleaned}:${String(message).substring(0, 60)}`;
+        const lastSentTs = this.sentMessages.get(dedupKey);
+        if (lastSentTs && (Date.now() - lastSentTs) < 5000) {
+          console.warn(`🔒 DEDUP_LOCK: Blocked duplicate auto-reply to ${cleaned} within 5s window. Skipping.`);
+          resolve({ success: false, error: 'DEDUP_BLOCKED' });
+          continue;
+        }
+        this.sentMessages.set(dedupKey, Date.now());
+        // Clean up old dedup keys to prevent memory leak (keep last 200)
+        if (this.sentMessages.size > 200) {
+          const oldestKey = this.sentMessages.keys().next().value;
+          this.sentMessages.delete(oldestKey);
+        }
+      }
+
       // --- 3. Bulk Batch Staggering ---
       if (!isManual) {
         this.consecutiveBulkSentCount++;
@@ -1042,6 +1069,16 @@ class WhatsAppBot {
             }
           } catch(e) {
             console.warn(`⚠️ onWhatsApp check failed/rate-limited for ${cleaned}, proceeding anyway...`);
+          }
+        }
+
+        // --- 🔒 STABILITY FIX: Early blank-payload guard (catches ALL send paths) ---
+        if (!mediaUrl) {
+          const earlyCheck = String(message || '').trim();
+          if (!earlyCheck) {
+            console.error('🚫 BLANK_MSG_BLOCKED: Empty message detected before API call. Skipping.', { phone: cleaned });
+            resolve({ success: false, error: 'BLANK_MSG_BLOCKED' });
+            continue;
           }
         }
 
@@ -1185,7 +1222,14 @@ class WhatsAppBot {
             sentMsg = await this.sock.sendMessage(jid, payload);
           }
         } else {
-          const payload = { text: String(message) };
+          // --- 🔒 STABILITY FIX: Strict blank payload guard ---
+          const textContent = String(message || '');
+          if (!textContent || textContent.trim() === '') {
+            console.error('🚫 BLANK_MSG_BLOCKED: Attempted to send empty text message to', cleaned);
+            resolve({ success: false, error: 'BLANK_MSG_BLOCKED' });
+            continue;
+          }
+          const payload = { text: textContent };
           sentMsg = await this.sock.sendMessage(jid, payload);
         }
 
@@ -1320,9 +1364,27 @@ class WhatsAppBot {
 
   // --- 💳 MODULE 5: PAYMENT RECEIVED AUTO-REPLY (callable by OCR engine) ---
   triggerPaymentReceivedReply(phone, orderId) {
-    const msg = `✅ *Payment Confirmed!*\n\nThank you! We have received your payment for order *#${orderId}*. Your parcel is being packed and will be dispatched shortly. 📦\n\n_TRACE ERP Auto-Verification System_`;
-    this.sendMessage(phone, msg, true);
-    console.log(`💳 PAYMENT_RECEIVED auto-reply sent to ${phone} for order #${orderId}`);
+    // --- 🔒 STABILITY FIX: Per-phone concurrency guard ---
+    if (this.processingReplies && this.processingReplies.has(phone)) {
+      console.warn(`🔒 CONCURRENT_LOCK: triggerPaymentReceivedReply already processing for ${phone}. Skipping duplicate.`);
+      return;
+    }
+    if (this.processingReplies) this.processingReplies.add(phone);
+
+    const msg = `\u2705 *Payment Confirmed!*\n\nThank you! We have received your payment for order *#${orderId}*. Your parcel is being packed and will be dispatched shortly. \ud83d\udce6\n\n_TRACE ERP Auto-Verification System_`;
+
+    // Validate content before sending
+    if (!msg || msg.trim() === '') {
+      console.error('\ud83d\udeab BLANK_MSG_BLOCKED: triggerPaymentReceivedReply generated empty message');
+      if (this.processingReplies) this.processingReplies.delete(phone);
+      return;
+    }
+
+    this.sendMessage(phone, msg, true)
+      .finally(() => {
+        if (this.processingReplies) this.processingReplies.delete(phone);
+      });
+    console.log(`\ud83d� PAYMENT_RECEIVED auto-reply queued for ${phone} for order #${orderId}`);
   }
 
   setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate }) {
