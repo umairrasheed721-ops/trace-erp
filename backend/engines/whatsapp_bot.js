@@ -260,6 +260,10 @@ class WhatsAppBot {
     this.humanHandoffContacts = new Set(); // phones currently in human-intervention mode
     this.consecutiveBotReplies = {};       // phone -> count of consecutive bot replies without a human reply
 
+    // --- ⚡ FIX: HIGH-PRIORITY QUEUE (active chat sessions jump the bulk queue) ---
+    this.priorityQueue = [];   // Messages from live agent sessions or active incoming chats
+    this.activeChats = new Set(); // phones with recent incoming activity (within 5 min)
+
     // --- 🔒 STABILITY FIX: Global dedup lock + per-phone concurrency guard ---
     // sentMessages: Map<phone, lastTimestamp> — blocks identical auto-replies within 5s
     this.sentMessages = new Map();
@@ -524,6 +528,9 @@ class WhatsAppBot {
           const isOutgoing = msg.key.fromMe;
           if (!isOutgoing && fromPhone) {
             this.contactLastIncomingTimestamp[fromPhone] = Date.now();
+            // Mark phone as 'active chat' for smart backoff — window: 5 minutes
+            this.activeChats.add(fromPhone);
+            setTimeout(() => this.activeChats.delete(fromPhone), 5 * 60 * 1000);
           }
           
           // Download media if present
@@ -539,7 +546,19 @@ class WhatsAppBot {
             }
           }
 
-          const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '[Unsupported Message Format]');
+          // --- FIX 3: Validate message type — block 'Unsupported' objects from entering the pipeline ---
+          const msgKeys = Object.keys(msg.message || {});
+          const SUPPORTED_TYPES = ['conversation', 'extendedTextMessage', 'imageMessage', 'audioMessage',
+            'videoMessage', 'documentMessage', 'stickerMessage', 'reactionMessage',
+            'protocolMessage', 'ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2',
+            'ptvMessage', 'locationMessage', 'contactMessage'];
+          const hasKnownType = msgKeys.some(k => SUPPORTED_TYPES.includes(k));
+          if (!hasKnownType && !text && !mediaDetails) {
+            console.log(`[MSG_FILTER] Skipping unsupported protocol message from ${fromPhone}. Keys: ${msgKeys.join(',')}`);
+            continue;
+          }
+          const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : null);
+          if (!finalMessage) continue; // Drop if still nothing to store
 
           const { db } = require('../db');
           // Robust order routing: match customer even if DB has spaces/dashes like "0303 4070 779"
@@ -947,32 +966,51 @@ class WhatsAppBot {
       finalMessage = this.variateTemplateMessage(finalMessage);
     }
 
-    // Add to queue instead of sending immediately
+    // --- ⚡ FIX: Route to HIGH-PRIORITY queue for manual/active-chat messages ---
     return new Promise((resolve) => {
-      this.queue.push({ phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve });
-      console.log(`📥 Message queued for ${phone} (Manual: ${isManual}, Media: ${!!mediaUrl}). Queue size: ${this.queue.length}`);
+      let cleaned = phone.replace(/\D/g, '');
+      if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+      else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+      const isActiveChatSession = isManual || this.activeChats.has(cleaned) || this.activeChats.has(phone);
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession };
+
+      if (isActiveChatSession) {
+        this.priorityQueue.push(item);
+        console.log(`⚡ [PRIORITY_QUEUE] Message queued for ${phone} (active session). Priority size: ${this.priorityQueue.length} | Bulk size: ${this.queue.length}`);
+      } else {
+        this.queue.push(item);
+        console.log(`📥 [BULK_QUEUE] Message queued for ${phone}. Priority size: ${this.priorityQueue.length} | Bulk size: ${this.queue.length}`);
+      }
       this._processQueue();
     });
   }
 
   async _processQueue() {
-    if (this.isProcessing || this.queue.length === 0) return;
+    const totalPending = (this.priorityQueue?.length || 0) + this.queue.length;
+    if (this.isProcessing || totalPending === 0) return;
+
+    // --- FIX 4: Bottleneck Logging ---
     if (this.status !== 'CONNECTED') {
-      console.warn('⏳ Queue paused: Bot not connected');
+      console.warn(`⏳ [WAITING_SOCKET] Bot not connected. Priority pending: ${this.priorityQueue?.length || 0} | Bulk pending: ${this.queue.length}`);
       return;
     }
     if (this.isPaused) {
-      console.warn('⏳ Queue paused by Master Emergency Switch');
+      console.warn(`⏳ [WAITING_QUEUE] Queue paused by Master Emergency Switch. Items frozen: ${totalPending}`);
       return;
     }
     if (this.isSleeping) {
-      console.warn(`⏳ Queue paused: Bot is in simulated human rest (SLEEPING) until ${new Date(this.sleepUntil).toISOString()}`);
+      console.warn(`⏳ [WAITING_QUEUE] Bot SLEEPING until ${new Date(this.sleepUntil).toISOString()}. Items frozen: ${totalPending}`);
       return;
     }
 
     this.isProcessing = true;
 
-    while (this.queue.length > 0 && !this.isPaused && !this.isSleeping) {
+    // Unified drain loop — priority queue is always drained first
+    while ((!this.isPaused && !this.isSleeping) && ((this.priorityQueue?.length || 0) + this.queue.length > 0)) {
+      // --- ⚡ FIX: Drain PRIORITY queue before touching bulk queue ---
+      const activeQueue = (this.priorityQueue?.length > 0) ? this.priorityQueue : this.queue;
+      const queueType = (activeQueue === this.priorityQueue) ? 'PRIORITY' : 'BULK';
       // 1. Check Hourly Limit
       const now = Date.now();
       if (now - this.lastResetTime > 3600000) {
@@ -981,13 +1019,13 @@ class WhatsAppBot {
       }
 
       if (this.hourlyCount >= this.maxPerHour) {
-        console.warn(`🛑 Hourly limit (${this.maxPerHour}) reached. Throttling for ${this.coolingPeriodMin} minutes...`);
+        console.warn(`🛑 [WAITING_QUEUE] Hourly limit (${this.maxPerHour}) reached. Cooling for ${this.coolingPeriodMin} min. Pending: ${(this.priorityQueue?.length || 0) + this.queue.length}`);
         await new Promise(r => setTimeout(r, this.coolingPeriodMin * 60000));
-        this.hourlyCount = 0; // Reset after wait
+        this.hourlyCount = 0;
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve } = this.queue[0]; // Peek!
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession } = activeQueue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1001,18 +1039,18 @@ class WhatsAppBot {
       
       if (sentTimestamps.length >= 3) {
         const lastSent = Math.max(...sentTimestamps);
-        // If customer has NOT responded since our last sent message, enforce rate limiting sleep
         if (lastIncoming <= lastSent) {
           const oldestTimestamp = sentTimestamps[0];
           const waitTime = Math.max(1000, 60000 - (Date.now() - oldestTimestamp) + 1000);
-          console.warn(`🛑 Anti-Ban: Contact +${cleaned} limit reached (3 msgs/60s). Queue waiting for safety window (${waitTime/1000}s)...`);
+          console.warn(`🛑 [WAITING_QUEUE] Anti-Ban: +${cleaned} limit reached (3 msgs/60s). Wait: ${(waitTime/1000).toFixed(1)}s | Queue type: ${queueType}`);
           await new Promise(r => setTimeout(r, waitTime));
-          continue; // Retry peeking in next iteration
+          continue;
         }
       }
 
-      // Safe to send! Shift from queue now
-      this.queue.shift();
+      // Safe to send! Shift from the correct queue
+      activeQueue.shift();
+      console.log(`🚀 [${queueType}] Processing message for ${phone}. Priority remaining: ${this.priorityQueue?.length || 0} | Bulk remaining: ${this.queue.length}`);
 
       // --- 🔒 STABILITY FIX: Global dedup lock — block repeat auto-reply within 5 seconds ---
       if (!isManual) {
@@ -1048,15 +1086,20 @@ class WhatsAppBot {
         const jid = cleaned + '@s.whatsapp.net';
         
         if (isManual) {
-          // Manual 1-on-1 agent chat: Instant priority delivery, bypass bulk anti-ban delay & flaky onWhatsApp check
-          console.log(`⚡ Manual Agent Chat: Instant priority delivery to ${cleaned}...`);
-          await new Promise(r => setTimeout(r, 500));
+          // Manual 1-on-1 agent chat: Instant priority delivery
+          console.log(`⚡ [PRIORITY] Manual agent message to ${cleaned}. No anti-ban delay.`);
+          await new Promise(r => setTimeout(r, 300));
+        } else if (isActiveChatSession) {
+          // --- FIX 1: SMART BACKOFF — Active chat session: 2-3s delay (feels natural, not robotic) ---
+          const smartDelay = Math.floor(Math.random() * 1000) + 2000; // 2000-3000ms
+          console.log(`⚡ [SMART_BACKOFF] Active chat session for ${cleaned}. Delay: ${(smartDelay/1000).toFixed(1)}s (vs bulk ${this.minDelaySec}-${this.maxDelaySec}s)`);
+          await new Promise(r => setTimeout(r, smartDelay));
         } else {
-          // Bulk marketing alert: Use dynamic anti-ban pacing & onWhatsApp verification
+          // Bulk broadcast: Full anti-ban pacing + onWhatsApp registration check
           const minMs = (this.minDelaySec || 5) * 1000;
           const maxMs = (this.maxDelaySec || 15) * 1000;
           const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-          console.log(`⏳ Anti-Ban Spacing: Waiting ${delay/1000}s before sending automated message to ${cleaned}...`);
+          console.log(`⏳ [BULK_THROTTLE] Anti-Ban spacing: ${(delay/1000).toFixed(1)}s before sending to ${cleaned}. Bulk queue: ${this.queue.length}`);
           await new Promise(r => setTimeout(r, delay));
 
           try {
@@ -1087,12 +1130,15 @@ class WhatsAppBot {
           await this.sock.sendPresenceUpdate('composing', jid);
         } catch (e) {}
 
-        // 2. Character-based typing delay simulation (50ms per char + 20% random jitter)
-        const charDelay = message.length * 50;
+        // 2. Character-based typing delay simulation
+        // FIX 1: Cap typing delay for active sessions (max 3s) vs bulk (max 15s)
+        const charDelay = (message || '').length * 50;
         const jitterFraction = (Math.random() * 0.4) - 0.2; // -20% to +20%
         const jitter = charDelay * jitterFraction;
-        const typingDelay = Math.max(1000, Math.min(charDelay + jitter, 15000));
-        console.log(`💬 Simulating typing for ${typingDelay}ms to ${cleaned}...`);
+        const typingCap = (isManual || isActiveChatSession) ? 3000 : 15000;
+        const typingFloor = (isManual || isActiveChatSession) ? 500 : 1000;
+        const typingDelay = Math.max(typingFloor, Math.min(charDelay + jitter, typingCap));
+        console.log(`💬 [TYPING_SIM] ${isActiveChatSession ? 'Active' : 'Bulk'} | ${typingDelay}ms typing delay to ${cleaned}`);
         await new Promise(r => setTimeout(r, typingDelay));
 
         // 3. Stop composing state
@@ -1408,16 +1454,27 @@ class WhatsAppBot {
   }
 
   clearQueue() {
-    const count = this.queue.length;
+    const bulkCount = this.queue.length;
+    const priorityCount = this.priorityQueue?.length || 0;
     this.queue = [];
-    console.log(`🗑️ Cleared ${count} queued messages.`);
-    return count;
+    if (this.priorityQueue) this.priorityQueue = [];
+    console.log(`🗑️ Cleared ${bulkCount} bulk + ${priorityCount} priority queued messages.`);
+    return bulkCount + priorityCount;
   }
 
   getQueueDetails() {
+    const bottleneck = this.status !== 'CONNECTED' ? 'WAITING_SOCKET'
+      : this.isPaused ? 'WAITING_QUEUE'
+      : this.isSleeping ? 'SLEEPING'
+      : 'RUNNING';
     return {
       isPaused: this.isPaused,
-      queueCount: this.queue.length,
+      isSleeping: this.isSleeping,
+      bottleneck,
+      priorityQueueCount: this.priorityQueue?.length || 0,
+      bulkQueueCount: this.queue.length,
+      queueCount: (this.priorityQueue?.length || 0) + this.queue.length, // total (backward-compat)
+      activeChatsCount: this.activeChats?.size || 0,
       hourlyCount: this.hourlyCount,
       maxPerHour: this.maxPerHour,
       minDelaySec: this.minDelaySec,
