@@ -11,7 +11,7 @@ const isProduction = process.env.NODE_ENV === 'production' ||
 const defaultDbPath = isProduction 
   ? '/app/data/trace_erp.db' 
   : path.join(__dirname, 'trace_erp.db');
-const DB_PATH = process.env.DB_PATH || defaultDbPath;
+const DB_PATH = path.resolve(process.env.DB_PATH || defaultDbPath);
 
 // Ensure the parent directory exists (important for Railway volume mounts)
 const DB_DIR = path.dirname(DB_PATH);
@@ -27,7 +27,7 @@ function getDbInstance() {
   if (!dbInstances[tenantId]) {
     const dbPath = tenantId === 'default'
       ? DB_PATH
-      : path.join(DB_DIR, `trace_erp_${tenantId}.db`);
+      : path.resolve(path.join(DB_DIR, `trace_erp_${tenantId}.db`));
     
     // Ensure the parent directory exists
     const dbDir = path.dirname(dbPath);
@@ -35,6 +35,7 @@ function getDbInstance() {
       fs.mkdirSync(dbDir, { recursive: true });
     }
     
+    console.log("Connecting to DB at:", dbPath);
     console.log(`🔌 [Multi-Tenant DB] Opening database for tenant [${tenantId}] at: ${dbPath}`);
     const conn = new DatabaseSync(dbPath);
     dbInstances[tenantId] = conn;

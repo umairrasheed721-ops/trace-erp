@@ -11,9 +11,10 @@ const isProduction = process.env.NODE_ENV === 'production' ||
 const defaultDbPath = isProduction 
   ? '/app/data/trace_erp.db' 
   : path.join(__dirname, '..', 'trace_erp.db');
-const DB_PATH = process.env.DB_PATH || defaultDbPath;
+const DB_PATH = path.resolve(process.env.DB_PATH || defaultDbPath);
 const DB_DIR = path.dirname(DB_PATH);
 
+console.log("Connecting to DB at:", DB_PATH);
 console.log(`🔌 [Startup Migration] Connecting to SQLite database at: ${DB_PATH}`);
 
 if (!fs.existsSync(DB_DIR)) {
