@@ -1241,7 +1241,7 @@ export default function WhatsAppPortal() {
 
                 {/* Module 8: Push-to-Talk Mic Button */}
                 <button
-                  className="wa-portal-action-btn"
+                  className={`wa-portal-action-btn VoiceNoteButton ${isRecording ? 'animate-pulse' : ''}`}
                   onClick={handleVoiceNote}
                   title={isRecording ? 'Stop recording & send voice note' : 'Record a voice note'}
                   style={{
