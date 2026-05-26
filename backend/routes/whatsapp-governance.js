@@ -661,6 +661,123 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
   }
 });
 
+// POST /api/whatsapp-governance/chats/:phone/log-call-handoff
+// Feature 3: Smart Call Handoff — logs internal system note without sending WA message
+router.post('/chats/:phone/log-call-handoff', async (req, res) => {
+  const { phone } = req.params;
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`);
+    const storeId = order ? order.store_id : 1;
+    const orderId = order ? order.id : null;
+
+    const systemMsg = '📞 Agent initiated native WhatsApp handoff call.';
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
+      `).run(storeId, orderId, cleaned, systemMsg);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to log call handoff message:', err.message);
+    }
+
+    res.json({
+      success: true,
+      message: {
+        id: dbMessageId || Date.now(),
+        store_id: storeId,
+        order_id: orderId,
+        phone: cleaned,
+        direction: 'outgoing',
+        message: systemMsg,
+        status: 'sent',
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/chats/:phone/upload-voice
+// Feature 2: Web Push-to-Talk — accepts audio blob, sends as native PTT Voice Note
+const voiceUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const folderPath = path.join(DB_DIR, 'uploads');
+      if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+      cb(null, folderPath);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `voice_${Date.now()}.webm`);
+    }
+  }),
+  limits: { fileSize: 16 * 1024 * 1024 }, // 16MB max voice note
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) cb(null, true);
+    else cb(new Error('Only audio files accepted for voice notes'));
+  }
+});
+
+router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (req, res) => {
+  const { phone } = req.params;
+  if (!req.file) return res.status(400).json({ error: 'No audio file received' });
+
+  try {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`);
+    const storeId = order ? order.store_id : 1;
+    const orderId = order ? order.id : null;
+
+    const absolutePath = req.file.path;
+    const relativeUrl = `/uploads/${req.file.filename}`;
+
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
+        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, 'audio', 'sent')
+      `).run(storeId, orderId, cleaned, relativeUrl);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to log voice note:', err.message);
+    }
+
+    // Send as PTT (Push-to-Talk) voice note via Baileys
+    // isManual=true to skip bulk throttle; mediaType='voice' triggers PTT encoding
+    bot.sendMessage(cleaned, '', true, absolutePath, 'voice', req.file.filename);
+
+    res.json({
+      success: true,
+      message: {
+        id: dbMessageId || Date.now(),
+        store_id: storeId,
+        order_id: orderId,
+        phone: cleaned,
+        direction: 'outgoing',
+        message: '[Voice Note]',
+        media_url: relativeUrl,
+        media_type: 'audio',
+        status: 'sent',
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (e) {
+    console.error('Voice upload error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/whatsapp-governance/chats/:phone/send-quick-reply
 router.post('/chats/:phone/send-quick-reply', async (req, res) => {
   const { phone } = req.params;

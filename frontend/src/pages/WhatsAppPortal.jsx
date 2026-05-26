@@ -14,6 +14,12 @@ export default function WhatsAppPortal() {
   const [searchText, setSearchText] = useState('')
   const [inputText, setInputText] = useState('')
   const [uploading, setUploading] = useState(false)
+  // Module 8: Rich Media states
+  const [isDragging, setIsDragging] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const dragCounterRef = useRef(0)
   
   // --- SUBDATA STATES ---
   const [customerInfo, setCustomerInfo] = useState({
@@ -523,6 +529,90 @@ export default function WhatsAppPortal() {
     }
   }
 
+  // --- MODULE 8: DRAG & DROP UPLOAD ---
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current += 1
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) setIsDragging(true)
+  }
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current === 0) setIsDragging(false)
+  }
+  const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation() }
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    dragCounterRef.current = 0
+    if (!activeChat) return addToast('Select a chat first', 'warning')
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    const syntheticEvent = { target: { files: [file] } }
+    await handleMediaUpload(syntheticEvent)
+  }
+
+  // --- MODULE 8: PUSH-TO-TALK VOICE NOTE ---
+  const handleVoiceNote = async () => {
+    if (isRecording) {
+      // Stop recording
+      mediaRecorderRef.current?.stop()
+      return
+    }
+    if (!activeChat) return addToast('Select a chat to send a voice note', 'warning')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      audioChunksRef.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        setIsRecording(false)
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        if (blob.size < 1000) return addToast('Recording too short', 'warning')
+        const formData = new FormData()
+        formData.append('audio', blob, `voice_${Date.now()}.webm`)
+        addToast('⏳ Sending voice note...', 'info')
+        try {
+          const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/upload-voice`, {
+            method: 'POST', body: formData
+          })
+          const data = await res.json()
+          if (data.success && data.message) {
+            setMessages(prev => [...prev, data.message])
+            setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
+            addToast('✅ Voice note sent!', 'success')
+            scrollToBottom()
+          } else { addToast(data.error || 'Failed to send voice note', 'error') }
+        } catch (err) { addToast('Network error sending voice note', 'error') }
+      }
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      setIsRecording(true)
+    } catch (err) {
+      console.error('Mic access error:', err)
+      addToast('Microphone access denied. Check browser permissions.', 'error')
+    }
+  }
+
+  // --- MODULE 8: SMART CALL HANDOFF ---
+  const handleCallHandoff = async () => {
+    if (!activeChat) return
+    // Silent tracking — log to DB without alerting the customer
+    try {
+      const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/log-call-handoff`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await res.json()
+      if (data.success && data.message) {
+        setMessages(prev => [...prev, data.message])
+      }
+    } catch (err) { console.warn('Call handoff log failed:', err.message) }
+  }
+
   const handleMediaUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file || !activeChat) return
@@ -838,41 +928,51 @@ export default function WhatsAppPortal() {
         <div className="wa-portal-center">
           {activeChat ? (
             <>
-              {/* Header */}
-              <div className="wa-portal-chat-header">
-                <div className="wa-portal-chat-header-info">
-                  <div className="wa-portal-avatar">
-                    {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
+                {/* Header */}
+                <div className="wa-portal-chat-header">
+                  <div className="wa-portal-chat-header-info">
+                    <div className="wa-portal-avatar">
+                      {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+                        {activeChat.customerName || `+${activeChat.phone}`}
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {typingStatus[activeChat.phone] ? 'typing...' : `+${activeChat.phone}`}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
-                      {activeChat.customerName || `+${activeChat.phone}`}
-                    </h3>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {typingStatus[activeChat.phone] ? 'typing...' : `+${activeChat.phone}`}
-                    </span>
+                  
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {/* Module 8: Smart Call Handoff */}
+                    <a
+                      href={`whatsapp://send?phone=${activeChat.phone}`}
+                      onClick={handleCallHandoff}
+                      className="btn btn-secondary btn-sm"
+                      title="Open native WhatsApp app to call this customer"
+                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.3)', color: '#25d366', transition: 'all 0.2s ease' }}
+                    >
+                      📞 Call
+                    </a>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleSendInvoice}
+                      disabled={!customerInfo.latestOrder}
+                      title="Send PDF Invoice to Customer"
+                    >
+                      📄 Invoice
+                    </button>
+                    <button 
+                      onClick={() => selectChat(activeChat)} 
+                      className="btn btn-secondary btn-sm"
+                      title="Reload chat timeline"
+                    >
+                      🔄 Sync
+                    </button>
                   </div>
                 </div>
-                
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={handleSendInvoice}
-                    disabled={!customerInfo.latestOrder}
-                    title="Send PDF Invoice to Customer"
-                  >
-                    📄 Send Invoice
-                  </button>
-                  <button 
-                    onClick={() => selectChat(activeChat)} 
-                    className="btn btn-secondary btn-sm"
-                    title="Reload chat timeline"
-                  >
-                    🔄 Sync History
-                  </button>
-                </div>
-              </div>
 
               {/* Sync Progress Bar — Module 7 */}
               {syncingMessages && (
@@ -890,8 +990,35 @@ export default function WhatsAppPortal() {
                 </div>
               )}
 
-              {/* Message Timeline — Module 7: Skeleton Loaders */}
-              <div className="wa-portal-chat-timeline">
+              {/* Message Timeline — Module 8: Drag & Drop wrapper */}
+              <div
+                className="wa-portal-chat-timeline"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                style={{ position: 'relative' }}
+              >
+                {/* Glassmorphism Drop Overlay */}
+                {isDragging && (
+                  <div style={{
+                    position: 'absolute', inset: 0, zIndex: 50,
+                    background: 'rgba(99, 102, 241, 0.15)',
+                    backdropFilter: 'blur(12px)',
+                    border: '2px dashed rgba(99, 102, 241, 0.6)',
+                    borderRadius: '16px',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 12, pointerEvents: 'none',
+                    transition: 'all 0.2s ease',
+                    animation: 'dropOverlayPulse 1.5s ease-in-out infinite'
+                  }}>
+                    <span style={{ fontSize: '3rem' }}>📎</span>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--primary, #6366f1)' }}>Drop file to send</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0.8 }}>Images, audio, documents supported</span>
+                  </div>
+                )}
+
                 {loadingMessages ? (
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {[...Array(6)].map((_, i) => (
@@ -1085,6 +1212,25 @@ export default function WhatsAppPortal() {
                     disabled={uploading}
                   />
                 </label>
+
+                {/* Module 8: Push-to-Talk Mic Button */}
+                <button
+                  className="wa-portal-action-btn"
+                  onClick={handleVoiceNote}
+                  title={isRecording ? 'Stop recording & send voice note' : 'Record a voice note'}
+                  style={{
+                    position: 'relative',
+                    color: isRecording ? '#ef4444' : undefined,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isRecording ? (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      animation: 'recordingPulse 1s ease-in-out infinite'
+                    }}>🔴</span>
+                  ) : '🎤'}
+                </button>
 
                 {/* Templates Selector */}
                 <button 
