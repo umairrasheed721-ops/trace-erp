@@ -141,10 +141,14 @@ function getMessageText(msg) {
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   try {
-    const folderPath = path.join(DB_DIR, 'uploads');
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-    }
+    const fsPromises = require('fs').promises;
+    const crypto = require('crypto');
+    const storageDir = process.env.MEDIA_STORAGE_DIR 
+      ? path.resolve(process.env.MEDIA_STORAGE_DIR)
+      : path.resolve(process.cwd(), 'storage', 'media');
+    
+    // Ensure the permanent storage directory exists asynchronously
+    await fsPromises.mkdir(storageDir, { recursive: true });
 
     const extMap = {
       'image/jpeg': 'jpg',
@@ -164,15 +168,11 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
       ext = extMap[baseMime] || extMap[mediaDetails.mimeType] || baseMime.split('/')[1] || 'bin';
     }
 
-    const fileName = `media_${msg.key.id}.${ext}`;
-    const filePath = path.join(folderPath, fileName);
+    const uuid = crypto.randomUUID();
+    const fileName = `${uuid}.${ext}`;
+    const filePath = path.join(storageDir, fileName);
 
-    // If file already exists, don't download it again
-    if (fs.existsSync(filePath)) {
-      return `/uploads/${fileName}`;
-    }
-
-    console.log(`📥 Downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
+    console.log(`📥 Decrypting and downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
     const buffer = await downloadMediaMessage(
       msg,
       'buffer',
@@ -181,8 +181,9 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
     );
 
     if (buffer) {
-      fs.writeFileSync(filePath, buffer);
-      return `/uploads/${fileName}`;
+      await fsPromises.writeFile(filePath, buffer);
+      console.log(`💾 Saved proxy media to secure local storage: ${filePath}`);
+      return `/api/media/${fileName}`;
     }
   } catch (e) {
     console.warn(`⚠️ Failed to download media for message ${msg.key.id}:`, e.message);
@@ -521,6 +522,42 @@ class WhatsAppBot {
 
       // --- 🔒 STABILITY FIX: Remove all previous listeners before re-registering
       // This prevents duplicate listener accumulation across reconnects (dup-loop elimination)
+      try {
+        this.sock.ev.removeAllListeners('messages.update');
+      } catch (e) {}
+      this.sock.ev.on('messages.update', async (updates) => {
+        const { db } = require('../db');
+        for (const { key, update } of updates) {
+          const messageId = key.id;
+          const statusVal = update.status;
+          
+          if (messageId && statusVal >= 2) {
+            try {
+              db.prepare("UPDATE whatsapp_messages SET status = 'delivered' WHERE message_id = ?").run(messageId);
+            } catch (e) {}
+            
+            // Search and delete matching file in pending_ack
+            const pendingAckDir = path.resolve(__dirname, '..', 'pending_ack');
+            if (fs.existsSync(pendingAckDir)) {
+              try {
+                const files = fs.readdirSync(pendingAckDir);
+                for (const file of files) {
+                  if (file.startsWith(messageId)) {
+                    const filePath = path.join(pendingAckDir, file);
+                    if (fs.existsSync(filePath)) {
+                      fs.unlinkSync(filePath);
+                      console.log(`🗑️ [PENDING_ACK] Unlinked file upon delivery confirmation: ${filePath}`);
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error(`⚠️ Failed to cleanup pending_ack file for message ${messageId}:`, err.message);
+              }
+            }
+          }
+        }
+      });
+
       this.sock.ev.removeAllListeners('messages.upsert');
 
       this.sock.ev.on('messages.upsert', async (m) => {
@@ -554,12 +591,19 @@ class WhatsAppBot {
           let mediaUrl = null;
           let mediaType = null;
           if (mediaDetails) {
-            try {
-              const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
+            const { db } = require('../db');
+            const existingMsg = db.prepare(`SELECT media_url FROM whatsapp_messages WHERE message_id = ?`).get(msg.key.id);
+            if (existingMsg && existingMsg.media_url) {
+              mediaUrl = existingMsg.media_url;
               mediaType = mediaDetails.type;
-              mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
-            } catch (mediaErr) {
-              console.error('⚠️ Media download error in messages.upsert:', mediaErr.message);
+            } else {
+              try {
+                const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
+                mediaType = mediaDetails.type;
+                mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+              } catch (mediaErr) {
+                console.error('⚠️ Media download error in messages.upsert:', mediaErr.message);
+              }
             }
           }
 
@@ -648,10 +692,73 @@ class WhatsAppBot {
             // Human agent manually sent a message: Pause bot replies for 30 minutes for this contact
             this.humanCooldowns[fromPhone] = Date.now();
             console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 30 mins.`);
+            
+            // Set 15-minute lock in database
+            const until = Date.now() + 15 * 60 * 1000;
+            try {
+              const { db } = require('../db');
+              db.prepare(`
+                INSERT INTO customer_profiles (phone, human_handoff_until, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(phone) DO UPDATE SET human_handoff_until = ?, updated_at = datetime('now')
+              `).run(fromPhone, String(until), String(until));
+              console.log(`🧑 [HANDOFF_LOCK] Set 15-minute handoff lock in DB for ${fromPhone} due to outgoing human message.`);
+            } catch (e) {
+              console.error('⚠️ Failed to set human handoff lock in DB:', e.message);
+            }
             continue;
           }
 
           console.log(`💬 Incoming WA Message from ${fromPhone}: ${text}`);
+
+          // --- 👤 HIGH-RISK INTENT ROUTING (TRIAGE QUEUE) ---
+          const HIGH_RISK_KEYWORDS = [
+            'refund', 'complaint', 'fraud', 'cheat', 'scam', 'defective', 'damaged',
+            'broken', 'wrong item', 'consumer court', 'worst service', 'bad service',
+            'fake', 'wapas', 'shikayat', 'dhoka', 'kharab'
+          ];
+          const lowerText = String(text || '').toLowerCase().trim();
+          const isHighRisk = HIGH_RISK_KEYWORDS.some(kw => lowerText.includes(kw));
+
+          if (!isOutgoing && isHighRisk) {
+            console.log(`⚠️ [TRIAGE] High-risk message intent detected from ${fromPhone}. Routing to triage queue.`);
+            // Update customer profile risk flag and handoff lock
+            const until = Date.now() + 15 * 60 * 1000;
+            try {
+              db.prepare(`
+                INSERT INTO customer_profiles (phone, risk_flag, risk_reason, risk_updated_at, human_handoff_until, updated_at)
+                VALUES (?, 'HIGH_RISK', 'High-risk message intent: ' || ?, datetime('now'), ?, datetime('now'))
+                ON CONFLICT(phone) DO UPDATE SET 
+                  risk_flag = 'HIGH_RISK', 
+                  risk_reason = 'High-risk message intent: ' || ?, 
+                  risk_updated_at = datetime('now'),
+                  human_handoff_until = ?,
+                  updated_at = datetime('now')
+              `).run(fromPhone, text.substring(0, 100), String(until), text.substring(0, 100), String(until));
+            } catch (e) {
+              console.error('⚠️ Failed to update customer risk profile:', e.message);
+            }
+            
+            // Put in human handoff
+            this.setHumanHandoff(fromPhone, true);
+            
+            // Broadcast triage notification
+            try {
+              const { broadcast } = require('../websocket');
+              broadcast('high_risk_triage', { phone: fromPhone, message: text });
+            } catch (_) {}
+
+            // Save/update the incoming message with intent = 'triage'
+            try {
+              db.prepare(`
+                UPDATE whatsapp_messages SET intent = 'triage' WHERE message_id = ?
+              `).run(msg.key.id);
+            } catch (dbErr) {
+              console.error('⚠️ DB update failed for triage message:', dbErr.message);
+            }
+            
+            continue; // CRITICAL: Stop and do NOT trigger bot or Gemini!
+          }
 
           // Check if bot is sleeping to simulate human rest, skip auto-replies completely!
           if (this.isSleeping) {
@@ -663,6 +770,20 @@ class WhatsAppBot {
           if (this.humanHandoffContacts && this.humanHandoffContacts.has(fromPhone)) {
             console.log(`👤 [HANDOFF] ${fromPhone} is in human intervention mode. Bot silent.`);
             continue;
+          }
+
+          // Check DB handoff lock
+          try {
+            const profile = db.prepare('SELECT human_handoff_until FROM customer_profiles WHERE phone = ?').get(fromPhone);
+            if (profile && profile.human_handoff_until) {
+              const handoffUntil = Number(profile.human_handoff_until);
+              if (Date.now() < handoffUntil) {
+                console.log(`👤 [HANDOFF_DB_LOCK] ${fromPhone} has active human handoff lock until ${new Date(handoffUntil).toISOString()}. Bot silent.`);
+                continue;
+              }
+            }
+          } catch (e) {
+            console.error('⚠️ Failed to check handoff lock in DB:', e.message);
           }
 
           // Reset consecutive-bot-reply counter on every incoming message
@@ -960,7 +1081,7 @@ class WhatsAppBot {
     return modified;
   }
 
-  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null) {
+  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null) {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -983,14 +1104,34 @@ class WhatsAppBot {
       finalMessage = this.variateTemplateMessage(finalMessage);
     }
 
+    const uuid = customMessageId || require('crypto').randomUUID();
+
     // --- ⚡ FIX: Route to HIGH-PRIORITY queue for manual/active-chat messages ---
     return new Promise((resolve) => {
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
+      if (isManual) {
+        // Manual 1-on-1 agent chat: Instant priority delivery and set/refresh 15-minute handoff lock in DB
+        console.log(`⚡ [PRIORITY] Manual agent message to ${cleaned}. No anti-ban delay.`);
+        
+        const until = Date.now() + 15 * 60 * 1000;
+        try {
+          const { db } = require('../db');
+          db.prepare(`
+            INSERT INTO customer_profiles (phone, human_handoff_until, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(phone) DO UPDATE SET human_handoff_until = ?, updated_at = datetime('now')
+          `).run(cleaned, String(until), String(until));
+          console.log(`🧑 [HANDOFF_LOCK] Refreshed 15-minute handoff lock in DB for ${cleaned}`);
+        } catch (e) {
+          console.error('⚠️ Failed to refresh human handoff lock in DB:', e.message);
+        }
+      }
+
       const isActiveChatSession = isManual || this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);
@@ -1042,7 +1183,7 @@ class WhatsAppBot {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession } = activeQueue[0]; // Peek!
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid } = activeQueue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1098,6 +1239,32 @@ class WhatsAppBot {
       }
 
       let dbMediaUrl = mediaUrl;
+      let pendingAckPath = null;
+      
+      if (mediaUrl) {
+        const pendingAckDir = path.resolve(__dirname, '..', 'pending_ack');
+        if (!fs.existsSync(pendingAckDir)) {
+          fs.mkdirSync(pendingAckDir, { recursive: true });
+        }
+        const ext = path.extname(mediaUrl) || (mediaType === 'document' ? '.pdf' : mediaType === 'video' ? '.mp4' : mediaType === 'image' ? '.jpg' : '.ogg');
+        pendingAckPath = path.join(pendingAckDir, `${uuid}${ext}`);
+        
+        try {
+          if (mediaType !== 'audio' && mediaType !== 'voice') {
+            if (mediaUrl.startsWith('http')) {
+              const fetch = require('node-fetch');
+              const res = await fetch(mediaUrl);
+              const buffer = await res.buffer();
+              fs.writeFileSync(pendingAckPath, buffer);
+            } else if (fs.existsSync(mediaUrl)) {
+              fs.copyFileSync(mediaUrl, pendingAckPath);
+            }
+            console.log(`[PENDING_ACK] Saved outgoing media copy to: ${pendingAckPath}`);
+          }
+        } catch (err) {
+          console.error('⚠️ Failed to save pending_ack media file:', err.message);
+        }
+      }
 
       try {
         const jid = cleaned + '@s.whatsapp.net';
@@ -1189,7 +1356,23 @@ class WhatsAppBot {
             // Force pure text — strip any business template keys
             payload = { text: txt };
           }
-          return this.sock.sendMessage(jid, payload);
+
+          // Exponential backoff loop (2s, 4s, 8s - max 3 retries)
+          const delays = [2000, 4000, 8000];
+          let attempt = 0;
+          while (true) {
+            try {
+              return await this.sock.sendMessage(jid, payload, { messageId: uuid });
+            } catch (err) {
+              attempt++;
+              if (attempt > 3) {
+                throw err;
+              }
+              const delay = delays[attempt - 1];
+              console.warn(`[RETRY] sendMessage failed for ${jid}, retry ${attempt}/3 in ${delay}ms. Error: ${err.message}`);
+              await new Promise(r => setTimeout(r, delay));
+            }
+          }
         };
 
         let finalMediaType = mediaType;
@@ -1251,12 +1434,6 @@ class WhatsAppBot {
               finalAudioBuffer = fs.readFileSync(absInputPath);
               finalMime = 'audio/mp4';  // signal that this is a degraded fallback
               console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
-            } finally {
-              // ── Resource cleanup: delete the transcoded temp file ──────────
-              // (The original input is owned by multer/the upload route; leave it)
-              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
-                safeUnlink(transcodeOutputPath);
-              }
             }
 
             // ── Build the Baileys PTT payload ─────────────────────────────────
@@ -1269,8 +1446,26 @@ class WhatsAppBot {
               mimetype: finalMime,
             };
 
+            // Save audio VN buffer to pending_ack
+            if (pendingAckPath) {
+              try {
+                fs.writeFileSync(pendingAckPath, finalAudioBuffer);
+                console.log(`[PENDING_ACK] Saved audio VN buffer to: ${pendingAckPath}`);
+              } catch (err) {
+                console.error('⚠️ Failed to save pending_ack voice note:', err.message);
+              }
+            }
+
             console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
-            sentMsg = await safeSend(jid, payload);
+            
+            try {
+              sentMsg = await safeSend(jid, payload);
+            } finally {
+              // ── Resource cleanup: delete the transcoded temp file in finally block (Pillar 2 compliance) ──
+              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
+                await safeUnlink(transcodeOutputPath);
+              }
+            }
           } else if (finalMediaType === 'video') {
             const payload = { 
               video: { url: mediaUrl }, 
@@ -1292,7 +1487,7 @@ class WhatsAppBot {
           sentMsg = await safeSend(jid, { text: textContent });
         }
 
-        const messageId = sentMsg?.key?.id || 'out_' + Date.now();
+        const messageId = sentMsg?.key?.id || uuid;
         this.hourlyCount++;
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
         this._addAuditLog(cleaned, 'Sent', '');
@@ -1335,7 +1530,7 @@ class WhatsAppBot {
         let dbMessageId = null;
         try {
           const { db } = require('../db');
-          const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`);
+          const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
           const dbMessageContent = dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
@@ -1354,14 +1549,29 @@ class WhatsAppBot {
             }
           }
 
-          try {
+          let existingRow = null;
+          if (finalDbMediaUrl) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, finalDbMediaUrl, this.tenantId);
+          }
+
+          if (existingRow) {
+            db.prepare(`
+              UPDATE whatsapp_messages 
+              SET message_id = ?, status = 'sent'
+              WHERE id = ?
+            `).run(messageId, existingRow.id);
+            dbMessageId = existingRow.id;
+            console.log(`[DEDUP] Updated existing message ID ${dbMessageId} with Baileys ID: ${messageId}`);
+          } else {
             const result = db.prepare(`
-              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type)
-              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?)
-            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType);
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
+            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType, this.tenantId);
             dbMessageId = result.lastInsertRowid;
-          } catch (dbErr) {
-            console.error('⚠️ DB insert failed in _processQueue:', dbErr.message);
           }
 
           // Broadcast outgoing message to WebSockets
@@ -1384,7 +1594,9 @@ class WhatsAppBot {
               }
             });
           } catch (e) {}
-        } catch (dbErr) {}
+        } catch (dbErr) {
+          console.error('⚠️ DB insert failed in _processQueue:', dbErr.message);
+        }
 
         resolve({ success: true });
 
@@ -1392,6 +1604,79 @@ class WhatsAppBot {
         const reason = err.message || 'Unknown WhatsApp error';
         console.error('❌ sendMessage error:', reason);
         this._addAuditLog(cleaned || phone, 'Failed', reason);
+        
+        try {
+          const { db } = require('../db');
+          const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
+          const orderId = order ? order.id : null;
+          const storeId = order ? order.store_id : 1;
+          const dbMessageContent = dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
+
+          let finalDbMediaUrl = dbMediaUrl;
+          if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
+            const publicIndex = finalDbMediaUrl.indexOf('/public/');
+            if (publicIndex !== -1) {
+              finalDbMediaUrl = finalDbMediaUrl.substring(publicIndex + 7);
+            } else {
+              const uploadsIndex = finalDbMediaUrl.indexOf('/uploads/');
+              if (uploadsIndex !== -1) {
+                finalDbMediaUrl = finalDbMediaUrl.substring(uploadsIndex);
+              }
+            }
+          }
+
+          let existingRow = null;
+          if (finalDbMediaUrl) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, finalDbMediaUrl, this.tenantId);
+          }
+
+          if (existingRow) {
+            db.prepare(`
+              UPDATE whatsapp_messages 
+              SET message_id = ?, status = 'failed'
+              WHERE id = ?
+            `).run(uuid, existingRow.id);
+          } else {
+            db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'failed', ?)
+            `).run(storeId, orderId, cleaned, dbMessageContent, uuid, finalDbMediaUrl, finalMediaType, this.tenantId);
+          }
+
+          // Broadcast failure
+          try {
+            const { broadcast } = require('../websocket');
+            broadcast('message', {
+              order_id: orderId,
+              message: {
+                id: Date.now(),
+                store_id: storeId,
+                order_id: orderId,
+                phone: cleaned,
+                direction: 'outgoing',
+                message: dbMessageContent,
+                message_id: uuid,
+                media_url: finalDbMediaUrl,
+                media_type: finalMediaType,
+                status: 'failed',
+                created_at: new Date().toISOString()
+              }
+            });
+          } catch (e) {}
+        } catch (dbErr) {
+          console.error('Failed to log failed message status in DB:', dbErr.message);
+        }
+
+        if (pendingAckPath && fs.existsSync(pendingAckPath)) {
+          try {
+            fs.unlinkSync(pendingAckPath);
+          } catch (e) {}
+        }
+
         resolve({ success: false, error: reason });
       }
     }
@@ -1736,13 +2021,13 @@ class WhatsAppBot {
   }
 }
 
-const instances = {};
+const sessions = new Map();
 
 function getBotInstance(tenantId = 'default') {
-  if (!instances[tenantId]) {
-    instances[tenantId] = new WhatsAppBot(tenantId);
+  if (!sessions.has(tenantId)) {
+    sessions.set(tenantId, new WhatsAppBot(tenantId));
   }
-  return instances[tenantId];
+  return sessions.get(tenantId);
 }
 
 // Pre-initialize default bot instance
@@ -1769,8 +2054,10 @@ const botProxy = new Proxy({}, {
 });
 
 module.exports = botProxy;
+module.exports.sessions = sessions;
 
 // --- 🔌 MODULE 5: getBot() — allows OCR/STT engines to call bot methods directly ---
 module.exports.getBot = function(tenantId) {
   return getBotInstance(tenantId || 'default');
 };
+

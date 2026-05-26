@@ -209,8 +209,9 @@ router.post('/queue/clear', (req, res) => {
 // GET /api/whatsapp-governance/chat/:order_id
 router.get('/chat/:order_id', (req, res) => {
   const { order_id } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, wa_verification_status FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, wa_verification_status FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     if (!order.phone) {
@@ -224,9 +225,9 @@ router.get('/chat/:order_id', (req, res) => {
     // 1. Pull from SQLite DB
     const dbMessages = db.prepare(`
       SELECT * FROM whatsapp_messages 
-      WHERE phone LIKE ? OR order_id = ? 
+      WHERE (phone LIKE ? OR order_id = ?) AND tenant_id = ? 
       ORDER BY id ASC
-    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id);
+    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id, tenantId);
 
     // 2. Pull from live Baileys WebSocket memory store
     const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
@@ -253,11 +254,12 @@ router.get('/chat/:order_id', (req, res) => {
 router.post('/chat/:order_id/send', async (req, res) => {
   const { order_id } = req.params;
   const { message } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
 
   if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
 
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     let cleaned = order.phone.replace(/\D/g, '');
@@ -267,9 +269,9 @@ router.post('/chat/:order_id/send', async (req, res) => {
     // Insert into SQLite database immediately so it persists permanently
     try {
       db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
-      `).run(order.store_id, order.id, cleaned, message);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
+      `).run(order.store_id, order.id, cleaned, message, tenantId);
     } catch (err) {}
 
     // Queue message via Baileys bot with isManual = true for instant priority delivery
@@ -297,11 +299,12 @@ router.post('/chat/:order_id/send', async (req, res) => {
 router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, res) => {
   const { order_id } = req.params;
   const caption = req.body.caption || '';
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   
   if (!req.file) return res.status(400).json({ error: 'No media file provided' });
 
   try {
-    const order = db.prepare('SELECT id, store_id, phone FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     let cleaned = order.phone.replace(/\D/g, '');
@@ -335,8 +338,9 @@ router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, 
 // POST /api/whatsapp-governance/chat/:order_id/send-images
 router.post('/chat/:order_id/send-images', async (req, res) => {
   const { order_id } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, line_items FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, line_items FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.phone) return res.status(400).json({ error: 'Order phone not found' });
 
@@ -364,9 +368,9 @@ router.post('/chat/:order_id/send-images', async (req, res) => {
 
       try {
         db.prepare(`
-          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
-          VALUES (?, ?, ?, 'outgoing', ?, 'sent')
-        `).run(order.store_id, order.id, cleaned, dbMessageContent);
+          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+          VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
+        `).run(order.store_id, order.id, cleaned, dbMessageContent, tenantId);
       } catch (err) {}
 
       bot.sendMessage(cleaned, caption, true, item.image_url);
@@ -382,8 +386,9 @@ router.post('/chat/:order_id/send-images', async (req, res) => {
 // POST /api/whatsapp-governance/chat/:order_id/fetch-history
 router.post('/chat/:order_id/fetch-history', async (req, res) => {
   const { order_id } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     let cleaned = order.phone.replace(/\D/g, '');
@@ -400,9 +405,9 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
     // Pull from SQLite DB
     const dbMessages = db.prepare(`
       SELECT * FROM whatsapp_messages 
-      WHERE phone LIKE ? OR order_id = ? 
+      WHERE (phone LIKE ? OR order_id = ?) AND tenant_id = ? 
       ORDER BY id ASC
-    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id);
+    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id, tenantId);
 
     // Pull from live Baileys WebSocket memory store
     const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
@@ -427,26 +432,28 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
 
 // GET /api/whatsapp-governance/chats
 router.get('/chats', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const uniqueChats = db.prepare(`
       SELECT phone, MAX(id) as max_id 
       FROM whatsapp_messages 
+      WHERE tenant_id = ?
       GROUP BY phone 
       ORDER BY max_id DESC
-    `).all();
+    `).all(tenantId);
 
     const chats = [];
     for (const chat of uniqueChats) {
-      const msg = db.prepare('SELECT * FROM whatsapp_messages WHERE id = ?').get(chat.max_id);
+      const msg = db.prepare('SELECT * FROM whatsapp_messages WHERE id = ? AND tenant_id = ?').get(chat.max_id, tenantId);
       if (!msg) continue;
 
       const last10 = chat.phone.substring(chat.phone.length - 10);
       const order = db.prepare(`
         SELECT id, customer_name, wa_verification_status, financial_status, fulfillment_status, total_price 
         FROM orders 
-        WHERE phone LIKE ? 
+        WHERE phone LIKE ? AND tenant_id = ?
         ORDER BY id DESC LIMIT 1
-      `).get(`%${last10}%`);
+      `).get(`%${last10}%`, tenantId);
 
       chats.push({
         phone: chat.phone,
@@ -465,6 +472,7 @@ router.get('/chats', (req, res) => {
 // GET /api/whatsapp-governance/chats/:phone
 router.get('/chats/:phone', async (req, res) => {
   const { phone } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   console.log("req.params.phone:", phone);
   try {
     const normalized = normalizePhone(phone);
@@ -475,17 +483,17 @@ router.get('/chats/:phone', async (req, res) => {
     try {
       dbMessages = db.prepare(`
         SELECT * FROM whatsapp_messages 
-        WHERE phone = ? 
+        WHERE phone = ? AND tenant_id = ?
         ORDER BY id ASC
-      `).all(normalized);
+      `).all(normalized, tenantId);
 
       // 2. DB FALLBACK CHECK: If the exact normalized phone returns empty, try a fallback query with the '+' prefix
       if (dbMessages.length === 0) {
         dbMessages = db.prepare(`
           SELECT * FROM whatsapp_messages 
-          WHERE phone = ? 
+          WHERE phone = ? AND tenant_id = ?
           ORDER BY id ASC
-        `).all('+' + normalized);
+        `).all('+' + normalized, tenantId);
       }
     } catch (err) {
       console.log("ROUTE_ERROR:", err.message);
@@ -513,12 +521,16 @@ router.get('/chats/:phone', async (req, res) => {
       orderHistory = db.prepare(`
         SELECT id, store_id, customer_name, total_price, financial_status, fulfillment_status, wa_verification_status, created_timestamp AS created_at, phone
         FROM orders 
-        WHERE phone LIKE ? 
+        WHERE phone LIKE ? AND tenant_id = ?
         ORDER BY id DESC
-      `).all(`%${last10}%`);
+      `).all(`%${last10}%`, tenantId);
     } catch (err) {
       console.log("ROUTE_ERROR:", err.message);
       throw err;
+    }
+
+    if (dbMessages.length === 0 && orderHistory.length === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
     }
 
     const latestOrder = orderHistory[0] || null;
@@ -573,6 +585,7 @@ router.get('/chats/:phone', async (req, res) => {
 router.post('/chats/:phone/send', async (req, res) => {
   const { phone } = req.params;
   const { message } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
 
   if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
 
@@ -585,9 +598,9 @@ router.post('/chats/:phone/send', async (req, res) => {
     // Find latest order for store_id and order_id mapping
     const order = db.prepare(`
       SELECT id, store_id FROM orders 
-      WHERE phone LIKE ? 
+      WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`);
+    `).get(`%${last10}%`, tenantId);
 
     const storeId = order ? order.store_id : 1; // Fallback to store 1
     const orderId = order ? order.id : null;
@@ -596,9 +609,9 @@ router.post('/chats/:phone/send', async (req, res) => {
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
-      `).run(storeId, orderId, cleaned, message);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, message, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to save manual chat message:', err.message);
@@ -629,6 +642,7 @@ router.post('/chats/:phone/send', async (req, res) => {
 router.post('/chats/:phone/upload-media', upload.single('media'), async (req, res) => {
   const { phone } = req.params;
   const caption = req.body.caption || '';
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   
   if (!req.file) return res.status(400).json({ error: 'No media file provided' });
 
@@ -641,9 +655,9 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
     // Find latest order for store_id and order_id mapping
     const order = db.prepare(`
       SELECT id, store_id FROM orders 
-      WHERE phone LIKE ? 
+      WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`);
+    `).get(`%${last10}%`, tenantId);
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
@@ -662,9 +676,9 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
-      `).run(storeId, orderId, cleaned, dbMsgContent, relativeUrl, mediaType);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, relativeUrl, mediaType, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log manual media message:', err.message);
@@ -697,13 +711,14 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
 // Feature 3: Smart Call Handoff — logs internal system note without sending WA message
 router.post('/chats/:phone/log-call-handoff', async (req, res) => {
   const { phone } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     let cleaned = phone.replace(/\D/g, '');
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
     const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`);
+    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
 
@@ -711,9 +726,9 @@ router.post('/chats/:phone/log-call-handoff', async (req, res) => {
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent')
-      `).run(storeId, orderId, cleaned, systemMsg);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, systemMsg, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log call handoff message:', err.message);
@@ -759,6 +774,7 @@ const voiceUpload = multer({
 
 router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (req, res) => {
   const { phone } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   if (!req.file) return res.status(400).json({ error: 'No audio file received' });
 
   try {
@@ -767,19 +783,20 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
     const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`);
+    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
 
     const absolutePath = req.file.path;
     const relativeUrl = `/uploads/${req.file.filename}`;
+    const clientUuid = req.body.clientUuid || null;
 
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, 'audio', 'sent')
-      `).run(storeId, orderId, cleaned, relativeUrl);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, ?, 'audio', 'sent', ?)
+      `).run(storeId, orderId, cleaned, clientUuid, relativeUrl, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log voice note:', err.message);
@@ -787,10 +804,11 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
 
     // Send as PTT (Push-to-Talk) voice note via Baileys
     // isManual=true to skip bulk throttle; mediaType='voice' triggers PTT encoding
-    bot.sendMessage(cleaned, '', true, absolutePath, 'voice', req.file.filename);
+    bot.sendMessage(cleaned, '', true, absolutePath, 'voice', req.file.filename, clientUuid);
 
     res.json({
       success: true,
+      clientUuid: clientUuid,
       message: {
         id: dbMessageId || Date.now(),
         store_id: storeId,
@@ -801,6 +819,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
         media_url: relativeUrl,
         media_type: 'audio',
         status: 'sent',
+        message_id: clientUuid,
         created_at: new Date().toISOString()
       }
     });
@@ -814,6 +833,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
 router.post('/chats/:phone/send-quick-reply', async (req, res) => {
   const { phone } = req.params;
   const { replyId } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   
   if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
   
@@ -826,9 +846,9 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     // Find latest order
     const order = db.prepare(`
       SELECT id, store_id, customer_name, tracking_number, courier FROM orders 
-      WHERE phone LIKE ? 
+      WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`);
+    `).get(`%${last10}%`, tenantId);
 
     const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
@@ -856,9 +876,9 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
-      `).run(storeId, orderId, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
@@ -894,6 +914,7 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
 // POST /api/whatsapp-governance/chats/:phone/send-invoice
 router.post('/chats/:phone/send-invoice', async (req, res) => {
   const { phone } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     let cleaned = phone.replace(/\D/g, '');
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
@@ -903,9 +924,9 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
     // Find latest order
     const order = db.prepare(`
       SELECT * FROM orders 
-      WHERE phone LIKE ? 
+      WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`);
+    `).get(`%${last10}%`, tenantId);
 
     if (!order) return res.status(404).json({ error: 'No order found for this phone number to generate an invoice' });
 
@@ -925,9 +946,9 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent')
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent', ?)
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log invoice message:', err.message);
@@ -995,8 +1016,22 @@ router.get('/gemini/profiles', (req, res) => {
 
 // GET /api/whatsapp-governance/gemini/memory/:phone
 router.get('/gemini/memory/:phone', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     let cleaned = req.params.phone.replace(/\D/g, '');
+    
+    // Verify phone belongs to this tenant
+    const hasRecord = db.prepare(`
+      SELECT 1 FROM orders WHERE phone LIKE ? AND tenant_id = ?
+      UNION ALL
+      SELECT 1 FROM whatsapp_messages WHERE phone = ? AND tenant_id = ?
+      LIMIT 1
+    `).get(`%${cleaned.substring(cleaned.length - 10)}%`, tenantId, cleaned, tenantId);
+
+    if (!hasRecord) {
+      return res.status(404).json({ error: 'Chat memory not found' });
+    }
+
     const memory = db.prepare('SELECT role, content, created_at FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 50').all(cleaned) || [];
     res.json({ success: true, memory });
   } catch (e) {
@@ -1103,11 +1138,12 @@ router.delete('/quick-replies/:id', (req, res) => {
 router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
   const { order_id } = req.params;
   const { replyId } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   
   if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
   
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, tracking_number, courier FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT id, store_id, phone, customer_name, tracking_number, courier FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
     
     const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
@@ -1136,9 +1172,9 @@ router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
       
     try {
       db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent')
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null, tenantId);
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
     }
@@ -1291,8 +1327,9 @@ function generateInvoicePdf(order, destPath) {
 // POST /api/whatsapp-governance/chat/:order_id/send-invoice
 router.post('/chat/:order_id/send-invoice', async (req, res) => {
   const { order_id } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(order_id));
+    const order = db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order or customer phone not found' });
 
     let cleaned = order.phone.replace(/\D/g, '');
@@ -1314,9 +1351,9 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
 
     try {
       db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent')
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent', ?)
+      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl, tenantId);
     } catch (err) {
       console.error('Failed to log invoice message:', err.message);
     }
@@ -1374,12 +1411,22 @@ router.put('/ad-campaigns/:id', (req, res) => {
 
 // GET /api/whatsapp-governance/chats/:phone/risk-profile
 router.get('/chats/:phone/risk-profile', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const phone = req.params.phone.replace(/\D/g, '');
     const suffix = phone.substring(Math.max(0, phone.length - 10));
 
-    const totalOrders = db.prepare(`SELECT COUNT(*) as c FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?`).get(`%${suffix}%`);
-    const returns = db.prepare(`SELECT COUNT(*) as c FROM returns_log WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?`).get(`%${suffix}%`);
+    const totalOrders = db.prepare(`SELECT COUNT(*) as c FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? AND tenant_id = ?`).get(`%${suffix}%`, tenantId);
+    if (!totalOrders || totalOrders.c === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const returns = db.prepare(`
+      SELECT COUNT(*) as c 
+      FROM returns_log r
+      INNER JOIN orders o ON r.order_id = o.id
+      WHERE REPLACE(REPLACE(REPLACE(o.phone, ' ', ''), '-', ''), '+', '') LIKE ? AND o.tenant_id = ?
+    `).get(`%${suffix}%`, tenantId);
 
     const totalCount = totalOrders?.c || 0;
     const returnCount = returns?.c || 0;
@@ -1437,6 +1484,7 @@ router.post('/chats/:phone/risk-flag', (req, res) => {
 
 // GET /api/whatsapp-governance/sniper/queue
 router.get('/sniper/queue', async (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const settings = db.prepare('SELECT stuck_threshold_hours FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
     const hours = settings?.stuck_threshold_hours || 36;
@@ -1452,8 +1500,9 @@ router.get('/sniper/queue', async (req, res) => {
         AND (o.status_date IS NULL OR datetime(o.status_date) < datetime('now', '+5 hours', '-' || ? || ' hours'))
         AND o.phone IS NOT NULL AND o.phone != ''
         AND s.id IS NULL
+        AND o.tenant_id = ?
       ORDER BY o.id ASC LIMIT 50
-    `).all(...STUCK_STATUSES, hours);
+    `).all(...STUCK_STATUSES, hours, tenantId);
     res.json({ success: true, queue: stuck, thresholdHours: hours });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -1463,10 +1512,11 @@ router.get('/sniper/queue', async (req, res) => {
 // POST /api/whatsapp-governance/sniper/fire  (body: { order_id })
 router.post('/sniper/fire', async (req, res) => {
   const { order_id } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   if (!order_id) return res.status(400).json({ success: false, error: 'order_id required' });
   try {
     const { runSniperScan } = require('../engines/sniper');
-    const order = db.prepare('SELECT id, phone, customer_name, ref_number, tracking_number, courier, delivery_status FROM orders WHERE id = ?').get(order_id);
+    const order = db.prepare('SELECT id, phone, customer_name, ref_number, tracking_number, courier, delivery_status FROM orders WHERE id = ? AND tenant_id = ?').get(order_id, tenantId);
     if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
     // Clear recent sniper block so fire-now works even if recently alerted
     db.prepare(`DELETE FROM sniper_alerts WHERE order_id = ? AND sent_at > datetime('now', '+5 hours', '-48 hours')`).run(order_id);
@@ -1479,14 +1529,15 @@ router.post('/sniper/fire', async (req, res) => {
 
 // GET /api/whatsapp-governance/sniper/log
 router.get('/sniper/log', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const limit = parseInt(req.query.limit) || 50;
     const logs = db.prepare(`
       SELECT s.*, o.ref_number, o.customer_name
       FROM sniper_alerts s
-      LEFT JOIN orders o ON o.id = s.order_id
+      INNER JOIN orders o ON o.id = s.order_id AND o.tenant_id = ?
       ORDER BY s.sent_at DESC LIMIT ?
-    `).all(limit);
+    `).all(tenantId, limit);
     res.json({ success: true, logs });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -1499,8 +1550,22 @@ router.get('/sniper/log', (req, res) => {
 
 // GET /api/whatsapp-governance/chats/:phone/ocr-scans
 router.get('/chats/:phone/ocr-scans', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const phone = req.params.phone.replace(/\D/g, '');
+    
+    // Verify phone belongs to this tenant
+    const hasRecord = db.prepare(`
+      SELECT 1 FROM orders WHERE phone LIKE ? AND tenant_id = ?
+      UNION ALL
+      SELECT 1 FROM whatsapp_messages WHERE phone = ? AND tenant_id = ?
+      LIMIT 1
+    `).get(`%${phone.substring(phone.length - 10)}%`, tenantId, phone, tenantId);
+
+    if (!hasRecord) {
+      return res.status(404).json({ error: 'OCR scans not found' });
+    }
+
     const scans = db.prepare('SELECT * FROM payment_ocr_scans WHERE phone = ? ORDER BY scanned_at DESC LIMIT 10').all(phone);
     res.json({ success: true, scans });
   } catch (e) {
@@ -1511,14 +1576,22 @@ router.get('/chats/:phone/ocr-scans', (req, res) => {
 // POST /api/whatsapp-governance/chats/:phone/ocr-verify  (body: { scan_id, action: 'confirm'|'reject' })
 router.post('/chats/:phone/ocr-verify', (req, res) => {
   const { scan_id, action } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   if (!scan_id || !['confirm', 'reject'].includes(action)) return res.status(400).json({ success: false, error: 'scan_id and action (confirm/reject) required' });
   try {
     const status = action === 'confirm' ? 'matched' : 'rejected';
     const scan = db.prepare('SELECT * FROM payment_ocr_scans WHERE id = ?').get(scan_id);
+    if (!scan) return res.status(404).json({ error: 'Scan not found' });
+
+    if (scan.order_id) {
+      const order = db.prepare('SELECT id FROM orders WHERE id = ? AND tenant_id = ?').get(scan.order_id, tenantId);
+      if (!order) return res.status(404).json({ error: 'Associated order not found for this tenant' });
+    }
+
     db.prepare('UPDATE payment_ocr_scans SET status = ? WHERE id = ?').run(status, scan_id);
     if (action === 'confirm' && scan?.order_id && scan?.detected_amount) {
-      db.prepare(`UPDATE orders SET payment_status = 'OCR Verified', paid_amount = ?, payment_ref = ? WHERE id = ?`)
-        .run(scan.detected_amount, scan.detected_txn_id || 'Manual OCR', scan.order_id);
+      db.prepare(`UPDATE orders SET payment_status = 'OCR Verified', paid_amount = ?, payment_ref = ? WHERE id = ? AND tenant_id = ?`)
+        .run(scan.detected_amount, scan.detected_txn_id || 'Manual OCR', scan.order_id, tenantId);
     }
     res.json({ success: true });
   } catch (e) {
@@ -1533,9 +1606,10 @@ router.post('/chats/:phone/ocr-verify', (req, res) => {
 // POST /api/whatsapp-governance/cod-verify/trigger  body: { order_id }
 router.post('/cod-verify/trigger', async (req, res) => {
   const { order_id } = req.body;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   if (!order_id) return res.status(400).json({ success: false, error: 'order_id required' });
   try {
-    const order = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE id = ?').get(order_id);
+    const order = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE id = ? AND tenant_id = ?').get(order_id, tenantId);
     if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
     if (!order.phone) return res.status(400).json({ success: false, error: 'Order has no phone number' });
 

@@ -252,6 +252,18 @@ app.use((req, res, next) => {
   if (req.path === '/api/auth/login') return next();
   if (req.path.startsWith('/api/webhooks/')) return next();
   if (req.path.startsWith('/api/public/')) return next();
+
+  // Media Proxy Route handles token from query parameter or authorization header
+  if (req.path.startsWith('/api/media/')) {
+    const token = req.query.token || (req.headers.authorization ? (req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : req.headers.authorization) : '');
+    if (!token) return res.status(401).json({ error: 'Authentication token required' });
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+      return next();
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  }
   if (req.path === '/health' || req.path === '/api/health') return next();
   if (req.path.includes('/api/diagnostics')) return next();
   if (req.path.includes('/api/users/permissions')) return next();
@@ -408,6 +420,54 @@ app.get('/api/admin/logs', (req, res) => {
 // Serve static frontend files and persistent uploads
 const { DB_DIR } = require('./db');
 app.use('/uploads', express.static(path.join(DB_DIR, 'uploads')));
+
+// Incoming media local proxy serving route (prevents ephemeral link expiry)
+app.get('/api/media/:filename', async (req, res) => {
+  try {
+    const fsPromises = require('fs').promises;
+    const filename = path.basename(req.params.filename);
+    const storageDir = process.env.MEDIA_STORAGE_DIR 
+      ? path.resolve(process.env.MEDIA_STORAGE_DIR)
+      : path.resolve(process.cwd(), 'storage', 'media');
+    const filePath = path.join(storageDir, filename);
+
+    // Verify file existence asynchronously
+    try {
+      await fsPromises.access(filePath);
+    } catch (err) {
+      console.warn(`⚠️ Media file not found: ${filePath}`);
+      return res.status(404).json({ error: 'Media file not found' });
+    }
+
+    // Tenant Isolation Check (Pillar 1)
+    const userTenantId = req.user?.tenant_id || 'default';
+    const targetUrl = `/api/media/${filename}`;
+
+    const tenantContext = require('./tenant-context');
+    const hasMedia = tenantContext.run(userTenantId, () => {
+      const { db } = require('./db');
+      try {
+        const row = db.prepare("SELECT id FROM whatsapp_messages WHERE media_url = ? LIMIT 1").get(targetUrl);
+        return !!row;
+      } catch (err) {
+        console.error(`Error querying media in tenant [${userTenantId}]:`, err.message);
+        return false;
+      }
+    });
+
+    if (!hasMedia) {
+      console.error(`🛑 Access denied: Media file [${filename}] does not belong to tenant [${userTenantId}]`);
+      return res.status(403).json({ error: 'Access denied: Tenant mismatch or media not found' });
+    }
+
+    // Set proper immutable caching headers for permanent local media
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(filePath);
+  } catch (error) {
+    console.error(`[MEDIA_PROXY_ROUTE_ERROR]: ${error.message}`);
+    return res.status(500).json({ error: 'Internal server error serving media proxy' });
+  }
+});
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   maxAge: 0,

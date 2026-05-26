@@ -9,19 +9,13 @@
  *   - Sample Rate: 48 000 Hz
  *   - Bitrate   : 16 kbps
  *   - Channels  : Mono (1)
- *
- * Uses fluent-ffmpeg (stream-based) instead of child_process.exec
- * to avoid shell-injection risks and to guarantee proper process cleanup.
- *
- * Usage:
- *   const { transcodeToOpus } = require('./ffmpeg_transcode');
- *   const { outputPath, durationSec } = await transcodeToOpus('/path/to/input.webm');
  */
 
 const ffmpeg      = require('fluent-ffmpeg');
 const fs          = require('fs');
 const path        = require('path');
 const os          = require('os');
+const crypto      = require('crypto');
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const TIMEOUT_MS  = 20_000;   // Hard kill after 20 s
@@ -30,39 +24,44 @@ const SAMPLE_RATE = 48000;
 const BITRATE     = '16k';
 const CHANNELS    = 1;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Derive the output path: same directory as input, same stem, .ogg extension.
- * Falls back to OS temp dir if input directory is not writable.
- */
-function resolveOutputPath(inputPath) {
-  try {
-    const dir  = path.dirname(path.resolve(inputPath));
-    const stem = path.basename(inputPath, path.extname(inputPath));
-    const out  = path.join(dir, `${stem}_opus.ogg`);
-    // Quick write-access probe
-    fs.accessSync(dir, fs.constants.W_OK);
-    return out;
-  } catch (_) {
-    const stem = path.basename(inputPath, path.extname(inputPath));
-    return path.join(os.tmpdir(), `${stem}_opus.ogg`);
+// ── Concurrency Limiter Semaphore ────────────────────────────────────────────
+class Semaphore {
+  constructor(max) {
+    this.max = max;
+    this.current = 0;
+    this.queue = [];
   }
+
+  async acquire() {
+    if (this.current < this.max) {
+      this.current++;
+      return;
+    }
+    await new Promise(resolve => this.queue.push(resolve));
+  }
+
+  release() {
+    this.current--;
+    if (this.queue.length > 0) {
+      this.current++;
+      const next = this.queue.shift();
+      next();
+    }
+  }
+}
+
+// Strict maximum of 3 concurrent FFmpeg processes to prevent CPU starvation (Pillar 2)
+const transcodeLimiter = new Semaphore(3);
+
+function resolveOutputPath(inputPath) {
+  const stem = path.basename(inputPath, path.extname(inputPath));
+  // Safe temporary storage: always write to os.tmpdir() with UUID suffix to prevent name collision or pollution
+  return path.join(os.tmpdir(), `${stem}_opus_${crypto.randomUUID()}.ogg`);
 }
 
 // ── Core Transcoder ───────────────────────────────────────────────────────────
 
-/**
- * transcodeToOpus
- *
- * @param {string} inputPath   Absolute path to the source audio file.
- * @param {object} [opts]
- * @param {string} [opts.outputPath]  Override the output path.
- * @param {number} [opts.timeoutMs]   Override the hard-kill timeout (ms).
- * @returns {Promise<{ outputPath: string, durationSec: number|null }>}
- * @throws  Error if transcoding fails or times out.
- */
-function transcodeToOpus(inputPath, opts = {}) {
+async function transcodeToOpus(inputPath, opts = {}) {
   const absInput = path.resolve(inputPath);
   const absOutput = opts.outputPath || resolveOutputPath(absInput);
   const timeout   = opts.timeoutMs  || TIMEOUT_MS;
@@ -70,96 +69,104 @@ function transcodeToOpus(inputPath, opts = {}) {
   const startTime = Date.now();
   console.log(`${TAG} START  input=${absInput}  output=${absOutput}`);
 
-  return new Promise((resolve, reject) => {
-    let settled   = false;
-    let killTimer = null;
+  // Acquire concurrency token asynchronously (Pillar 2 compliant, does not block event loop)
+  await transcodeLimiter.acquire();
+  console.log(`${TAG} ACQUIRED slot. Active processes: ${transcodeLimiter.current}/${transcodeLimiter.max}`);
 
-    const command = ffmpeg(absInput)
-      .noVideo()
-      .audioCodec('libopus')
-      .audioFrequency(SAMPLE_RATE)
-      .audioBitrate(BITRATE)
-      .audioChannels(CHANNELS)
-      .outputOptions([
-        '-application voip',      // PTT-optimised Opus application profile
-        '-packet_loss 10',        // Resilience for mobile networks
-        '-vbr on',                // Variable bitrate — smaller file size
-        '-compression_level 10',  // Highest compression
-      ])
-      .format('ogg')
-      .output(absOutput);
+  try {
+    return await new Promise((resolve, reject) => {
+      let settled   = false;
+      let killTimer = null;
 
-    // ── Hard-kill watchdog ──────────────────────────────────────────────────
-    killTimer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      console.error(`${TAG} TIMEOUT after ${timeout}ms — killing process`);
-      try { command.kill('SIGKILL'); } catch (_) {}
-      reject(new Error(`${TAG} Transcoding timed out after ${timeout}ms`));
-    }, timeout);
+      const command = ffmpeg(absInput)
+        .noVideo()
+        .audioCodec('libopus')
+        .audioFrequency(SAMPLE_RATE)
+        .audioBitrate(BITRATE)
+        .audioChannels(CHANNELS)
+        .outputOptions([
+          '-application voip',      // PTT-optimised Opus application profile
+          '-packet_loss 10',        // Resilience for mobile networks
+          '-vbr on',                // Variable bitrate
+          '-compression_level 10',  // Highest compression
+        ])
+        .format('ogg')
+        .output(absOutput);
 
-    const settle = (err, durationSec = null) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(killTimer);
-      if (err) {
-        console.error(`${TAG} FAIL  error=${err.message}`);
-        // Clean up partial output
-        try { if (fs.existsSync(absOutput)) fs.unlinkSync(absOutput); } catch (_) {}
-        reject(err);
-      } else {
-        const elapsedMs = Date.now() - startTime;
-        console.log(`${TAG} OK  duration=${durationSec ?? 'unknown'}s  elapsed=${elapsedMs}ms  out=${absOutput}`);
-        resolve({ outputPath: absOutput, durationSec });
-      }
-    };
+      // ── Hard-kill watchdog ──────────────────────────────────────────────────
+      killTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        console.error(`${TAG} TIMEOUT after ${timeout}ms — killing process`);
+        try { command.kill('SIGKILL'); } catch (_) {}
+        reject(new Error(`${TAG} Transcoding timed out after ${timeout}ms`));
+      }, timeout);
 
-    // ── fluent-ffmpeg event hooks ───────────────────────────────────────────
-    command
-      .on('start', (cmdLine) => {
-        console.log(`${TAG} EXEC  ${cmdLine}`);
-      })
-      .on('codecData', (data) => {
-        console.log(`${TAG} INPUT format=${data.format}  audio=${data.audio}`);
-      })
-      .on('progress', (p) => {
-        // p.timemark = "00:00:02.50"
-        if (p.timemark) {
-          process.stdout.write(`\r${TAG} PROGRESS ${p.timemark}          `);
+      const settle = (err, durationSec = null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(killTimer);
+        if (err) {
+          console.error(`${TAG} FAIL  error=${err.message}`);
+          // Clean up partial output asynchronously to prevent directory pollution
+          const fsPromises = require('fs').promises;
+          fsPromises.unlink(absOutput).catch(() => {});
+          reject(err);
+        } else {
+          const elapsedMs = Date.now() - startTime;
+          console.log(`${TAG} OK  duration=${durationSec ?? 'unknown'}s  elapsed=${elapsedMs}ms  out=${absOutput}`);
+          resolve({ outputPath: absOutput, durationSec });
         }
-      })
-      .on('end', () => {
-        process.stdout.write('\n'); // flush progress line
-        // Extract duration from output file metadata
-        ffmpeg.ffprobe(absOutput, (probeErr, metadata) => {
-          const durationSec = metadata?.format?.duration ?? null;
-          settle(null, durationSec ? parseFloat(durationSec.toFixed(2)) : null);
-        });
-      })
-      .on('error', (err, stdout, stderr) => {
-        process.stdout.write('\n');
-        console.error(`${TAG} STDERR: ${stderr || ''}`);
-        settle(err);
-      });
+      };
 
-    command.run();
-  });
+      // ── fluent-ffmpeg event hooks ───────────────────────────────────────────
+      command
+        .on('start', (cmdLine) => {
+          console.log(`${TAG} EXEC  ${cmdLine}`);
+        })
+        .on('codecData', (data) => {
+          console.log(`${TAG} INPUT format=${data.format}  audio=${data.audio}`);
+        })
+        .on('progress', (p) => {
+          if (p.timemark) {
+            process.stdout.write(`\r${TAG} PROGRESS ${p.timemark}          `);
+          }
+        })
+        .on('end', () => {
+          process.stdout.write('\n'); // flush progress line
+          ffmpeg.ffprobe(absOutput, (probeErr, metadata) => {
+            const durationSec = metadata?.format?.duration ?? null;
+            settle(null, durationSec ? parseFloat(durationSec.toFixed(2)) : null);
+          });
+        })
+        .on('error', (err, stdout, stderr) => {
+          process.stdout.write('\n');
+          console.error(`${TAG} STDERR: ${stderr || ''}`);
+          settle(err);
+        });
+
+      command.run();
+    });
+  } finally {
+    // Release concurrency token in all cases
+    transcodeLimiter.release();
+    console.log(`${TAG} RELEASED slot. Active processes: ${transcodeLimiter.current}/${transcodeLimiter.max}`);
+  }
 }
 
 // ── Cleanup Helper ─────────────────────────────────────────────────────────────
 
-/**
- * safeUnlink — delete a file without throwing.
- * Use after the transcoded buffer has been read by Baileys.
- */
-function safeUnlink(filePath) {
+async function safeUnlink(filePath) {
+  const fsPromises = require('fs').promises;
   try {
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    if (filePath) {
+      await fsPromises.unlink(filePath);
       console.log(`${TAG} CLEANUP deleted=${filePath}`);
     }
   } catch (err) {
-    console.warn(`${TAG} CLEANUP failed for ${filePath}: ${err.message}`);
+    if (err.code !== 'ENOENT') {
+      console.warn(`${TAG} CLEANUP failed for ${filePath}: ${err.message}`);
+    }
   }
 }
 

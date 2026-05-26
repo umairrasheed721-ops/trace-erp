@@ -890,6 +890,95 @@ function runMigrations(db) {
   // Feature 10: Receipt OCR Payment Scanner
   try { db.exec(`CREATE TABLE IF NOT EXISTS payment_ocr_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, phone TEXT NOT NULL, image_path TEXT, raw_ocr_result TEXT, detected_amount REAL, detected_txn_id TEXT, detected_bank TEXT, confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', scanned_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
 
+  // Phase 4/5: Final Sweep Database Migrations
+  try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}
+
+  // FTS5 Virtual Table for Search
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS whatsapp_messages_fts USING fts5(
+        message_id,
+        phone,
+        message
+      );
+    `);
+  } catch (e) {
+    console.error('⚠️ Failed to create FTS5 table:', e.message);
+  }
+
+  // Triggers for FTS5 Synchronization
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS whatsapp_messages_ai AFTER INSERT ON whatsapp_messages
+      BEGIN
+        INSERT INTO whatsapp_messages_fts(rowid, message_id, phone, message)
+        VALUES (new.id, new.message_id, new.phone, new.message);
+      END;
+    `);
+  } catch (e) {}
+
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS whatsapp_messages_ad AFTER DELETE ON whatsapp_messages
+      BEGIN
+        DELETE FROM whatsapp_messages_fts WHERE rowid = old.id;
+      END;
+    `);
+  } catch (e) {}
+
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS whatsapp_messages_au AFTER UPDATE ON whatsapp_messages
+      BEGIN
+        UPDATE whatsapp_messages_fts
+        SET message = new.message, phone = new.phone, message_id = new.message_id
+        WHERE rowid = old.id;
+      END;
+    `);
+  } catch (e) {}
+
+  // Backfill FTS5 table for existing messages
+  try {
+    db.exec(`
+      INSERT INTO whatsapp_messages_fts(rowid, message_id, phone, message)
+      SELECT id, message_id, phone, message FROM whatsapp_messages
+      WHERE id NOT IN (SELECT rowid FROM whatsapp_messages_fts)
+    `);
+  } catch (e) {}
+
+  // ROAS & CPA Mapping View
+  try {
+    db.exec(`
+      CREATE VIEW IF NOT EXISTS v_whatsapp_roas AS
+      SELECT 
+        shopify_order_id,
+        id AS order_id,
+        phone AS original_phone,
+        CASE 
+          WHEN length(replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')) = 11 AND replace(replace(replace(phone, '+', ''), '-', ''), ' ', '') LIKE '0%'
+            THEN '92' || substr(replace(replace(replace(phone, '+', ''), '-', ''), ' ', ''), 2)
+          WHEN length(replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')) = 10 AND replace(replace(replace(phone, '+', ''), '-', ''), ' ', '') NOT LIKE '92%'
+            THEN '92' || replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')
+          ELSE replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')
+        END AS normalized_phone,
+        (CASE 
+          WHEN length(replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')) = 11 AND replace(replace(replace(phone, '+', ''), '-', ''), ' ', '') LIKE '0%'
+            THEN '92' || substr(replace(replace(replace(phone, '+', ''), '-', ''), ' ', ''), 2)
+          WHEN length(replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')) = 10 AND replace(replace(replace(phone, '+', ''), '-', ''), ' ', '') NOT LIKE '92%'
+            THEN '92' || replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')
+          ELSE replace(replace(replace(phone, '+', ''), '-', ''), ' ', '')
+        END || '@s.whatsapp.net') AS whatsapp_jid,
+        total_price,
+        delivery_status,
+        order_date,
+        tenant_id
+      FROM orders;
+    `);
+  } catch (e) {
+    console.error('⚠️ Failed to create ROAS view:', e.message);
+  }
+
+
   const waCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_settings').get().count;
   if (waCount === 0) {
     db.prepare(`

@@ -9,6 +9,14 @@ import { handleApiError, ERR } from '../utils/errorHandler'
 
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
+
+  const getMediaUrlWithToken = (mediaUrl) => {
+    if (!mediaUrl) return ''
+    if (mediaUrl.startsWith('http') || mediaUrl.startsWith('blob:')) return mediaUrl
+    const traceToken = localStorage.getItem('trace_token') || localStorage.getItem('token') || ''
+    const separator = mediaUrl.includes('?') ? '&' : '?'
+    return `${mediaUrl}${separator}token=${encodeURIComponent(traceToken)}`
+  }
   
   // --- UI STATES ---
   const [chats, setChats] = useState([])
@@ -285,8 +293,19 @@ export default function WhatsAppPortal() {
           setActiveChat(currentActive => {
             if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
               setMessages(prev => {
+                // If it's an outgoing voice note / media message, check if there's an optimistic pending counterpart
+                if (newMsg.direction === 'outgoing' && (newMsg.media_type === 'audio' || newMsg.media_url)) {
+                  const pendingIndex = prev.findIndex(m => m.status === 'pending' || m.id.toString().startsWith('client-opt-'));
+                  if (pendingIndex !== -1) {
+                    const next = [...prev];
+                    next[pendingIndex] = newMsg;
+                    console.log(`Reconciled optimistic message ID: ${prev[pendingIndex].id} with DB ID: ${newMsg.id}`);
+                    return next;
+                  }
+                }
+
                 // Prevent duplicate insertions
-                if (prev.some(m => m.message_id === newMsg.message_id || (m.id === newMsg.id && m.id > 1000000000000))) {
+                if (prev.some(m => m.message_id === newMsg.message_id || m.id === newMsg.id)) {
                   return prev
                 }
                 return [...prev, newMsg]
@@ -599,8 +618,25 @@ export default function WhatsAppPortal() {
         setIsRecording(false)
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         if (blob.size < 1000) return addToast('Recording too short', 'warning')
+        
+        const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const tempUrl = URL.createObjectURL(blob);
+        const tempMsg = {
+          id: clientUuid,
+          phone: activeChat.phone,
+          direction: 'outgoing',
+          message: '[Voice Note]',
+          media_url: tempUrl,
+          media_type: 'audio',
+          status: 'pending',
+          created_at: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, tempMsg]);
+        scrollToBottom();
+
         const formData = new FormData()
         formData.append('audio', blob, `voice_${Date.now()}.webm`)
+        formData.append('clientUuid', clientUuid)
         addToast('⏳ Sending voice note...', 'info')
         try {
           const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/upload-voice`, {
@@ -608,12 +644,29 @@ export default function WhatsAppPortal() {
           })
           const data = await res.json()
           if (data.success && data.message) {
-            setMessages(prev => [...prev, data.message])
+            setMessages(prev => {
+              const idx = prev.findIndex(m => m.id === clientUuid);
+              if (idx !== -1) {
+                const next = [...prev];
+                next[idx] = { ...next[idx], ...data.message, status: 'sent' };
+                return next;
+              }
+              if (!prev.some(m => m.id === data.message.id)) {
+                return [...prev, data.message];
+              }
+              return prev;
+            });
             setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
             addToast('✅ Voice note sent!', 'success')
             scrollToBottom()
-          } else { addToast(data.error || 'Failed to send voice note', 'error') }
-        } catch (err) { handleApiError(err, addToast, 'VOICE_NOTE') }
+          } else { 
+            setMessages(prev => prev.filter(m => m.id !== clientUuid));
+            addToast(data.error || 'Failed to send voice note', 'error') 
+          }
+        } catch (err) { 
+          setMessages(prev => prev.filter(m => m.id !== clientUuid));
+          handleApiError(err, addToast, 'VOICE_NOTE') 
+        }
       }
       recorder.start()
       mediaRecorderRef.current = recorder
@@ -1078,10 +1131,10 @@ export default function WhatsAppPortal() {
                         {showImage && (
                           <div>
                             <img 
-                              src={msg.media_url} 
+                              src={getMediaUrlWithToken(msg.media_url)} 
                               alt="Sent media" 
                               className="wa-media-image"
-                              onClick={() => setZoomedImage(msg.media_url)}
+                              onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url))}
                             />
                             {/* Module 7: AI Payment Card rendering */}
                             {paymentCardData ? (
@@ -1111,9 +1164,9 @@ export default function WhatsAppPortal() {
                         {showAudio && (
                           <div>
                             <audio controls className="wa-media-audio">
-                              <source src={msg.media_url} type="audio/mp4" />
-                              <source src={msg.media_url} type="audio/ogg" />
-                              <source src={msg.media_url} type="audio/mpeg" />
+                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/mp4" />
+                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/ogg" />
+                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/mpeg" />
                               Your browser does not support the audio element.
                             </audio>
                             {msg.transcript && (
@@ -1127,7 +1180,7 @@ export default function WhatsAppPortal() {
 
                         {showDoc && (
                           <a 
-                            href={msg.media_url} 
+                            href={getMediaUrlWithToken(msg.media_url)} 
                             target="_blank" 
                             rel="noopener noreferrer" 
                             className="wa-media-doc"
@@ -1144,7 +1197,7 @@ export default function WhatsAppPortal() {
                           {formatTime(msg.created_at)}
                           {isOutgoing && (
                             <span style={{ marginLeft: 4 }}>
-                              {msg.status === 'sending' ? '⌛' : '✓'}
+                              {msg.status === 'pending' || msg.status === 'sending' ? '⏳' : '✓'}
                             </span>
                           )}
                         </span>

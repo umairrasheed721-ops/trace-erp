@@ -10,6 +10,14 @@ export default function EditOrderModal({
 }) {
   const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
+  const getMediaUrlWithToken = (mediaUrl) => {
+    if (!mediaUrl) return ''
+    if (mediaUrl.startsWith('http') || mediaUrl.startsWith('blob:')) return mediaUrl
+    const traceToken = localStorage.getItem('trace_token') || localStorage.getItem('token') || ''
+    const separator = mediaUrl.includes('?') ? '&' : '?'
+    return `${apiBase}${mediaUrl}${separator}token=${encodeURIComponent(traceToken)}`
+  }
+
   // Navigation Tabs: 'financials' | 'customer' | 'logistics'
   const [activeTab, setActiveTab] = useState('financials');
 
@@ -1520,10 +1528,10 @@ export default function EditOrderModal({
                           }}>
                             {msg.media_url && (
                               <div style={{ marginBottom: 8 }}>
-                                {msg.media_type === 'image' && <img src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
-                                {msg.media_type === 'video' && <video src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} controls style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
-                                {(msg.media_type === 'audio' || msg.media_type === 'voice') && <audio src={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} controls style={{ maxWidth: 220 }} />}
-                                {msg.media_type === 'document' && <a href={msg.media_url.startsWith('http') || msg.media_url.startsWith('blob:') ? msg.media_url : `${apiBase}${msg.media_url}`} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 'bold' }}>📎 View Document</a>}
+                                {msg.media_type === 'image' && <img src={getMediaUrlWithToken(msg.media_url)} style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {msg.media_type === 'video' && <video src={getMediaUrlWithToken(msg.media_url)} controls style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />}
+                                {(msg.media_type === 'audio' || msg.media_type === 'voice') && <audio src={getMediaUrlWithToken(msg.media_url)} controls style={{ maxWidth: 220 }} />}
+                                {msg.media_type === 'document' && <a href={getMediaUrlWithToken(msg.media_url)} target="_blank" rel="noreferrer" style={{ color: '#fff', textDecoration: 'underline', fontWeight: 'bold' }}>📎 View Document</a>}
                               </div>
                             )}
                              {(() => {
@@ -1705,9 +1713,9 @@ export default function EditOrderModal({
                             {qr.media_url && (
                               <div style={{ width: '100%', height: 80, borderRadius: 6, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                 {qr.media_type === 'image' ? (
-                                  <img src={qr.media_url.startsWith('http') || qr.media_url.startsWith('blob:') ? qr.media_url : `${apiBase}${qr.media_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <img src={getMediaUrlWithToken(qr.media_url)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
-                                  <video src={qr.media_url.startsWith('http') || qr.media_url.startsWith('blob:') ? qr.media_url : `${apiBase}${qr.media_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
+                                  <video src={getMediaUrlWithToken(qr.media_url)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted preload="metadata" />
                                 )}
                               </div>
                             )}
