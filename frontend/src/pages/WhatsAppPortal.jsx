@@ -164,36 +164,62 @@ export default function WhatsAppPortal() {
     }
   }, [showCmdPalette])
 
-  // --- FETCH CHAT HISTORY ---
-  const selectChat = async (chat) => {
-    setActiveChat(chat)
+  const [syncTrigger, setSyncTrigger] = useState(0)
+
+  // --- FETCH CHAT HISTORY EFFECT ---
+  useEffect(() => {
+    if (!activeChat?.phone) {
+      setMessages([])
+      return
+    }
+
+    // Reset the messages state array when switching chats
+    setMessages([])
     setLoadingMessages(true)
     setSyncingMessages(true)
-    
+
+    let isMounted = true
+
+    const loadChatHistory = async () => {
+      try {
+        const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}`)
+        const data = await res.json()
+        if (!isMounted) return
+        if (data.success) {
+          setMessages(data.messages || [])
+          setCustomerInfo({
+            latestOrder: data.latestOrder,
+            orderHistory: data.orderHistory || [],
+            geminiMemory: data.geminiMemory
+          })
+        } else {
+          addToast(data.error || 'Failed to fetch chat details', 'error')
+        }
+      } catch (err) {
+        console.error(err)
+        if (isMounted) addToast('Network error loading chat history', 'error')
+      } finally {
+        if (isMounted) {
+          setLoadingMessages(false)
+          setSyncingMessages(false)
+          scrollToBottom()
+        }
+      }
+    }
+
+    loadChatHistory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeChat?.phone, syncTrigger])
+
+  const selectChat = (chat) => {
+    setActiveChat(chat)
     // Clear unread badge in state
     setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c))
-    
-    try {
-      const res = await fetch(`/api/whatsapp-governance/chats/${chat.phone}`)
-      const data = await res.json()
-      if (data.success) {
-        setMessages(data.messages || [])
-        setCustomerInfo({
-          latestOrder: data.latestOrder,
-          orderHistory: data.orderHistory || [],
-          geminiMemory: data.geminiMemory
-        })
-      } else {
-        addToast(data.error || 'Failed to fetch chat details', 'error')
-      }
-    } catch (err) {
-      console.error(err)
-      addToast('Network error loading chat history', 'error')
-    } finally {
-      setLoadingMessages(false)
-      setSyncingMessages(false)
-      scrollToBottom()
-    }
+    // Trigger sync
+    setSyncTrigger(prev => prev + 1)
   }
 
   // --- FETCH QUICK ACCESS ITEMS ---

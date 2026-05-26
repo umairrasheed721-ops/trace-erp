@@ -11,6 +11,18 @@ const tenantContext = require('../tenant-context');
 
 const tenantLastChecks = {};
 
+// STRICT JID NORMALIZATION UTILITY
+function normalizePhone(raw) {
+  if (!raw) return '';
+  // Strip JID suffix, +, spaces, dashes
+  let n = String(raw).split('@')[0].replace(/[\+\-\s]/g, '').replace(/\D/g, '');
+  // Pakistan short-form: 03XX -> 923XX
+  if (n.startsWith('0') && n.length === 11) n = '92' + n.substring(1);
+  // 10-digit with no country code
+  else if (!n.startsWith('92') && n.length === 10) n = '92' + n;
+  return n;
+}
+
 function getAllTenants() {
   const tenants = ['default'];
   try {
@@ -454,23 +466,29 @@ router.get('/chats', (req, res) => {
 router.get('/chats/:phone', async (req, res) => {
   const { phone } = req.params;
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-
-    const last10 = cleaned.substring(cleaned.length - 10);
+    const normalized = normalizePhone(phone);
+    const last10 = normalized.substring(normalized.length - 10);
 
     // 1. Pull from SQLite DB
-    const dbMessages = db.prepare(`
+    let dbMessages = db.prepare(`
       SELECT * FROM whatsapp_messages 
-      WHERE phone LIKE ? 
+      WHERE phone = ? 
       ORDER BY id ASC
-    `).all(`%${last10}%`);
+    `).all(normalized);
 
-    // 2. Pull from live Baileys WebSocket memory store
-    const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
+    // 2. DB FALLBACK CHECK: If the exact normalized phone returns empty, try a fallback query with the '+' prefix
+    if (dbMessages.length === 0) {
+      dbMessages = db.prepare(`
+        SELECT * FROM whatsapp_messages 
+        WHERE phone = ? 
+        ORDER BY id ASC
+      `).all('+' + normalized);
+    }
 
-    // 3. Merge and deduplicate by message text
+    // 3. Pull from live Baileys WebSocket memory store
+    const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(normalized) : [];
+
+    // 4. Merge and deduplicate by message text
     const merged = [...dbMessages];
     for (const bm of baileysMessages) {
       const exists = merged.some(dm => dm.message.trim() === bm.message.trim());
@@ -495,7 +513,7 @@ router.get('/chats/:phone', async (req, res) => {
     // Get Gemini Chat Memory dynamically constructed from customer_profiles
     let geminiMemoryText = null;
     try {
-      const profile = db.prepare('SELECT size_preference, is_big_and_tall, preferences, ad_source, risk_flag FROM customer_profiles WHERE phone = ?').get(cleaned);
+      const profile = db.prepare('SELECT size_preference, is_big_and_tall, preferences, ad_source, risk_flag FROM customer_profiles WHERE phone = ?').get(normalized);
       if (profile) {
         let lines = [];
         if (profile.size_preference) {
