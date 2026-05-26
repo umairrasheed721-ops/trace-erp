@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
+import { useNavigate } from 'react-router-dom'
 
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
@@ -32,9 +33,37 @@ export default function WhatsAppPortal() {
   const [activeFilter, setActiveFilter] = useState('all') // 'all' | 'unread' | 'high_risk' | 'stuck'
   const [slashCmd, setSlashCmd] = useState('')
   const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [syncingMessages, setSyncingMessages] = useState(false)
+  
+  // --- MODULE 7: COMMAND PALETTE STATE ---
+  const [showCmdPalette, setShowCmdPalette] = useState(false)
+  const [cmdQuery, setCmdQuery] = useState('')
+  const [cmdActiveIdx, setCmdActiveIdx] = useState(0)
+  
+  // --- MODULE 7: HUMAN HANDOFF STATE ---
+  const [humanHandoffActive, setHumanHandoffActive] = useState(false)
   
   // --- CONSTANTS ---
   const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
+
+  // Navigation for command palette
+  const navigate = useNavigate()
+
+  // Global command palette items
+  const CMD_PALETTE_COMMANDS = [
+    { icon: '💬', label: 'WhatsApp Portal', desc: 'Live Chat Dashboard', section: 'Navigation', shortcut: 'Current', action: () => {} },
+    { icon: '🤖', label: 'WhatsApp Bot', desc: 'Bot configuration & status', section: 'Navigation', shortcut: null, action: () => navigate('/whatsapp-bot') },
+    { icon: '📊', label: 'Dashboard', desc: 'Main ERP overview', section: 'Navigation', shortcut: null, action: () => navigate('/') },
+    { icon: '📦', label: 'Search Orders', desc: 'Find any order fast', section: 'Navigation', shortcut: null, action: () => navigate('/search') },
+    { icon: '📄', label: 'Send Invoice', desc: 'Generate & send PDF invoice to active chat', section: 'Actions', shortcut: '/invoice', action: () => { handleSendInvoice(); setShowCmdPalette(false); } },
+    { icon: '🔄', label: 'Sync Chat History', desc: 'Reload messages from server', section: 'Actions', shortcut: null, action: () => { if (activeChat) { selectChat(activeChat); setShowCmdPalette(false); } } },
+    { icon: '⚡', label: 'Quick Replies', desc: 'Open template library', section: 'Actions', shortcut: '/quick', action: () => { setShowQuickReplies(true); setShowCmdPalette(false); } },
+    { icon: '📦', label: 'Send Tracking', desc: 'Send order tracking status', section: 'Actions', shortcut: '/track', action: () => { setInputText('📦 Your order tracking is being retrieved...'); setShowCmdPalette(false); } },
+    { icon: '🔍', label: 'Filter: Unread', desc: 'Show unread conversations', section: 'Filters', shortcut: null, action: () => { setActiveFilter('unread'); setShowCmdPalette(false); } },
+    { icon: '🚩', label: 'Filter: High Risk', desc: 'Show flagged contacts', section: 'Filters', shortcut: null, action: () => { setActiveFilter('high_risk'); setShowCmdPalette(false); } },
+    { icon: '📦', label: 'Filter: Stuck', desc: 'Show stuck deliveries', section: 'Filters', shortcut: null, action: () => { setActiveFilter('stuck'); setShowCmdPalette(false); } },
+    { icon: '📋', label: 'Filter: All', desc: 'Show all conversations', section: 'Filters', shortcut: null, action: () => { setActiveFilter('all'); setShowCmdPalette(false); } },
+  ]
 
   const SLASH_COMMANDS = [
     { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); setInputText(''); } },
@@ -59,6 +88,7 @@ export default function WhatsAppPortal() {
   const timelineEndRef = useRef(null)
   const wsRef = useRef(null)
   const typingTimersRef = useRef({})
+  const cmdPaletteInputRef = useRef(null)
   
   // --- FETCH CHATS ---
   const fetchChats = async (silent = false) => {
@@ -81,10 +111,55 @@ export default function WhatsAppPortal() {
     }
   }
 
+  // --- CMD PALETTE FILTERED RESULTS ---
+  const filteredCmdItems = CMD_PALETTE_COMMANDS.filter(c =>
+    !cmdQuery || c.label.toLowerCase().includes(cmdQuery.toLowerCase()) || c.desc.toLowerCase().includes(cmdQuery.toLowerCase())
+  )
+
+  const cmdSections = [...new Set(filteredCmdItems.map(c => c.section))]
+
+  // --- KEYBOARD SHORTCUT: CMD+K ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowCmdPalette(prev => !prev)
+        setCmdQuery('')
+        setCmdActiveIdx(0)
+      }
+      if (e.key === 'Escape') {
+        setShowCmdPalette(false)
+      }
+      if (showCmdPalette) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setCmdActiveIdx(prev => Math.min(prev + 1, filteredCmdItems.length - 1))
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setCmdActiveIdx(prev => Math.max(prev - 1, 0))
+        }
+        if (e.key === 'Enter' && filteredCmdItems[cmdActiveIdx]) {
+          filteredCmdItems[cmdActiveIdx].action()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showCmdPalette, filteredCmdItems, cmdActiveIdx])
+
+  // Auto-focus cmd palette input when opened
+  useEffect(() => {
+    if (showCmdPalette && cmdPaletteInputRef.current) {
+      setTimeout(() => cmdPaletteInputRef.current?.focus(), 50)
+    }
+  }, [showCmdPalette])
+
   // --- FETCH CHAT HISTORY ---
   const selectChat = async (chat) => {
     setActiveChat(chat)
     setLoadingMessages(true)
+    setSyncingMessages(true)
     
     // Clear unread badge in state
     setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c))
@@ -107,6 +182,7 @@ export default function WhatsAppPortal() {
       addToast('Network error loading chat history', 'error')
     } finally {
       setLoadingMessages(false)
+      setSyncingMessages(false)
       scrollToBottom()
     }
   }
@@ -491,6 +567,7 @@ export default function WhatsAppPortal() {
   const getStatusColor = (status) => {
     if (status === 'CONNECTED') return 'var(--green)'
     if (status === 'CONNECTING') return 'var(--yellow)'
+    if (status === 'SLEEPING') return '#8b5cf6'
     return 'var(--red)'
   }
 
@@ -541,15 +618,18 @@ export default function WhatsAppPortal() {
         {/* --- LEFT PANEL: CONVERSATIONS LIST --- */}
         <div className="wa-portal-left">
           
-          {/* Connection Status Indicator */}
+          {/* Connection Status Indicator — Module 7: Pulse Dot */}
           <div className="wa-portal-status-bar">
-            <span 
-              className="wa-portal-status-dot" 
-              style={{ 
-                backgroundColor: getStatusColor(wsStatus),
-                boxShadow: `0 0 8px ${getStatusColor(wsStatus)}`
-              }}
-            ></span>
+            <div className="wa-pulse-dot" style={{ width: 16, height: 16 }}>
+              <div
+                className="wa-pulse-dot-inner"
+                style={{
+                  backgroundColor: getStatusColor(wsStatus),
+                  boxShadow: `0 0 8px ${getStatusColor(wsStatus)}`,
+                }}
+              />
+              <style>{`.wa-pulse-dot::before { background: ${getStatusColor(wsStatus)} !important; animation: ${wsStatus === 'CONNECTED' ? 'pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite' : 'none'} }`}</style>
+            </div>
             <span style={{ flex: 1 }}>
               WhatsApp: <strong style={{ color: getStatusColor(wsStatus) }}>{wsStatus.toLowerCase()}</strong>
             </span>
@@ -569,6 +649,27 @@ export default function WhatsAppPortal() {
                 📱 {activeNumber}
               </span>
             )}
+            {/* Cmd+K hint */}
+            <button
+              onClick={() => setShowCmdPalette(true)}
+              title="Open Command Palette (⌘K)"
+              style={{
+                background: 'rgba(168,85,247,0.08)',
+                border: '1px solid rgba(168,85,247,0.2)',
+                borderRadius: '8px',
+                color: 'var(--text-muted)',
+                fontSize: '0.65rem',
+                padding: '3px 8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                flexShrink: 0,
+              }}
+            >
+              <span>⌘</span><span>K</span>
+            </button>
           </div>
 
           {/* Search Contacts */}
@@ -600,12 +701,19 @@ export default function WhatsAppPortal() {
             ))}
           </div>
 
-          {/* Threads List */}
+          {/* Threads List — Module 7: Skeleton Loaders */}
           <div className="wa-portal-threads-list">
             {loadingChats ? (
-              <div className="text-center p-8 text-muted">
-                <span className="loading-spinner"></span>
-                <p style={{ marginTop: 8 }}>Loading discussions...</p>
+              <div>
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="skeleton-thread">
+                    <div className="skeleton skeleton-avatar" />
+                    <div className="skeleton-lines">
+                      <div className="skeleton skeleton-line" style={{ width: `${60 + (i % 3) * 15}%` }} />
+                      <div className="skeleton skeleton-line" style={{ width: `${40 + (i % 4) * 12}%` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredChats.length === 0 ? (
               <div className="text-center p-8 text-muted italic">No chats found.</div>
@@ -743,12 +851,29 @@ export default function WhatsAppPortal() {
                 </div>
               </div>
 
-              {/* Message Timeline */}
+              {/* Sync Progress Bar — Module 7 */}
+              {syncingMessages && (
+                <div className="wa-sync-progress">
+                  <div className="wa-sync-progress-bar" />
+                </div>
+              )}
+
+              {/* Human Handoff Banner — Module 5/7 */}
+              {humanHandoffActive && (
+                <div className="wa-handoff-banner">
+                  <span>🧑</span>
+                  <span>Human Agent Mode — Bot is silent for this chat</span>
+                  <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
+                </div>
+              )}
+
+              {/* Message Timeline — Module 7: Skeleton Loaders */}
               <div className="wa-portal-chat-timeline">
                 {loadingMessages ? (
-                  <div className="text-center p-12 text-muted">
-                    <span className="loading-spinner"></span>
-                    <p style={{ marginTop: 8 }}>Retrieving history...</p>
+                  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {[...Array(6)].map((_, i) => (
+                      <div key={i} className={`skeleton skeleton-bubble ${i % 2 === 0 ? '' : 'outgoing'}`} style={{ width: `${40 + (i % 3) * 15}%` }} />
+                    ))}
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="text-center p-12 text-muted italic">No messages logged in this discussion.</div>
@@ -759,6 +884,23 @@ export default function WhatsAppPortal() {
                     const showAudio = msg.media_type === 'audio' && msg.media_url
                     const showDoc = msg.media_type === 'document' && msg.media_url
                     
+                    // Parse AI payment card data from transcript
+                    let paymentCardData = null
+                    if (msg.ai_processed && msg.media_type === 'image' && msg.transcript) {
+                      const amountMatch = msg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i)
+                      const txnMatch = msg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i)
+                      const bankMatch = msg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i)
+                      const statusMatch = msg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i)
+                      if (amountMatch) {
+                        paymentCardData = {
+                          amount: amountMatch[1],
+                          txnId: txnMatch?.[1] || null,
+                          bank: bankMatch?.[1]?.trim() || null,
+                          status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
+                        }
+                      }
+                    }
+
                     return (
                       <div 
                         key={msg.id || index}
@@ -776,12 +918,28 @@ export default function WhatsAppPortal() {
                               className="wa-media-image"
                               onClick={() => setZoomedImage(msg.media_url)}
                             />
-                            {msg.transcript && (
+                            {/* Module 7: AI Payment Card rendering */}
+                            {paymentCardData ? (
+                              <div className="wa-ai-payment-card">
+                                <div className="wa-ai-payment-card-header">
+                                  <span>💳</span>
+                                  <span>AI Payment Receipt</span>
+                                  <span className={`wa-ai-payment-card-badge ${paymentCardData.status === 'matched' ? 'matched' : paymentCardData.status === 'mismatch' ? 'mismatch' : 'reviewing'}`}>
+                                    {paymentCardData.status === 'matched' ? '✓ Verified' : paymentCardData.status === 'mismatch' ? '⚠ Mismatch' : '🔍 Reviewing'}
+                                  </span>
+                                </div>
+                                <div className="wa-ai-payment-card-amount">Rs. {paymentCardData.amount}</div>
+                                <div className="wa-ai-payment-card-meta">
+                                  {paymentCardData.bank && <span>🏦 {paymentCardData.bank}</span>}
+                                  {paymentCardData.txnId && <span>TXN: {paymentCardData.txnId}</span>}
+                                </div>
+                              </div>
+                            ) : msg.transcript ? (
                               <div className="wa-bubble-transcript" style={{ marginTop: 8 }}>
                                 <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🔍 OCR Result:</span>
                                 <span className="wa-transcript-text">{msg.transcript}</span>
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         )}
 
@@ -995,26 +1153,18 @@ export default function WhatsAppPortal() {
                 <div className="wa-portal-profile-phone">+{activeChat.phone}</div>
               </div>
 
-              {/* Gemini Chat Memory Section */}
+              {/* Gemini Chat Memory Section — Module 7: Enhanced Glass Card */}
               <div className="wa-portal-profile-section">
                 <h5 className="wa-portal-profile-title">🧠 Gemini Active Memory</h5>
                 {customerInfo.geminiMemory ? (
-                  <div 
-                    style={{
-                      background: 'rgba(168, 85, 247, 0.08)',
-                      border: '1px solid rgba(168, 85, 247, 0.2)',
-                      padding: 12,
-                      borderRadius: 'var(--radius)',
-                      fontSize: '0.82rem',
-                      lineHeight: '1.4',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    {customerInfo.geminiMemory}
+                  <div className="wa-gemini-memory">
+                    <span style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-primary)' }}>
+                      {customerInfo.geminiMemory}
+                    </span>
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', italic: true }}>
-                    No AI-extracted user sizing/preferences memory recorded yet.
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+                    No AI-extracted memory recorded yet.
                   </div>
                 )}
               </div>
@@ -1070,6 +1220,62 @@ export default function WhatsAppPortal() {
           onClick={() => setZoomedImage(null)}
         >
           <img src={zoomedImage} alt="Zoomed View" className="wa-image-zoom-img" />
+        </div>
+      )}
+
+      {/* --- MODULE 7: GLOBAL COMMAND PALETTE (Cmd+K) --- */}
+      {showCmdPalette && (
+        <div
+          className="cmd-palette-overlay"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCmdPalette(false) }}
+        >
+          <div className="cmd-palette-modal" role="dialog" aria-label="Command Palette">
+            <div className="cmd-palette-input-wrap">
+              <span className="cmd-palette-icon">⚡</span>
+              <input
+                ref={cmdPaletteInputRef}
+                className="cmd-palette-input"
+                placeholder="Search commands, navigate, or filter chats..."
+                value={cmdQuery}
+                onChange={e => { setCmdQuery(e.target.value); setCmdActiveIdx(0); }}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <span className="cmd-palette-kbd">ESC</span>
+            </div>
+            <div className="cmd-palette-results">
+              {filteredCmdItems.length === 0 ? (
+                <div className="cmd-palette-empty">No commands found for "{cmdQuery}"</div>
+              ) : (
+                cmdSections.map(section => (
+                  <div key={section}>
+                    <div className="cmd-palette-section-title">{section}</div>
+                    {filteredCmdItems.filter(c => c.section === section).map((item, idx) => {
+                      const globalIdx = filteredCmdItems.indexOf(item)
+                      return (
+                        <div
+                          key={item.label}
+                          id={`cmd-item-${globalIdx}`}
+                          className={`cmd-palette-item ${globalIdx === cmdActiveIdx ? 'active' : ''}`}
+                          onClick={() => { item.action(); setShowCmdPalette(false); }}
+                          onMouseEnter={() => setCmdActiveIdx(globalIdx)}
+                        >
+                          <div className="cmd-palette-item-icon">{item.icon}</div>
+                          <div className="cmd-palette-item-info">
+                            <div className="cmd-palette-item-label">{item.label}</div>
+                            <div className="cmd-palette-item-desc">{item.desc}</div>
+                          </div>
+                          {item.shortcut && (
+                            <span className="cmd-palette-item-shortcut">{item.shortcut}</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

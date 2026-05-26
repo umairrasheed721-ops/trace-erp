@@ -297,7 +297,8 @@ export default function WhatsAppBot() {
   const isConnected = status?.status === 'CONNECTED'
   const isQrReady = status?.status === 'QR_READY'
   const isFailed = status?.status === 'FAILURE'
-  const statusColor = isConnected ? 'var(--green)' : isQrReady ? 'var(--orange)' : isFailed ? 'var(--red)' : 'var(--orange)'
+  const isSleeping = status?.status === 'SLEEPING'
+  const statusColor = isConnected ? 'var(--green)' : isSleeping ? '#8b5cf6' : isQrReady ? 'var(--orange)' : isFailed ? 'var(--red)' : 'var(--orange)'
 
   return (
     <div className="fade-in">
@@ -423,10 +424,16 @@ export default function WhatsAppBot() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'var(--bg-active)', padding: 20, borderRadius: 16, border: '1px solid var(--border)' }}>
                 <div style={{ width: 18, height: 18, borderRadius: '50%', background: statusColor, boxShadow: `0 0 15px ${statusColor}` }}></div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontWeight: 800, fontSize: '1.2rem' }}>{status?.status || 'DISCONNECTED'}</span>
+                  <span style={{ fontWeight: 800, fontSize: '1.2rem' }}>{status?.status === 'SLEEPING' ? 'SLEEPING 💤 (Simulating Human Rest)' : (status?.status || 'DISCONNECTED')}</span>
                   <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Current Baileys Multi-Device Status {status?.reconnectAttempts > 0 && `(Reconnect attempt ${status.reconnectAttempts}/5)`}</span>
                 </div>
               </div>
+
+              {isSleeping && (
+                <div className="info-banner" style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid #8b5cf6', color: '#a78bfa', padding: 20, borderRadius: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                   <span style={{ fontSize: '1.5rem' }}>💤</span> Bot is simulating human rest. Automated replies are temporarily paused to preserve Meta trust score.
+                </div>
+              )}
 
               {isQrReady && status?.qrCode && (
                 <div style={{ textAlign: 'center', background: '#fff', padding: 28, borderRadius: 20, border: '2px dashed #cbd5e1', maxWidth: 400, margin: '0 auto' }}>

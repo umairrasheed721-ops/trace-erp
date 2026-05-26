@@ -239,6 +239,15 @@ class WhatsAppBot {
     this.lastResetTime = Date.now();
     this.humanCooldowns = {}; // { phone: timestamp }
     
+    // --- 🛡️ MODULE 6: ANTI-BAN SHIELD PROPERTIES ---
+    this.sentCountInSession = 0;
+    this.sleepThreshold = 30; // Rotate / Rest after 30 messages
+    this.isSleeping = false;
+    this.sleepUntil = null;
+    this.consecutiveBulkSentCount = 0;
+    this.contactMessageTimestamps = {}; // maps phone number to arrays of timestamps
+    this.contactLastIncomingTimestamp = {}; // maps phone number to timestamp of last incoming msg
+
     // Dynamic governance parameters
     this.isPaused = false;
     this.minDelaySec = 5;
@@ -246,6 +255,10 @@ class WhatsAppBot {
     this.maxPerHour = 60;
     this.coolingPeriodMin = 15;
     this.auditLogs = []; // Buffer of recent delivery audits
+
+    // --- 🤖 MODULE 5: AUTO-RESPONSE STUDIO ---
+    this.humanHandoffContacts = new Set(); // phones currently in human-intervention mode
+    this.consecutiveBotReplies = {};       // phone -> count of consecutive bot replies without a human reply
 
     // Prevent local dev from running the bot unless explicitly enabled
     if (!isProduction) {
@@ -499,6 +512,9 @@ class WhatsAppBot {
           if (!text && !mediaDetails && !msg.message) continue;
 
           const isOutgoing = msg.key.fromMe;
+          if (!isOutgoing && fromPhone) {
+            this.contactLastIncomingTimestamp[fromPhone] = Date.now();
+          }
           
           // Download media if present
           let mediaUrl = null;
@@ -590,6 +606,21 @@ class WhatsAppBot {
           }
 
           console.log(`💬 Incoming WA Message from ${fromPhone}: ${text}`);
+
+          // Check if bot is sleeping to simulate human rest, skip auto-replies completely!
+          if (this.isSleeping) {
+            console.log(`💤 Bot is currently SLEEPING (simulating rest) for tenant [${this.tenantId}]. Skipping auto-reply to ${fromPhone}.`);
+            continue;
+          }
+
+          // --- 👤 MODULE 5: HUMAN HANDOFF CHECK ---
+          if (this.humanHandoffContacts && this.humanHandoffContacts.has(fromPhone)) {
+            console.log(`👤 [HANDOFF] ${fromPhone} is in human intervention mode. Bot silent.`);
+            continue;
+          }
+
+          // Reset consecutive-bot-reply counter on every incoming message
+          this.consecutiveBotReplies[fromPhone] = 0;
 
           // Check if contact is under active human manual override cooldown
           const lastHumanMsg = this.humanCooldowns[fromPhone];
@@ -695,8 +726,14 @@ class WhatsAppBot {
                   ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}`
                   : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
                 const wismoReply = `📦 *Order Status Update*\n\nTracking: *${tracking}* (${courier})\nCurrent Status: *${status}*\n\n🔗 Live Track: ${trackLink}\n\nKoi aur sawaal ho toh zaroor batayein! 😊`;
-                this.sendMessage(fromPhone, wismoReply, true);
-                console.log(`🚚 WISMO fast-intercept replied to ${fromPhone}`);
+                // --- 📊 Rate limiter guard ---
+                if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                  console.warn(`⚠️ [RATE-LIMIT] Skipping WISMO reply to ${fromPhone} — 2 consecutive bot replies without response.`);
+                } else {
+                  this.sendMessage(fromPhone, wismoReply, true);
+                  this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                  console.log(`🚚 WISMO fast-intercept replied to ${fromPhone}`);
+                }
                 continue;
               }
             }
@@ -705,7 +742,23 @@ class WhatsAppBot {
             const { generateAIResponse } = require('./gemini_engine');
             const geminiReply = await generateAIResponse(fromPhone, text);
             if (geminiReply) {
-              this.sendMessage(fromPhone, geminiReply, true);
+              // --- 🤝 Handoff detection: if Gemini signals a human agent is needed ---
+              const handoffKeywords = ['human agent', 'human support', 'live agent', 'connect you to', 'escalat', 'transfer you'];
+              const needsHandoff = handoffKeywords.some(kw => geminiReply.toLowerCase().includes(kw));
+              if (needsHandoff) {
+                this.setHumanHandoff(fromPhone, true);
+                try {
+                  const { broadcast } = require('../websocket');
+                  broadcast('human_handoff_required', { phone: fromPhone, reason: 'Gemini AI flagged handoff', preview: geminiReply.substring(0, 120) });
+                } catch (_) {}
+              }
+              // --- 📊 Rate limiter guard ---
+              if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                console.warn(`⚠️ [RATE-LIMIT] Skipping Gemini reply to ${fromPhone} — 2 consecutive bot replies without response.`);
+              } else {
+                this.sendMessage(fromPhone, geminiReply, true);
+                this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+              }
               continue; // Gemini handled the conversation completely!
             }
 
@@ -736,8 +789,13 @@ class WhatsAppBot {
                     .replace(/\{status\}/g, status)
                     .replace(/\{link\}/g, link);
 
-                  this.sendMessage(fromPhone, reply, true);
-                  console.log(`🤖 AI Fallback: Sent Tracking Intent reply to ${fromPhone}`);
+                  if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                    console.warn(`⚠️ [RATE-LIMIT] Skipping fallback tracking reply to ${fromPhone} — rate limit hit.`);
+                  } else {
+                    this.sendMessage(fromPhone, reply, true);
+                    this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                    console.log(`🤖 AI Fallback: Sent Tracking Intent reply to ${fromPhone}`);
+                  }
                 }
                 // 3. Landmark Intent
                 else if (['near', 'opposite', 'beside', 'gali', 'house', 'makan', 'street', 'landmark', 'ke paas', 'samne'].some(w => lowerText.includes(w))) {
@@ -746,15 +804,25 @@ class WhatsAppBot {
                   let reply = (settings.ai_landmark_template || '🤖 [TRACE Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.')
                     .replace(/\{landmark\}/g, text);
 
-                  this.sendMessage(fromPhone, reply, true);
-                  console.log(`🤖 AI Fallback: Sent Landmark Intent reply to ${fromPhone}`);
+                  if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                    console.warn(`⚠️ [RATE-LIMIT] Skipping fallback landmark reply to ${fromPhone} — rate limit hit.`);
+                  } else {
+                    this.sendMessage(fromPhone, reply, true);
+                    this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                    console.log(`🤖 AI Fallback: Sent Landmark Intent reply to ${fromPhone}`);
+                  }
                 }
                 // 4. General fallback message when they have an order but the intent is not recognized
                 else {
                   const customerName = order.customer_name || 'Customer';
                   const reply = `🤖 [TRACE Support] Hi *${customerName}*! Humare system mein aapka order exist karta hai. Agar aap apna parcel track karna chahte hain, toh reply mein *'kahan hai'* ya *'status'* likh kar bhejein. Shukriya!`;
-                  this.sendMessage(fromPhone, reply, true);
-                  console.log(`🤖 AI Fallback: Sent general order holder message to ${fromPhone}`);
+                  if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                    console.warn(`⚠️ [RATE-LIMIT] Skipping fallback general-order reply to ${fromPhone} — rate limit hit.`);
+                  } else {
+                    this.sendMessage(fromPhone, reply, true);
+                    this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                    console.log(`🤖 AI Fallback: Sent general order holder message to ${fromPhone}`);
+                  }
                 }
               }
             } else {
@@ -762,13 +830,23 @@ class WhatsAppBot {
               // 1. Check if they asked for tracking anyway
               if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
                 const reply = `🤖 [TRACE Support] Aapka phone number humare system mein kisi active order se register nahi mila. Agar aapne order kiya hai, toh kindly humein apna *order number* (e.g. TR12345) message karein taake hum update check kar sakein.`;
-                this.sendMessage(fromPhone, reply, true);
-                console.log(`🤖 AI Fallback: Sent tracking request message to non-order holder ${fromPhone}`);
+                if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                  console.warn(`⚠️ [RATE-LIMIT] Skipping fallback no-order-tracking reply to ${fromPhone} — rate limit hit.`);
+                } else {
+                  this.sendMessage(fromPhone, reply, true);
+                  this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                  console.log(`🤖 AI Fallback: Sent tracking request message to non-order holder ${fromPhone}`);
+                }
               } else {
                 // 2. Generic greeting / helper fallback
                 const reply = `🤖 [TRACE Support] Salam! Aapka message received ho gaya hai. Humare system mein is number se koi current order exist nahi karta. Agar aap new order place karna chahte hain ya agent se baat karna chahte hain, toh apna query reply karein. Humara customer support representative jald hi aapse raabta karega.`;
-                this.sendMessage(fromPhone, reply, true);
-                console.log(`🤖 AI Fallback: Sent general help reply to non-order holder ${fromPhone}`);
+                if ((this.consecutiveBotReplies[fromPhone] || 0) >= 2) {
+                  console.warn(`⚠️ [RATE-LIMIT] Skipping fallback general-help reply to ${fromPhone} — rate limit hit.`);
+                } else {
+                  this.sendMessage(fromPhone, reply, true);
+                  this.consecutiveBotReplies[fromPhone] = (this.consecutiveBotReplies[fromPhone] || 0) + 1;
+                  console.log(`🤖 AI Fallback: Sent general help reply to non-order holder ${fromPhone}`);
+                }
               }
             }
           } catch (err) {
@@ -799,6 +877,43 @@ class WhatsAppBot {
     }
   }
 
+  variateTemplateMessage(text) {
+    if (!text || typeof text !== 'string') return text;
+    let modified = text;
+
+    // 1. Variate common greetings
+    const greetings = [
+      { pattern: /^(👋\s*)?hello\b/i, replacements: ['Salam', 'Hi', 'Hello', 'Hi there', '👋 Salam', '👋 Hello', '👋 Hi'] },
+      { pattern: /^(👋\s*)?hi\b/i, replacements: ['Salam', 'Hi', 'Hello', 'Hi there', '👋 Salam', '👋 Hello', '👋 Hi'] },
+      { pattern: /^(👋\s*)?salam\b/i, replacements: ['Salam', 'Hi', 'Hello', 'Hi there', '👋 Salam', '👋 Hello', '👋 Hi'] }
+    ];
+
+    for (const g of greetings) {
+      if (g.pattern.test(modified)) {
+        const randomGreeting = g.replacements[Math.floor(Math.random() * g.replacements.length)];
+        modified = modified.replace(g.pattern, randomGreeting);
+        break;
+      }
+    }
+
+    // 2. Inject minor variation tokens like emojis
+    const emojis = ['😊', '👍', '📦', '🙏', '✨', ''];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+    if (randomEmoji) {
+      if (modified.endsWith('.')) {
+        modified = modified.slice(0, -1) + ' ' + randomEmoji;
+      } else {
+        modified = modified + ' ' + randomEmoji;
+      }
+    }
+
+    // 3. Inject zero-width space or space suffix to modify exact byte matching
+    const randomSuffix = Math.random() > 0.5 ? '\u200B' : ' ';
+    modified = modified + randomSuffix;
+
+    return modified;
+  }
+
   async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null) {
     if (!isManual) {
       try {
@@ -817,9 +932,14 @@ class WhatsAppBot {
       }
     }
 
+    let finalMessage = message;
+    if (!isManual && finalMessage) {
+      finalMessage = this.variateTemplateMessage(finalMessage);
+    }
+
     // Add to queue instead of sending immediately
     return new Promise((resolve) => {
-      this.queue.push({ phone, message, isManual, mediaUrl, mediaType, fileName, resolve });
+      this.queue.push({ phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve });
       console.log(`📥 Message queued for ${phone} (Manual: ${isManual}, Media: ${!!mediaUrl}). Queue size: ${this.queue.length}`);
       this._processQueue();
     });
@@ -835,10 +955,14 @@ class WhatsAppBot {
       console.warn('⏳ Queue paused by Master Emergency Switch');
       return;
     }
+    if (this.isSleeping) {
+      console.warn(`⏳ Queue paused: Bot is in simulated human rest (SLEEPING) until ${new Date(this.sleepUntil).toISOString()}`);
+      return;
+    }
 
     this.isProcessing = true;
 
-    while (this.queue.length > 0 && !this.isPaused) {
+    while (this.queue.length > 0 && !this.isPaused && !this.isSleeping) {
       // 1. Check Hourly Limit
       const now = Date.now();
       if (now - this.lastResetTime > 3600000) {
@@ -853,14 +977,47 @@ class WhatsAppBot {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve } = this.queue.shift();
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve } = this.queue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
+      if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
+      else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+
+      // --- 3. Rate Limit: Max 3 messages per contact per 60 seconds unless they respond ---
+      const sixtySecsAgo = Date.now() - 60000;
+      this.contactMessageTimestamps[cleaned] = (this.contactMessageTimestamps[cleaned] || []).filter(t => t > sixtySecsAgo);
+      
+      const lastIncoming = this.contactLastIncomingTimestamp[cleaned] || 0;
+      const sentTimestamps = this.contactMessageTimestamps[cleaned];
+      
+      if (sentTimestamps.length >= 3) {
+        const lastSent = Math.max(...sentTimestamps);
+        // If customer has NOT responded since our last sent message, enforce rate limiting sleep
+        if (lastIncoming <= lastSent) {
+          const oldestTimestamp = sentTimestamps[0];
+          const waitTime = Math.max(1000, 60000 - (Date.now() - oldestTimestamp) + 1000);
+          console.warn(`🛑 Anti-Ban: Contact +${cleaned} limit reached (3 msgs/60s). Queue waiting for safety window (${waitTime/1000}s)...`);
+          await new Promise(r => setTimeout(r, waitTime));
+          continue; // Retry peeking in next iteration
+        }
+      }
+
+      // Safe to send! Shift from queue now
+      this.queue.shift();
+
+      // --- 3. Bulk Batch Staggering ---
+      if (!isManual) {
+        this.consecutiveBulkSentCount++;
+        if (this.consecutiveBulkSentCount >= 5) {
+          this.consecutiveBulkSentCount = 0;
+          const restInterval = Math.floor(Math.random() * 60000) + 60000; // 60s - 120s rest interval
+          console.log(`⏳ Anti-Ban Batch Stagger: Sent 5 bulk messages. Resting queue for ${restInterval/1000}s...`);
+          await new Promise(r => setTimeout(r, restInterval));
+        }
+      }
+
       let dbMediaUrl = mediaUrl;
 
       try {
-        if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-        else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-
         const jid = cleaned + '@s.whatsapp.net';
         
         if (isManual) {
@@ -869,10 +1026,10 @@ class WhatsAppBot {
           await new Promise(r => setTimeout(r, 500));
         } else {
           // Bulk marketing alert: Use dynamic anti-ban pacing & onWhatsApp verification
-          const minMs = this.minDelaySec * 1000;
-          const maxMs = this.maxDelaySec * 1000;
+          const minMs = (this.minDelaySec || 5) * 1000;
+          const maxMs = (this.maxDelaySec || 15) * 1000;
           const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-          console.log(`⏳ Anti-Ban: Waiting ${delay/1000}s before sending bulk alert to ${cleaned}...`);
+          console.log(`⏳ Anti-Ban Spacing: Waiting ${delay/1000}s before sending automated message to ${cleaned}...`);
           await new Promise(r => setTimeout(r, delay));
 
           try {
@@ -893,8 +1050,11 @@ class WhatsAppBot {
           await this.sock.sendPresenceUpdate('composing', jid);
         } catch (e) {}
 
-        // 2. Character-based typing delay simulation (30ms per char + random base, max 6s)
-        const typingDelay = Math.min((message.length * 30) + (Math.floor(Math.random() * 1000) + 500), 6000);
+        // 2. Character-based typing delay simulation (50ms per char + 20% random jitter)
+        const charDelay = message.length * 50;
+        const jitterFraction = (Math.random() * 0.4) - 0.2; // -20% to +20%
+        const jitter = charDelay * jitterFraction;
+        const typingDelay = Math.max(1000, Math.min(charDelay + jitter, 15000));
         console.log(`💬 Simulating typing for ${typingDelay}ms to ${cleaned}...`);
         await new Promise(r => setTimeout(r, typingDelay));
 
@@ -1034,6 +1194,41 @@ class WhatsAppBot {
         console.log(`✉️ Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
         this._addAuditLog(cleaned, 'Sent', '');
 
+        // Record the sent timestamp for anti-ban contact safety limits
+        this.contactMessageTimestamps[cleaned] = this.contactMessageTimestamps[cleaned] || [];
+        this.contactMessageTimestamps[cleaned].push(Date.now());
+
+        // Session Rotation Simulated rest check
+        if (!isManual) {
+          this.sentCountInSession++;
+          if (this.sentCountInSession >= this.sleepThreshold) {
+            this.sentCountInSession = 0;
+            this.isSleeping = true;
+            this.status = 'SLEEPING';
+            this.sleepUntil = Date.now() + 15 * 60 * 1000; // 15 mins sleep
+            
+            console.log(`💤 Bot instance [${this.tenantId}] triggers mandatory 15-minute simulated human rest.`);
+            
+            // Update DB status to SLEEPING
+            try {
+              const { db } = require('../db');
+              db.prepare("UPDATE whatsapp_settings SET status = 'SLEEPING'").run();
+            } catch(e){}
+
+            setTimeout(() => {
+              this.isSleeping = false;
+              this.sleepUntil = null;
+              this.status = 'CONNECTED';
+              try {
+                const { db } = require('../db');
+                db.prepare("UPDATE whatsapp_settings SET status = 'CONNECTED'").run();
+              } catch(e){}
+              console.log(`💤 Bot instance [${this.tenantId}] woke up from simulated human rest.`);
+              this._processQueue();
+            }, 15 * 60 * 1000);
+          }
+        }
+
         let dbMessageId = null;
         try {
           const { db } = require('../db');
@@ -1109,6 +1304,25 @@ class WhatsAppBot {
       error
     });
     if (this.auditLogs.length > 100) this.auditLogs.pop();
+  }
+
+  // --- 🤝 MODULE 5: HUMAN HANDOFF TOGGLE ---
+  setHumanHandoff(phone, active) {
+    if (!this.humanHandoffContacts) this.humanHandoffContacts = new Set();
+    if (active) {
+      this.humanHandoffContacts.add(phone);
+      console.log(`🧑 Human handoff ACTIVE for ${phone}`);
+    } else {
+      this.humanHandoffContacts.delete(phone);
+      console.log(`🤖 Human handoff REMOVED for ${phone}`);
+    }
+  }
+
+  // --- 💳 MODULE 5: PAYMENT RECEIVED AUTO-REPLY (callable by OCR engine) ---
+  triggerPaymentReceivedReply(phone, orderId) {
+    const msg = `✅ *Payment Confirmed!*\n\nThank you! We have received your payment for order *#${orderId}*. Your parcel is being packed and will be dispatched shortly. 📦\n\n_TRACE ERP Auto-Verification System_`;
+    this.sendMessage(phone, msg, true);
+    console.log(`💳 PAYMENT_RECEIVED auto-reply sent to ${phone} for order #${orderId}`);
   }
 
   setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate }) {
@@ -1421,3 +1635,8 @@ const botProxy = new Proxy({}, {
 });
 
 module.exports = botProxy;
+
+// --- 🔌 MODULE 5: getBot() — allows OCR/STT engines to call bot methods directly ---
+module.exports.getBot = function(tenantId) {
+  return getBotInstance(tenantId || 'default');
+};

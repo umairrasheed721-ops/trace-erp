@@ -86,6 +86,16 @@ async function scanReceiptOCR(phone, orderId, dbMessageId, imagePath) {
                   WHERE id = ?
                 `).run(detectedTxnId || 'OCR', detectedAmount, orderId);
                 console.log(`🔍 OCR: Payment MATCHED for order ${orderId} — Rs.${detectedAmount}`);
+                // --- 💳 MODULE 5: Trigger PAYMENT_RECEIVED auto-reply via bot ---
+                try {
+                  const { getBot } = require('./whatsapp_bot');
+                  const bot = getBot();
+                  if (bot && typeof bot.triggerPaymentReceivedReply === 'function') {
+                    bot.triggerPaymentReceivedReply(phone, orderId);
+                  }
+                } catch (botErr) {
+                  console.warn('⚠️ OCR: Could not trigger payment auto-reply:', botErr.message);
+                }
               } else {
                 status = 'mismatch';
               }
