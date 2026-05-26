@@ -45,9 +45,9 @@ async function transcribeVoiceNote(phone, dbMessageId, localFilePath) {
       const apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) { console.warn('🎙️ STT: GROQ_API_KEY not set'); return; }
 
-      const { FormData, File } = await import('formdata-node');
       const form = new FormData();
-      form.set('file', new File([wavBuffer], 'audio.wav', { type: 'audio/wav' }));
+      const audioFile = new File([wavBuffer], 'audio.wav', { type: 'audio/wav' });
+      form.set('file', audioFile);
       form.set('model', 'whisper-large-v3');
       form.set('language', language);
       form.set('response_format', 'json');
@@ -64,9 +64,9 @@ async function transcribeVoiceNote(phone, dbMessageId, localFilePath) {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) { console.warn('🎙️ STT: OPENAI_API_KEY not set'); return; }
 
-      const { FormData, File } = await import('formdata-node');
       const form = new FormData();
-      form.set('file', new File([wavBuffer], 'audio.wav', { type: 'audio/wav' }));
+      const audioFile = new File([wavBuffer], 'audio.wav', { type: 'audio/wav' });
+      form.set('file', audioFile);
       form.set('model', 'whisper-1');
       form.set('language', language);
 
@@ -89,17 +89,23 @@ async function transcribeVoiceNote(phone, dbMessageId, localFilePath) {
 
     console.log(`🎙️ STT Transcript for msg ${dbMessageId}: "${transcript}"`);
 
-    // Step 3: Persist to DB
+    // Step 3: Persist to DB and tag as AI_PROCESSED
     db.prepare(`
       UPDATE whatsapp_messages
-      SET transcript = ?, transcript_at = datetime('now', '+5 hours')
+      SET transcript = ?, transcript_at = datetime('now', '+5 hours'), status = 'AI_PROCESSED', ai_processed = 'AI_PROCESSED'
       WHERE id = ?
     `).run(transcript, dbMessageId);
 
     // Step 4: Broadcast via WebSocket so portal re-renders instantly
     try {
       const { broadcast } = require('../websocket');
-      broadcast('transcript', { phone, messageId: dbMessageId, transcript });
+      broadcast('transcript', { 
+        phone, 
+        messageId: dbMessageId, 
+        transcript,
+        status: 'AI_PROCESSED',
+        ai_processed: 'AI_PROCESSED'
+      });
     } catch(_){}
 
   } catch (err) {

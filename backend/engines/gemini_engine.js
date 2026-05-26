@@ -117,6 +117,8 @@ function executeToolCall(name, args) {
         ON CONFLICT(phone) DO UPDATE SET preferences = excluded.preferences, updated_at = datetime('now')
       `).run(cleaned, JSON.stringify(prefs));
 
+      broadcastMemoryUpdate(cleaned);
+
       return { success: true, message: `Profile updated: ${args.preference_key} = ${args.preference_value}` };
     }
 
@@ -124,6 +126,39 @@ function executeToolCall(name, args) {
   } catch (err) {
     console.error(`❌ Tool execution error (${name}):`, err.message);
     return { success: false, error: err.message };
+  }
+}
+
+function broadcastMemoryUpdate(phone) {
+  try {
+    const cleaned = phone.replace(/\D/g, '');
+    const profile = db.prepare('SELECT size_preference, is_big_and_tall, preferences, ad_source, risk_flag FROM customer_profiles WHERE phone = ?').get(cleaned);
+    let lines = [];
+    if (profile) {
+      if (profile.size_preference) {
+        lines.push(`📏 Size Preference: ${profile.size_preference}${profile.is_big_and_tall ? ' (Big & Tall)' : ''}`);
+      }
+      if (profile.ad_source) {
+        lines.push(`🎯 Attribution: ${profile.ad_source}`);
+      }
+      if (profile.risk_flag && profile.risk_flag !== 'NORMAL') {
+        lines.push(`🚩 Risk Flag: ${profile.risk_flag}`);
+      }
+      if (profile.preferences) {
+        try {
+          const parsed = JSON.parse(profile.preferences);
+          Object.entries(parsed).forEach(([key, val]) => {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            lines.push(`💡 ${label}: ${val}`);
+          });
+        } catch (_) {}
+      }
+    }
+    const memoryText = lines.length > 0 ? lines.join('\n') : null;
+    const { broadcast } = require('../websocket');
+    broadcast('memory_update', { phone: cleaned, memoryText });
+  } catch (e) {
+    console.error('Failed to broadcast memory update:', e.message);
   }
 }
 
@@ -171,6 +206,7 @@ function extractSizeFromMessage(phone, text) {
     `).run(phone, matched.value, matched.bigAndTall ? 1 : 0);
 
     console.log(`📏 Size extracted for ${phone}: ${matched.value} (Big & Tall: ${matched.bigAndTall})`);
+    broadcastMemoryUpdate(phone);
   } catch (err) {
     console.error('📏 Size extractor error:', err.message);
   }

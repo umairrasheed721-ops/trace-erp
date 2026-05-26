@@ -492,11 +492,37 @@ router.get('/chats/:phone', async (req, res) => {
 
     const latestOrder = orderHistory[0] || null;
 
-    // Get Gemini Chat Memory
-    let geminiMemory = null;
+    // Get Gemini Chat Memory dynamically constructed from customer_profiles
+    let geminiMemoryText = null;
     try {
-      geminiMemory = db.prepare('SELECT memory_text FROM gemini_chat_memory WHERE phone = ?').get(cleaned);
-    } catch (_) {}
+      const profile = db.prepare('SELECT size_preference, is_big_and_tall, preferences, ad_source, risk_flag FROM customer_profiles WHERE phone = ?').get(cleaned);
+      if (profile) {
+        let lines = [];
+        if (profile.size_preference) {
+          lines.push(`📏 Size Preference: ${profile.size_preference}${profile.is_big_and_tall ? ' (Big & Tall)' : ''}`);
+        }
+        if (profile.ad_source) {
+          lines.push(`🎯 Attribution: ${profile.ad_source}`);
+        }
+        if (profile.risk_flag && profile.risk_flag !== 'NORMAL') {
+          lines.push(`🚩 Risk Flag: ${profile.risk_flag}`);
+        }
+        if (profile.preferences) {
+          try {
+            const parsed = JSON.parse(profile.preferences);
+            Object.entries(parsed).forEach(([key, val]) => {
+              const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              lines.push(`💡 ${label}: ${val}`);
+            });
+          } catch (_) {}
+        }
+        if (lines.length > 0) {
+          geminiMemoryText = lines.join('\n');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load dynamic Gemini memory:', e.message);
+    }
 
     res.json({
       success: true,
@@ -504,7 +530,7 @@ router.get('/chats/:phone', async (req, res) => {
       messages: merged,
       latestOrder,
       orderHistory,
-      geminiMemory: geminiMemory ? geminiMemory.memory_text : null
+      geminiMemory: geminiMemoryText
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

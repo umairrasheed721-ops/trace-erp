@@ -232,18 +232,52 @@ export default function WhatsAppPortal() {
         if (wsEvent === 'transcript' && data) {
           // Update message transcript inline without refetching
           setMessages(prev => prev.map(m =>
-            m.id === data.messageId ? { ...m, transcript: data.transcript } : m
+            String(m.id) === String(data.messageId) ? { ...m, transcript: data.transcript, status: data.status, ai_processed: data.ai_processed } : m
           ))
         }
 
         if (wsEvent === 'ocr_result' && data) {
+          // Update message OCR transcript inline
+          setMessages(prev => prev.map(m =>
+            String(m.id) === String(data.messageId) ? { ...m, transcript: data.transcript, status: data.msgStatus, ai_processed: data.ai_processed } : m
+          ))
+
           // Show a toast notification for OCR results
           if (data.status === 'matched') {
             addToast(`✅ Payment verified! Rs.${data.detectedAmount} matched — ${data.detectedBank || 'Bank'} TXN ${data.detectedTxnId || 'N/A'}`, 'success')
+            
+            // Dynamically refresh order history and latest order status
+            if (data.orderId) {
+              setCustomerInfo(prev => {
+                const updatedHistory = prev.orderHistory.map(o => {
+                  if (Number(o.id) === Number(data.orderId)) {
+                    return { ...o, payment_status: 'OCR Verified', paid_amount: data.detectedAmount }
+                  }
+                  return o
+                })
+                const updatedLatest = prev.latestOrder && Number(prev.latestOrder.id) === Number(data.orderId)
+                  ? { ...prev.latestOrder, payment_status: 'OCR Verified', paid_amount: data.detectedAmount }
+                  : prev.latestOrder
+                return {
+                  ...prev,
+                  orderHistory: updatedHistory,
+                  latestOrder: updatedLatest
+                }
+              })
+            }
           } else if (data.status === 'mismatch') {
             addToast(`⚠️ Payment amount mismatch — Rs.${data.detectedAmount} received. Manual review needed.`, 'warning')
           } else if (data.status === 'manual_review') {
             addToast(`🔍 Payment receipt detected. Please verify manually.`, 'info')
+          }
+        }
+
+        if (wsEvent === 'memory_update' && data) {
+          if (activeChat && String(activeChat.phone) === String(data.phone)) {
+            setCustomerInfo(prev => ({
+              ...prev,
+              geminiMemory: data.memoryText
+            }))
           }
         }
       } catch (err) {
@@ -735,12 +769,20 @@ export default function WhatsAppPortal() {
 
                         {/* Rendering Attachment Media types */}
                         {showImage && (
-                          <img 
-                            src={msg.media_url} 
-                            alt="Sent media" 
-                            className="wa-media-image"
-                            onClick={() => setZoomedImage(msg.media_url)}
-                          />
+                          <div>
+                            <img 
+                              src={msg.media_url} 
+                              alt="Sent media" 
+                              className="wa-media-image"
+                              onClick={() => setZoomedImage(msg.media_url)}
+                            />
+                            {msg.transcript && (
+                              <div className="wa-bubble-transcript" style={{ marginTop: 8 }}>
+                                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🔍 OCR Result:</span>
+                                <span className="wa-transcript-text">{msg.transcript}</span>
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {showAudio && (

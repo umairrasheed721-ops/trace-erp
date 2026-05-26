@@ -106,17 +106,43 @@ async function scanReceiptOCR(phone, orderId, dbMessageId, imagePath) {
 
     console.log(`🔍 OCR: Scan complete for ${phone} — status: ${status}, amount: ${detectedAmount}`);
 
+    // Update image message in whatsapp_messages with OCR result and tag as AI_PROCESSED
+    let resultText = '';
+    if (status === 'matched') {
+      resultText = `Rs. ${detectedAmount} Matched (TXN: ${detectedTxnId || 'N/A'})`;
+    } else if (status === 'mismatch') {
+      resultText = `Rs. ${detectedAmount} Mismatch (Rcvd Rs. ${detectedAmount})`;
+    } else if (status === 'manual_review') {
+      resultText = `Receipt Detected (Rs. ${detectedAmount || 'Unknown'}, Bank: ${detectedBank || 'N/A'})`;
+    } else {
+      resultText = 'Not a payment receipt';
+    }
+
+    try {
+      db.prepare(`
+        UPDATE whatsapp_messages
+        SET transcript = ?, transcript_at = datetime('now', '+5 hours'), status = 'AI_PROCESSED', ai_processed = 'AI_PROCESSED'
+        WHERE id = ?
+      `).run(resultText, dbMessageId);
+    } catch (dbErr) {
+      console.error('⚠️ Failed to update whatsapp_messages with OCR result:', dbErr.message);
+    }
+
     // Broadcast result to portal via WebSocket
     try {
       const { broadcast } = require('../websocket');
       broadcast('ocr_result', {
         phone,
+        orderId,
         messageId: dbMessageId,
         status,
         detectedAmount,
         detectedTxnId,
         detectedBank,
-        confidence
+        confidence,
+        transcript: resultText,
+        msgStatus: 'AI_PROCESSED',
+        ai_processed: 'AI_PROCESSED'
       });
     } catch(_){}
 

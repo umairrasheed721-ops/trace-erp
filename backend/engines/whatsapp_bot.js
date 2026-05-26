@@ -513,40 +513,6 @@ class WhatsAppBot {
             }
           }
 
-          // 🎙️ STT: Fire-and-forget transcription for incoming voice notes (Rule F)
-          if (mediaType === 'audio' && mediaUrl) {
-            setImmediate(async () => {
-              try {
-                const { transcribeVoiceNote } = require('./stt_engine');
-                // mediaUrl is a relative path like /uploads/filename.ogg — resolve to absolute
-                const { DB_DIR } = require('../db');
-                const absPath = mediaUrl.startsWith('/uploads/')
-                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
-                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
-                // dbMessageId isn't set yet at this point — use message_id from key as lookup
-                const { db: dbStt } = require('../db');
-                const row = dbStt.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
-                if (row) await transcribeVoiceNote(fromPhone, row.id, absPath);
-              } catch(e) { console.error('STT dispatch error:', e.message); }
-            });
-          }
-
-          // 🔍 OCR: Fire-and-forget receipt scan for incoming images (Rule F)
-          if (mediaType === 'image' && mediaUrl) {
-            setImmediate(async () => {
-              try {
-                const { scanReceiptOCR } = require('./ocr_engine');
-                const { DB_DIR } = require('../db');
-                const absPath = mediaUrl.startsWith('/uploads/')
-                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
-                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
-                const { db: dbOcr } = require('../db');
-                const row = dbOcr.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
-                if (row) await scanReceiptOCR(fromPhone, orderId, row.id, absPath);
-              } catch(e) { console.error('OCR dispatch error:', e.message); }
-            });
-          }
-
           const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '[Unsupported Message Format]');
 
           const { db } = require('../db');
@@ -565,6 +531,34 @@ class WhatsAppBot {
             dbMessageId = result.lastInsertRowid;
           } catch (dbErr) {
             console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);
+          }
+
+          // 🎙️ STT: Fire-and-forget transcription for incoming voice notes (Rule F)
+          if (mediaType === 'audio' && mediaUrl && dbMessageId) {
+            setImmediate(async () => {
+              try {
+                const { transcribeVoiceNote } = require('./stt_engine');
+                const { DB_DIR } = require('../db');
+                const absPath = mediaUrl.startsWith('/uploads/')
+                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
+                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
+                await transcribeVoiceNote(fromPhone, dbMessageId, absPath);
+              } catch(e) { console.error('STT dispatch error:', e.message); }
+            });
+          }
+
+          // 🔍 OCR: Fire-and-forget receipt scan for incoming images (Rule F)
+          if (mediaType === 'image' && mediaUrl && dbMessageId) {
+            setImmediate(async () => {
+              try {
+                const { scanReceiptOCR } = require('./ocr_engine');
+                const { DB_DIR } = require('../db');
+                const absPath = mediaUrl.startsWith('/uploads/')
+                  ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
+                  : require('path').join(DB_DIR, 'uploads', mediaUrl);
+                await scanReceiptOCR(fromPhone, orderId, dbMessageId, absPath);
+              } catch(e) { console.error('OCR dispatch error:', e.message); }
+            });
           }
 
           // Broadcast new message via WebSocket to active agents in real-time

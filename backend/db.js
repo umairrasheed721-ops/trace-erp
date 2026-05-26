@@ -872,6 +872,7 @@ function runMigrations(db) {
   // Feature 9: Voice Note Transcription
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN transcript TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN transcript_at TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN ai_processed TEXT DEFAULT NULL`); } catch(e){}
 
   // Feature 10: Receipt OCR Payment Scanner
   try { db.exec(`CREATE TABLE IF NOT EXISTS payment_ocr_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, phone TEXT NOT NULL, image_path TEXT, raw_ocr_result TEXT, detected_amount REAL, detected_txn_id TEXT, detected_bank TEXT, confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', scanned_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
