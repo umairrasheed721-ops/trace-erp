@@ -7,6 +7,7 @@ const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const { db, DB_DIR } = require('../db');
+const { transcodeToOpus, safeUnlink, TAG: FFMPEG_TAG } = require('./ffmpeg_transcode');
 
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
@@ -1210,96 +1211,65 @@ class WhatsAppBot {
             };
             sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
-            let sendUrl = mediaUrl;
-            let mime = 'audio/mp4';
-            
-            // If it's a webm voice note, transcode it to MP4 audio using ffmpeg
-            if (mediaUrl && (mediaUrl.endsWith('.webm') || fileName?.includes('voice_note') || finalMediaType === 'voice')) {
-              try {
-                const fs = require('fs');
-                const path = require('path');
-                const { exec } = require('child_process');
-                
-                const ext = path.extname(mediaUrl);
-                const targetMp4 = mediaUrl.replace(ext, '.mp4');
-                
-                console.log(`🎵 Transcoding voice note to MP4: ${mediaUrl} -> ${targetMp4}`);
-                
-                const transcodePromise = () => new Promise((resolveTranscode) => {
-                  const cmd = `ffmpeg -y -i "${mediaUrl.replace(/"/g, '\\"')}" -c:a aac -ar 48000 -ac 1 "${targetMp4.replace(/"/g, '\\"')}"`;
-                  const child = exec(cmd);
-                  
-                  let isResolved = false;
-                  const timer = setTimeout(() => {
-                    if (!isResolved) {
-                      isResolved = true;
-                      console.error('⚠️ FFMPEG Transcoding Timeout after 10s');
-                      try {
-                        child.kill('SIGKILL');
-                      } catch (killErr) {
-                        console.error('⚠️ Failed to kill hung ffmpeg process:', killErr.message);
-                      }
-                      resolveTranscode(false);
-                    }
-                  }, 10000);
-                  
-                  const finishProcess = (code) => {
-                    if (!isResolved) {
-                      clearTimeout(timer);
-                      isResolved = true;
-                      const success = (code === 0 || code === null || code === undefined);
-                      if (success) {
-                        console.log(`✅ ffmpeg transcoding success!`);
-                      } else {
-                        console.error(`⚠️ ffmpeg transcoding process exited/closed with code ${code}`);
-                      }
-                      resolveTranscode(success);
-                    }
-                  };
-                  
-                  child.on('exit', finishProcess);
-                  child.on('close', finishProcess);
-                  
-                  child.on('error', (err) => {
-                    if (!isResolved) {
-                      console.error(`⚠️ ffmpeg execution error: ${err.message}`);
-                      clearTimeout(timer);
-                      isResolved = true;
-                      resolveTranscode(false);
-                    }
-                  });
-                });
-                
-                const success = await transcodePromise();
-                if (success && fs.existsSync(targetMp4)) {
-                  console.log(`⏳ FFMPEG complete. Waiting 500ms for file system I/O flush...`);
-                  await new Promise(r => setTimeout(r, 500));
-                  sendUrl = targetMp4;
-                  dbMediaUrl = targetMp4;
-                }
-              } catch (transcodeErr) {
-                console.error('⚠️ Transcoding error:', transcodeErr.message);
-              }
+            // ── WhatsApp PTT Voice Note Pipeline ──────────────────────────────
+            // WhatsApp mobile ONLY accepts: ogg container + libopus codec + ptt:true
+            // Any other format (aac, mp4, webm) shows "This audio is not available".
+            // We always transcode through fluent-ffmpeg regardless of input format.
+
+            const absInputPath = path.resolve(mediaUrl);
+            let transcodeOutputPath = null;  // track for cleanup
+            let finalAudioBuffer;
+            let finalMime = 'audio/ogg; codecs=opus';
+
+            // ── Guard: source file must exist ─────────────────────────────────
+            if (!fs.existsSync(absInputPath)) {
+              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${absInputPath}`);
+              resolve({ success: false, error: '[FFMPEG_ENCODE] Source audio file not found' });
+              continue;
             }
 
-            const fs = require('fs');
-            const absoluteSendUrl = path.resolve(sendUrl);
-            let fileSize = 'N/A';
+            const inputSizeBytes = fs.statSync(absInputPath).size;
+            console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
+
+            // ── Transcode → ogg/opus ─────────────────────────────────────────
             try {
-              if (fs.existsSync(absoluteSendUrl)) {
-                fileSize = fs.statSync(absoluteSendUrl).size;
+              const result = await transcodeToOpus(absInputPath);
+              transcodeOutputPath = result.outputPath;
+
+              const outStat = fs.statSync(transcodeOutputPath);
+              console.log(`${FFMPEG_TAG} OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
+
+              // Read into buffer so Baileys never accesses the file path directly
+              finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
+
+              if (finalAudioBuffer.length < 100) {
+                throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
               }
-            } catch (err) {
-              console.error('⚠️ Failed to resolve audio size:', err.message);
+            } catch (transcodeErr) {
+              console.error(`${FFMPEG_TAG} TRANSCODE_FAIL  error=${transcodeErr.message}`);
+              // Graceful fallback: send raw file as generic audio (may not play on mobile)
+              finalAudioBuffer = fs.readFileSync(absInputPath);
+              finalMime = 'audio/mp4';  // signal that this is a degraded fallback
+              console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
+            } finally {
+              // ── Resource cleanup: delete the transcoded temp file ──────────
+              // (The original input is owned by multer/the upload route; leave it)
+              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
+                safeUnlink(transcodeOutputPath);
+              }
             }
 
-            console.log(`🎙️ OUTGOING VOICE NOTE TELEMETRY: path=${absoluteSendUrl}, size=${fileSize} bytes, mime=${mime}`);
-
-            const payload = { 
-              audio: { url: absoluteSendUrl }, 
-              mimetype: mime, 
-              ptt: true 
+            // ── Build the Baileys PTT payload ─────────────────────────────────
+            // audio: Buffer  ← NOT { url: ... }  (avoids Baileys re-reading from disk)
+            // ptt: true       ← renders as voice note waveform on mobile
+            // mimetype        ← must match the opus container exactly
+            const payload = {
+              audio: finalAudioBuffer,
+              ptt: true,
+              mimetype: finalMime,
             };
+
+            console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
             sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'video') {
             const payload = { 
