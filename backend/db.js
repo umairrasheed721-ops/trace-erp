@@ -151,6 +151,9 @@ function initDb(db) {
     db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN media_type TEXT`);
   } catch (e) { /* Column already exists */ }
   try {
+    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN created_at TEXT DEFAULT (datetime('now', '+5 hours'))`);
+  } catch (e) { /* Column already exists */ }
+  try {
     db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_msgs_message_id ON whatsapp_messages(message_id)`);
   } catch (e) { /* Index already exists */ }
 
