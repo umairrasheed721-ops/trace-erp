@@ -222,6 +222,22 @@ function getPhoneFromJid(msg) {
   return cleanJid;
 }
 
+// =============================================================================
+// FIX 1: STRICT JID NORMALIZATION UTILITY
+// Strips +, -, spaces, @s.whatsapp.net. Converts 0XX -> 92XX.
+// Used on ALL lock keys (sentMessages, processingReplies, activeChats).
+// =============================================================================
+function normalizePhone(raw) {
+  if (!raw) return '';
+  // Strip JID suffix, +, spaces, dashes
+  let n = String(raw).split('@')[0].replace(/[\+\-\s]/g, '').replace(/\D/g, '');
+  // Pakistan short-form: 03XX -> 923XX
+  if (n.startsWith('0') && n.length === 11) n = '92' + n.substring(1);
+  // 10-digit with no country code
+  else if (!n.startsWith('92') && n.length === 10) n = '92' + n;
+  return n;
+}
+
 class WhatsAppBot {
   constructor(tenantId) {
     this.tenantId = tenantId || 'default';
@@ -1054,7 +1070,7 @@ class WhatsAppBot {
 
       // --- 🔒 STABILITY FIX: Global dedup lock — block repeat auto-reply within 5 seconds ---
       if (!isManual) {
-        const dedupKey = `${cleaned}:${String(message).substring(0, 60)}`;
+        const dedupKey = `${normalizePhone(cleaned)}:${String(message).substring(0, 60)}`;
         const lastSentTs = this.sentMessages.get(dedupKey);
         if (lastSentTs && (Date.now() - lastSentTs) < 5000) {
           console.warn(`🔒 DEDUP_LOCK: Blocked duplicate auto-reply to ${cleaned} within 5s window. Skipping.`);
@@ -1146,6 +1162,35 @@ class WhatsAppBot {
           await this.sock.sendPresenceUpdate('paused', jid);
         } catch (e) {}
 
+        // =============================================================================
+        // FIX 2: ABSOLUTE PAYLOAD GUARD — safeSend() interceptor
+        // Ensures ONLY pure {text} or valid media payloads reach the WA API.
+        // Personal WA cannot render Business templates — strip all non-text objects.
+        // =============================================================================
+        const safeSend = async (jid, payload) => {
+          // Normalize string payloads to object
+          if (typeof payload === 'string') {
+            payload = { text: payload };
+          }
+          // For text-only payloads: hard validation
+          if (!payload || typeof payload !== 'object') {
+            console.error('[CRITICAL] Blocked null/non-object payload:', payload);
+            return null;
+          }
+          // If it's a text payload (no media key), ensure text is non-empty
+          const isTextPayload = !payload.image && !payload.audio && !payload.video && !payload.document;
+          if (isTextPayload) {
+            const txt = typeof payload.text === 'string' ? payload.text.trim() : '';
+            if (!txt) {
+              console.error('[CRITICAL] Blocked empty/malformed text payload:', JSON.stringify(payload));
+              return null;
+            }
+            // Force pure text — strip any business template keys
+            payload = { text: txt };
+          }
+          return this.sock.sendMessage(jid, payload);
+        };
+
         let finalMediaType = mediaType;
         if (mediaUrl && !finalMediaType) {
           finalMediaType = 'image';
@@ -1154,16 +1199,16 @@ class WhatsAppBot {
         let sentMsg;
         if (mediaUrl) {
           if (finalMediaType === 'image') {
-            const payload = { image: { url: mediaUrl }, caption: message };
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            const payload = { image: { url: mediaUrl }, caption: message || '' };
+            sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'document') {
             const payload = { 
               document: { url: mediaUrl }, 
               mimetype: 'application/pdf', 
               fileName: fileName || 'document.pdf', 
-              caption: message 
+              caption: message || '' 
             };
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
             let sendUrl = mediaUrl;
             let mime = 'audio/mp4';
@@ -1255,17 +1300,16 @@ class WhatsAppBot {
               mimetype: mime, 
               ptt: true 
             };
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'video') {
             const payload = { 
               video: { url: mediaUrl }, 
               mimetype: 'video/mp4', 
-              caption: message 
+              caption: message || '' 
             };
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            sentMsg = await safeSend(jid, payload);
           } else {
-            const payload = { text: String(message) };
-            sentMsg = await this.sock.sendMessage(jid, payload);
+            sentMsg = await safeSend(jid, { text: String(message) });
           }
         } else {
           // --- 🔒 STABILITY FIX: Strict blank payload guard ---
@@ -1275,8 +1319,7 @@ class WhatsAppBot {
             resolve({ success: false, error: 'BLANK_MSG_BLOCKED' });
             continue;
           }
-          const payload = { text: textContent };
-          sentMsg = await this.sock.sendMessage(jid, payload);
+          sentMsg = await safeSend(jid, { text: textContent });
         }
 
         const messageId = sentMsg?.key?.id || 'out_' + Date.now();
@@ -1398,31 +1441,33 @@ class WhatsAppBot {
 
   // --- 🤝 MODULE 5: HUMAN HANDOFF TOGGLE ---
   setHumanHandoff(phone, active) {
+    const normalized = normalizePhone(phone);
     if (!this.humanHandoffContacts) this.humanHandoffContacts = new Set();
     if (active) {
-      this.humanHandoffContacts.add(phone);
-      console.log(`🧑 Human handoff ACTIVE for ${phone}`);
+      this.humanHandoffContacts.add(normalized);
+      console.log(`🧑 Human handoff ACTIVE for ${normalized}`);
     } else {
-      this.humanHandoffContacts.delete(phone);
-      console.log(`🤖 Human handoff REMOVED for ${phone}`);
+      this.humanHandoffContacts.delete(normalized);
+      console.log(`🤖 Human handoff REMOVED for ${normalized}`);
     }
   }
 
   // --- 💳 MODULE 5: PAYMENT RECEIVED AUTO-REPLY (callable by OCR engine) ---
   triggerPaymentReceivedReply(phone, orderId) {
-    // --- 🔒 STABILITY FIX: Per-phone concurrency guard ---
-    if (this.processingReplies && this.processingReplies.has(phone)) {
-      console.warn(`🔒 CONCURRENT_LOCK: triggerPaymentReceivedReply already processing for ${phone}. Skipping duplicate.`);
+    const normalized = normalizePhone(phone);
+    // --- 🔒 STABILITY FIX: Per-phone concurrency guard (normalized key) ---
+    if (this.processingReplies && this.processingReplies.has(normalized)) {
+      console.warn(`🔒 CONCURRENT_LOCK: triggerPaymentReceivedReply already processing for ${normalized}. Skipping duplicate.`);
       return;
     }
-    if (this.processingReplies) this.processingReplies.add(phone);
+    if (this.processingReplies) this.processingReplies.add(normalized);
 
     const msg = `\u2705 *Payment Confirmed!*\n\nThank you! We have received your payment for order *#${orderId}*. Your parcel is being packed and will be dispatched shortly. \ud83d\udce6\n\n_TRACE ERP Auto-Verification System_`;
 
     // Validate content before sending
     if (!msg || msg.trim() === '') {
       console.error('\ud83d\udeab BLANK_MSG_BLOCKED: triggerPaymentReceivedReply generated empty message');
-      if (this.processingReplies) this.processingReplies.delete(phone);
+      if (this.processingReplies) this.processingReplies.delete(normalized);
       return;
     }
 

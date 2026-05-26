@@ -24,6 +24,9 @@ export default function WhatsAppPortal() {
   const [quickReplies, setQuickReplies] = useState([])
   const [quickPills, setQuickPills] = useState([])
   const [showQuickReplies, setShowQuickReplies] = useState(false)
+  // FIX 3: sendingReply debounce — tracks which action is in-flight to prevent multi-click spam
+  // Value: null (idle) | 'send' | 'pill:<text>' | 'qr:<id>'
+  const [sendingReply, setSendingReply] = useState(null)
   
   // --- REAL-TIME & STATUS STATES ---
   const [wsStatus, setWsStatus] = useState('CONNECTING') // CONNECTING, CONNECTED, DISCONNECTED
@@ -378,6 +381,13 @@ export default function WhatsAppPortal() {
     const finalMsg = textToSend !== null ? textToSend : inputText
     if (!finalMsg.trim() || !activeChat) return
 
+    // FIX 3: Debounce guard — block re-entry while this action is in-flight
+    const debounceKey = textToSend !== null ? `pill:${textToSend.substring(0, 20)}` : 'send'
+    if (sendingReply === debounceKey) return
+    setSendingReply(debounceKey)
+    // Auto-release after 2s as safety fallback
+    const releaseTimer = setTimeout(() => setSendingReply(null), 2000)
+
     // Optimistic message object
     const tempId = Date.now()
     const optimisticMessage = {
@@ -416,11 +426,21 @@ export default function WhatsAppPortal() {
       console.error(err)
       addToast('Network error while sending message', 'error')
       setMessages(prev => prev.filter(m => m.id !== tempId)) // Rollback
+    } finally {
+      clearTimeout(releaseTimer)
+      setSendingReply(null)
     }
   }
 
   const handleSendQuickReply = async (reply) => {
     if (!activeChat) return
+
+    // FIX 3: Debounce guard — block re-entry for same quick reply while in-flight
+    const debounceKey = `qr:${reply.id}`
+    if (sendingReply === debounceKey) return
+    setSendingReply(debounceKey)
+    const releaseTimer = setTimeout(() => setSendingReply(null), 2000)
+
     setShowQuickReplies(false)
     
     // Add temporary loading indicator bubble
@@ -457,6 +477,9 @@ export default function WhatsAppPortal() {
       console.error(err)
       addToast('Network error sending quick reply', 'error')
       setMessages(prev => prev.filter(m => m.id !== tempId))
+    } finally {
+      clearTimeout(releaseTimer)
+      setSendingReply(null)
     }
   }
 
@@ -1006,15 +1029,24 @@ export default function WhatsAppPortal() {
               {/* Quick Pills Row */}
               {quickPills.length > 0 && (
                 <div className="wa-portal-quick-pills">
-                  {quickPills.map(p => (
-                    <span 
-                      key={p.id} 
-                      className="wa-quick-pill"
-                      onClick={() => handleSendMessage(p.pill_text)}
-                    >
-                      {p.pill_text}
-                    </span>
-                  ))}
+                  {quickPills.map(p => {
+                    const pillKey = `pill:${p.pill_text?.substring(0, 20)}`
+                    const isPillBusy = sendingReply === pillKey
+                    return (
+                      <span 
+                        key={p.id} 
+                        className="wa-quick-pill"
+                        onClick={() => !isPillBusy && handleSendMessage(p.pill_text)}
+                        style={{ 
+                          opacity: isPillBusy ? 0.5 : 1, 
+                          cursor: isPillBusy ? 'not-allowed' : 'pointer',
+                          pointerEvents: isPillBusy ? 'none' : 'auto'
+                        }}
+                      >
+                        {isPillBusy ? '⏳' : p.pill_text}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
 
@@ -1113,16 +1145,26 @@ export default function WhatsAppPortal() {
                       {quickReplies.length === 0 ? (
                         <div className="p-4 text-center text-muted italic text-xs">No template replies configured.</div>
                       ) : (
-                        quickReplies.map(r => (
-                          <div 
-                            key={r.id} 
-                            className="quick-replies-drawer-item"
-                            onClick={() => handleSendQuickReply(r)}
-                          >
-                            <span className="quick-replies-drawer-item-title">{r.title}</span>
-                            <span className="quick-replies-drawer-item-caption">{r.caption}</span>
-                          </div>
-                        ))
+                        quickReplies.map(r => {
+                          const isQrBusy = sendingReply === `qr:${r.id}`
+                          return (
+                            <div 
+                              key={r.id} 
+                              className="quick-replies-drawer-item"
+                              onClick={() => !isQrBusy && handleSendQuickReply(r)}
+                              style={{
+                                opacity: isQrBusy ? 0.5 : 1,
+                                cursor: isQrBusy ? 'not-allowed' : 'pointer',
+                                pointerEvents: isQrBusy ? 'none' : 'auto'
+                              }}
+                            >
+                              <span className="quick-replies-drawer-item-title">
+                                {isQrBusy ? '⏳ Sending...' : r.title}
+                              </span>
+                              <span className="quick-replies-drawer-item-caption">{r.caption}</span>
+                            </div>
+                          )
+                        })
                       )}
                     </div>
                   </div>
