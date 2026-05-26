@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
 import VoiceNoteButton from '../components/VoiceNoteButton'
+import QuickReplyPanel from '../components/QuickReplyPanel'
+import MediaUploadOverlay from '../components/MediaUploadOverlay'
+import { handleApiError, ERR } from '../utils/errorHandler'
 
 
 export default function WhatsAppPortal() {
@@ -115,8 +118,7 @@ export default function WhatsAppPortal() {
         addToast(data.error || 'Failed to fetch chats', 'error')
       }
     } catch (err) {
-      console.error(err)
-      addToast('Network error loading conversations', 'error')
+      handleApiError(err, addToast, 'CHAT_FETCH')
     } finally {
       if (!silent) setLoadingChats(false)
     }
@@ -198,8 +200,7 @@ export default function WhatsAppPortal() {
           addToast(data.error || 'Failed to fetch chat details', 'error')
         }
       } catch (err) {
-        console.error(err)
-        if (isMounted) addToast('Network error loading chat history', 'error')
+        if (isMounted) handleApiError(err, addToast, 'CHAT_FETCH')
       } finally {
         if (isMounted) {
           setLoadingMessages(false)
@@ -457,8 +458,7 @@ export default function WhatsAppPortal() {
         setMessages(prev => prev.filter(m => m.id !== tempId)) // Rollback
       }
     } catch (err) {
-      console.error(err)
-      addToast('Network error while sending message', 'error')
+      handleApiError(err, addToast, 'MESSAGE_SEND')
       setMessages(prev => prev.filter(m => m.id !== tempId)) // Rollback
     } finally {
       clearTimeout(releaseTimer)
@@ -508,8 +508,7 @@ export default function WhatsAppPortal() {
         setMessages(prev => prev.filter(m => m.id !== tempId))
       }
     } catch (err) {
-      console.error(err)
-      addToast('Network error sending quick reply', 'error')
+      handleApiError(err, addToast, 'QUICK_REPLY')
       setMessages(prev => prev.filter(m => m.id !== tempId))
     } finally {
       clearTimeout(releaseTimer)
@@ -551,8 +550,7 @@ export default function WhatsAppPortal() {
         setMessages(prev => prev.filter(m => m.id !== tempId))
       }
     } catch (err) {
-      console.error(err)
-      addToast('Network error sending invoice', 'error')
+      handleApiError(err, addToast, 'INVOICE')
       setMessages(prev => prev.filter(m => m.id !== tempId))
     }
   }
@@ -615,7 +613,7 @@ export default function WhatsAppPortal() {
             addToast('✅ Voice note sent!', 'success')
             scrollToBottom()
           } else { addToast(data.error || 'Failed to send voice note', 'error') }
-        } catch (err) { addToast('Network error sending voice note', 'error') }
+        } catch (err) { handleApiError(err, addToast, 'VOICE_NOTE') }
       }
       recorder.start()
       mediaRecorderRef.current = recorder
@@ -667,8 +665,7 @@ export default function WhatsAppPortal() {
         addToast(data.error || 'Failed to send file', 'error')
       }
     } catch (err) {
-      console.error(err)
-      addToast('Network error uploading file', 'error')
+      handleApiError(err, addToast, 'MEDIA_UPLOAD')
     } finally {
       setUploading(false)
     }
@@ -1027,25 +1024,15 @@ export default function WhatsAppPortal() {
                 onDrop={handleDrop}
                 style={{ position: 'relative' }}
               >
-                {/* Glassmorphism Drop Overlay */}
-                {isDragging && (
-                  <div style={{
-                    position: 'absolute', inset: 0, zIndex: 50,
-                    background: 'rgba(99, 102, 241, 0.15)',
-                    backdropFilter: 'blur(12px)',
-                    border: '2px dashed rgba(99, 102, 241, 0.6)',
-                    borderRadius: '16px',
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    gap: 12, pointerEvents: 'none',
-                    transition: 'all 0.2s ease',
-                    animation: 'dropOverlayPulse 1.5s ease-in-out infinite'
-                  }}>
-                    <span style={{ fontSize: '3rem' }}>📎</span>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--primary, #6366f1)' }}>Drop file to send</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0.8 }}>Images, audio, documents supported</span>
-                  </div>
-                )}
+                {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
+                <MediaUploadOverlay
+                  isDragging={isDragging}
+                  uploading={uploading}
+                  onUpload={(file) => {
+                    const syntheticEvent = { target: { files: [file] } }
+                    handleMediaUpload(syntheticEvent)
+                  }}
+                />
 
                 {loadingMessages ? (
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1290,45 +1277,14 @@ export default function WhatsAppPortal() {
                   ➡️
                 </button>
 
-                {/* Quick Replies Drawer */}
+                {/* Quick Replies Drawer — decoupled Module 8 component */}
                 {showQuickReplies && (
-                  <div className="quick-replies-drawer">
-                    <div className="quick-replies-drawer-header">
-                      <span>⚡ Quick Reply Templates</span>
-                      <button 
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                        onClick={() => setShowQuickReplies(false)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="quick-replies-drawer-list">
-                      {quickReplies.length === 0 ? (
-                        <div className="p-4 text-center text-muted italic text-xs">No template replies configured.</div>
-                      ) : (
-                        quickReplies.map(r => {
-                          const isQrBusy = sendingReply === `qr:${r.id}`
-                          return (
-                            <div 
-                              key={r.id} 
-                              className="quick-replies-drawer-item"
-                              onClick={() => !isQrBusy && handleSendQuickReply(r)}
-                              style={{
-                                opacity: isQrBusy ? 0.5 : 1,
-                                cursor: isQrBusy ? 'not-allowed' : 'pointer',
-                                pointerEvents: isQrBusy ? 'none' : 'auto'
-                              }}
-                            >
-                              <span className="quick-replies-drawer-item-title">
-                                {isQrBusy ? '⏳ Sending...' : r.title}
-                              </span>
-                              <span className="quick-replies-drawer-item-caption">{r.caption}</span>
-                            </div>
-                          )
-                        })
-                      )}
-                    </div>
-                  </div>
+                  <QuickReplyPanel
+                    quickReplies={quickReplies}
+                    sendingReply={sendingReply}
+                    onSend={handleSendQuickReply}
+                    onClose={() => setShowQuickReplies(false)}
+                  />
                 )}
               </div>
             </>
