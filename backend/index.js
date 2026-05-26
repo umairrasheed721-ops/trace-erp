@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./scripts/run_migrations');
 const { sendEmergencyAlert } = require('./engines/alerts');
 const { logSystemError } = require('./db');
 
