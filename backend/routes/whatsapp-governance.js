@@ -465,24 +465,31 @@ router.get('/chats', (req, res) => {
 // GET /api/whatsapp-governance/chats/:phone
 router.get('/chats/:phone', async (req, res) => {
   const { phone } = req.params;
+  console.log("req.params.phone:", phone);
   try {
     const normalized = normalizePhone(phone);
     const last10 = normalized.substring(normalized.length - 10);
 
     // 1. Pull from SQLite DB
-    let dbMessages = db.prepare(`
-      SELECT * FROM whatsapp_messages 
-      WHERE phone = ? 
-      ORDER BY id ASC
-    `).all(normalized);
-
-    // 2. DB FALLBACK CHECK: If the exact normalized phone returns empty, try a fallback query with the '+' prefix
-    if (dbMessages.length === 0) {
+    let dbMessages = [];
+    try {
       dbMessages = db.prepare(`
         SELECT * FROM whatsapp_messages 
         WHERE phone = ? 
         ORDER BY id ASC
-      `).all('+' + normalized);
+      `).all(normalized);
+
+      // 2. DB FALLBACK CHECK: If the exact normalized phone returns empty, try a fallback query with the '+' prefix
+      if (dbMessages.length === 0) {
+        dbMessages = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE phone = ? 
+          ORDER BY id ASC
+        `).all('+' + normalized);
+      }
+    } catch (err) {
+      console.log("ROUTE_ERROR:", err.message);
+      throw err;
     }
 
     // 3. Pull from live Baileys WebSocket memory store
@@ -501,12 +508,18 @@ router.get('/chats/:phone', async (req, res) => {
     merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     // Get order history and customer details
-    const orderHistory = db.prepare(`
-      SELECT id, store_id, customer_name, total_price, financial_status, fulfillment_status, wa_verification_status, created_at, phone
-      FROM orders 
-      WHERE phone LIKE ? 
-      ORDER BY id DESC
-    `).all(`%${last10}%`);
+    let orderHistory = [];
+    try {
+      orderHistory = db.prepare(`
+        SELECT id, store_id, customer_name, total_price, financial_status, fulfillment_status, wa_verification_status, created_timestamp AS created_at, phone
+        FROM orders 
+        WHERE phone LIKE ? 
+        ORDER BY id DESC
+      `).all(`%${last10}%`);
+    } catch (err) {
+      console.log("ROUTE_ERROR:", err.message);
+      throw err;
+    }
 
     const latestOrder = orderHistory[0] || null;
 
@@ -544,13 +557,14 @@ router.get('/chats/:phone', async (req, res) => {
 
     res.json({
       success: true,
-      phone: cleaned,
+      phone: normalized,
       messages: merged,
       latestOrder,
       orderHistory,
       geminiMemory: geminiMemoryText
     });
   } catch (e) {
+    console.log("ROUTE_ERROR:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
