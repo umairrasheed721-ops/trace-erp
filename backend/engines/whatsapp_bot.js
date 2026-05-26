@@ -1193,6 +1193,28 @@ class WhatsAppBot {
     return true;
   }
 
+  async softReconnect() {
+    if (this.isConnecting) return;
+    console.log(`🔄 [Soft Reconnect] Re-initializing Baileys session for tenant: [${this.tenantId}]`);
+
+    const oldSock = this.sock;
+    this.sock = null;
+    if (oldSock) {
+      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
+      try { oldSock.logout(); } catch (_) {}
+      try { oldSock.end(new Error('soft_reconnect')); } catch (_) {}
+      try { oldSock.ws?.close(); } catch (_) {}
+    }
+
+    this.status = 'DISCONNECTED';
+    this.isConnecting = false;
+
+    // Trigger connection
+    await this._connect();
+  }
+
   getChatHistory(phone) {
     if (!this.store || !this.store.messages) return [];
     let cleaned = phone.replace(/\D/g, '');

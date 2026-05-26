@@ -6,6 +6,79 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
+const cron = require('node-cron');
+const tenantContext = require('../tenant-context');
+
+const tenantLastChecks = {};
+
+function getAllTenants() {
+  const tenants = ['default'];
+  try {
+    const files = fs.readdirSync(DB_DIR);
+    for (const file of files) {
+      if (file.startsWith('trace_erp_') && file.endsWith('.db')) {
+        const tenantId = file.substring(10, file.length - 3);
+        if (tenantId && !tenants.includes(tenantId)) {
+          tenants.push(tenantId);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('⚠️ Failed to scan tenants for heartbeat:', e.message);
+  }
+  return tenants;
+}
+
+// Scheduled heartbeat task (runs every 30 seconds)
+cron.schedule('*/30 * * * * *', () => {
+  const tenants = getAllTenants();
+  
+  for (const tenantId of tenants) {
+    tenantContext.run(tenantId, async () => {
+      try {
+        const sock = bot.sock;
+        const isSocketOpen = !!(sock && sock.ws && sock.ws.isOpen);
+        const isFullyConnected = isSocketOpen && !!(sock && sock.user);
+        
+        tenantLastChecks[tenantId] = {
+          connected: isFullyConnected,
+          last_check: new Date().toISOString()
+        };
+        
+        if (!isSocketOpen) {
+          if (bot.status === 'DISABLED') {
+            return;
+          }
+          console.warn(`⚠️ [Heartbeat] Tenant [${tenantId}] WhatsApp socket is inactive.`);
+          
+          // 1. Immediately update DB status to 'DISCONNECTED'
+          const { db: tenantDb } = require('../db');
+          try {
+            tenantDb.prepare("UPDATE whatsapp_settings SET status = 'DISCONNECTED'").run();
+          } catch (dbErr) {
+            console.error(`⚠️ Failed to update DB status for tenant [${tenantId}]:`, dbErr.message);
+          }
+          
+          // 2. Set in-memory status to DISCONNECTED
+          bot.status = 'DISCONNECTED';
+          
+          // 3. Trigger soft-reconnect
+          if (typeof bot.softReconnect === 'function') {
+            await bot.softReconnect();
+          }
+        } else {
+          // Update DB status to match the actual bot status (e.g. 'CONNECTED' or 'QR_READY')
+          const { db: tenantDb } = require('../db');
+          try {
+            tenantDb.prepare("UPDATE whatsapp_settings SET status = ?").run(bot.status || 'CONNECTED');
+          } catch (_) {}
+        }
+      } catch (err) {
+        console.error(`❌ [Heartbeat] Error checking status for tenant [${tenantId}]:`, err.message);
+      }
+    });
+  }
+});
 
 const getMediaFilePath = (mediaUrl) => {
   if (!mediaUrl) return null;
@@ -46,15 +119,29 @@ router.get('/status', (req, res) => {
     const sock = bot.sock;
     
     // Heartbeat check: check if Baileys socket object exists and is open
-    const isSocketOpen = !!(sock && sock.user && sock.ws && sock.ws.isOpen);
+    const isSocketOpen = !!(sock && sock.ws && sock.ws.isOpen);
+    const isFullyConnected = isSocketOpen && !!(sock && sock.user);
     
-    if (statusObj.status === 'CONNECTED' && !isSocketOpen) {
+    if (statusObj.status === 'CONNECTED' && !isFullyConnected) {
       statusObj.status = 'DISCONNECTED';
     }
     
-    statusObj.connected = isSocketOpen;
+    statusObj.connected = isFullyConnected;
     
-    res.json(statusObj);
+    // Also include a map of the current connection status for all tenants merged at the top level
+    const tenantsStatusMap = {};
+    const tenants = getAllTenants();
+    for (const tId of tenants) {
+      tenantsStatusMap[tId] = tenantLastChecks[tId] || {
+        connected: false,
+        last_check: null
+      };
+    }
+    
+    res.json({
+      ...statusObj,
+      ...tenantsStatusMap
+    });
   } catch (e) {
     res.status(500).json({ error: e.message, status: 'DISCONNECTED', connected: false });
   }

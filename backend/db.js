@@ -756,6 +756,7 @@ function runMigrations(db) {
       ai_responder_enabled INTEGER DEFAULT 1,
       ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}',
       ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.',
+      status TEXT DEFAULT 'DISCONNECTED',
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -828,6 +829,7 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1`); } catch (e) {}
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'`); } catch (e) {}
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN status TEXT DEFAULT 'DISCONNECTED'`); } catch (e) {}
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN opted_out INTEGER DEFAULT 0`); } catch (e) {}
 
   // ─── PHASE 1 MIGRATIONS ─────────────────────────────────────────────────────
