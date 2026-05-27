@@ -11,9 +11,21 @@ export default function SettingsModal({ onClose }) {
   const [wiping, setWiping] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'quick_replies'
+  const [templates, setTemplates] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newText, setNewText] = useState('');
+
   useEffect(() => {
     fetchStats();
   }, [tenantId]);
+
+  useEffect(() => {
+    if (activeTab === 'quick_replies') {
+      fetchTemplates();
+    }
+  }, [activeTab, tenantId]);
 
   const fetchStats = async () => {
     try {
@@ -104,9 +116,95 @@ export default function SettingsModal({ onClose }) {
     }
   };
 
+  const fetchTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch(`/api/whatsapp-governance/templates?tenant_id=${encodeURIComponent(tenantId)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': tenantId
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTemplates(data.templates || []);
+      } else {
+        addToast(data.error || 'Failed to load templates', 'error');
+      }
+    } catch (err) {
+      addToast(err.message || 'Error loading templates', 'error');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleAddTemplate = async (e) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newText.trim()) {
+      addToast('Title and text are required', 'warning');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch('/api/whatsapp-governance/templates', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': tenantId,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title: newTitle,
+          text: newText
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast('Template created successfully!', 'success');
+        setNewTitle('');
+        setNewText('');
+        fetchTemplates();
+        window.dispatchEvent(new Event('whatsapp_templates_updated'));
+      } else {
+        addToast(data.error || 'Failed to create template', 'error');
+      }
+    } catch (err) {
+      addToast(err.message || 'Error creating template', 'error');
+    }
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch(`/api/whatsapp-governance/templates/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': tenantId
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast('Template deleted successfully!', 'success');
+        fetchTemplates();
+        window.dispatchEvent(new Event('whatsapp_templates_updated'));
+      } else {
+        addToast(data.error || 'Failed to delete template', 'error');
+      }
+    } catch (err) {
+      addToast(err.message || 'Error deleting template', 'error');
+    }
+  };
+
   return (
     <div className="settings-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="settings-modal" role="dialog" aria-label="System Settings">
+      <div className="settings-modal" role="dialog" aria-label="System Settings" style={{ maxWidth: '900px', width: '90%' }}>
         <div className="settings-header">
           <h3>⚙️ System Settings</h3>
           <button className="settings-close-btn" onClick={onClose} aria-label="Close settings">
@@ -114,97 +212,181 @@ export default function SettingsModal({ onClose }) {
           </button>
         </div>
 
-        <div className="settings-content">
-          <div>
-            <div className="settings-section-title">📊 System Health ({tenantId})</div>
-            {loading ? (
-              <div className="settings-stats-grid">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="settings-stat-card" style={{ opacity: 0.6 }}>
-                    <div className="settings-stat-value">...</div>
-                    <div className="settings-stat-label">Loading...</div>
+        {/* Tab Headers */}
+        <div className="settings-tabs-header">
+          <button 
+            type="button" 
+            className={`settings-tab-btn ${activeTab === 'general' ? 'active' : ''}`}
+            onClick={() => setActiveTab('general')}
+          >
+            📊 General Settings
+          </button>
+          <button 
+            type="button" 
+            className={`settings-tab-btn ${activeTab === 'quick_replies' ? 'active' : ''}`}
+            onClick={() => setActiveTab('quick_replies')}
+          >
+            ⚡ Quick Replies
+          </button>
+        </div>
+
+        <div className="settings-content" style={{ paddingTop: 0 }}>
+          {activeTab === 'general' ? (
+            <>
+              <div>
+                <div className="settings-section-title">📊 System Health ({tenantId})</div>
+                {loading ? (
+                  <div className="settings-stats-grid">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="settings-stat-card" style={{ opacity: 0.6 }}>
+                        <div className="settings-stat-value">...</div>
+                        <div className="settings-stat-label">Loading...</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                ) : stats ? (
+                  <div className="settings-stats-grid">
+                    <div className="settings-stat-card">
+                      <div className="settings-stat-value">{stats.messagesCount}</div>
+                      <div className="settings-stat-label">Total Messages</div>
+                    </div>
+                    <div className="settings-stat-card">
+                      <div className="settings-stat-value">{stats.dbSizeMb} MB</div>
+                      <div className="settings-stat-label">DB File Size</div>
+                    </div>
+                    <div className="settings-stat-card">
+                      <div className="settings-stat-value">{stats.mediaSizeMb} MB</div>
+                      <div className="settings-stat-label">Media Disk Size</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted italic text-xs text-center py-4">
+                    Failed to load system health stats.
+                  </div>
+                )}
               </div>
-            ) : stats ? (
-              <div className="settings-stats-grid">
-                <div className="settings-stat-card">
-                  <div className="settings-stat-value">{stats.messagesCount}</div>
-                  <div className="settings-stat-label">Total Messages</div>
-                </div>
-                <div className="settings-stat-card">
-                  <div className="settings-stat-value">{stats.dbSizeMb} MB</div>
-                  <div className="settings-stat-label">DB File Size</div>
-                </div>
-                <div className="settings-stat-card">
-                  <div className="settings-stat-value">{stats.mediaSizeMb} MB</div>
-                  <div className="settings-stat-label">Media Disk Size</div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-muted italic text-xs text-center py-4">
-                Failed to load system health stats.
-              </div>
-            )}
-          </div>
 
-          <div className="settings-danger-zone">
-            <div className="settings-danger-title">⚠️ Danger Zone</div>
+              <div className="settings-danger-zone">
+                <div className="settings-danger-title">⚠️ Danger Zone</div>
 
-            {/* Action A: Wipe Chat History */}
-            <div className="settings-danger-card">
-              <div className="settings-danger-header">
-                <div className="settings-danger-info">
-                  <span className="settings-danger-name">Wipe Chat History & Media</span>
-                  <span className="settings-danger-desc">
-                    Permanently delete all whatsapp message records and media files for this tenant. This will not touch orders or customer profiles.
-                  </span>
+                {/* Action A: Wipe Chat History */}
+                <div className="settings-danger-card">
+                  <div className="settings-danger-header">
+                    <div className="settings-danger-info">
+                      <span className="settings-danger-name">Wipe Chat History & Media</span>
+                      <span className="settings-danger-desc">
+                        Permanently delete all whatsapp message records and media files for this tenant. This will not touch orders or customer profiles.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="settings-confirm-box">
+                    <span className="settings-confirm-label">
+                      To confirm, type <strong style={{ color: 'var(--red)' }}>WIPE-{tenantId}</strong> below:
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        className="settings-confirm-input"
+                        style={{ flex: 1 }}
+                        placeholder={`WIPE-${tenantId}`}
+                        value={wipeConfirm}
+                        onChange={(e) => setWipeConfirm(e.target.value)}
+                      />
+                      <button
+                        className="btn btn-danger btn-sm"
+                        disabled={wipeConfirm !== `WIPE-${tenantId}` || wiping}
+                        onClick={handleWipeChats}
+                      >
+                        {wiping ? 'Wiping...' : 'Wipe Data'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action B: WhatsApp Logout */}
+                <div className="settings-danger-card">
+                  <div className="settings-danger-header">
+                    <div className="settings-danger-info">
+                      <span className="settings-danger-name">WhatsApp Session Logout</span>
+                      <span className="settings-danger-desc">
+                        Disconnect the WhatsApp connection, wipe authentication files from disk/DB, and stop reconnect loops.
+                      </span>
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={loggingOut}
+                      onClick={handleWhatsAppLogout}
+                      style={{ alignSelf: 'center', whiteSpace: 'nowrap' }}
+                    >
+                      {loggingOut ? 'Logging out...' : 'Disconnect Bot'}
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="settings-confirm-box">
-                <span className="settings-confirm-label">
-                  To confirm, type <strong style={{ color: 'var(--red)' }}>WIPE-{tenantId}</strong> below:
-                </span>
-                <div style={{ display: 'flex', gap: 8 }}>
+            </>
+          ) : (
+            <div className="template-manager-container fade-in">
+              {/* Form to Add Template */}
+              <form onSubmit={handleAddTemplate} className="template-form-card">
+                <div className="settings-section-title" style={{ margin: 0 }}>➕ Add Template</div>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Template Title</label>
                   <input
                     type="text"
-                    className="settings-confirm-input"
-                    style={{ flex: 1 }}
-                    placeholder={`WIPE-${tenantId}`}
-                    value={wipeConfirm}
-                    onChange={(e) => setWipeConfirm(e.target.value)}
+                    className="premium-input"
+                    placeholder="e.g. Return Policy"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    required
                   />
-                  <button
-                    className="btn btn-danger btn-sm"
-                    disabled={wipeConfirm !== `WIPE-${tenantId}` || wiping}
-                    onClick={handleWipeChats}
-                  >
-                    {wiping ? 'Wiping...' : 'Wipe Data'}
-                  </button>
                 </div>
-              </div>
-            </div>
-
-            {/* Action B: WhatsApp Logout */}
-            <div className="settings-danger-card">
-              <div className="settings-danger-header">
-                <div className="settings-danger-info">
-                  <span className="settings-danger-name">WhatsApp Session Logout</span>
-                  <span className="settings-danger-desc">
-                    Disconnect the WhatsApp connection, wipe authentication files from disk/DB, and stop reconnect loops.
-                  </span>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Message Body</label>
+                  <textarea
+                    className="premium-input"
+                    placeholder="Type the quick reply message text..."
+                    rows={6}
+                    value={newText}
+                    onChange={(e) => setNewText(e.target.value)}
+                    required
+                  />
                 </div>
-                <button
-                  className="btn btn-danger btn-sm"
-                  disabled={loggingOut}
-                  onClick={handleWhatsAppLogout}
-                  style={{ alignSelf: 'center', whiteSpace: 'nowrap' }}
-                >
-                  {loggingOut ? 'Logging out...' : 'Disconnect Bot'}
+                <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+                  Save Template
                 </button>
+              </form>
+
+              {/* Saved Templates List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="settings-section-title" style={{ margin: 0 }}>📋 Saved Templates ({templates.length})</div>
+                
+                {loadingTemplates ? (
+                  <div className="text-center py-8 italic text-muted text-xs">Loading saved templates...</div>
+                ) : templates.length === 0 ? (
+                  <div className="text-center py-8 italic text-muted text-xs">No templates configured yet.</div>
+                ) : (
+                  <div className="template-list-container">
+                    {templates.map((t) => (
+                      <div key={t.id} className="template-item-card">
+                        <div className="template-item-details">
+                          <span className="template-item-title">{t.title}</span>
+                          <span className="template-item-text">{t.text}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="template-item-delete-btn"
+                          title="Delete Template"
+                          onClick={() => handleDeleteTemplate(t.id)}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="settings-footer">

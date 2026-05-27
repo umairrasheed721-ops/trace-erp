@@ -992,11 +992,12 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
       ORDER BY id DESC LIMIT 1
     `).get(`%${last10}%`, tenantId);
 
-    const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
+    const quickReply = db.prepare('SELECT * FROM quick_replies WHERE id = ? AND tenant_id = ?').get(Number(replyId), tenantId) ||
+                       db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
     
     // Resolve dynamic variables
-    let resolvedCaption = quickReply.caption || '';
+    let resolvedCaption = quickReply.text || quickReply.caption || '';
     resolvedCaption = resolvedCaption
       .replace(/\{\{customer_name\}\}/g, order ? order.customer_name : 'Customer')
       .replace(/\{\{order_id\}\}/g, order ? order.id : '')
@@ -1808,6 +1809,62 @@ router.post('/cod-verify/trigger', async (req, res) => {
     setImmediate(() => dispatchCODVerification(order));
 
     res.json({ success: true, message: `COD verification queued for order ${order.ref_number || order_id}` });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// --- QUICK REPLY TEMPLATE CRUD APIs ---
+
+// GET /api/whatsapp-governance/templates
+router.get('/templates', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+  try {
+    const rows = db.prepare('SELECT * FROM quick_replies WHERE tenant_id = ? ORDER BY id DESC').all(tenantId);
+    res.json({ success: true, templates: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /api/whatsapp-governance/templates
+router.post('/templates', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+  const { title, text } = req.body;
+  if (!title || !text) {
+    return res.status(400).json({ success: false, error: 'Title and text are required' });
+  }
+  try {
+    const result = db.prepare(`
+      INSERT INTO quick_replies (tenant_id, title, text)
+      VALUES (?, ?, ?)
+    `).run(tenantId, title, text);
+    res.json({ 
+      success: true, 
+      message: 'Template created successfully',
+      template: {
+        id: result.lastInsertRowid,
+        tenant_id: tenantId,
+        title,
+        text,
+        created_at: new Date().toISOString()
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// DELETE /api/whatsapp-governance/templates/:id
+router.delete('/templates/:id', (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+  const { id } = req.params;
+  try {
+    const result = db.prepare('DELETE FROM quick_replies WHERE id = ? AND tenant_id = ?').run(Number(id), tenantId);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Template not found or tenant mismatch' });
+    }
+    res.json({ success: true, message: 'Template deleted successfully' });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

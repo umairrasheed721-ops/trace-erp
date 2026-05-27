@@ -23,15 +23,16 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/whatsapp-governance/quick-replies?tenant_id=${encodeURIComponent(tenantId)}`, {
+        const res = await fetch(`/api/whatsapp-governance/templates?tenant_id=${encodeURIComponent(tenantId)}`, {
           headers: {
-            'x-tenant-id': tenantId
+            'x-tenant-id': tenantId,
+            'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
           }
         });
         const data = await res.json();
         if (active) {
           if (data.success) {
-            setQuickReplies(data.quickReplies || []);
+            setQuickReplies(data.templates || []);
           } else {
             setError(data.error || 'Failed to fetch templates');
           }
@@ -48,8 +49,16 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
     }
 
     loadTemplates();
+
+    // Listen for template updates
+    const handleUpdate = () => {
+      loadTemplates();
+    };
+    window.addEventListener('whatsapp_templates_updated', handleUpdate);
+
     return () => {
       active = false;
+      window.removeEventListener('whatsapp_templates_updated', handleUpdate);
     };
   }, [tenantId]);
 
@@ -103,7 +112,7 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
                 <span className="quick-replies-drawer-item-title">
                   {isBusy ? '⏳ Sending...' : r.title}
                 </span>
-                <span className="quick-replies-drawer-item-caption">{r.caption}</span>
+                <span className="quick-replies-drawer-item-caption">{r.text || r.caption}</span>
               </div>
             );
           })

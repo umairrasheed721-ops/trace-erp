@@ -438,6 +438,16 @@ function initDb(db) {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS quick_replies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+    );
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       pill_text TEXT NOT NULL,
