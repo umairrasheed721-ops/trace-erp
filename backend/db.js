@@ -443,9 +443,21 @@ function initDb(db) {
       tenant_id TEXT NOT NULL,
       title TEXT NOT NULL,
       text TEXT NOT NULL,
+      category TEXT DEFAULT 'General',
+      shortcode TEXT DEFAULT NULL,
+      media_url TEXT DEFAULT NULL,
+      media_type TEXT DEFAULT NULL,
+      usage_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
   `);
+
+  // Migration support for existing databases
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN category TEXT DEFAULT 'General'"); } catch (_) {}
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN shortcode TEXT DEFAULT NULL"); } catch (_) {}
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_url TEXT DEFAULT NULL"); } catch (_) {}
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_type TEXT DEFAULT NULL"); } catch (_) {}
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN usage_count INTEGER DEFAULT 0"); } catch (_) {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (

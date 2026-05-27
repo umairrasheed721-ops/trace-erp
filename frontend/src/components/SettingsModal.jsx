@@ -16,6 +16,10 @@ export default function SettingsModal({ onClose }) {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newText, setNewText] = useState('');
+  const [newCategory, setNewCategory] = useState('General');
+  const [newShortcode, setNewShortcode] = useState('');
+  const [newMediaUrl, setNewMediaUrl] = useState('');
+  const [newMediaType, setNewMediaType] = useState('image');
 
   useEffect(() => {
     fetchStats();
@@ -149,6 +153,10 @@ export default function SettingsModal({ onClose }) {
 
     try {
       const token = localStorage.getItem('trace_token') || '';
+      const cleanShortcode = newShortcode.trim() 
+        ? '/' + newShortcode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^\/|\/$)/g, '')
+        : null;
+
       const res = await fetch('/api/templates?quick=true', {
         method: 'POST',
         headers: {
@@ -159,6 +167,10 @@ export default function SettingsModal({ onClose }) {
         body: JSON.stringify({
           title: newTitle,
           text: newText,
+          category: newCategory,
+          shortcode: cleanShortcode,
+          media_url: newMediaUrl.trim() || null,
+          media_type: newMediaUrl.trim() ? newMediaType : null,
           quick: true
         })
       });
@@ -167,6 +179,9 @@ export default function SettingsModal({ onClose }) {
         addToast('Template created successfully!', 'success');
         setNewTitle('');
         setNewText('');
+        setNewCategory('General');
+        setNewShortcode('');
+        setNewMediaUrl('');
         fetchTemplates();
         window.dispatchEvent(new Event('whatsapp_templates_updated'));
       } else {
@@ -255,24 +270,81 @@ export default function SettingsModal({ onClose }) {
             
             {/* Form to Add Template */}
             <form onSubmit={handleAddTemplate} className="template-form-card" style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Template Title</label>
+                  <input
+                    type="text"
+                    className="premium-input"
+                    placeholder="e.g. Return Policy"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Category</label>
+                  <select
+                    className="premium-input"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                  >
+                    <option value="General">General</option>
+                    <option value="Shipping">Shipping</option>
+                    <option value="Billing">Billing</option>
+                    <option value="Support">Support</option>
+                    <option value="Refunds">Refunds</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Shortcode (e.g. return)</label>
+                  <input
+                    type="text"
+                    className="premium-input"
+                    placeholder="return"
+                    value={newShortcode}
+                    onChange={(e) => setNewShortcode(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Media Type</label>
+                  <select
+                    className="premium-input"
+                    value={newMediaType}
+                    onChange={(e) => setNewMediaType(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                  >
+                    <option value="image">Image</option>
+                    <option value="video">Video</option>
+                    <option value="document">Document</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="form-group" style={{ marginBottom: '12px' }}>
-                <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Template Title</label>
+                <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Media URL (Optional attachment)</label>
                 <input
                   type="text"
                   className="premium-input"
-                  placeholder="e.g. Return Policy"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  value={newMediaUrl}
+                  onChange={(e) => setNewMediaUrl(e.target.value)}
                   style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
-                  required
                 />
               </div>
+
               <div className="form-group" style={{ marginBottom: '12px' }}>
                 <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Message Body</label>
                 <textarea
                   className="premium-input"
-                  placeholder="Type the quick reply message text..."
-                  rows={4}
+                  placeholder="Type the quick reply message text... (Use {{customer_name}}, {{order_id}} etc.)"
+                  rows={3}
                   value={newText}
                   onChange={(e) => setNewText(e.target.value)}
                   style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff', fontFamily: 'inherit' }}
@@ -297,7 +369,17 @@ export default function SettingsModal({ onClose }) {
                   {templates.map((t) => (
                     <div key={t.id} className="template-item-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px', background: '#222', border: '1px solid #444', borderRadius: '6px' }}>
                       <div className="template-item-details" style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
-                        <div className="template-item-title" style={{ fontWeight: '600', color: '#fff', marginBottom: '4px', fontSize: '0.85rem' }}>{t.title}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                          <span className="template-item-title" style={{ fontWeight: '600', color: '#fff', fontSize: '0.85rem' }}>{t.title}</span>
+                          <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#a855f7', color: '#fff' }}>{t.category || 'General'}</span>
+                          {t.shortcode && (
+                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#10b981', color: '#fff' }}>{t.shortcode}</span>
+                          )}
+                          {t.media_url && (
+                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#3b82f6', color: '#fff' }}>📎 {t.media_type || 'Media'}</span>
+                          )}
+                          <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eab308', color: '#000', marginLeft: 'auto' }}>🔥 Used {t.usage_count || 0}x</span>
+                        </div>
                         <div className="template-item-text" style={{ color: '#ccc', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.text}</div>
                       </div>
                       <button

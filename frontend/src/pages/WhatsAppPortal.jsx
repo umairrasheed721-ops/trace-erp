@@ -175,7 +175,35 @@ export default function WhatsAppPortal() {
     { icon: '📋', label: 'Filter: All', desc: 'Show all conversations', section: 'Filters', shortcut: null, action: () => { setActiveFilter('all'); setShowCmdPalette(false); } },
   ]
 
-  const SLASH_COMMANDS = [
+  const resolvePlaceholders = (text, info) => {
+    if (!text) return '';
+    const customerName = info?.latestOrder?.customer_name || 'Customer';
+    const orderId = info?.latestOrder?.id || '';
+    const trackingNumber = info?.latestOrder?.tracking_number || '';
+    const courier = info?.latestOrder?.courier || '';
+    
+    return text
+      .replace(/\{\{customer_name\}\}/g, customerName)
+      .replace(/\{\{order_id\}\}/g, orderId)
+      .replace(/\{\{tracking_number\}\}/g, trackingNumber)
+      .replace(/\{\{courier\}\}/g, courier);
+  };
+
+  const incrementTemplateUsage = async (id) => {
+    try {
+      const token = localStorage.getItem('trace_token') || '';
+      await fetch(`/api/templates/${id}/usage`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': tenantId
+        }
+      });
+      fetchQuickReplies();
+    } catch (e) {}
+  };
+
+  const baseSlashCommands = [
     { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/track', label: '📦 Send Tracking', desc: 'Send order tracking info', action: () => {
       if (activeChat) {
@@ -192,7 +220,27 @@ export default function WhatsAppPortal() {
     }},
     { cmd: '/quick', label: '⚡ Quick Replies', desc: 'Open quick reply templates', action: () => { setShowQuickReplies(true); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/risk', label: '🚩 Risk Flag', desc: 'View/set customer risk profile', action: () => { setShowSlashMenu(false); updateInputText(''); } },
-  ]
+  ];
+
+  const templateSlashCommands = quickReplies.map(t => {
+    const code = '/' + t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^\/|\/$)/g, '');
+    return {
+      cmd: code,
+      label: `⚡ ${t.title}`,
+      desc: t.text,
+      action: () => {
+        const resolved = resolvePlaceholders(t.text, customerInfo);
+        updateInputText(resolved);
+        setShowSlashMenu(false);
+        incrementTemplateUsage(t.id);
+        if (inputRef.current) {
+          setTimeout(() => inputRef.current.focus(), 50);
+        }
+      }
+    };
+  });
+
+  const SLASH_COMMANDS = [...baseSlashCommands, ...templateSlashCommands];
 
   // --- REFS ---
   const timelineEndRef = useRef(null)
@@ -326,9 +374,15 @@ export default function WhatsAppPortal() {
   // --- FETCH QUICK ACCESS ITEMS ---
   const fetchQuickReplies = async () => {
     try {
-      const res = await fetch('/api/whatsapp-governance/quick-replies')
-      const data = await res.json()
-      if (data.success) setQuickReplies(data.quickReplies || [])
+      const token = localStorage.getItem('trace_token') || '';
+      const res = await fetch(`/api/templates?quick=true&tenant_id=${encodeURIComponent(tenantId)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': tenantId
+        }
+      });
+      const data = await res.json();
+      if (data.success) setQuickReplies(data.templates || []);
     } catch (err) {}
   }
 
@@ -653,7 +707,6 @@ export default function WhatsAppPortal() {
 
     const activeQuote = getDraft(activeChat.phone).quotedMessage
 
-    // FIX 3: Debounce guard — block re-entry for same quick reply while in-flight
     const debounceKey = `qr:${reply.id}`
     if (sendingReply === debounceKey) return
     setSendingReply(debounceKey)
@@ -663,9 +716,13 @@ export default function WhatsAppPortal() {
     
     // Add temporary loading indicator bubble
     const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    
+    const templateText = reply.text || reply.caption || '';
+    const resolvedText = resolvePlaceholders(templateText, customerInfo);
+
     const dbMsgContent = reply.media_url 
-      ? `[${reply.media_type.toUpperCase()}] ${reply.caption || ''}`.trim()
-      : (reply.caption || `[Template Reply: ${reply.title}]`);
+      ? `[${reply.media_type ? reply.media_type.toUpperCase() : 'MEDIA'}] ${resolvedText}`.trim()
+      : resolvedText;
 
     const optimisticMessage = {
       id: clientUuid,
@@ -702,6 +759,9 @@ export default function WhatsAppPortal() {
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
         addToast(`✅ Quick reply "${reply.title}" dispatched!`, 'success')
         clearQuote(activeChat.phone)
+        
+        // Fire-and-forget: Increment usage count on backend
+        incrementTemplateUsage(reply.id);
       } else {
         addToast(data.error || 'Failed to send quick reply', 'error')
         setMessages(prev => prev.filter(m => m.id !== clientUuid))
