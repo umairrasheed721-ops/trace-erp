@@ -214,246 +214,166 @@ export default function SettingsModal({ onClose }) {
           </button>
         </div>
 
-        {/* Tab Headers */}
-        <div className="settings-tabs-header">
-          <button 
-            type="button" 
-            className={`settings-tab-btn ${activeTab === 'general' ? 'active' : ''}`}
-            onClick={() => setActiveTab('general')}
-          >
-            📊 General Settings
-          </button>
-          <button 
-            type="button" 
-            className={`settings-tab-btn ${activeTab === 'quick_replies' ? 'active' : ''}`}
-            onClick={() => setActiveTab('quick_replies')}
-          >
-            ⚡ Quick Replies
-          </button>
-        </div>
-
-        <div className="settings-content" style={{ paddingTop: 0 }}>
-          {activeTab === 'general' ? (
-            <>
-              <div>
-                <div className="settings-section-title">📊 System Health ({tenantId})</div>
-                {loading ? (
-                  <div className="settings-stats-grid">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="settings-stat-card" style={{ opacity: 0.6 }}>
-                        <div className="settings-stat-value">...</div>
-                        <div className="settings-stat-label">Loading...</div>
-                      </div>
-                    ))}
+        <div className="settings-content" style={{ padding: '20px', maxHeight: '80vh', overflowY: 'auto' }}>
+          {/* System Health Block */}
+          <div style={{ marginBottom: '20px' }}>
+            <div className="settings-section-title">📊 System Health ({tenantId})</div>
+            {loading ? (
+              <div className="settings-stats-grid">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="settings-stat-card" style={{ opacity: 0.6 }}>
+                    <div className="settings-stat-value">...</div>
+                    <div className="settings-stat-label">Loading...</div>
                   </div>
-                ) : stats ? (
-                  <div className="settings-stats-grid">
-                    <div className="settings-stat-card">
-                      <div className="settings-stat-value">{stats.messagesCount}</div>
-                      <div className="settings-stat-label">Total Messages</div>
-                    </div>
-                    <div className="settings-stat-card">
-                      <div className="settings-stat-value">{stats.dbSizeMb} MB</div>
-                      <div className="settings-stat-label">DB File Size</div>
-                    </div>
-                    <div className="settings-stat-card">
-                      <div className="settings-stat-value">{stats.mediaSizeMb} MB</div>
-                      <div className="settings-stat-label">Media Disk Size</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-muted italic text-xs text-center py-4">
-                    Failed to load system health stats.
-                  </div>
-                )}
+                ))}
               </div>
-
-              {/* Quick Reply Template Manager */}
-              <div className="settings-section" style={{ marginTop: '24px', marginBottom: '24px' }}>
-                <div className="settings-section-title">⚡ Quick Reply Templates</div>
-                <div className="template-manager-container">
-                  {/* Form to Add Template */}
-                  <form onSubmit={handleAddTemplate} className="template-form-card">
-                    <div className="form-group" style={{ marginBottom: '12px' }}>
-                      <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Template Title</label>
-                      <input
-                        type="text"
-                        className="premium-input"
-                        placeholder="e.g. Return Policy"
-                        value={newTitle}
-                        onChange={(e) => setNewTitle(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: '12px' }}>
-                      <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Message Body</label>
-                      <textarea
-                        className="premium-input"
-                        placeholder="Type the quick reply message text..."
-                        rows={4}
-                        value={newText}
-                        onChange={(e) => setNewText(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                      Save Template
-                    </button>
-                  </form>
-
-                  {/* Saved Templates List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div className="settings-section-title" style={{ margin: 0, fontSize: '0.9rem' }}>📋 Saved Templates ({templates.length})</div>
-                    
-                    {loadingTemplates ? (
-                      <div className="text-center py-8 italic text-muted text-xs">Loading saved templates...</div>
-                    ) : templates.length === 0 ? (
-                      <div className="text-center py-8 italic text-muted text-xs">No templates configured yet.</div>
-                    ) : (
-                      <div className="template-list-container">
-                        {templates.map((t) => (
-                          <div key={t.id} className="template-item-card">
-                            <div className="template-item-details">
-                              <span className="template-item-title">{t.title}</span>
-                              <span className="template-item-text">{t.text}</span>
-                            </div>
-                            <button
-                              type="button"
-                              className="template-item-delete-btn"
-                              title="Delete Template"
-                              onClick={() => handleDeleteTemplate(t.id)}
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+            ) : stats ? (
+              <div className="settings-stats-grid">
+                <div className="settings-stat-card">
+                  <div className="settings-stat-value">{stats.messagesCount}</div>
+                  <div className="settings-stat-label">Total Messages</div>
+                </div>
+                <div className="settings-stat-card">
+                  <div className="settings-stat-value">{stats.dbSizeMb} MB</div>
+                  <div className="settings-stat-label">DB File Size</div>
+                </div>
+                <div className="settings-stat-card">
+                  <div className="settings-stat-value">{stats.mediaSizeMb} MB</div>
+                  <div className="settings-stat-label">Media Disk Size</div>
                 </div>
               </div>
+            ) : (
+              <div className="text-muted italic text-xs text-center py-4">
+                Failed to load system health stats.
+              </div>
+            )}
+          </div>
 
-              <div className="settings-danger-zone">
-                <div className="settings-danger-title">⚠️ Danger Zone</div>
+          {/* Quick Replies Section */}
+          <div className="quick-replies-section" style={{ border: '1px solid #333', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+            <h3 style={{ color: '#fff', marginBottom: '10px' }}>⚡ Quick Reply Templates</h3>
+            
+            {/* Form to Add Template */}
+            <form onSubmit={handleAddTemplate} className="template-form-card" style={{ marginBottom: '20px' }}>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Template Title</label>
+                <input
+                  type="text"
+                  className="premium-input"
+                  placeholder="e.g. Return Policy"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff' }}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Message Body</label>
+                <textarea
+                  className="premium-input"
+                  placeholder="Type the quick reply message text..."
+                  rows={4}
+                  value={newText}
+                  onChange={(e) => setNewText(e.target.value)}
+                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: '#fff', fontFamily: 'inherit' }}
+                  required
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '10px', borderRadius: '4px', cursor: 'pointer' }}>
+                Save Template
+              </button>
+            </form>
 
-                {/* Action A: Wipe Chat History */}
-                <div className="settings-danger-card">
-                  <div className="settings-danger-header">
-                    <div className="settings-danger-info">
-                      <span className="settings-danger-name">Wipe Chat History & Media</span>
-                      <span className="settings-danger-desc">
-                        Permanently delete all whatsapp message records and media files for this tenant. This will not touch orders or customer profiles.
-                      </span>
-                    </div>
-                  </div>
-                  <div className="settings-confirm-box">
-                    <span className="settings-confirm-label">
-                      To confirm, type <strong style={{ color: 'var(--red)' }}>WIPE-{tenantId}</strong> below:
-                    </span>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        type="text"
-                        className="settings-confirm-input"
-                        style={{ flex: 1 }}
-                        placeholder={`WIPE-${tenantId}`}
-                        value={wipeConfirm}
-                        onChange={(e) => setWipeConfirm(e.target.value)}
-                      />
+            {/* Saved Templates List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontWeight: '600', color: '#fff', fontSize: '0.9rem' }}>📋 Saved Templates ({templates.length})</div>
+              
+              {loadingTemplates ? (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: '#888', fontStyle: 'italic', fontSize: '0.8rem' }}>Loading saved templates...</div>
+              ) : templates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: '#888', fontStyle: 'italic', fontSize: '0.8rem' }}>No templates configured yet.</div>
+              ) : (
+                <div className="template-list-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {templates.map((t) => (
+                    <div key={t.id} className="template-item-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px', background: '#222', border: '1px solid #444', borderRadius: '6px' }}>
+                      <div className="template-item-details" style={{ flex: 1, minWidth: 0, paddingRight: '10px' }}>
+                        <div className="template-item-title" style={{ fontWeight: '600', color: '#fff', marginBottom: '4px', fontSize: '0.85rem' }}>{t.title}</div>
+                        <div className="template-item-text" style={{ color: '#ccc', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.text}</div>
+                      </div>
                       <button
-                        className="btn btn-danger btn-sm"
-                        disabled={wipeConfirm !== `WIPE-${tenantId}` || wiping}
-                        onClick={handleWipeChats}
+                        type="button"
+                        className="template-item-delete-btn"
+                        title="Delete Template"
+                        onClick={() => handleDeleteTemplate(t.id)}
+                        style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '1.1rem' }}
                       >
-                        {wiping ? 'Wiping...' : 'Wipe Data'}
+                        🗑️
                       </button>
                     </div>
-                  </div>
+                  ))}
                 </div>
+              )}
+            </div>
+          </div>
 
-                {/* Action B: WhatsApp Logout */}
-                <div className="settings-danger-card">
-                  <div className="settings-danger-header">
-                    <div className="settings-danger-info">
-                      <span className="settings-danger-name">WhatsApp Session Logout</span>
-                      <span className="settings-danger-desc">
-                        Disconnect the WhatsApp connection, wipe authentication files from disk/DB, and stop reconnect loops.
-                      </span>
-                    </div>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      disabled={loggingOut}
-                      onClick={handleWhatsAppLogout}
-                      style={{ alignSelf: 'center', whiteSpace: 'nowrap' }}
-                    >
-                      {loggingOut ? 'Logging out...' : 'Disconnect Bot'}
-                    </button>
-                  </div>
+          {/* Danger Zone Block */}
+          <div className="settings-danger-zone">
+            <div className="settings-danger-title">⚠️ Danger Zone</div>
+
+            {/* Action A: Wipe Chat History */}
+            <div className="settings-danger-card">
+              <div className="settings-danger-header">
+                <div className="settings-danger-info">
+                  <span className="settings-danger-name">Wipe Chat History & Media</span>
+                  <span className="settings-danger-desc">
+                    Permanently delete all whatsapp message records and media files for this tenant. This will not touch orders or customer profiles.
+                  </span>
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="template-manager-container fade-in">
-              {/* Form to Add Template */}
-              <form onSubmit={handleAddTemplate} className="template-form-card">
-                <div className="settings-section-title" style={{ margin: 0 }}>➕ Add Template</div>
-                <div className="form-group">
-                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Template Title</label>
+              <div className="settings-confirm-box">
+                <span className="settings-confirm-label">
+                  To confirm, type <strong style={{ color: 'var(--red)' }}>WIPE-{tenantId}</strong> below:
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="text"
-                    className="premium-input"
-                    placeholder="e.g. Return Policy"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    required
+                    className="settings-confirm-input"
+                    style={{ flex: 1 }}
+                    placeholder={`WIPE-${tenantId}`}
+                    value={wipeConfirm}
+                    onChange={(e) => setWipeConfirm(e.target.value)}
                   />
+                  <button
+                    className="btn btn-danger btn-sm"
+                    disabled={wipeConfirm !== `WIPE-${tenantId}` || wiping}
+                    onClick={handleWipeChats}
+                  >
+                    {wiping ? 'Wiping...' : 'Wipe Data'}
+                  </button>
                 </div>
-                <div className="form-group">
-                  <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Message Body</label>
-                  <textarea
-                    className="premium-input"
-                    placeholder="Type the quick reply message text..."
-                    rows={6}
-                    value={newText}
-                    onChange={(e) => setNewText(e.target.value)}
-                    required
-                  />
-                </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                  Save Template
-                </button>
-              </form>
-
-              {/* Saved Templates List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="settings-section-title" style={{ margin: 0 }}>📋 Saved Templates ({templates.length})</div>
-                
-                {loadingTemplates ? (
-                  <div className="text-center py-8 italic text-muted text-xs">Loading saved templates...</div>
-                ) : templates.length === 0 ? (
-                  <div className="text-center py-8 italic text-muted text-xs">No templates configured yet.</div>
-                ) : (
-                  <div className="template-list-container">
-                    {templates.map((t) => (
-                      <div key={t.id} className="template-item-card">
-                        <div className="template-item-details">
-                          <span className="template-item-title">{t.title}</span>
-                          <span className="template-item-text">{t.text}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="template-item-delete-btn"
-                          title="Delete Template"
-                          onClick={() => handleDeleteTemplate(t.id)}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
-          )}
+
+            {/* Action B: WhatsApp Logout */}
+            <div className="settings-danger-card">
+              <div className="settings-danger-header">
+                <div className="settings-danger-info">
+                  <span className="settings-danger-name">WhatsApp Session Logout</span>
+                  <span className="settings-danger-desc">
+                    Disconnect the WhatsApp connection, wipe authentication files from disk/DB, and stop reconnect loops.
+                  </span>
+                </div>
+                <button
+                  className="btn btn-danger btn-sm"
+                  disabled={loggingOut}
+                  onClick={handleWhatsAppLogout}
+                  style={{ alignSelf: 'center', whiteSpace: 'nowrap' }}
+                >
+                  {loggingOut ? 'Logging out...' : 'Disconnect Bot'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="settings-footer">
