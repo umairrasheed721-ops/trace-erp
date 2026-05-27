@@ -113,9 +113,16 @@ async function dispatchCODVerification(order) {
       bot.sendMessage(phone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`);
     }
 
-    // Always send text fallback for clarity
-    const textMsg = `🔐 *COD Order Verification — ${ref}*\n\nAapka Cash on Delivery order receive hua hai.\n\n*Reply karein:*\n*1* ✅ Confirm karna hai\n*2* ❌ Cancel karna hai\n\nYe option 24 ghanty ke liye valid hai.`;
-    bot.sendMessage(phone, textMsg, true);
+    // Send native WhatsApp poll for interaction
+    const pollConfig = {
+      name: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order receive hua hai. Kindly options me se choose kr k order confirm ya cancel karein:`,
+      values: [
+        "✅ Confirm Order",
+        "❌ Cancel Order"
+      ],
+      selectableCount: 1
+    };
+    bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'native', pollConfig);
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
   } catch (err) {

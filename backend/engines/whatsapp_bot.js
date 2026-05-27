@@ -568,6 +568,87 @@ class WhatsAppBot {
               }
             }
           }
+
+          // --- 🗳️ INTERCEPT POLL VOTES FOR COD VERIFICATION ---
+          if (update.pollUpdates && key.remoteJid && !key.remoteJid.includes('@g.us')) {
+            try {
+              const remoteJid = key.remoteJid;
+              const fromPhone = remoteJid.split('@')[0];
+              
+              // Retrieve original poll creation message to decrypt vote signatures
+              const pollMsg = this.store.messages[remoteJid]?.find(m => m.key.id === key.id);
+              if (pollMsg && pollMsg.message) {
+                const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
+                const votes = getAggregateVotesInPollMessage({
+                  message: pollMsg.message,
+                  pollUpdates: update.pollUpdates,
+                });
+                
+                let selectedOption = null;
+                for (const option of votes) {
+                  if (option.voters && option.voters.includes(remoteJid)) {
+                    selectedOption = option.name;
+                    break;
+                  }
+                }
+                
+                if (selectedOption) {
+                  console.log(`🗳️ [POLL_VOTE] Customer +${fromPhone} voted: "${selectedOption}" in poll: ${key.id}`);
+                  const cleanPhone = fromPhone.replace(/\D/g, '');
+                  
+                  const pendingCOD = db.prepare(
+                    `SELECT * FROM cod_pending_verifications WHERE phone = ? AND status = 'pending'
+                     AND expires_at > datetime('now', '+5 hours') ORDER BY id DESC LIMIT 1`
+                  ).get(cleanPhone);
+                  
+                  if (pendingCOD) {
+                    const isConfirm = selectedOption.toLowerCase().includes('confirm') || selectedOption.includes('✅');
+                    const isCancel = selectedOption.toLowerCase().includes('cancel') || selectedOption.includes('❌');
+                    
+                    if (isConfirm || isCancel) {
+                      const newStatus = isConfirm ? 'confirmed' : 'cancelled';
+                      db.prepare(`UPDATE cod_pending_verifications SET status = ?, replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(newStatus, pendingCOD.id);
+                      
+                      // Log the vote in database and broadcast websocket event
+                      try {
+                        const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                        const storeId = order ? order.store_id : 1;
+                        db.prepare(`
+                          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
+                          VALUES (?, ?, ?, 'incoming', ?)
+                        `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
+                        
+                        const { broadcast } = require('../websocket');
+                        broadcast('message', {
+                          order_id: pendingCOD.order_id,
+                          message: {
+                            store_id: storeId,
+                            order_id: pendingCOD.order_id,
+                            phone: cleanPhone,
+                            direction: 'incoming',
+                            message: `🗳️ Selected: ${selectedOption}`,
+                            created_at: new Date().toISOString()
+                          }
+                        });
+                      } catch (e) {}
+
+                      if (isConfirm) {
+                        db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+                        await this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
+                        console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
+                      } else {
+                        db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
+                        await this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
+                        console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (pollErr) {
+              console.error('⚠️ Poll vote handling failed:', pollErr.message);
+            }
+          }
         }
       });
 
@@ -1209,7 +1290,7 @@ class WhatsAppBot {
     return modified;
   }
 
-  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native') {
+  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null) {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -1259,7 +1340,7 @@ class WhatsAppBot {
       }
 
       const isActiveChatSession = isManual || this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);
@@ -1311,7 +1392,7 @@ class WhatsAppBot {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode } = activeQueue[0]; // Peek!
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll } = activeQueue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1525,7 +1606,16 @@ class WhatsAppBot {
         let sentMsg;
         const hasButtons = buttons && Array.isArray(buttons) && buttons.length > 0;
 
-        if (hasButtons && buttonsMode === 'text') {
+        if (poll) {
+          const pollPayload = {
+            poll: {
+              name: poll.name,
+              values: poll.values,
+              selectableCount: poll.selectableCount || 1
+            }
+          };
+          sentMsg = await safeSend(jid, pollPayload);
+        } else if (hasButtons && buttonsMode === 'text') {
           const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
           const listText = buttons.map((btn, idx) => {
             const emoji = numberEmojis[idx] || '🔘';
@@ -1750,7 +1840,7 @@ class WhatsAppBot {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
+          const dbMessageContent = poll ? `🗳️ Poll: ${poll.name}` : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
           
           // Convert absolute local path to relative path /uploads/... for frontend compatibility
           let finalDbMediaUrl = dbMediaUrl;
@@ -1836,7 +1926,7 @@ class WhatsAppBot {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message;
+          const dbMessageContent = poll ? `🗳️ Poll: ${poll.name}` : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
 
           let finalDbMediaUrl = dbMediaUrl;
           if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
