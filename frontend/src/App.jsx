@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useApp } from './context/AppContext'
 import AppProvider from './context/AppProvider'
 import { TenantProvider } from './context/TenantContext'
+import { QuoteDraftProvider } from './context/QuoteDraftContext'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -111,7 +112,9 @@ export default function App() {
   return (
     <AppProvider>
       <TenantProvider>
-        <AppContent />
+        <QuoteDraftProvider>
+          <AppContent />
+        </QuoteDraftProvider>
       </TenantProvider>
     </AppProvider>
   )

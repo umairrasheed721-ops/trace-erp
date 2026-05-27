@@ -6,10 +6,19 @@ import QuickReplyPanel from '../components/QuickReplyPanel'
 import MediaUploadOverlay from '../components/MediaUploadOverlay'
 import SettingsModal from '../components/SettingsModal'
 import { handleApiError, ERR } from '../utils/errorHandler'
+import { useQuoteDraft } from '../context/QuoteDraftContext'
 
 
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
+  const { 
+    getDraft, 
+    setDraftText, 
+    setQuotedMessage, 
+    clearQuote, 
+    clearDraft, 
+    removeQuotedMessageGlobally 
+  } = useQuoteDraft()
 
   const getMediaUrlWithToken = (mediaUrl) => {
     if (!mediaUrl) return ''
@@ -32,6 +41,27 @@ export default function WhatsAppPortal() {
   const [searchText, setSearchText] = useState('')
   const [inputText, setInputText] = useState('')
   const [uploading, setUploading] = useState(false)
+
+  const activeJid = activeChat?.phone || ''
+  const activeQuote = activeJid ? getDraft(activeJid).quotedMessage : null
+
+  // When activeChat changes, load draftText from context
+  useEffect(() => {
+    if (activeJid) {
+      const { draftText } = getDraft(activeJid)
+      setInputText(draftText || '')
+    } else {
+      setInputText('')
+    }
+  }, [activeJid])
+
+  // Helper to update both local state and context state
+  const updateInputText = (val) => {
+    setInputText(val)
+    if (activeJid) {
+      setDraftText(activeJid, val)
+    }
+  }
   // Module 8: Rich Media states
   const [isDragging, setIsDragging] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -86,7 +116,7 @@ export default function WhatsAppPortal() {
     { icon: '📄', label: 'Send Invoice', desc: 'Generate & send PDF invoice to active chat', section: 'Actions', shortcut: '/invoice', action: () => { handleSendInvoice(); setShowCmdPalette(false); } },
     { icon: '🔄', label: 'Sync Chat History', desc: 'Reload messages from server', section: 'Actions', shortcut: null, action: () => { if (activeChat) { selectChat(activeChat); setShowCmdPalette(false); } } },
     { icon: '⚡', label: 'Quick Replies', desc: 'Open template library', section: 'Actions', shortcut: '/quick', action: () => { setShowQuickReplies(true); setShowCmdPalette(false); } },
-    { icon: '📦', label: 'Send Tracking', desc: 'Send order tracking status', section: 'Actions', shortcut: '/track', action: () => { setInputText('📦 Your order tracking is being retrieved...'); setShowCmdPalette(false); } },
+    { icon: '📦', label: 'Send Tracking', desc: 'Send order tracking status', section: 'Actions', shortcut: '/track', action: () => { updateInputText('📦 Your order tracking is being retrieved...'); setShowCmdPalette(false); } },
     { icon: '🔍', label: 'Filter: Unread', desc: 'Show unread conversations', section: 'Filters', shortcut: null, action: () => { setActiveFilter('unread'); setShowCmdPalette(false); } },
     { icon: '🚩', label: 'Filter: High Risk', desc: 'Show flagged contacts', section: 'Filters', shortcut: null, action: () => { setActiveFilter('high_risk'); setShowCmdPalette(false); } },
     { icon: '📦', label: 'Filter: Stuck', desc: 'Show stuck deliveries', section: 'Filters', shortcut: null, action: () => { setActiveFilter('stuck'); setShowCmdPalette(false); } },
@@ -94,22 +124,22 @@ export default function WhatsAppPortal() {
   ]
 
   const SLASH_COMMANDS = [
-    { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); setInputText(''); } },
+    { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/track', label: '📦 Send Tracking', desc: 'Send order tracking info', action: () => {
       if (activeChat) {
         const msg = `📦 Your order tracking is being retrieved...`
-        setInputText(msg)
+        updateInputText(msg)
         setShowSlashMenu(false)
       }
     }},
     { cmd: '/size', label: '📏 Customer Size', desc: 'Insert stored size preference', action: () => {
       if (activeChat?.sizePreference) {
-        setInputText(`Your size preference: ${activeChat.sizePreference}`)
+        updateInputText(`Your size preference: ${activeChat.sizePreference}`)
       }
       setShowSlashMenu(false)
     }},
-    { cmd: '/quick', label: '⚡ Quick Replies', desc: 'Open quick reply templates', action: () => { setShowQuickReplies(true); setShowSlashMenu(false); setInputText(''); } },
-    { cmd: '/risk', label: '🚩 Risk Flag', desc: 'View/set customer risk profile', action: () => { setShowSlashMenu(false); setInputText(''); } },
+    { cmd: '/quick', label: '⚡ Quick Replies', desc: 'Open quick reply templates', action: () => { setShowQuickReplies(true); setShowSlashMenu(false); updateInputText(''); } },
+    { cmd: '/risk', label: '🚩 Risk Flag', desc: 'View/set customer risk profile', action: () => { setShowSlashMenu(false); updateInputText(''); } },
   ]
 
   // --- REFS ---
@@ -294,6 +324,38 @@ export default function WhatsAppPortal() {
         const { event: wsEvent, data } = payload
         const currentActive = activeChatRef.current
 
+        if (wsEvent === 'message_deleted' && data) {
+          const { message_id, phone } = data
+          if (currentActive && String(currentActive.phone) === String(phone)) {
+            setMessages(prev => prev.map(m => {
+              if (m.id === message_id || String(m.message_id) === String(message_id)) {
+                return {
+                  ...m,
+                  message: "🚫 This message was deleted",
+                  media_url: null,
+                  media_type: null
+                }
+              }
+              return m
+            }))
+          }
+          setChats(prevChats => prevChats.map(c => {
+            if (String(c.phone) === String(phone) && c.lastMessage && (c.lastMessage.id === message_id || String(c.lastMessage.message_id) === String(message_id))) {
+              return {
+                ...c,
+                lastMessage: {
+                  ...c.lastMessage,
+                  message: "🚫 This message was deleted",
+                  media_url: null,
+                  media_type: null
+                }
+              }
+            }
+            return c
+          }))
+          removeQuotedMessageGlobally(message_id)
+        }
+
         if (wsEvent === 'message' && data && data.message) {
           const newMsg = data.message
           
@@ -459,6 +521,8 @@ export default function WhatsAppPortal() {
     const finalMsg = textToSend !== null ? textToSend : inputText
     if (!finalMsg.trim() || !activeChat) return
 
+    const activeQuote = getDraft(activeChat.phone).quotedMessage
+
     // FIX 3: Debounce guard — block re-entry while this action is in-flight
     const debounceKey = textToSend !== null ? `pill:${textToSend.substring(0, 20)}` : 'send'
     if (sendingReply === debounceKey) return
@@ -479,14 +543,18 @@ export default function WhatsAppPortal() {
 
     // Instantly append bubble
     setMessages(prev => [...prev, optimisticMessage])
-    if (textToSend === null) setInputText('')
+    if (textToSend === null) updateInputText('')
     scrollToBottom()
 
     try {
       const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: finalMsg, clientUuid })
+        body: JSON.stringify({ 
+          message: finalMsg, 
+          clientUuid,
+          quoteContext: activeQuote ? { message_id: activeQuote.id } : null
+        })
       })
       const data = await res.json()
       
@@ -496,6 +564,7 @@ export default function WhatsAppPortal() {
         
         // Update conversation list preview
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
+        clearQuote(activeChat.phone)
       } else {
         addToast(data.error || 'Failed to dispatch message', 'error')
         setMessages(prev => prev.filter(m => m.id !== clientUuid)) // Rollback
@@ -511,6 +580,8 @@ export default function WhatsAppPortal() {
 
   const handleSendQuickReply = async (reply) => {
     if (!activeChat) return
+
+    const activeQuote = getDraft(activeChat.phone).quotedMessage
 
     // FIX 3: Debounce guard — block re-entry for same quick reply while in-flight
     const debounceKey = `qr:${reply.id}`
@@ -544,7 +615,11 @@ export default function WhatsAppPortal() {
       const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/send-quick-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ replyId: reply.id, clientUuid })
+        body: JSON.stringify({ 
+          replyId: reply.id, 
+          clientUuid,
+          quoteContext: activeQuote ? { message_id: activeQuote.id } : null
+        })
       })
       const data = await res.json()
       
@@ -552,6 +627,7 @@ export default function WhatsAppPortal() {
         setMessages(prev => prev.map(m => m.id === clientUuid ? { ...m, ...data.message, status: 'sent' } : m))
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
         addToast(`✅ Quick reply "${reply.title}" dispatched!`, 'success')
+        clearQuote(activeChat.phone)
       } else {
         addToast(data.error || 'Failed to send quick reply', 'error')
         setMessages(prev => prev.filter(m => m.id !== clientUuid))
@@ -648,6 +724,8 @@ export default function WhatsAppPortal() {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         if (blob.size < 1000) return addToast('Recording too short', 'warning')
         
+        const activeQuote = getDraft(activeChat.phone).quotedMessage
+
         const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
         const tempUrl = URL.createObjectURL(blob);
         const tempMsg = {
@@ -666,6 +744,9 @@ export default function WhatsAppPortal() {
         const formData = new FormData()
         formData.append('audio', blob, `voice_${Date.now()}.webm`)
         formData.append('clientUuid', clientUuid)
+        if (activeQuote) {
+          formData.append('quoteContext', JSON.stringify({ message_id: activeQuote.id }))
+        }
         addToast('⏳ Sending voice note...', 'info')
         try {
           const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/upload-voice`, {
@@ -687,6 +768,7 @@ export default function WhatsAppPortal() {
             });
             setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
             addToast('✅ Voice note sent!', 'success')
+            clearQuote(activeChat.phone)
             scrollToBottom()
           } else { 
             setMessages(prev => prev.filter(m => m.id !== clientUuid));
@@ -730,6 +812,8 @@ export default function WhatsAppPortal() {
     }
     if (!file || !activeChat) return
 
+    const activeQuote = getDraft(activeChat.phone).quotedMessage
+
     const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
     const tempUrl = URL.createObjectURL(file);
     const mediaType = file.type.startsWith('image/') ? 'image' : 
@@ -757,6 +841,9 @@ export default function WhatsAppPortal() {
     const formData = new FormData()
     formData.append('media', file)
     formData.append('clientUuid', clientUuid)
+    if (activeQuote) {
+      formData.append('quoteContext', JSON.stringify({ message_id: activeQuote.id }))
+    }
     
     setUploading(true)
     addToast(`Uploading ${file.name}...`, 'info')
@@ -772,6 +859,7 @@ export default function WhatsAppPortal() {
         setMessages(prev => prev.map(m => m.id === clientUuid ? { ...m, ...data.message, status: 'sent' } : m))
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
         addToast('✅ Media attachment successfully sent!', 'success')
+        clearQuote(activeChat.phone)
         scrollToBottom()
       } else {
         addToast(data.error || 'Failed to send file', 'error')
@@ -1222,6 +1310,23 @@ export default function WhatsAppPortal() {
                         key={msg.id || index}
                         className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
                       >
+                        {/* Subtle Reply button on hover */}
+                        <button
+                          type="button"
+                          className="wa-bubble-reply-btn"
+                          title="Reply to this message"
+                          onClick={() => {
+                            setQuotedMessage(activeChat.phone, {
+                              id: msg.message_id || msg.id,
+                              text: msg.message || (msg.media_type ? `[${msg.media_type}]` : ''),
+                              type: msg.media_type || 'text',
+                              participant_jid: msg.direction === 'outgoing' ? 'Me' : (activeChat.customerName || activeChat.phone)
+                            });
+                          }}
+                        >
+                          ↩️
+                        </button>
+
                         {/* Rendering Message Content */}
                         {!showDoc && <span>{msg.message}</span>}
 
@@ -1343,6 +1448,27 @@ export default function WhatsAppPortal() {
                 </div>
               )}
 
+              {/* Quote Preview Frame */}
+              {activeQuote && (
+                <div className="wa-quote-preview-frame">
+                  <div className="wa-quote-preview-content">
+                    <span className="wa-quote-preview-sender">
+                      @{activeQuote.participant_jid}
+                    </span>
+                    <span className="wa-quote-preview-text">
+                      {activeQuote.text}
+                    </span>
+                  </div>
+                  <button 
+                    className="wa-quote-preview-cancel" 
+                    onClick={() => clearQuote(activeChat.phone)}
+                    title="Cancel quote"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {/* Chat Input Bar */}
               <div className="wa-portal-chat-input-bar">
                 
@@ -1401,7 +1527,7 @@ export default function WhatsAppPortal() {
                   value={inputText}
                   onChange={e => {
                     const val = e.target.value
-                    setInputText(val)
+                    updateInputText(val)
                     if (val.startsWith('/')) {
                       setSlashCmd(val.toLowerCase())
                       setShowSlashMenu(true)

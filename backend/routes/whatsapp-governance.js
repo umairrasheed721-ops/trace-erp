@@ -606,6 +606,46 @@ router.post('/chats/:phone/send', async (req, res) => {
     const orderId = order ? order.id : null;
 
     const clientUuid = req.body.clientUuid || null;
+    let quoteContext = req.body.quoteContext || null;
+    if (typeof quoteContext === 'string') {
+      try {
+        quoteContext = JSON.parse(quoteContext);
+      } catch (e) {}
+    }
+
+    let verifiedQuote = null;
+    if (quoteContext && quoteContext.message_id) {
+      try {
+        const quotedRow = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE message_id = ? AND tenant_id = ?
+          LIMIT 1
+        `).get(quoteContext.message_id, tenantId);
+
+        if (quotedRow) {
+          const fromMe = quotedRow.direction === 'outgoing';
+          const remoteJid = cleaned + '@s.whatsapp.net';
+          const participant = fromMe 
+            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+            : remoteJid;
+
+          verifiedQuote = {
+            key: {
+              remoteJid,
+              fromMe,
+              id: quotedRow.message_id,
+              participant
+            },
+            message: {
+              conversation: quotedRow.message || ''
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+      }
+    }
+
     // Insert into SQLite database immediately so it persists permanently
     let dbMessageId = null;
     try {
@@ -619,7 +659,7 @@ router.post('/chats/:phone/send', async (req, res) => {
     }
 
     // Queue message via Baileys bot with isManual = true for instant priority delivery
-    bot.sendMessage(cleaned, message, true, null, null, null, clientUuid);
+    bot.sendMessage(cleaned, message, true, null, null, null, clientUuid, verifiedQuote);
 
     // Return optimistic message object
     const newMsg = {
@@ -675,6 +715,46 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
                          mediaType === 'video' ? `[Video] ${caption}` : `[Document] ${caption}`;
 
     const clientUuid = req.body.clientUuid || null;
+    let quoteContext = req.body.quoteContext || null;
+    if (typeof quoteContext === 'string') {
+      try {
+        quoteContext = JSON.parse(quoteContext);
+      } catch (e) {}
+    }
+
+    let verifiedQuote = null;
+    if (quoteContext && quoteContext.message_id) {
+      try {
+        const quotedRow = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE message_id = ? AND tenant_id = ?
+          LIMIT 1
+        `).get(quoteContext.message_id, tenantId);
+
+        if (quotedRow) {
+          const fromMe = quotedRow.direction === 'outgoing';
+          const remoteJid = cleaned + '@s.whatsapp.net';
+          const participant = fromMe 
+            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+            : remoteJid;
+
+          verifiedQuote = {
+            key: {
+              remoteJid,
+              fromMe,
+              id: quotedRow.message_id,
+              participant
+            },
+            message: {
+              conversation: quotedRow.message || ''
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+      }
+    }
+
     let dbMessageId = null;
     try {
       const result = db.prepare(`
@@ -687,7 +767,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
     }
 
     // Queue message via Baileys bot with isManual = true
-    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname, clientUuid);
+    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname, clientUuid, verifiedQuote);
 
     res.json({ 
       success: true, 
@@ -792,6 +872,45 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
     const absolutePath = req.file.path;
     const relativeUrl = `/uploads/${req.file.filename}`;
     const clientUuid = req.body.clientUuid || null;
+    let quoteContext = req.body.quoteContext || null;
+    if (typeof quoteContext === 'string') {
+      try {
+        quoteContext = JSON.parse(quoteContext);
+      } catch (e) {}
+    }
+
+    let verifiedQuote = null;
+    if (quoteContext && quoteContext.message_id) {
+      try {
+        const quotedRow = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE message_id = ? AND tenant_id = ?
+          LIMIT 1
+        `).get(quoteContext.message_id, tenantId);
+
+        if (quotedRow) {
+          const fromMe = quotedRow.direction === 'outgoing';
+          const remoteJid = cleaned + '@s.whatsapp.net';
+          const participant = fromMe 
+            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+            : remoteJid;
+
+          verifiedQuote = {
+            key: {
+              remoteJid,
+              fromMe,
+              id: quotedRow.message_id,
+              participant
+            },
+            message: {
+              conversation: quotedRow.message || ''
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+      }
+    }
 
     let dbMessageId = null;
     try {
@@ -806,7 +925,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
 
     // Send as PTT (Push-to-Talk) voice note via Baileys
     // isManual=true to skip bulk throttle; mediaType='voice' triggers PTT encoding
-    bot.sendMessage(cleaned, '', true, absolutePath, 'voice', req.file.filename, clientUuid);
+    bot.sendMessage(cleaned, '', true, absolutePath, 'voice', req.file.filename, clientUuid, verifiedQuote);
 
     res.json({
       success: true,
@@ -876,11 +995,51 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     const orderId = order ? order.id : null;
 
     const clientUuid = req.body.clientUuid || null;
+    let quoteContext = req.body.quoteContext || null;
+    if (typeof quoteContext === 'string') {
+      try {
+        quoteContext = JSON.parse(quoteContext);
+      } catch (e) {}
+    }
+
+    let verifiedQuote = null;
+    if (quoteContext && quoteContext.message_id) {
+      try {
+        const quotedRow = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE message_id = ? AND tenant_id = ?
+          LIMIT 1
+        `).get(quoteContext.message_id, tenantId);
+
+        if (quotedRow) {
+          const fromMe = quotedRow.direction === 'outgoing';
+          const remoteJid = cleaned + '@s.whatsapp.net';
+          const participant = fromMe 
+            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+            : remoteJid;
+
+          verifiedQuote = {
+            key: {
+              remoteJid,
+              fromMe,
+              id: quotedRow.message_id,
+              participant
+            },
+            message: {
+              conversation: quotedRow.message || ''
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+      }
+    }
+
     let dbMessageId = null;
     try {
       const result = db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, ?, 'sent', ?)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
       `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, quickReply.media_url || null, quickReply.media_type || null, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
@@ -889,9 +1048,9 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     
     // Send message via Baileys bot
     if (quickReply.media_url && absolutePath) {
-      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid);
+      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid, verifiedQuote);
     } else {
-      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid);
+      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid, verifiedQuote);
     }
     
     res.json({ 

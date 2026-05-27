@@ -2488,3 +2488,99 @@ a.btn[href^="whatsapp:"]:hover {
   justify-content: flex-end;
 }
 
+/* Quoted Replies & Quote Preview Style Modifications */
+.wa-bubble .wa-bubble-reply-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-surface, #1e1e2e);
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  font-size: 0.85rem;
+  z-index: 10;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+.wa-bubble.incoming .wa-bubble-reply-btn {
+  left: calc(100% + 6px);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.wa-bubble.outgoing .wa-bubble-reply-btn {
+  right: calc(100% + 6px);
+  color: white;
+  background: var(--brand-dim);
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+.wa-bubble:hover .wa-bubble-reply-btn {
+  opacity: 1;
+}
+
+.wa-bubble-reply-btn:hover {
+  background: var(--border-bright) !important;
+  transform: translateY(-50%) scale(1.15);
+}
+
+.wa-quote-preview-frame {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.wa-quote-preview-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 3px solid var(--brand-color, #a855f7);
+  padding-left: 10px;
+  flex: 1;
+}
+
+.wa-quote-preview-sender {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-color, #a855f7);
+  margin-bottom: 2px;
+}
+
+.wa-quote-preview-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wa-quote-preview-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-left: 12px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.wa-quote-preview-cancel:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.1);
+}
+

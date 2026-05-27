@@ -574,9 +574,42 @@ class WhatsAppBot {
           if (this.store.messages[remoteJid].length > 100) this.store.messages[remoteJid].shift();
 
           const fromPhone = getPhoneFromJid(msg);
+          
+          // Phantom quote deletion protection: Listen for message deletes (protocolMessage)
+          if (msg.message?.protocolMessage) {
+            const protocolMsg = msg.message.protocolMessage;
+            if (protocolMsg.type === 0 || protocolMsg.type === 'REVOKE') {
+              const deletedId = protocolMsg.key?.id;
+              if (deletedId) {
+                console.log(`🚫 Message deletion detected: message_id=${deletedId} was deleted.`);
+                
+                // Update in local SQLite database
+                try {
+                  const { db } = require('../db');
+                  db.prepare(`
+                    UPDATE whatsapp_messages 
+                    SET message = '🚫 This message was deleted', media_url = NULL, media_type = NULL 
+                    WHERE message_id = ?
+                  `).run(deletedId);
+                } catch (e) {
+                  console.error('Failed to update deleted message in DB:', e.message);
+                }
+
+                // Broadcast deletion event to frontend
+                try {
+                  const { broadcast } = require('../websocket');
+                  broadcast('message_deleted', {
+                    message_id: deletedId,
+                    phone: fromPhone
+                  });
+                } catch (e) {}
+              }
+            }
+            continue; // Skip normal message processing for protocol messages
+          }
+
           const text = getMessageText(msg);
           const mediaDetails = getMessageMediaDetails(msg);
-          // Don't drop immediately; if both are missing, we still want to log/route it to see if it's a hidden protocol message.
           if (!text && !mediaDetails && !msg.message) continue;
 
           const isOutgoing = msg.key.fromMe;
@@ -1089,7 +1122,7 @@ class WhatsAppBot {
     return modified;
   }
 
-  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null) {
+  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null) {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -1139,7 +1172,7 @@ class WhatsAppBot {
       }
 
       const isActiveChatSession = isManual || this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);
@@ -1191,7 +1224,7 @@ class WhatsAppBot {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid } = activeQueue[0]; // Peek!
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext } = activeQueue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1370,7 +1403,11 @@ class WhatsAppBot {
           let attempt = 0;
           while (true) {
             try {
-              return await this.sock.sendMessage(jid, payload, { messageId: uuid });
+              const options = { messageId: uuid };
+              if (quoteContext) {
+                options.quoted = quoteContext;
+              }
+              return await this.sock.sendMessage(jid, payload, options);
             } catch (err) {
               attempt++;
               if (attempt > 3) {
