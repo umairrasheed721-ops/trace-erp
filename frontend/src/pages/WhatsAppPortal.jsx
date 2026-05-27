@@ -204,6 +204,7 @@ export default function WhatsAppPortal() {
   };
 
   const baseSlashCommands = [
+    { cmd: '/verify', label: '🔐 COD Verify', desc: 'Send COD verification poll to customer', action: () => { handleTriggerCODVerification(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/track', label: '📦 Send Tracking', desc: 'Send order tracking info', action: () => {
       if (activeChat) {
@@ -814,6 +815,32 @@ export default function WhatsAppPortal() {
     }
   }
 
+  const handleTriggerCODVerification = async () => {
+    if (!activeChat || !customerInfo.latestOrder) {
+      return addToast('No order history matched to trigger verification', 'warning')
+    }
+
+    if (!confirm(`Are you sure you want to send COD Verification Poll to customer for Order #${customerInfo.latestOrder.ref_number || customerInfo.latestOrder.id}?`)) {
+      return
+    }
+
+    try {
+      const res = await fetch('/api/whatsapp-governance/cod-verify/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: customerInfo.latestOrder.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast('✅ COD verification poll has been successfully queued and dispatched!', 'success');
+      } else {
+        addToast(data.error || 'Failed to trigger verification', 'error');
+      }
+    } catch (err) {
+      addToast(err.message || 'Error triggering verification', 'error');
+    }
+  }
+
   // --- MODULE 8: DRAG & DROP UPLOAD ---
   const handleDragEnter = (e) => {
     e.preventDefault()
@@ -1375,6 +1402,15 @@ export default function WhatsAppPortal() {
                     >
                       📞 Call
                     </a>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleTriggerCODVerification}
+                      disabled={!customerInfo.latestOrder}
+                      title="Send COD Verification Poll to Customer"
+                      style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}
+                    >
+                      🔐 COD Verify
+                    </button>
                     <button 
                       className="btn btn-secondary btn-sm"
                       onClick={handleSendInvoice}
