@@ -614,45 +614,51 @@ router.post('/chats/:phone/send', async (req, res) => {
     }
 
     let verifiedQuote = null;
-    if (quoteContext && quoteContext.message_id) {
+    const qid = quoteContext?.id || quoteContext?.message_id;
+    if (quoteContext && qid) {
+      let participant = quoteContext.participant;
+      let text = quoteContext.text;
       try {
         const quotedRow = db.prepare(`
           SELECT * FROM whatsapp_messages 
           WHERE message_id = ? AND tenant_id = ?
           LIMIT 1
-        `).get(quoteContext.message_id, tenantId);
+        `).get(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
           const remoteJid = cleaned + '@s.whatsapp.net';
-          const participant = fromMe 
-            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
-            : remoteJid;
-
-          verifiedQuote = {
-            key: {
-              remoteJid,
-              fromMe,
-              id: quotedRow.message_id,
-              participant
-            },
-            message: {
-              conversation: quotedRow.message || ''
-            }
-          };
+          if (!participant) {
+            participant = fromMe 
+              ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+              : remoteJid;
+          }
+          if (!text) {
+            text = quotedRow.message || '';
+          }
         }
       } catch (err) {
         console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
       }
+
+      if (!participant) {
+        participant = cleaned + '@s.whatsapp.net';
+      }
+
+      verifiedQuote = {
+        id: qid,
+        participant: participant,
+        text: text || 'Media'
+      };
     }
 
     // Insert into SQLite database immediately so it persists permanently
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, message, clientUuid, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?, ?)
+      `).run(storeId, orderId, cleaned, message, clientUuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to save manual chat message:', err.message);
@@ -670,6 +676,7 @@ router.post('/chats/:phone/send', async (req, res) => {
       direction: 'outgoing',
       message,
       status: 'sent',
+      quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
       created_at: new Date().toISOString()
     };
 
@@ -723,44 +730,50 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
     }
 
     let verifiedQuote = null;
-    if (quoteContext && quoteContext.message_id) {
+    const qid = quoteContext?.id || quoteContext?.message_id;
+    if (quoteContext && qid) {
+      let participant = quoteContext.participant;
+      let text = quoteContext.text;
       try {
         const quotedRow = db.prepare(`
           SELECT * FROM whatsapp_messages 
           WHERE message_id = ? AND tenant_id = ?
           LIMIT 1
-        `).get(quoteContext.message_id, tenantId);
+        `).get(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
           const remoteJid = cleaned + '@s.whatsapp.net';
-          const participant = fromMe 
-            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
-            : remoteJid;
-
-          verifiedQuote = {
-            key: {
-              remoteJid,
-              fromMe,
-              id: quotedRow.message_id,
-              participant
-            },
-            message: {
-              conversation: quotedRow.message || ''
-            }
-          };
+          if (!participant) {
+            participant = fromMe 
+              ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+              : remoteJid;
+          }
+          if (!text) {
+            text = quotedRow.message || '';
+          }
         }
       } catch (err) {
         console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
       }
+
+      if (!participant) {
+        participant = cleaned + '@s.whatsapp.net';
+      }
+
+      verifiedQuote = {
+        id: qid,
+        participant: participant,
+        text: text || 'Media'
+      };
     }
 
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, relativeUrl, mediaType, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?, ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, relativeUrl, mediaType, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log manual media message:', err.message);
@@ -781,6 +794,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
         media_url: relativeUrl,
         media_type: mediaType,
         status: 'sent',
+        quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
         created_at: new Date().toISOString()
       }
     });
@@ -880,44 +894,50 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
     }
 
     let verifiedQuote = null;
-    if (quoteContext && quoteContext.message_id) {
+    const qid = quoteContext?.id || quoteContext?.message_id;
+    if (quoteContext && qid) {
+      let participant = quoteContext.participant;
+      let text = quoteContext.text;
       try {
         const quotedRow = db.prepare(`
           SELECT * FROM whatsapp_messages 
           WHERE message_id = ? AND tenant_id = ?
           LIMIT 1
-        `).get(quoteContext.message_id, tenantId);
+        `).get(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
           const remoteJid = cleaned + '@s.whatsapp.net';
-          const participant = fromMe 
-            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
-            : remoteJid;
-
-          verifiedQuote = {
-            key: {
-              remoteJid,
-              fromMe,
-              id: quotedRow.message_id,
-              participant
-            },
-            message: {
-              conversation: quotedRow.message || ''
-            }
-          };
+          if (!participant) {
+            participant = fromMe 
+              ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+              : remoteJid;
+          }
+          if (!text) {
+            text = quotedRow.message || '';
+          }
         }
       } catch (err) {
         console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
       }
+
+      if (!participant) {
+        participant = cleaned + '@s.whatsapp.net';
+      }
+
+      verifiedQuote = {
+        id: qid,
+        participant: participant,
+        text: text || 'Media'
+      };
     }
 
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, ?, 'audio', 'sent', ?)
-      `).run(storeId, orderId, cleaned, clientUuid, relativeUrl, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, ?, 'audio', 'sent', ?, ?)
+      `).run(storeId, orderId, cleaned, clientUuid, relativeUrl, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log voice note:', err.message);
@@ -941,6 +961,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
         media_type: 'audio',
         status: 'sent',
         message_id: clientUuid,
+        quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
         created_at: new Date().toISOString()
       }
     });
@@ -1003,44 +1024,50 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     }
 
     let verifiedQuote = null;
-    if (quoteContext && quoteContext.message_id) {
+    const qid = quoteContext?.id || quoteContext?.message_id;
+    if (quoteContext && qid) {
+      let participant = quoteContext.participant;
+      let text = quoteContext.text;
       try {
         const quotedRow = db.prepare(`
           SELECT * FROM whatsapp_messages 
           WHERE message_id = ? AND tenant_id = ?
           LIMIT 1
-        `).get(quoteContext.message_id, tenantId);
+        `).get(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
           const remoteJid = cleaned + '@s.whatsapp.net';
-          const participant = fromMe 
-            ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
-            : remoteJid;
-
-          verifiedQuote = {
-            key: {
-              remoteJid,
-              fromMe,
-              id: quotedRow.message_id,
-              participant
-            },
-            message: {
-              conversation: quotedRow.message || ''
-            }
-          };
+          if (!participant) {
+            participant = fromMe 
+              ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+              : remoteJid;
+          }
+          if (!text) {
+            text = quotedRow.message || '';
+          }
         }
       } catch (err) {
         console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
       }
+
+      if (!participant) {
+        participant = cleaned + '@s.whatsapp.net';
+      }
+
+      verifiedQuote = {
+        id: qid,
+        participant: participant,
+        text: text || 'Media'
+      };
     }
 
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, quickReply.media_url || null, quickReply.media_type || null, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?, ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, quickReply.media_url || null, quickReply.media_type || null, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
@@ -1065,6 +1092,7 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
         media_url: quickReply.media_url || null,
         media_type: quickReply.media_type || null,
         status: 'sent',
+        quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
         created_at: new Date().toISOString()
       }
     });

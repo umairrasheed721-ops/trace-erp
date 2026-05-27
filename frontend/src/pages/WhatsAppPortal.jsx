@@ -8,6 +8,51 @@ import SettingsModal from '../components/SettingsModal'
 import { handleApiError, ERR } from '../utils/errorHandler'
 import { useQuoteDraft } from '../context/QuoteDraftContext'
 
+const getQuotedInfo = (msg) => {
+  if (!msg) return null
+  if (msg.quote_context) {
+    try {
+      const parsed = typeof msg.quote_context === 'string' ? JSON.parse(msg.quote_context) : msg.quote_context
+      if (parsed && (parsed.id || parsed.message_id)) {
+        return {
+          id: parsed.id || parsed.message_id,
+          participant: parsed.participant || parsed.participant_jid,
+          text: parsed.text || parsed.conversation || 'Media'
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse quote_context:', e)
+    }
+  }
+  if (msg.contextInfo) {
+    const info = msg.contextInfo
+    if (info.stanzaId) {
+      const qMsg = info.quotedMessage
+      const text = qMsg?.conversation || qMsg?.extendedTextMessage?.text || (qMsg ? 'Media' : '')
+      return {
+        id: info.stanzaId,
+        participant: info.participant,
+        text: text || 'Media'
+      }
+    }
+  }
+  if (msg.quotedMessage) {
+    return {
+      id: msg.quotedMessage.id,
+      participant: msg.quotedMessage.participant || msg.quotedMessage.participant_jid,
+      text: msg.quotedMessage.text || 'Media'
+    }
+  }
+  return null
+}
+
+const getQuoteSenderDisplayName = (participant, activeNumber) => {
+  if (!participant) return 'System'
+  if (participant === 'Me' || participant === 'you' || participant.startsWith('me@') || (activeNumber && participant.split('@')[0] === activeNumber.split(':')[0])) {
+    return 'You'
+  }
+  return `@${participant.split('@')[0]}`
+}
 
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
@@ -54,6 +99,13 @@ export default function WhatsAppPortal() {
       setInputText('')
     }
   }, [activeJid])
+
+  // Auto-focus chat input when quote reply is activated
+  useEffect(() => {
+    if (activeQuote && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [activeQuote])
 
   // Helper to update both local state and context state
   const updateInputText = (val) => {
@@ -148,6 +200,7 @@ export default function WhatsAppPortal() {
   const typingTimersRef = useRef({})
   const cmdPaletteInputRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+  const inputRef = useRef(null)
   
   // --- FETCH CHATS ---
   const fetchChats = async (silent = false) => {
@@ -517,6 +570,19 @@ export default function WhatsAppPortal() {
   }
 
   // --- ACTIONS ---
+  const handleQuoteClick = (msg) => {
+    if (!activeChat) return
+    setQuotedMessage(activeChat.phone, {
+      id: msg.message_id || msg.id,
+      text: msg.message || (msg.media_type ? `[${msg.media_type.toUpperCase()}]` : ''),
+      type: msg.media_type || 'text',
+      participant_jid: msg.direction === 'outgoing' ? 'Me' : (activeChat.customerName || activeChat.phone),
+      participant: msg.direction === 'outgoing'
+        ? (activeNumber ? activeNumber.split(':')[0] + '@s.whatsapp.net' : 'me@s.whatsapp.net')
+        : (activeChat.phone + '@s.whatsapp.net')
+    })
+  }
+
   const handleSendMessage = async (textToSend = null) => {
     const finalMsg = textToSend !== null ? textToSend : inputText
     if (!finalMsg.trim() || !activeChat) return
@@ -553,7 +619,11 @@ export default function WhatsAppPortal() {
         body: JSON.stringify({ 
           message: finalMsg, 
           clientUuid,
-          quoteContext: activeQuote ? { message_id: activeQuote.id } : null
+          quoteContext: activeQuote ? { 
+            id: activeQuote.id, 
+            participant: activeQuote.participant, 
+            text: activeQuote.text 
+          } : null
         })
       })
       const data = await res.json()
@@ -618,7 +688,11 @@ export default function WhatsAppPortal() {
         body: JSON.stringify({ 
           replyId: reply.id, 
           clientUuid,
-          quoteContext: activeQuote ? { message_id: activeQuote.id } : null
+          quoteContext: activeQuote ? { 
+            id: activeQuote.id, 
+            participant: activeQuote.participant, 
+            text: activeQuote.text 
+          } : null
         })
       })
       const data = await res.json()
@@ -745,7 +819,11 @@ export default function WhatsAppPortal() {
         formData.append('audio', blob, `voice_${Date.now()}.webm`)
         formData.append('clientUuid', clientUuid)
         if (activeQuote) {
-          formData.append('quoteContext', JSON.stringify({ message_id: activeQuote.id }))
+          formData.append('quoteContext', JSON.stringify({ 
+            id: activeQuote.id, 
+            participant: activeQuote.participant, 
+            text: activeQuote.text 
+          }))
         }
         addToast('⏳ Sending voice note...', 'info')
         try {
@@ -842,7 +920,11 @@ export default function WhatsAppPortal() {
     formData.append('media', file)
     formData.append('clientUuid', clientUuid)
     if (activeQuote) {
-      formData.append('quoteContext', JSON.stringify({ message_id: activeQuote.id }))
+      formData.append('quoteContext', JSON.stringify({ 
+        id: activeQuote.id, 
+        participant: activeQuote.participant, 
+        text: activeQuote.text 
+      }))
     }
     
     setUploading(true)
@@ -1287,6 +1369,7 @@ export default function WhatsAppPortal() {
                     const showImage = msg.media_type === 'image' && msg.media_url
                     const showAudio = msg.media_type === 'audio' && msg.media_url
                     const showDoc = msg.media_type === 'document' && msg.media_url
+                    const quoteInfo = getQuotedInfo(msg)
                     
                     // Parse AI payment card data from transcript
                     let paymentCardData = null
@@ -1309,23 +1392,29 @@ export default function WhatsAppPortal() {
                       <div 
                         key={msg.id || index}
                         className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
+                        onDoubleClick={() => handleQuoteClick(msg)}
                       >
                         {/* Subtle Reply button on hover */}
                         <button
                           type="button"
                           className="wa-bubble-reply-btn"
                           title="Reply to this message"
-                          onClick={() => {
-                            setQuotedMessage(activeChat.phone, {
-                              id: msg.message_id || msg.id,
-                              text: msg.message || (msg.media_type ? `[${msg.media_type}]` : ''),
-                              type: msg.media_type || 'text',
-                              participant_jid: msg.direction === 'outgoing' ? 'Me' : (activeChat.customerName || activeChat.phone)
-                            });
-                          }}
+                          onClick={() => handleQuoteClick(msg)}
                         >
                           ↩️
                         </button>
+
+                        {/* Rendering Quoted block inside bubble */}
+                        {quoteInfo && (
+                          <div className="wa-bubble-quote-block">
+                            <span className="wa-bubble-quote-sender">
+                              {getQuoteSenderDisplayName(quoteInfo.participant, activeNumber)}
+                            </span>
+                            <span className="wa-bubble-quote-text">
+                              {quoteInfo.text}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Rendering Message Content */}
                         {!showDoc && <span>{msg.message}</span>}
@@ -1522,6 +1611,7 @@ export default function WhatsAppPortal() {
 
                 {/* Input Field */}
                 <textarea 
+                  ref={inputRef}
                   className="wa-portal-input-textarea"
                   placeholder="Type a message..."
                   value={inputText}

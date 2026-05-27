@@ -775,6 +775,7 @@ function runMigrations(db) {
       media_url TEXT,
       media_type TEXT,
       status TEXT DEFAULT 'sent',
+      quote_context TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
     CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone ON whatsapp_messages(phone);
@@ -892,6 +893,7 @@ function runMigrations(db) {
 
   // Phase 4/5: Final Sweep Database Migrations
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN quote_context TEXT DEFAULT NULL`); } catch(e){}
 
   // FTS5 Virtual Table for Search
   try {

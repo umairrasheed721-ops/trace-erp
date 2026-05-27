@@ -2584,3 +2584,56 @@ a.btn[href^="whatsapp:"]:hover {
   background: rgba(255,255,255,0.1);
 }
 
+/* Quoted Block inside Message Bubbles */
+.wa-bubble-quote-block {
+  background: rgba(0, 0, 0, 0.15);
+  border-left: 3px solid var(--brand-color, #a855f7);
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  max-width: 100%;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.wa-bubble.incoming .wa-bubble-quote-block {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wa-bubble.outgoing .wa-bubble-quote-block {
+  background: rgba(255, 255, 255, 0.12);
+  border-left-color: rgba(255, 255, 255, 0.6);
+}
+
+.wa-bubble-quote-sender {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.72rem;
+  color: var(--brand-color, #a855f7);
+  text-align: left;
+}
+
+.wa-bubble.outgoing .wa-bubble-quote-sender {
+  color: #fff;
+  opacity: 0.9;
+}
+
+.wa-bubble-quote-text {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  display: block;
+  text-align: left;
+}
+
+.wa-bubble.outgoing .wa-bubble-quote-text {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+

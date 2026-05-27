@@ -654,6 +654,23 @@ class WhatsAppBot {
           const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : null);
           if (!finalMessage) continue; // Drop if still nothing to store
 
+          const m = msg.message;
+          const contextInfo = m?.extendedTextMessage?.contextInfo || 
+                              m?.imageMessage?.contextInfo || 
+                              m?.audioMessage?.contextInfo || 
+                              m?.videoMessage?.contextInfo || 
+                              m?.documentMessage?.contextInfo;
+          let incomingQuoteContext = null;
+          if (contextInfo && contextInfo.stanzaId) {
+            incomingQuoteContext = {
+              id: contextInfo.stanzaId,
+              participant: contextInfo.participant,
+              text: contextInfo.quotedMessage?.conversation || 
+                    contextInfo.quotedMessage?.extendedTextMessage?.text || 
+                    "Media"
+            };
+          }
+
           const { db } = require('../db');
           // Robust order routing: match customer even if DB has spaces/dashes like "0303 4070 779"
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
@@ -669,9 +686,9 @@ class WhatsAppBot {
               dbMessageId = existing.id;
             } else {
               const result = db.prepare(`
-                INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')
-              `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType);
+                INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)
+              `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null);
               dbMessageId = result.lastInsertRowid;
             }
           } catch (dbErr) {
@@ -723,6 +740,7 @@ class WhatsAppBot {
                   media_url: mediaUrl,
                   media_type: mediaType,
                   status: 'sent',
+                  quote_context: incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null,
                   created_at: new Date().toISOString()
                 }
               });
@@ -1398,15 +1416,25 @@ class WhatsAppBot {
             payload = { text: txt };
           }
 
+          if (quoteContext) {
+            const stanzaId = quoteContext.id || quoteContext.stanzaId || quoteContext.message_id;
+            if (stanzaId) {
+              payload.contextInfo = {
+                stanzaId: stanzaId,
+                participant: quoteContext.participant,
+                quotedMessage: {
+                  conversation: quoteContext.text || "Media"
+                }
+              };
+            }
+          }
+
           // Exponential backoff loop (2s, 4s, 8s - max 3 retries)
           const delays = [2000, 4000, 8000];
           let attempt = 0;
           while (true) {
             try {
               const options = { messageId: uuid };
-              if (quoteContext) {
-                options.quoted = quoteContext;
-              }
               return await this.sock.sendMessage(jid, payload, options);
             } catch (err) {
               attempt++;
@@ -1643,6 +1671,7 @@ class WhatsAppBot {
                 media_url: finalDbMediaUrl,
                 media_type: finalMediaType,
                 status: 'sent',
+                quote_context: quoteContext ? JSON.stringify(quoteContext) : null,
                 created_at: new Date().toISOString()
               }
             });
