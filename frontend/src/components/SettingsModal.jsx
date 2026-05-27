@@ -19,6 +19,7 @@ export default function SettingsModal({ onClose }) {
 
   useEffect(() => {
     fetchStats();
+    fetchTemplates();
   }, [tenantId]);
 
   useEffect(() => {
@@ -265,6 +266,71 @@ export default function SettingsModal({ onClose }) {
                     Failed to load system health stats.
                   </div>
                 )}
+              </div>
+
+              {/* Quick Reply Template Manager */}
+              <div className="settings-section" style={{ marginTop: '24px', marginBottom: '24px' }}>
+                <div className="settings-section-title">⚡ Quick Reply Templates</div>
+                <div className="template-manager-container">
+                  {/* Form to Add Template */}
+                  <form onSubmit={handleAddTemplate} className="template-form-card">
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Template Title</label>
+                      <input
+                        type="text"
+                        className="premium-input"
+                        placeholder="e.g. Return Policy"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: '12px' }}>
+                      <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8 }}>Message Body</label>
+                      <textarea
+                        className="premium-input"
+                        placeholder="Type the quick reply message text..."
+                        rows={4}
+                        value={newText}
+                        onChange={(e) => setNewText(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+                      Save Template
+                    </button>
+                  </form>
+
+                  {/* Saved Templates List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="settings-section-title" style={{ margin: 0, fontSize: '0.9rem' }}>📋 Saved Templates ({templates.length})</div>
+                    
+                    {loadingTemplates ? (
+                      <div className="text-center py-8 italic text-muted text-xs">Loading saved templates...</div>
+                    ) : templates.length === 0 ? (
+                      <div className="text-center py-8 italic text-muted text-xs">No templates configured yet.</div>
+                    ) : (
+                      <div className="template-list-container">
+                        {templates.map((t) => (
+                          <div key={t.id} className="template-item-card">
+                            <div className="template-item-details">
+                              <span className="template-item-title">{t.title}</span>
+                              <span className="template-item-text">{t.text}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="template-item-delete-btn"
+                              title="Delete Template"
+                              onClick={() => handleDeleteTemplate(t.id)}
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="settings-danger-zone">
