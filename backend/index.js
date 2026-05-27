@@ -109,6 +109,7 @@ const costManagerRoutes = safeRequire('./routes/cost-manager', 'CostManager');
 const syncRoutes        = safeRequire('./routes/sync',         'Sync');
 const customerSuccessRoutes = safeRequire('./routes/customer-success', 'CustomerSuccess');
 const whatsappGovernanceRoutes = safeRequire('./routes/whatsapp-governance', 'WhatsAppGovernance');
+const settingsRoutes    = safeRequire('./routes/settings',     'Settings');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -134,6 +135,7 @@ const ROUTE_MAP = {
   'Templates':   ['/api/templates',   './routes/templates'],
   'Diagnostics': ['/api/diagnostics', './routes/diagnostics'],
   'CostManager': ['/api/cost-manager', './routes/cost-manager'],
+  'Settings':    ['/api/settings',    './routes/settings'],
 };
 
 setInterval(() => {
@@ -499,6 +501,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/scheduler', schedulerRoutes);
 app.use('/api/customer-success', customerSuccessRoutes);
 app.use('/api/whatsapp-governance', whatsappGovernanceRoutes);
+app.use('/api/settings', settingsRoutes);
 
 const citiesRoutes = require('./routes/cities');
 app.use('/api/cities', citiesRoutes);

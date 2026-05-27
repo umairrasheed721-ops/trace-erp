@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import VoiceNoteButton from '../components/VoiceNoteButton'
 import QuickReplyPanel from '../components/QuickReplyPanel'
 import MediaUploadOverlay from '../components/MediaUploadOverlay'
+import SettingsModal from '../components/SettingsModal'
 import { handleApiError, ERR } from '../utils/errorHandler'
 
 
@@ -68,6 +69,7 @@ export default function WhatsAppPortal() {
   
   // --- MODULE 7: HUMAN HANDOFF STATE ---
   const [humanHandoffActive, setHumanHandoffActive] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   
   // --- CONSTANTS ---
   const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
@@ -907,6 +909,35 @@ export default function WhatsAppPortal() {
             >
               <span>⌘</span><span>K</span>
             </button>
+            {/* Settings Trigger */}
+            <button
+              onClick={() => setShowSettings(true)}
+              title="System Settings"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '8px',
+                color: 'var(--text-color)',
+                fontSize: '0.85rem',
+                padding: '3px 8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+              }}
+            >
+              ⚙️
+            </button>
           </div>
 
           {/* Search Contacts */}
@@ -1537,6 +1568,9 @@ export default function WhatsAppPortal() {
             </div>
           </div>
         </div>
+      )}
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
       )}
     </div>
   )

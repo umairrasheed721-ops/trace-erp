@@ -1820,6 +1820,44 @@ class WhatsAppBot {
     return true;
   }
 
+  async logoutSession() {
+    this._isLoggedOut = true;
+    this.status = 'DISCONNECTED';
+    this.qrCode = null;
+    this.reconnectAttempts = 0;
+    this.isConnecting = false;
+
+    const oldSock = this.sock;
+    this.sock = null;
+    if (oldSock) {
+      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
+      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
+      try { await oldSock.logout(); } catch (_) {}
+      try { oldSock.end(new Error('logout')); } catch (_) {}
+      try { oldSock.ws?.close(); } catch (_) {}
+    }
+
+    try {
+      const sessionPath = this.getSessionPath();
+      if (fs.existsSync(sessionPath)) {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log(`✅ Session directory cleared on logout for tenant [${this.tenantId}]`);
+      }
+    } catch (e) {
+      console.error('⚠️ Clear session directory error:', e.message);
+    }
+
+    // Also clear DB-backed session
+    try {
+      db.prepare('DELETE FROM wa_session_store').run();
+      console.log(`[WA-DB] ✅ Session cleared from DB for tenant [${this.tenantId}]`);
+    } catch (e) {
+      console.error('[WA-DB] Clear failed:', e.message);
+    }
+    return true;
+  }
+
   async softReconnect() {
     if (this.isConnecting) return;
     console.log(`🔄 [Soft Reconnect] Re-initializing Baileys session for tenant: [${this.tenantId}]`);
