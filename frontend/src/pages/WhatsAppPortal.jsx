@@ -117,6 +117,7 @@ export default function WhatsAppPortal() {
   const wsRef = useRef(null)
   const typingTimersRef = useRef({})
   const cmdPaletteInputRef = useRef(null)
+  const reconnectTimeoutRef = useRef(null)
   
   // --- FETCH CHATS ---
   const fetchChats = async (silent = false) => {
@@ -299,27 +300,39 @@ export default function WhatsAppPortal() {
           // 1. Update chronological messages list if active chat matched
           if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
             setMessages(prev => {
-              // Check if a message with same clientUuid or message_id or database id already exists
-              const exists = prev.some(m => 
-                (newMsg.message_id && m.id === newMsg.message_id) || 
-                (newMsg.message_id && m.message_id && m.message_id === newMsg.message_id) ||
-                (newMsg.id && m.id === newMsg.id)
-              );
+              // Deduplicate strictly
+              const idx = prev.findIndex(m => {
+                const uuidMatch = (newMsg.clientUuid && (m.id === newMsg.clientUuid || m.clientUuid === newMsg.clientUuid));
+                const idMatch = (newMsg.id && (m.id === newMsg.id || String(m.message_id) === String(newMsg.id)));
+                const msgIdMatch = (newMsg.message_id && (m.message_id === newMsg.message_id || m.id === newMsg.message_id));
+                
+                if (uuidMatch || idMatch || msgIdMatch) return true;
 
-              if (exists) {
-                // Update the existing optimistic bubble in-place
-                return prev.map(m => {
-                  if (
-                    (newMsg.message_id && m.id === newMsg.message_id) ||
-                    (newMsg.message_id && m.message_id && m.message_id === newMsg.message_id) ||
-                    (newMsg.id && m.id === newMsg.id)
-                  ) {
-                    return newMsg;
-                  }
-                  return m;
-                });
+                // Fallback Match (Aggressive Content + Time check)
+                if (m.direction === 'outgoing' && newMsg.direction === 'outgoing') {
+                  const contentMatch = (m.message && newMsg.message && m.message.trim() === newMsg.message.trim());
+                  
+                  const t1 = m.created_at ? new Date(m.created_at).getTime() : Date.now();
+                  const t2 = newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now();
+                  const timeMatch = Math.abs(t1 - t2) < 5000;
+
+                  if (contentMatch && timeMatch) return true;
+                }
+
+                return false;
+              });
+
+              if (idx !== -1) {
+                // Update in-place
+                const updated = [...prev];
+                updated[idx] = {
+                  ...updated[idx],
+                  ...newMsg,
+                  clientUuid: updated[idx].clientUuid || newMsg.clientUuid
+                };
+                return updated;
               } else {
-                // Append if it's new
+                // Append if new
                 return [...prev, newMsg];
               }
             });
@@ -432,7 +445,7 @@ export default function WhatsAppPortal() {
     socket.onclose = () => {
       console.log('🔌 WebSocket disconnected. Retrying in 3 seconds...')
       setWsStatus('DISCONNECTED')
-      setTimeout(connectWebSocket, 3000)
+      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000)
     }
 
     socket.onerror = (err) => {
@@ -831,7 +844,13 @@ export default function WhatsAppPortal() {
     return () => {
       clearInterval(statusInterval)
       clearInterval(pingInterval)
-      if (wsRef.current) wsRef.current.close()
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      if (wsRef.current) {
+        wsRef.current.onclose = null
+        wsRef.current.close()
+      }
       // Clear typing timers
       Object.values(typingTimersRef.current).forEach(clearTimeout)
     }

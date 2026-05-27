@@ -628,19 +628,25 @@ class WhatsAppBot {
           const storeId = order ? order.store_id : 1;
 
           let dbMessageId = null;
+          let alreadyExists = false;
           try {
-            const result = db.prepare(`
-              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')
-              ON CONFLICT(message_id) DO NOTHING
-            `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType);
-            dbMessageId = result.lastInsertRowid;
+            const existing = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
+            if (existing) {
+              alreadyExists = true;
+              dbMessageId = existing.id;
+            } else {
+              const result = db.prepare(`
+                INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent')
+              `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType);
+              dbMessageId = result.lastInsertRowid;
+            }
           } catch (dbErr) {
             console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);
           }
 
           // 🎙️ STT: Fire-and-forget transcription for incoming voice notes (Rule F)
-          if (mediaType === 'audio' && mediaUrl && dbMessageId) {
+          if (mediaType === 'audio' && mediaUrl && dbMessageId && !alreadyExists) {
             setImmediate(async () => {
               try {
                 const { transcribeVoiceNote } = require('./stt_engine');
@@ -654,7 +660,7 @@ class WhatsAppBot {
           }
 
           // 🔍 OCR: Fire-and-forget receipt scan for incoming images (Rule F)
-          if (mediaType === 'image' && mediaUrl && dbMessageId) {
+          if (mediaType === 'image' && mediaUrl && dbMessageId && !alreadyExists) {
             setImmediate(async () => {
               try {
                 const { scanReceiptOCR } = require('./ocr_engine');
@@ -668,25 +674,27 @@ class WhatsAppBot {
           }
 
           // Broadcast new message via WebSocket to active agents in real-time
-          try {
-            const { broadcast } = require('../websocket');
-            broadcast('message', {
-              order_id: orderId,
-              message: {
-                id: dbMessageId || Date.now(),
-                store_id: storeId,
+          if (!isOutgoing || !alreadyExists) {
+            try {
+              const { broadcast } = require('../websocket');
+              broadcast('message', {
                 order_id: orderId,
-                phone: fromPhone,
-                direction: isOutgoing ? 'outgoing' : 'incoming',
-                message: finalMessage,
-                message_id: msg.key.id,
-                media_url: mediaUrl,
-                media_type: mediaType,
-                status: 'sent',
-                created_at: new Date().toISOString()
-              }
-            });
-          } catch (e) {}
+                message: {
+                  id: dbMessageId || Date.now(),
+                  store_id: storeId,
+                  order_id: orderId,
+                  phone: fromPhone,
+                  direction: isOutgoing ? 'outgoing' : 'incoming',
+                  message: finalMessage,
+                  message_id: msg.key.id,
+                  media_url: mediaUrl,
+                  media_type: mediaType,
+                  status: 'sent',
+                  created_at: new Date().toISOString()
+                }
+              });
+            } catch (e) {}
+          }
 
           if (isOutgoing) {
             // Human agent manually sent a message: Pause bot replies for 30 minutes for this contact
@@ -1550,7 +1558,14 @@ class WhatsAppBot {
           }
 
           let existingRow = null;
-          if (finalDbMediaUrl) {
+          if (uuid) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, uuid, this.tenantId);
+          }
+          if (!existingRow && finalDbMediaUrl) {
             existingRow = db.prepare(`
               SELECT id FROM whatsapp_messages 
               WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
@@ -1565,7 +1580,7 @@ class WhatsAppBot {
               WHERE id = ?
             `).run(messageId, existingRow.id);
             dbMessageId = existingRow.id;
-            console.log(`[DEDUP] Updated existing message ID ${dbMessageId} with Baileys ID: ${messageId}`);
+            console.log(`[DEDUP] Updated existing message ID ${dbMessageId} (originally message_id=${uuid}) with Baileys ID: ${messageId}`);
           } else {
             const result = db.prepare(`
               INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
@@ -1587,6 +1602,7 @@ class WhatsAppBot {
                 direction: 'outgoing',
                 message: dbMessageContent,
                 message_id: messageId,
+                clientUuid: uuid,
                 media_url: finalDbMediaUrl,
                 media_type: finalMediaType,
                 status: 'sent',
@@ -1660,6 +1676,7 @@ class WhatsAppBot {
                 direction: 'outgoing',
                 message: dbMessageContent,
                 message_id: uuid,
+                clientUuid: uuid,
                 media_url: finalDbMediaUrl,
                 media_type: finalMediaType,
                 status: 'failed',
