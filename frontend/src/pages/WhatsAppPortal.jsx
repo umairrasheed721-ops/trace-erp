@@ -22,6 +22,10 @@ export default function WhatsAppPortal() {
   const [chats, setChats] = useState([])
   const [loadingChats, setLoadingChats] = useState(true)
   const [activeChat, setActiveChat] = useState(null)
+  const activeChatRef = useRef(activeChat)
+  useEffect(() => {
+    activeChatRef.current = activeChat
+  }, [activeChat])
   const [messages, setMessages] = useState([])
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [searchText, setSearchText] = useState('')
@@ -285,47 +289,46 @@ export default function WhatsAppPortal() {
       try {
         const payload = JSON.parse(event.data)
         const { event: wsEvent, data } = payload
+        const currentActive = activeChatRef.current
 
         if (wsEvent === 'message' && data && data.message) {
           const newMsg = data.message
           
           // 1. Update chronological messages list if active chat matched
-          setActiveChat(currentActive => {
-            if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
-              setMessages(prev => {
-                // Check if there's an optimistic pending counterpart by ID or temporary client-opt prefix
-                if (newMsg.direction === 'outgoing') {
-                  const pendingIndex = prev.findIndex(m => 
-                    m.id === newMsg.message_id || 
-                    m.id === newMsg.id || 
-                    (m.id && m.id.toString().startsWith('client-opt-')) ||
-                    m.status === 'pending' || 
-                    m.status === 'sending'
-                  );
-                  if (pendingIndex !== -1) {
-                    const next = [...prev];
-                    next[pendingIndex] = newMsg;
-                    console.log(`Reconciled optimistic message ID: ${prev[pendingIndex].id} with DB ID: ${newMsg.id}`);
-                    return next;
-                  }
-                }
+          if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
+            setMessages(prev => {
+              // Check if a message with same clientUuid or message_id or database id already exists
+              const exists = prev.some(m => 
+                (newMsg.message_id && m.id === newMsg.message_id) || 
+                (newMsg.message_id && m.message_id && m.message_id === newMsg.message_id) ||
+                (newMsg.id && m.id === newMsg.id)
+              );
 
-                // Prevent duplicate insertions
-                if (prev.some(m => m.message_id === newMsg.message_id || m.id === newMsg.id)) {
-                  return prev
-                }
-                return [...prev, newMsg]
-              })
-              scrollToBottom()
-            }
-            return currentActive
-          })
+              if (exists) {
+                // Update the existing optimistic bubble in-place
+                return prev.map(m => {
+                  if (
+                    (newMsg.message_id && m.id === newMsg.message_id) ||
+                    (newMsg.message_id && m.message_id && m.message_id === newMsg.message_id) ||
+                    (newMsg.id && m.id === newMsg.id)
+                  ) {
+                    return newMsg;
+                  }
+                  return m;
+                });
+              } else {
+                // Append if it's new
+                return [...prev, newMsg];
+              }
+            });
+            scrollToBottom();
+          }
 
           // 2. Update list preview or unread count
           setChats(prevChats => {
             let updated = prevChats.map(c => {
               if (String(c.phone) === String(newMsg.phone)) {
-                const isCurrentlyActive = activeChat && String(activeChat.phone) === String(newMsg.phone)
+                const isCurrentlyActive = currentActive && String(currentActive.phone) === String(newMsg.phone)
                 return {
                   ...c,
                   lastMessage: newMsg,
@@ -412,7 +415,7 @@ export default function WhatsAppPortal() {
         }
 
         if (wsEvent === 'memory_update' && data) {
-          if (activeChat && String(activeChat.phone) === String(data.phone)) {
+          if (currentActive && String(currentActive.phone) === String(data.phone)) {
             setCustomerInfo(prev => ({
               ...prev,
               geminiMemory: data.memoryText
