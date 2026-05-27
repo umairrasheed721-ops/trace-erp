@@ -23,7 +23,7 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/whatsapp-governance/templates?tenant_id=${encodeURIComponent(tenantId)}`, {
+        const res = await fetch(`/api/templates?quick=true&tenant_id=${encodeURIComponent(tenantId)}`, {
           headers: {
             'x-tenant-id': tenantId,
             'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
@@ -50,7 +50,7 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
 
     loadTemplates();
 
-    // Listen for template updates
+    // Listen for template updates (e.g. from Settings Manager)
     const handleUpdate = () => {
       loadTemplates();
     };

@@ -120,7 +120,7 @@ export default function SettingsModal({ onClose }) {
     try {
       setLoadingTemplates(true);
       const token = localStorage.getItem('trace_token') || '';
-      const res = await fetch(`/api/whatsapp-governance/templates?tenant_id=${encodeURIComponent(tenantId)}`, {
+      const res = await fetch(`/api/templates?quick=true&tenant_id=${encodeURIComponent(tenantId)}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'x-tenant-id': tenantId
@@ -148,7 +148,7 @@ export default function SettingsModal({ onClose }) {
 
     try {
       const token = localStorage.getItem('trace_token') || '';
-      const res = await fetch('/api/whatsapp-governance/templates', {
+      const res = await fetch('/api/templates?quick=true', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -157,7 +157,8 @@ export default function SettingsModal({ onClose }) {
         },
         body: JSON.stringify({
           title: newTitle,
-          text: newText
+          text: newText,
+          quick: true
         })
       });
       const data = await res.json();
@@ -182,7 +183,7 @@ export default function SettingsModal({ onClose }) {
 
     try {
       const token = localStorage.getItem('trace_token') || '';
-      const res = await fetch(`/api/whatsapp-governance/templates/${id}`, {
+      const res = await fetch(`/api/templates/${id}?quick=true`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

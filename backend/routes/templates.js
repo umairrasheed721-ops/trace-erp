@@ -41,6 +41,11 @@ seedDefaults();
 // Get all templates
 router.get('/', authenticateToken, (req, res) => {
   try {
+    if (req.query.quick === 'true') {
+      const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+      const templates = db.prepare('SELECT * FROM quick_replies WHERE tenant_id = ? ORDER BY id DESC').all(tenantId);
+      return res.json({ success: true, templates });
+    }
     const templates = db.prepare('SELECT * FROM whatsapp_templates ORDER BY id DESC').all();
     res.json(templates);
   } catch (err) {
@@ -50,7 +55,32 @@ router.get('/', authenticateToken, (req, res) => {
 
 // Create template
 router.post('/', authenticateToken, (req, res) => {
-  const { name, content, type, is_default, status } = req.body;
+  const { name, content, type, is_default, status, title, text, quick } = req.body;
+  
+  if (quick === true || req.query.quick === 'true') {
+    const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+    if (!title || !text) return res.status(400).json({ error: 'Title and text are required' });
+    try {
+      const result = db.prepare(`
+        INSERT INTO quick_replies (tenant_id, title, text)
+        VALUES (?, ?, ?)
+      `).run(tenantId, title, text);
+      return res.json({
+        success: true,
+        message: 'Template created successfully',
+        template: {
+          id: result.lastInsertRowid,
+          tenant_id: tenantId,
+          title,
+          text,
+          created_at: new Date().toISOString()
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (!name || !content) return res.status(400).json({ error: 'Name and content required' });
   
   try {
@@ -83,6 +113,14 @@ router.put('/:id', authenticateToken, (req, res) => {
 // Delete template
 router.delete('/:id', authenticateToken, (req, res) => {
   try {
+    if (req.query.quick === 'true') {
+      const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+      const result = db.prepare('DELETE FROM quick_replies WHERE id = ? AND tenant_id = ?').run(Number(req.params.id), tenantId);
+      if (result.changes === 0) {
+        return res.status(404).json({ success: false, error: 'Template not found or tenant mismatch' });
+      }
+      return res.json({ success: true });
+    }
     db.prepare('DELETE FROM whatsapp_templates WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (err) {
