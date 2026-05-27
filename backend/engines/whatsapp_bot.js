@@ -129,10 +129,23 @@ function getMessageText(msg) {
 
   const content = m.ephemeralMessage?.message || m.viewOnceMessage?.message || m.viewOnceMessageV2?.message || m.documentWithCaptionMessage?.message || m;
 
+  if (content.interactiveResponseMessage) {
+    const intResp = content.interactiveResponseMessage;
+    if (intResp.body?.text) return intResp.body.text;
+    if (intResp.nativeFlowResponseMessage?.paramsJson) {
+      try {
+        const parsed = JSON.parse(intResp.nativeFlowResponseMessage.paramsJson);
+        if (parsed.id) return parsed.id;
+      } catch (e) {}
+    }
+  }
+
   return content.conversation || 
          content.extendedTextMessage?.text || 
          content.buttonsResponseMessage?.selectedDisplayText || 
          content.templateButtonReplyMessage?.selectedDisplayText || 
+         content.buttonsResponseMessage?.selectedButtonId ||
+         content.templateButtonReplyMessage?.selectedId ||
          content.imageMessage?.caption || 
          content.documentMessage?.caption || 
          content.videoMessage?.caption || 
@@ -889,6 +902,62 @@ class WhatsAppBot {
             console.error('🔐 COD interceptor error:', codErr.message);
           }
 
+          // --- 🔘 INTERACTIVE BUTTONS / KEY-PRESS PARSER ---
+          try {
+            const { db: dbRef } = require('../db');
+            
+            const lastOutgoing = dbRef.prepare(`
+              SELECT message FROM whatsapp_messages 
+              WHERE phone = ? AND direction = 'outgoing' 
+              ORDER BY id DESC LIMIT 1
+            `).get(fromPhone);
+
+            if (lastOutgoing && lastOutgoing.message) {
+              const outMsg = lastOutgoing.message;
+              const optionLines = outMsg.split('\n').filter(line => line.includes('1️⃣') || line.includes('2️⃣') || line.includes('3️⃣') || line.includes('🔘'));
+              
+              if (optionLines.length > 0) {
+                const replyText = text.toLowerCase().trim();
+                let selectedOptionLabel = null;
+                
+                if (replyText === '1' || replyText.includes('1️⃣')) {
+                  const line1 = optionLines.find(l => l.includes('1️⃣') || l.startsWith('1'));
+                  if (line1) selectedOptionLabel = line1.replace(/1️⃣|1\s*[\.\-\)]/g, '').trim();
+                } else if (replyText === '2' || replyText.includes('2️⃣')) {
+                  const line2 = optionLines.find(l => l.includes('2️⃣') || l.startsWith('2'));
+                  if (line2) selectedOptionLabel = line2.replace(/2️⃣|2\s*[\.\-\)]/g, '').trim();
+                } else if (replyText === '3' || replyText.includes('3️⃣')) {
+                  const line3 = optionLines.find(l => l.includes('3️⃣') || l.startsWith('3'));
+                  if (line3) selectedOptionLabel = line3.replace(/3️⃣|3\s*[\.\-\)]/g, '').trim();
+                }
+                
+                if (selectedOptionLabel) {
+                  console.log(`🔘 [KEY-PRESS INTERCEPT] Customer ${fromPhone} selected option: "${selectedOptionLabel}" via numeric reply.`);
+                  text = selectedOptionLabel;
+                }
+              }
+            }
+
+            const lowerTextVal = text.toLowerCase().trim();
+            if (lowerTextVal.includes('speak to agent') || lowerTextVal.includes('talk to agent') || lowerTextVal === 'btn_agent' || lowerTextVal === 'agent') {
+              console.log(`🧑 [BUTTON_HANDOFF] Intercepted speak-to-agent trigger for ${fromPhone}`);
+              this.setHumanHandoff(fromPhone, true);
+              try {
+                const { broadcast } = require('../websocket');
+                broadcast('human_handoff_required', { phone: fromPhone, reason: 'Customer clicked Speak to Agent button', preview: 'Handoff requested' });
+              } catch (_) {}
+              this.sendMessage(fromPhone, "🤖 [TRACE Support] Aapko support agent queue mein add kar diya gaya hai. Hamare representative jald hi aapse raabta karenge. Shukriya! 🙏", true);
+              continue; // Handled, skip further processing
+            }
+
+            if (lowerTextVal.includes('track order') || lowerTextVal === 'btn_track' || lowerTextVal === 'track') {
+              console.log(`📦 [BUTTON_WISMO] Intercepted track-order trigger for ${fromPhone}`);
+              text = 'track';
+            }
+          } catch (e) {
+            console.error('⚠️ Interactive button reply interceptor error:', e.message);
+          }
+
           try {
             const { db } = require('../db');
             
@@ -1140,7 +1209,7 @@ class WhatsAppBot {
     return modified;
   }
 
-  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null) {
+  async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native') {
     if (!isManual) {
       try {
         const { db } = require('../db');
@@ -1190,7 +1259,7 @@ class WhatsAppBot {
       }
 
       const isActiveChatSession = isManual || this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);
@@ -1242,7 +1311,7 @@ class WhatsAppBot {
         this.lastResetTime = Date.now();
       }
 
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext } = activeQueue[0]; // Peek!
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode } = activeQueue[0]; // Peek!
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1454,110 +1523,185 @@ class WhatsAppBot {
         }
 
         let sentMsg;
-        if (mediaUrl) {
-          if (finalMediaType === 'image') {
-            const payload = { image: { url: mediaUrl }, caption: message || '' };
-            sentMsg = await safeSend(jid, payload);
-          } else if (finalMediaType === 'document') {
-            const payload = { 
-              document: { url: mediaUrl }, 
-              mimetype: 'application/pdf', 
-              fileName: fileName || 'document.pdf', 
-              caption: message || '' 
-            };
-            sentMsg = await safeSend(jid, payload);
-          } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
-            // ── WhatsApp PTT Voice Note Pipeline ──────────────────────────────
-            // WhatsApp mobile ONLY accepts: ogg container + libopus codec + ptt:true
-            // Any other format (aac, mp4, webm) shows "This audio is not available".
-            // We always transcode through fluent-ffmpeg regardless of input format.
+        const hasButtons = buttons && Array.isArray(buttons) && buttons.length > 0;
 
-            const absInputPath = path.resolve(mediaUrl);
-            let transcodeOutputPath = null;  // track for cleanup
-            let finalAudioBuffer;
-            let finalMime = 'audio/ogg; codecs=opus';
+        if (hasButtons && buttonsMode === 'text') {
+          const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
+          const listText = buttons.map((btn, idx) => {
+            const emoji = numberEmojis[idx] || '🔘';
+            return `${emoji} ${btn.label}`;
+          }).join('\n');
+          const textAppend = `\n\n${listText}`;
 
-            // ── Guard: source file must exist ─────────────────────────────────
-            if (!fs.existsSync(absInputPath)) {
-              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${absInputPath}`);
-              resolve({ success: false, error: '[FFMPEG_ENCODE] Source audio file not found' });
-              continue;
+          if (mediaUrl) {
+            const captionText = `${message || ''}${textAppend}`;
+            if (finalMediaType === 'image') {
+              sentMsg = await safeSend(jid, { image: { url: mediaUrl }, caption: captionText });
+            } else if (finalMediaType === 'document') {
+              sentMsg = await safeSend(jid, { document: { url: mediaUrl }, mimetype: 'application/pdf', fileName: fileName || 'document.pdf', caption: captionText });
+            } else if (finalMediaType === 'video') {
+              sentMsg = await safeSend(jid, { video: { url: mediaUrl }, mimetype: 'video/mp4', caption: captionText });
+            } else {
+              sentMsg = await safeSend(jid, { text: captionText });
             }
-
-            const inputSizeBytes = fs.statSync(absInputPath).size;
-            console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
-
-            // ── Transcode → ogg/opus ─────────────────────────────────────────
-            try {
-              const result = await transcodeToOpus(absInputPath);
-              transcodeOutputPath = result.outputPath;
-
-              const outStat = fs.statSync(transcodeOutputPath);
-              console.log(`${FFMPEG_TAG} OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
-
-              // Read into buffer so Baileys never accesses the file path directly
-              finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
-
-              if (finalAudioBuffer.length < 100) {
-                throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
-              }
-            } catch (transcodeErr) {
-              console.error(`${FFMPEG_TAG} TRANSCODE_FAIL  error=${transcodeErr.message}`);
-              // Graceful fallback: send raw file as generic audio (may not play on mobile)
-              finalAudioBuffer = fs.readFileSync(absInputPath);
-              finalMime = 'audio/mp4';  // signal that this is a degraded fallback
-              console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
-            }
-
-            // ── Build the Baileys PTT payload ─────────────────────────────────
-            // audio: Buffer  ← NOT { url: ... }  (avoids Baileys re-reading from disk)
-            // ptt: true       ← renders as voice note waveform on mobile
-            // mimetype        ← must match the opus container exactly
-            const payload = {
-              audio: finalAudioBuffer,
-              ptt: true,
-              mimetype: finalMime,
-            };
-
-            // Save audio VN buffer to pending_ack
-            if (pendingAckPath) {
-              try {
-                fs.writeFileSync(pendingAckPath, finalAudioBuffer);
-                console.log(`[PENDING_ACK] Saved audio VN buffer to: ${pendingAckPath}`);
-              } catch (err) {
-                console.error('⚠️ Failed to save pending_ack voice note:', err.message);
-              }
-            }
-
-            console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
-            
-            try {
-              sentMsg = await safeSend(jid, payload);
-            } finally {
-              // ── Resource cleanup: delete the transcoded temp file in finally block (Pillar 2 compliance) ──
-              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
-                await safeUnlink(transcodeOutputPath);
-              }
-            }
-          } else if (finalMediaType === 'video') {
-            const payload = { 
-              video: { url: mediaUrl }, 
-              mimetype: 'video/mp4', 
-              caption: message || '' 
-            };
-            sentMsg = await safeSend(jid, payload);
           } else {
-            sentMsg = await safeSend(jid, { text: String(message) });
+            sentMsg = await safeSend(jid, { text: `${message || ''}${textAppend}` });
+          }
+        } else if (hasButtons && buttonsMode === 'native') {
+          const nativeButtons = buttons.map((btn, idx) => {
+            if (btn.button_type === 'url') {
+              return {
+                name: "cta_url",
+                buttonParamsJson: JSON.stringify({
+                  display_text: btn.label,
+                  url: btn.value,
+                  merchant_url: btn.value
+                })
+              };
+            } else {
+              return {
+                name: "quick_reply",
+                buttonParamsJson: JSON.stringify({
+                  display_text: btn.label,
+                  id: btn.value || `btn_${idx}`
+                })
+              };
+            }
+          });
+
+          const interactivePayload = {
+            viewOnceMessage: {
+              message: {
+                interactiveMessage: {
+                  body: { text: message || 'Please select an option:' },
+                  nativeFlowMessage: {
+                    buttons: nativeButtons
+                  }
+                }
+              }
+            }
+          };
+
+          if (mediaUrl) {
+            // Send media first, then buttons follow-up
+            if (finalMediaType === 'image') {
+              await safeSend(jid, { image: { url: mediaUrl }, caption: message || '' });
+            } else if (finalMediaType === 'document') {
+              await safeSend(jid, { document: { url: mediaUrl }, mimetype: 'application/pdf', fileName: fileName || 'document.pdf', caption: message || '' });
+            } else if (finalMediaType === 'video') {
+              await safeSend(jid, { video: { url: mediaUrl }, mimetype: 'video/mp4', caption: message || '' });
+            }
+            sentMsg = await safeSend(jid, interactivePayload);
+          } else {
+            sentMsg = await safeSend(jid, interactivePayload);
           }
         } else {
-          // --- 🔒 STABILITY FIX: Strict blank payload guard ---
-          const textContent = String(message || '');
-          if (!textContent || textContent.trim() === '') {
-            console.error('🚫 BLANK_MSG_BLOCKED: Attempted to send empty text message to', cleaned);
-            resolve({ success: false, error: 'BLANK_MSG_BLOCKED' });
-            continue;
+          // Standard sending flow
+          if (mediaUrl) {
+            if (finalMediaType === 'image') {
+              const payload = { image: { url: mediaUrl }, caption: message || '' };
+              sentMsg = await safeSend(jid, payload);
+            } else if (finalMediaType === 'document') {
+              const payload = { 
+                document: { url: mediaUrl }, 
+                mimetype: 'application/pdf', 
+                fileName: fileName || 'document.pdf', 
+                caption: message || '' 
+              };
+              sentMsg = await safeSend(jid, payload);
+            } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
+              // ── WhatsApp PTT Voice Note Pipeline ──────────────────────────────
+              // WhatsApp mobile ONLY accepts: ogg container + libopus codec + ptt:true
+              // Any other format (aac, mp4, webm) shows "This audio is not available".
+              // We always transcode through fluent-ffmpeg regardless of input format.
+
+              const absInputPath = path.resolve(mediaUrl);
+              let transcodeOutputPath = null;  // track for cleanup
+              let finalAudioBuffer;
+              let finalMime = 'audio/ogg; codecs=opus';
+
+              // ── Guard: source file must exist ─────────────────────────────────
+              if (!fs.existsSync(absInputPath)) {
+                console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${absInputPath}`);
+                resolve({ success: false, error: '[FFMPEG_ENCODE] Source audio file not found' });
+                continue;
+              }
+
+              const inputSizeBytes = fs.statSync(absInputPath).size;
+              console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
+
+              // ── Transcode → ogg/opus ─────────────────────────────────────────
+              try {
+                const result = await transcodeToOpus(absInputPath);
+                transcodeOutputPath = result.outputPath;
+
+                const outStat = fs.statSync(transcodeOutputPath);
+                console.log(`${FFMPEG_TAG} OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
+
+                // Read into buffer so Baileys never accesses the file path directly
+                finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
+
+                if (finalAudioBuffer.length < 100) {
+                  throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
+                }
+              } catch (transcodeErr) {
+                console.error(`${FFMPEG_TAG} TRANSCODE_FAIL  error=${transcodeErr.message}`);
+                // Graceful fallback: send raw file as generic audio (may not play on mobile)
+                finalAudioBuffer = fs.readFileSync(absInputPath);
+                finalMime = 'audio/mp4';  // signal that this is a degraded fallback
+                console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
+              }
+
+              // ── Build the Baileys PTT payload ─────────────────────────────────
+              // audio: Buffer  ← NOT { url: ... }  (avoids Baileys re-reading from disk)
+              // ptt: true       ← renders as voice note waveform on mobile
+              // mimetype        ← must match the opus container exactly
+              const payload = {
+                audio: finalAudioBuffer,
+                ptt: true,
+                mimetype: finalMime,
+              };
+
+              // Save audio VN buffer to pending_ack
+              if (pendingAckPath) {
+                try {
+                  fs.writeFileSync(pendingAckPath, finalAudioBuffer);
+                  console.log(`[PENDING_ACK] Saved audio VN buffer to: ${pendingAckPath}`);
+                } catch (err) {
+                  console.error('⚠️ Failed to save pending_ack voice note:', err.message);
+                }
+              }
+
+              console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
+              
+              try {
+                sentMsg = await safeSend(jid, payload);
+              } finally {
+                // ── Resource cleanup: delete the transcoded temp file in finally block (Pillar 2 compliance) ──
+                if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
+                  await safeUnlink(transcodeOutputPath);
+                }
+              }
+            } else if (finalMediaType === 'video') {
+              const payload = { 
+                video: { url: mediaUrl }, 
+                mimetype: 'video/mp4', 
+                caption: message || '' 
+              };
+              sentMsg = await safeSend(jid, payload);
+            } else {
+              sentMsg = await safeSend(jid, { text: String(message) });
+            }
+          } else {
+            // --- 🔒 STABILITY FIX: Strict blank payload guard ---
+            const textContent = String(message || '');
+            if (!textContent || textContent.trim() === '') {
+              console.error('🚫 BLANK_MSG_BLOCKED: Attempted to send empty text message to', cleaned);
+              resolve({ success: false, error: 'BLANK_MSG_BLOCKED' });
+              continue;
+            }
+            sentMsg = await safeSend(jid, { text: textContent });
           }
-          sentMsg = await safeSend(jid, { text: textContent });
         }
 
         const messageId = sentMsg?.key?.id || uuid;

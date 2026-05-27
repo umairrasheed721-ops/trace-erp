@@ -448,6 +448,7 @@ function initDb(db) {
       media_url TEXT DEFAULT NULL,
       media_type TEXT DEFAULT NULL,
       usage_count INTEGER DEFAULT 0,
+      buttons_mode TEXT DEFAULT 'native',
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
   `);
@@ -458,6 +459,18 @@ function initDb(db) {
   try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_url TEXT DEFAULT NULL"); } catch (_) {}
   try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_type TEXT DEFAULT NULL"); } catch (_) {}
   try { db.exec("ALTER TABLE quick_replies ADD COLUMN usage_count INTEGER DEFAULT 0"); } catch (_) {}
+  try { db.exec("ALTER TABLE quick_replies ADD COLUMN buttons_mode TEXT DEFAULT 'native'"); } catch (_) {}
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS quick_reply_buttons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quick_reply_id INTEGER NOT NULL REFERENCES quick_replies(id) ON DELETE CASCADE,
+      button_type TEXT NOT NULL CHECK(button_type IN ('reply', 'url')),
+      label TEXT NOT NULL,
+      value TEXT NOT NULL,
+      position INTEGER DEFAULT 0
+    );
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (

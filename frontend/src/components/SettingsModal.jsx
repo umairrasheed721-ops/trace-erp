@@ -20,6 +20,13 @@ export default function SettingsModal({ onClose }) {
   const [newShortcode, setNewShortcode] = useState('');
   const [newMediaUrl, setNewMediaUrl] = useState('');
   const [newMediaType, setNewMediaType] = useState('image');
+  
+  // Interactive buttons configuration states
+  const [buttonsMode, setButtonsMode] = useState('native');
+  const [buttonsList, setButtonsList] = useState([]);
+  const [btnLabel, setBtnLabel] = useState('');
+  const [btnType, setBtnType] = useState('reply');
+  const [btnValue, setBtnValue] = useState('');
 
   useEffect(() => {
     fetchStats();
@@ -171,6 +178,8 @@ export default function SettingsModal({ onClose }) {
           shortcode: cleanShortcode,
           media_url: newMediaUrl.trim() || null,
           media_type: newMediaUrl.trim() ? newMediaType : null,
+          buttons_mode: buttonsMode,
+          buttons: buttonsList,
           quick: true
         })
       });
@@ -182,6 +191,10 @@ export default function SettingsModal({ onClose }) {
         setNewCategory('General');
         setNewShortcode('');
         setNewMediaUrl('');
+        setButtonsList([]);
+        setBtnLabel('');
+        setBtnValue('');
+        setButtonsMode('native');
         fetchTemplates();
         window.dispatchEvent(new Event('whatsapp_templates_updated'));
       } else {
@@ -339,6 +352,114 @@ export default function SettingsModal({ onClose }) {
                 />
               </div>
 
+              {/* Action Buttons Builder Section */}
+              <div className="buttons-builder-card" style={{ border: '1px solid #444', padding: '12px', borderRadius: '6px', marginBottom: '12px', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label className="premium-label" style={{ fontSize: '0.82rem', fontWeight: '600', color: '#a855f7' }}>🔘 Interactive Buttons ({buttonsList.length}/3)</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Delivery Mode:</span>
+                    <select
+                      value={buttonsMode}
+                      onChange={(e) => setButtonsMode(e.target.value)}
+                      style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: '4px', background: '#333', color: '#fff', border: '1px solid #555' }}
+                    >
+                      <option value="native">Native WhatsApp Buttons</option>
+                      <option value="text">Text Menu Fallback</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* List of currently configured buttons */}
+                {buttonsList.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                    {buttonsList.map((btn, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#333', border: '1px solid #555', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                        <span style={{ color: '#fff', fontWeight: '500' }}>
+                          {btn.button_type === 'url' ? '🔗' : '🔘'} {btn.label}
+                        </span>
+                        <span style={{ color: '#aaa', fontSize: '0.65rem' }}>({btn.value})</span>
+                        <button
+                          type="button"
+                          onClick={() => setButtonsList(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontWeight: 'bold', padding: '0 2px' }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add button inline subform */}
+                {buttonsList.length < 3 ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '80px 100px 1fr auto', gap: '8px', alignItems: 'end' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#999', display: 'block', marginBottom: '2px' }}>Type</span>
+                      <select
+                        value={btnType}
+                        onChange={(e) => setBtnType(e.target.value)}
+                        style={{ width: '100%', padding: '5px', fontSize: '0.75rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444' }}
+                      >
+                        <option value="reply">Reply</option>
+                        <option value="url">URL Link</option>
+                      </select>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#999', display: 'block', marginBottom: '2px' }}>Button Label</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Yes"
+                        maxLength={20}
+                        value={btnLabel}
+                        onChange={(e) => setBtnLabel(e.target.value)}
+                        style={{ width: '100%', padding: '5px', fontSize: '0.75rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444' }}
+                      />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#999', display: 'block', marginBottom: '2px' }}>Action Payload / URL</span>
+                      <input
+                        type="text"
+                        placeholder={btnType === 'url' ? 'https://...' : 'e.g. confirm'}
+                        value={btnValue}
+                        onChange={(e) => setBtnValue(e.target.value)}
+                        style={{ width: '100%', padding: '5px', fontSize: '0.75rem', borderRadius: '4px', background: '#222', color: '#fff', border: '1px solid #444' }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!btnLabel.trim() || !btnValue.trim()) return;
+                        setButtonsList(prev => [...prev, {
+                          button_type: btnType,
+                          label: btnLabel.trim(),
+                          value: btnValue.trim(),
+                          position: prev.length
+                        }]);
+                        setBtnLabel('');
+                        setBtnValue('');
+                      }}
+                      disabled={!btnLabel.trim() || !btnValue.trim()}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.75rem',
+                        borderRadius: '4px',
+                        background: (btnLabel.trim() && btnValue.trim()) ? '#a855f7' : '#444',
+                        color: '#fff',
+                        border: 'none',
+                        cursor: (btnLabel.trim() && btnValue.trim()) ? 'pointer' : 'not-allowed',
+                        fontWeight: '600'
+                      }}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.75rem', color: '#888', fontStyle: 'italic', marginTop: '4px' }}>
+                    Max limit of 3 interactive buttons reached. Remove one to add another.
+                  </div>
+                )}
+              </div>
+
               <div className="form-group" style={{ marginBottom: '12px' }}>
                 <label className="premium-label" style={{ fontSize: '0.8rem', opacity: 0.8, color: '#aaa', display: 'block', marginBottom: '4px' }}>Message Body</label>
                 <textarea
@@ -378,9 +499,23 @@ export default function SettingsModal({ onClose }) {
                           {t.media_url && (
                             <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#3b82f6', color: '#fff' }}>📎 {t.media_type || 'Media'}</span>
                           )}
+                          {t.buttons && t.buttons.length > 0 && (
+                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#4b5563', color: '#e5e7eb' }}>
+                              🔘 {t.buttons.length} Btn ({t.buttons_mode === 'native' ? 'Native' : 'Text'})
+                            </span>
+                          )}
                           <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#eab308', color: '#000', marginLeft: 'auto' }}>🔥 Used {t.usage_count || 0}x</span>
                         </div>
                         <div className="template-item-text" style={{ color: '#ccc', fontSize: '0.8rem', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t.text}</div>
+                        {t.buttons && t.buttons.length > 0 && (
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                            {t.buttons.map((btn, bIdx) => (
+                              <span key={bIdx} style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', background: '#2d1e3d', border: '1px solid #4a3461', color: '#d8b4fe' }}>
+                                {btn.button_type === 'url' ? '🔗' : '🔘'} {btn.label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"

@@ -996,6 +996,12 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
                        db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
     
+    // Fetch associated buttons if it's a tenant quick reply
+    quickReply.buttons = [];
+    try {
+      quickReply.buttons = db.prepare('SELECT * FROM quick_reply_buttons WHERE quick_reply_id = ? ORDER BY position ASC, id ASC').all(quickReply.id);
+    } catch (_) {}
+
     // Resolve dynamic variables
     let resolvedCaption = quickReply.text || quickReply.caption || '';
     resolvedCaption = resolvedCaption
@@ -1075,10 +1081,12 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     }
     
     // Send message via Baileys bot
+    const buttonsList = quickReply.buttons && quickReply.buttons.length > 0 ? quickReply.buttons : null;
+    const buttonsMode = quickReply.buttons_mode || 'native';
     if (quickReply.media_url && absolutePath) {
-      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid, verifiedQuote);
+      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
     } else {
-      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid, verifiedQuote);
+      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
     }
     
     res.json({ 

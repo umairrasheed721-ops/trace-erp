@@ -184,6 +184,11 @@ export default function QuickReplyPanel({ sendingReply, onSend, onClose }) {
                       📎 {r.media_type || 'Media'}
                     </span>
                   )}
+                  {r.buttons && r.buttons.length > 0 && (
+                    <span style={{ fontSize: '0.65rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc' }}>
+                      🔘 {r.buttons.length} Btn
+                    </span>
+                  )}
                   {r.usage_count > 0 && (
                     <span style={{ fontSize: '0.65rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', marginLeft: 'auto' }}>
                       🔥 {r.usage_count}

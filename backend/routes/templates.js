@@ -44,6 +44,9 @@ router.get('/', authenticateToken, (req, res) => {
     if (req.query.quick === 'true') {
       const tenantId = req.user?.tenant_id || req.tenantId || 'default';
       const templates = db.prepare('SELECT * FROM quick_replies WHERE tenant_id = ? ORDER BY usage_count DESC, id DESC').all(tenantId);
+      for (const t of templates) {
+        t.buttons = db.prepare('SELECT * FROM quick_reply_buttons WHERE quick_reply_id = ? ORDER BY position ASC, id ASC').all(t.id);
+      }
       return res.json({ success: true, templates });
     }
     const templates = db.prepare('SELECT * FROM whatsapp_templates ORDER BY id DESC').all();
@@ -55,21 +58,45 @@ router.get('/', authenticateToken, (req, res) => {
 
 // Create template
 router.post('/', authenticateToken, (req, res) => {
-  const { name, content, type, is_default, status, title, text, quick, category, shortcode, media_url, media_type } = req.body;
+  const { name, content, type, is_default, status, title, text, quick, category, shortcode, media_url, media_type, buttons_mode, buttons } = req.body;
   
   if (quick === true || req.query.quick === 'true') {
     const tenantId = req.user?.tenant_id || req.tenantId || 'default';
     if (!title || !text) return res.status(400).json({ error: 'Title and text are required' });
     try {
       const result = db.prepare(`
-        INSERT INTO quick_replies (tenant_id, title, text, category, shortcode, media_url, media_type, usage_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-      `).run(tenantId, title, text, category || 'General', shortcode || null, media_url || null, media_type || null);
+        INSERT INTO quick_replies (tenant_id, title, text, category, shortcode, media_url, media_type, usage_count, buttons_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `).run(tenantId, title, text, category || 'General', shortcode || null, media_url || null, media_type || null, buttons_mode || 'native');
+      
+      const quickReplyId = result.lastInsertRowid;
+      let insertedButtons = [];
+
+      if (Array.isArray(buttons) && buttons.length > 0) {
+        const insertBtn = db.prepare(`
+          INSERT INTO quick_reply_buttons (quick_reply_id, button_type, label, value, position)
+          VALUES (?, ?, ?, ?, ?)
+        `);
+        buttons.forEach((btn, idx) => {
+          if (btn.label && btn.value && btn.button_type) {
+            const btnRes = insertBtn.run(quickReplyId, btn.button_type, btn.label, btn.value, btn.position !== undefined ? btn.position : idx);
+            insertedButtons.push({
+              id: btnRes.lastInsertRowid,
+              quick_reply_id: quickReplyId,
+              button_type: btn.button_type,
+              label: btn.label,
+              value: btn.value,
+              position: btn.position !== undefined ? btn.position : idx
+            });
+          }
+        });
+      }
+
       return res.json({
         success: true,
         message: 'Template created successfully',
         template: {
-          id: result.lastInsertRowid,
+          id: quickReplyId,
           tenant_id: tenantId,
           title,
           text,
@@ -78,6 +105,8 @@ router.post('/', authenticateToken, (req, res) => {
           media_url: media_url || null,
           media_type: media_type || null,
           usage_count: 0,
+          buttons_mode: buttons_mode || 'native',
+          buttons: insertedButtons,
           created_at: new Date().toISOString()
         }
       });
