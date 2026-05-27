@@ -293,9 +293,15 @@ export default function WhatsAppPortal() {
           setActiveChat(currentActive => {
             if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
               setMessages(prev => {
-                // If it's an outgoing voice note / media message, check if there's an optimistic pending counterpart
-                if (newMsg.direction === 'outgoing' && (newMsg.media_type === 'audio' || newMsg.media_url)) {
-                  const pendingIndex = prev.findIndex(m => m.status === 'pending' || m.id.toString().startsWith('client-opt-'));
+                // Check if there's an optimistic pending counterpart by ID or temporary client-opt prefix
+                if (newMsg.direction === 'outgoing') {
+                  const pendingIndex = prev.findIndex(m => 
+                    m.id === newMsg.message_id || 
+                    m.id === newMsg.id || 
+                    (m.id && m.id.toString().startsWith('client-opt-')) ||
+                    m.status === 'pending' || 
+                    m.status === 'sending'
+                  );
                   if (pendingIndex !== -1) {
                     const next = [...prev];
                     next[pendingIndex] = newMsg;
@@ -442,14 +448,14 @@ export default function WhatsAppPortal() {
     // Auto-release after 2s as safety fallback
     const releaseTimer = setTimeout(() => setSendingReply(null), 2000)
 
-    // Optimistic message object
-    const tempId = Date.now()
+    // Optimistic message object with client-side UUID
+    const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
     const optimisticMessage = {
-      id: tempId,
+      id: clientUuid,
       phone: activeChat.phone,
       direction: 'outgoing',
       message: finalMsg,
-      status: 'sending',
+      status: 'pending',
       created_at: new Date().toISOString()
     }
 
@@ -462,23 +468,23 @@ export default function WhatsAppPortal() {
       const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: finalMsg })
+        body: JSON.stringify({ message: finalMsg, clientUuid })
       })
       const data = await res.json()
       
       if (data.success && data.message) {
         // Swap out optimistic message with true database returned object
-        setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
+        setMessages(prev => prev.map(m => m.id === clientUuid ? { ...m, ...data.message, status: 'sent' } : m))
         
         // Update conversation list preview
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
       } else {
         addToast(data.error || 'Failed to dispatch message', 'error')
-        setMessages(prev => prev.filter(m => m.id !== tempId)) // Rollback
+        setMessages(prev => prev.filter(m => m.id !== clientUuid)) // Rollback
       }
     } catch (err) {
       handleApiError(err, addToast, 'MESSAGE_SEND')
-      setMessages(prev => prev.filter(m => m.id !== tempId)) // Rollback
+      setMessages(prev => prev.filter(m => m.id !== clientUuid)) // Rollback
     } finally {
       clearTimeout(releaseTimer)
       setSendingReply(null)
@@ -497,13 +503,19 @@ export default function WhatsAppPortal() {
     setShowQuickReplies(false)
     
     // Add temporary loading indicator bubble
-    const tempId = Date.now()
+    const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const dbMsgContent = reply.media_url 
+      ? `[${reply.media_type.toUpperCase()}] ${reply.caption || ''}`.trim()
+      : (reply.caption || `[Template Reply: ${reply.title}]`);
+
     const optimisticMessage = {
-      id: tempId,
+      id: clientUuid,
       phone: activeChat.phone,
       direction: 'outgoing',
-      message: `[Template Reply: ${reply.title}]`,
-      status: 'sending',
+      message: dbMsgContent,
+      media_url: reply.media_url || null,
+      media_type: reply.media_type || null,
+      status: 'pending',
       created_at: new Date().toISOString()
     }
     
@@ -514,21 +526,21 @@ export default function WhatsAppPortal() {
       const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/send-quick-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ replyId: reply.id })
+        body: JSON.stringify({ replyId: reply.id, clientUuid })
       })
       const data = await res.json()
       
       if (data.success && data.message) {
-        setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
+        setMessages(prev => prev.map(m => m.id === clientUuid ? { ...m, ...data.message, status: 'sent' } : m))
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
         addToast(`✅ Quick reply "${reply.title}" dispatched!`, 'success')
       } else {
         addToast(data.error || 'Failed to send quick reply', 'error')
-        setMessages(prev => prev.filter(m => m.id !== tempId))
+        setMessages(prev => prev.filter(m => m.id !== clientUuid))
       }
     } catch (err) {
       handleApiError(err, addToast, 'QUICK_REPLY')
-      setMessages(prev => prev.filter(m => m.id !== tempId))
+      setMessages(prev => prev.filter(m => m.id !== clientUuid))
     } finally {
       clearTimeout(releaseTimer)
       setSendingReply(null)
@@ -596,8 +608,7 @@ export default function WhatsAppPortal() {
     if (!activeChat) return addToast('Select a chat first', 'warning')
     const file = e.dataTransfer.files?.[0]
     if (!file) return
-    const syntheticEvent = { target: { files: [file] } }
-    await handleMediaUpload(syntheticEvent)
+    await handleMediaUpload(file)
   }
 
   // --- MODULE 8: PUSH-TO-TALK VOICE NOTE ---
@@ -692,12 +703,42 @@ export default function WhatsAppPortal() {
     } catch (err) { console.warn('Call handoff log failed:', err.message) }
   }
 
-  const handleMediaUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const handleMediaUpload = async (fileOrEvent) => {
+    let file
+    if (fileOrEvent && fileOrEvent.target && fileOrEvent.target.files) {
+      file = fileOrEvent.target.files[0]
+    } else {
+      file = fileOrEvent
+    }
     if (!file || !activeChat) return
+
+    const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const tempUrl = URL.createObjectURL(file);
+    const mediaType = file.type.startsWith('image/') ? 'image' : 
+                      file.type.startsWith('audio/') ? 'audio' :
+                      file.type.startsWith('video/') ? 'video' : 'document';
+    
+    const dbMsgContent = mediaType === 'image' ? `[Image]` : 
+                         mediaType === 'audio' ? `[Audio]` : 
+                         mediaType === 'video' ? `[Video]` : `[Document] ${file.name}`;
+
+    const tempMsg = {
+      id: clientUuid,
+      phone: activeChat.phone,
+      direction: 'outgoing',
+      message: dbMsgContent,
+      media_url: tempUrl,
+      media_type: mediaType,
+      status: 'pending',
+      created_at: new Date().toISOString()
+    }
+
+    setMessages(prev => [...prev, tempMsg])
+    scrollToBottom()
 
     const formData = new FormData()
     formData.append('media', file)
+    formData.append('clientUuid', clientUuid)
     
     setUploading(true)
     addToast(`Uploading ${file.name}...`, 'info')
@@ -710,15 +751,17 @@ export default function WhatsAppPortal() {
       const data = await res.json()
       
       if (data.success && data.message) {
-        setMessages(prev => [...prev, data.message])
+        setMessages(prev => prev.map(m => m.id === clientUuid ? { ...m, ...data.message, status: 'sent' } : m))
         setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
         addToast('✅ Media attachment successfully sent!', 'success')
         scrollToBottom()
       } else {
         addToast(data.error || 'Failed to send file', 'error')
+        setMessages(prev => prev.filter(m => m.id !== clientUuid))
       }
     } catch (err) {
       handleApiError(err, addToast, 'MEDIA_UPLOAD')
+      setMessages(prev => prev.filter(m => m.id !== clientUuid))
     } finally {
       setUploading(false)
     }
@@ -1003,9 +1046,24 @@ export default function WhatsAppPortal() {
         </div>
 
         {/* --- CENTER PANEL: TIMELINE & CHAT INTERACTION --- */}
-        <div className="wa-portal-center">
+        <div 
+          className="wa-portal-center"
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          style={{ position: 'relative' }}
+        >
           {activeChat ? (
             <>
+              {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
+              <MediaUploadOverlay
+                isDragging={isDragging}
+                uploading={uploading}
+                onUpload={(file) => {
+                  handleMediaUpload(file)
+                }}
+              />
                 {/* Header */}
                 <div className="wa-portal-chat-header">
                   <div className="wa-portal-chat-header-info">
@@ -1068,24 +1126,11 @@ export default function WhatsAppPortal() {
                 </div>
               )}
 
-              {/* Message Timeline — Module 8: Drag & Drop wrapper */}
+              {/* Message Timeline */}
               <div
                 className="wa-portal-chat-timeline"
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
                 style={{ position: 'relative' }}
               >
-                {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
-                <MediaUploadOverlay
-                  isDragging={isDragging}
-                  uploading={uploading}
-                  onUpload={(file) => {
-                    const syntheticEvent = { target: { files: [file] } }
-                    handleMediaUpload(syntheticEvent)
-                  }}
-                />
 
                 {loadingMessages ? (
                   <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>

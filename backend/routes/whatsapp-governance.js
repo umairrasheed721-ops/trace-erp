@@ -605,20 +605,21 @@ router.post('/chats/:phone/send', async (req, res) => {
     const storeId = order ? order.store_id : 1; // Fallback to store 1
     const orderId = order ? order.id : null;
 
+    const clientUuid = req.body.clientUuid || null;
     // Insert into SQLite database immediately so it persists permanently
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, message, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, message, clientUuid, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to save manual chat message:', err.message);
     }
 
     // Queue message via Baileys bot with isManual = true for instant priority delivery
-    bot.sendMessage(cleaned, message, true);
+    bot.sendMessage(cleaned, message, true, null, null, null, clientUuid);
 
     // Return optimistic message object
     const newMsg = {
@@ -673,19 +674,20 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
                          mediaType === 'audio' ? `[Audio] ${caption}` : 
                          mediaType === 'video' ? `[Video] ${caption}` : `[Document] ${caption}`;
 
+    const clientUuid = req.body.clientUuid || null;
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, relativeUrl, mediaType, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, relativeUrl, mediaType, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log manual media message:', err.message);
     }
 
     // Queue message via Baileys bot with isManual = true
-    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname);
+    bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname, clientUuid);
 
     res.json({ 
       success: true, 
@@ -873,12 +875,13 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
 
+    const clientUuid = req.body.clientUuid || null;
     let dbMessageId = null;
     try {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null, tenantId);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, ?, 'sent', ?)
+      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, quickReply.media_url || null, quickReply.media_type || null, tenantId);
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
@@ -886,9 +889,9 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     
     // Send message via Baileys bot
     if (quickReply.media_url && absolutePath) {
-      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type);
+      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid);
     } else {
-      bot.sendMessage(cleaned, resolvedCaption, true);
+      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid);
     }
     
     res.json({ 

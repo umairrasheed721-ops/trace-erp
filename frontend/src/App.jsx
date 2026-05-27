@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useApp } from './context/AppContext'
 import AppProvider from './context/AppProvider'
+import { TenantProvider } from './context/TenantContext'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -109,7 +110,9 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <TenantProvider>
+        <AppContent />
+      </TenantProvider>
     </AppProvider>
   )
 }
