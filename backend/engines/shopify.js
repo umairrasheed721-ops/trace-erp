@@ -165,7 +165,6 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     console.error(errorMsg);
     if (onProgress) onProgress(errorMsg);
     logAudit(storeId, 'CRITICAL', errorMsg);
-    bot.sendEmergencyAlert(`*Sync Failure:* ${shop_domain} connectivity check failed.`);
     return { added: 0, logs: auditLogs, failed: 1 };
   }
 

@@ -1,6 +1,5 @@
 require('dotenv').config();
 require('./scripts/run_migrations');
-const { sendEmergencyAlert } = require('./engines/alerts');
 const { logSystemError } = require('./db');
 
 // --- 🛡️ GLOBAL CRASH PREVENTERS (BULLETPROOF) ---
@@ -9,7 +8,6 @@ process.on('uncaughtException', (err) => {
   if (err && (err.code === 'EIO' || (err.message && err.message.includes('EIO')))) return;
   console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
   try { logSystemError('ERROR', err.message, 'uncaughtException'); } catch (_) {}
-  try { sendEmergencyAlert(`*Uncaught Exception*\n${err.message}`); } catch (_) {}
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -17,7 +15,6 @@ process.on('unhandledRejection', (reason, promise) => {
   if (reason && (reason.code === 'EIO' || msg.includes('EIO'))) return;
   console.error('🛑 CRITICAL: Unhandled Rejection — server kept alive:', msg);
   try { logSystemError('ERROR', msg, 'unhandledRejection'); } catch (_) {}
-  try { sendEmergencyAlert(`*Unhandled Rejection*\n${msg}`); } catch (_) {}
 });
 
 // Prevent Railway from killing the process on SIGTERM during hot reload
@@ -171,9 +168,6 @@ setInterval(() => {
     highMemoryStrikes++;
     console.error(`⚠️ HIGH MEMORY: ${used.toFixed(1)}MB (${pct.toFixed(1)}%) — strike ${highMemoryStrikes}`);
     try { logSystemError('ERROR', `High memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`, 'watchdog'); } catch (_) {}
-    if (highMemoryStrikes === 1) { // Alert once, not every 2 min
-      try { sendEmergencyAlert(`*High Memory*\n${used.toFixed(1)}MB (${pct.toFixed(1)}%)\nMonitor closely`); } catch (_) {}
-    }
   } else {
     highMemoryStrikes = 0;
     if (pct > 70) console.warn(`📉 Memory: ${used.toFixed(1)}MB (${pct.toFixed(1)}%)`);
@@ -209,8 +203,6 @@ console.error = (...a) => {
     
     if (recentErrorTimes.length >= 15 && (now - lastAlertTime) > 600000) {
       lastAlertTime = now;
-      const msg = a.map(x => String(x)).join(' ').substring(0, 200);
-      try { sendEmergencyAlert(`*🚨 Error Spike*\n${recentErrorTimes.length} in 60s\n${msg}`); } catch (_) {}
     }
     // Persist errors to SQLite (survives restarts)
     try { logSystemError('ERROR', a.map(x => String(x)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
