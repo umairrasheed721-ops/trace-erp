@@ -23,23 +23,35 @@ async function fetchElevenLabsAudio(text) {
   const voiceId = process.env.ELEVENLABS_VOICE_ID;
   if (!apiKey || !voiceId) throw new Error('ElevenLabs API key or Voice ID not configured');
 
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'xi-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`ElevenLabs API error: ${res.status} — ${errText}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      }),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`ElevenLabs API error: ${res.status} — ${errText}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
   }
-  return Buffer.from(await res.arrayBuffer());
 }
 
 function transcodeToMp4(inputBuffer, outputPath) {
@@ -127,6 +139,10 @@ async function dispatchCODVerification(order) {
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
   } catch (err) {
     console.error(`🔐 COD Verifier error for order ${orderId}:`, err.message);
+    try {
+      const { logSystemError } = require('../db');
+      logSystemError('ERROR', `[COD Verifier] Error for order ${orderId}: ${err.message}`, 'cod_verifier');
+    } catch (_) {}
   }
 }
 

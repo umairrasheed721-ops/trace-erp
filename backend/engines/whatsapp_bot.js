@@ -1919,6 +1919,10 @@ class WhatsAppBot {
       } catch (err) {
         const reason = err.message || 'Unknown WhatsApp error';
         console.error('❌ sendMessage error:', reason);
+        try {
+          const { logSystemError } = require('../db');
+          logSystemError('ERROR', `[sendMessage] Failed to send to +${cleaned || phone}: ${reason}`, 'whatsapp_bot');
+        } catch (_) {}
         this._addAuditLog(cleaned || phone, 'Failed', reason);
         
         try {
