@@ -1554,8 +1554,8 @@ class WhatsAppBot {
             console.error('[CRITICAL] Blocked null/non-object payload:', payload);
             return null;
           }
-          // If it's a text payload (no media key), ensure text is non-empty
-          const isTextPayload = !payload.image && !payload.audio && !payload.video && !payload.document;
+          // If it's a text payload (no media key, no poll key, no viewOnceMessage key), ensure text is non-empty
+          const isTextPayload = !payload.image && !payload.audio && !payload.video && !payload.document && !payload.poll && !payload.viewOnceMessage;
           if (isTextPayload) {
             const txt = typeof payload.text === 'string' ? payload.text.trim() : '';
             if (!txt) {
