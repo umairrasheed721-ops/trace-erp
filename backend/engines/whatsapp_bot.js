@@ -545,8 +545,18 @@ class WhatsAppBot {
           const statusVal = update.status;
           
           if (messageId && statusVal >= 2) {
+            let statusStr = 'delivered';
+            if (statusVal === 2) statusStr = 'sent';
+            else if (statusVal === 3) statusStr = 'delivered';
+            else if (statusVal >= 4) statusStr = 'read';
+
             try {
-              db.prepare("UPDATE whatsapp_messages SET status = 'delivered' WHERE message_id = ?").run(messageId);
+              db.prepare("UPDATE whatsapp_messages SET status = ? WHERE message_id = ?").run(statusStr, messageId);
+            } catch (e) {}
+
+            try {
+              const { broadcast } = require('../websocket');
+              broadcast('messages.update', { id: messageId, status: statusStr });
             } catch (e) {}
             
             // Search and delete matching file in pending_ack

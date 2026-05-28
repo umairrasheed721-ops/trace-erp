@@ -71,6 +71,98 @@
   --purple-dim: rgba(168, 85, 247, 0.08);
 }
 
+/* ─── Light theme overrides for WhatsApp chat Portal bubble contrast and colors ─── */
+[data-theme='light'] .wa-portal-chat-timeline {
+  background: #F9F9FB !important;
+  background-image: none !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming {
+  background: #F2F2F7 !important;
+  color: #000000 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing {
+  background: #8A2BE2 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(138, 43, 226, 0.2) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-bubble-time {
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-bubble-time {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-bubble-reply-btn {
+  color: #1e293b !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-bubble-reply-btn {
+  color: #8A2BE2 !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(138, 43, 226, 0.2) !important;
+  box-shadow: 0 1px 3px rgba(138, 43, 226, 0.15) !important;
+}
+
+[data-theme='light'] .wa-bubble-reply-btn:hover {
+  background: #f3f4f6 !important;
+}
+
+/* Light Theme overrides for custom voice note audio player */
+[data-theme='light'] .wa-bubble.outgoing .wa-audio-time-info {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-audio-slider {
+  background: rgba(255, 255, 255, 0.3) !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-audio-slider::-webkit-slider-thumb {
+  background: #ffffff !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-audio-slider::-moz-range-thumb {
+  background: #ffffff !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-audio-play-btn {
+  background: #ffffff !important;
+  color: #8A2BE2 !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-audio-time-info {
+  color: rgba(0, 0, 0, 0.6) !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-audio-slider {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-audio-slider::-webkit-slider-thumb {
+  background: #8A2BE2 !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-audio-slider::-moz-range-thumb {
+  background: #8A2BE2 !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming .wa-audio-play-btn {
+  background: #8A2BE2 !important;
+  color: #ffffff !important;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html { 

@@ -561,6 +561,24 @@ export default function WhatsAppPortal() {
           removeQuotedMessageGlobally(message_id)
         }
 
+        if (wsEvent === 'messages.update' && data) {
+          const { id, status } = data;
+          setMessages(prev => prev.map(msg => 
+            (msg.message_id === id || msg.id === id || String(msg.id) === String(id) || String(msg.message_id) === String(id)) 
+              ? { ...msg, status: status } 
+              : msg
+          ));
+          setChats(prevChats => prevChats.map(c => {
+            if (c.lastMessage && (c.lastMessage.id === id || String(c.lastMessage.message_id) === String(id))) {
+              return {
+                ...c,
+                lastMessage: { ...c.lastMessage, status: status }
+              };
+            }
+            return c;
+          }));
+        }
+
         if (wsEvent === 'message' && data && data.message) {
           const newMsg = data.message
           
@@ -590,13 +608,27 @@ export default function WhatsAppPortal() {
               });
 
               if (idx !== -1) {
-                // Update in-place
+                // Update in-place safely preserving media properties
                 const updated = [...prev];
-                updated[idx] = {
-                  ...updated[idx],
-                  ...newMsg,
-                  clientUuid: updated[idx].clientUuid || newMsg.clientUuid
-                };
+                const existing = updated[idx];
+                const merged = { ...existing };
+                
+                // Copy non-empty/non-null properties
+                Object.keys(newMsg).forEach(key => {
+                  const val = newMsg[key];
+                  if (val !== null && val !== undefined && val !== '') {
+                    merged[key] = val;
+                  }
+                });
+                
+                // Keep existing truthy media properties if the incoming is falsy
+                if (existing.media_url && !merged.media_url) merged.media_url = existing.media_url;
+                if (existing.media_type && !merged.media_type) merged.media_type = existing.media_type;
+                if (existing.message && !merged.message) merged.message = existing.message;
+                
+                merged.clientUuid = existing.clientUuid || newMsg.clientUuid;
+                
+                updated[idx] = merged;
                 return updated;
               } else {
                 // Append if new
