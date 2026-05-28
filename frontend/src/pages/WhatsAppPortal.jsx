@@ -1594,144 +1594,162 @@ export default function WhatsAppPortal() {
                 ) : messages.length === 0 ? (
                   <div className="text-center p-12 text-muted italic">No messages logged in this discussion.</div>
                 ) : (
-                  messages.map((msg, index) => {
-                    const isOutgoing = msg.direction === 'outgoing'
-                    const showImage = msg.media_type === 'image' && msg.media_url
-                    const showAudio = msg.media_type === 'audio' && msg.media_url
-                    const showDoc = msg.media_type === 'document' && msg.media_url
-                    const quoteInfo = getQuotedInfo(msg)
-                    
-                    // Parse AI payment card data from transcript
-                    let paymentCardData = null
-                    if (msg.ai_processed && msg.media_type === 'image' && msg.transcript) {
-                      const amountMatch = msg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i)
-                      const txnMatch = msg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i)
-                      const bankMatch = msg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i)
-                      const statusMatch = msg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i)
-                      if (amountMatch) {
-                        paymentCardData = {
-                          amount: amountMatch[1],
-                          txnId: txnMatch?.[1] || null,
-                          bank: bankMatch?.[1]?.trim() || null,
-                          status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
+                  (() => {
+                    let lastDateString = null
+                    return messages.map((msg, index) => {
+                      const isOutgoing = msg.direction === 'outgoing'
+                      const showImage = msg.media_type === 'image' && msg.media_url
+                      const showAudio = msg.media_type === 'audio' && msg.media_url
+                      const showDoc = msg.media_type === 'document' && msg.media_url
+                      const quoteInfo = getQuotedInfo(msg)
+                      
+                      // Convert UNIX timestamps safely to the local browser timezone
+                      const calculatedDate = msg.timestamp 
+                        ? new Date(msg.timestamp * 1000).toLocaleDateString()
+                        : (msg.created_at ? new Date(msg.created_at).toLocaleDateString() : new Date().toLocaleDateString())
+
+                      let showDateDivider = false
+                      if (calculatedDate !== lastDateString) {
+                        showDateDivider = true
+                        lastDateString = calculatedDate
+                      }
+
+                      // Parse AI payment card data from transcript
+                      let paymentCardData = null
+                      if (msg.ai_processed && msg.media_type === 'image' && msg.transcript) {
+                        const amountMatch = msg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i)
+                        const txnMatch = msg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i)
+                        const bankMatch = msg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i)
+                        const statusMatch = msg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i)
+                        if (amountMatch) {
+                          paymentCardData = {
+                            amount: amountMatch[1],
+                            txnId: txnMatch?.[1] || null,
+                            bank: bankMatch?.[1]?.trim() || null,
+                            status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
+                          }
                         }
                       }
-                    }
 
-                    return (
-                      <div 
-                        key={msg.id || index}
-                        className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
-                        onDoubleClick={() => handleQuoteClick(msg)}
-                      >
-                        {/* Subtle Reply button on hover */}
-                        <button
-                          type="button"
-                          className="wa-bubble-reply-btn"
-                          title="Reply to this message"
-                          onClick={() => handleQuoteClick(msg)}
-                        >
-                          ↩️
-                        </button>
+                      return (
+                        <React.Fragment key={msg.id || index}>
+                          {showDateDivider && (
+                            <div className="date-divider" style={{ position: 'sticky', top: '10px', zIndex: 10, textAlign: 'center', margin: '15px 0' }}>
+                              <span style={{ background: '#333', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                                {calculatedDate}
+                              </span>
+                            </div>
+                          )}
+                          <div 
+                            className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
+                            onDoubleClick={() => handleQuoteClick(msg)}
+                          >
+                            {/* Subtle Reply button on hover */}
+                            <button
+                              type="button"
+                              className="wa-bubble-reply-btn"
+                              title="Reply to this message"
+                              onClick={() => handleQuoteClick(msg)}
+                            >
+                              ↩️
+                            </button>
 
-                        {/* Rendering Quoted block inside bubble */}
-                        {quoteInfo && (
-                          <div className="wa-bubble-quote-block">
-                            <span className="wa-bubble-quote-sender">
-                              {getQuoteSenderDisplayName(quoteInfo.participant, activeNumber)}
-                            </span>
-                            <span className="wa-bubble-quote-text">
-                              {quoteInfo.text}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Rendering Message Content */}
-                        {!showDoc && <span>{msg.message}</span>}
-
-                        {/* Rendering Attachment Media types */}
-                        {showImage && (
-                          <div>
-                            <img 
-                              src={getMediaUrlWithToken(msg.media_url)} 
-                              alt="Sent media" 
-                              className="wa-media-image"
-                              onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url))}
-                            />
-                            {/* Module 7: AI Payment Card rendering */}
-                            {paymentCardData ? (
-                              <div className="wa-ai-payment-card">
-                                <div className="wa-ai-payment-card-header">
-                                  <span>💳</span>
-                                  <span>AI Payment Receipt</span>
-                                  <span className={`wa-ai-payment-card-badge ${paymentCardData.status === 'matched' ? 'matched' : paymentCardData.status === 'mismatch' ? 'mismatch' : 'reviewing'}`}>
-                                    {paymentCardData.status === 'matched' ? '✓ Verified' : paymentCardData.status === 'mismatch' ? '⚠ Mismatch' : '🔍 Reviewing'}
-                                  </span>
-                                </div>
-                                <div className="wa-ai-payment-card-amount">Rs. {paymentCardData.amount}</div>
-                                <div className="wa-ai-payment-card-meta">
-                                  {paymentCardData.bank && <span>🏦 {paymentCardData.bank}</span>}
-                                  {paymentCardData.txnId && <span>TXN: {paymentCardData.txnId}</span>}
-                                </div>
-                              </div>
-                            ) : msg.transcript ? (
-                              <div className="wa-bubble-transcript" style={{ marginTop: 8 }}>
-                                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🔍 OCR Result:</span>
-                                <span className="wa-transcript-text">{msg.transcript}</span>
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-
-                        {showAudio && (
-                          <div>
-                            <CustomAudioPlayer src={getMediaUrlWithToken(msg.media_url)} />
-                            {msg.transcript && (
-                              <div className="wa-bubble-transcript">
-                                <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
-                                <span className="wa-transcript-text">{msg.transcript}</span>
+                            {/* Rendering Quoted block inside bubble */}
+                            {quoteInfo && (
+                              <div className="wa-bubble-quote-block">
+                                <span className="wa-bubble-quote-sender">
+                                  {getQuoteSenderDisplayName(quoteInfo.participant, activeNumber)}
+                                </span>
+                                <span className="wa-bubble-quote-text">
+                                  {quoteInfo.text}
+                                </span>
                               </div>
                             )}
-                          </div>
-                        )}
 
-                        {showDoc && (
-                          <a 
-                            href={getMediaUrlWithToken(msg.media_url)} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="wa-media-doc"
-                          >
-                            <span className="wa-media-doc-icon">📄</span>
-                            <div className="wa-media-doc-info">
-                              <div className="wa-media-doc-name">{msg.message || 'Attached Document'}</div>
-                              <div className="wa-media-doc-size">Click to open/download</div>
-                            </div>
-                          </a>
-                        )}
+                            {/* Rendering Message Content */}
+                            {!showDoc && <span>{msg.message}</span>}
 
-                        <span className="wa-bubble-time">
-                          {formatTime(msg.created_at)}
-                          {isOutgoing && (
-                            <span style={{ marginLeft: 4 }}>
-                              {msg.status === 'pending' || msg.status === 'sending' ? '⏳' : '✓'}
+                            {/* Rendering Attachment Media types */}
+                            {showImage && (
+                              <div>
+                                <img 
+                                  src={getMediaUrlWithToken(msg.media_url)} 
+                                  alt="Sent media" 
+                                  className="wa-media-image"
+                                  onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url))}
+                                />
+                                {/* Module 7: AI Payment Card rendering */}
+                                {paymentCardData ? (
+                                  <div className="wa-ai-payment-card">
+                                    <div className="wa-ai-payment-card-header">
+                                      <span>💳</span>
+                                      <span>AI Payment Receipt</span>
+                                      <span className={`wa-ai-payment-card-badge ${paymentCardData.status === 'matched' ? 'matched' : paymentCardData.status === 'mismatch' ? 'mismatch' : 'reviewing'}`}>
+                                        {paymentCardData.status === 'matched' ? '✓ Verified' : paymentCardData.status === 'mismatch' ? '⚠ Mismatch' : '🔍 Reviewing'}
+                                      </span>
+                                    </div>
+                                    <div className="wa-ai-payment-card-amount">Rs. {paymentCardData.amount}</div>
+                                    <div className="wa-ai-payment-card-meta">
+                                      {paymentCardData.bank && <span>🏦 {paymentCardData.bank}</span>}
+                                      {paymentCardData.txnId && <span>TXN: {paymentCardData.txnId}</span>}
+                                    </div>
+                                  </div>
+                                ) : msg.transcript ? (
+                                  <div className="wa-bubble-transcript" style={{ marginTop: 8 }}>
+                                    <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🔍 OCR Result:</span>
+                                    <span className="wa-transcript-text">{msg.transcript}</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+
+                            {showAudio && (
+                              <div>
+                                <CustomAudioPlayer src={getMediaUrlWithToken(msg.media_url)} />
+                                {msg.transcript && (
+                                  <div className="wa-bubble-transcript">
+                                    <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
+                                    <span className="wa-transcript-text">{msg.transcript}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {showDoc && (
+                              <a 
+                                href={getMediaUrlWithToken(msg.media_url)} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="wa-media-doc"
+                              >
+                                <span className="wa-media-doc-icon">📄</span>
+                                <div className="wa-media-doc-info">
+                                  <div className="wa-media-doc-name">{msg.message || 'Attached Document'}</div>
+                                  <div className="wa-media-doc-size">Click to open/download</div>
+                                </div>
+                              </a>
+                            )}
+
+                            <span className="wa-bubble-time">
+                              {formatTime(msg.created_at)}
+                              {isOutgoing && (
+                                <span style={{ marginLeft: 4 }}>
+                                  {msg.status === 'pending' || msg.status === 'sending' ? '⏳' : '✓'}
+                                </span>
+                              )}
                             </span>
-                          )}
-                        </span>
-                      </div>
-                    )
-                  })
+                          </div>
+                        </React.Fragment>
+                      )
+                    })
+                  })()
                 )}
 
                 {/* Typing Indicator */}
-                {typingStatus[activeChat.phone] && (
-                  <div className="wa-typing-indicator">
-                    <span>Typing</span>
-                    <div className="wa-typing-dots">
-                      <span className="wa-typing-dot"></span>
-                      <span className="wa-typing-dot"></span>
-                      <span className="wa-typing-dot"></span>
-                    </div>
+                {typingUsers[activeChat.phone] && (
+                  <div className="wa-typing-indicator-premium">
+                    <span className="typing-emoji">💬</span>
+                    <span>typing...</span>
                   </div>
                 )}
                 
@@ -1784,7 +1802,21 @@ export default function WhatsAppPortal() {
               )}
 
               {/* Chat Input Bar */}
-              <div className="wa-portal-chat-input-bar">
+              <div 
+                className="wa-portal-chat-input-bar-pill" 
+                style={{
+                  borderRadius: '30px', 
+                  margin: '15px', 
+                  padding: '8px 18px', 
+                  backgroundColor: '#fff', 
+                  boxShadow: '0 5px 20px rgba(0,0,0,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  position: 'relative',
+                  border: '1px solid rgba(0,0,0,0.05)',
+                  gap: '10px'
+                }}
+              >
                 
                 {/* Slash Command Palette */}
                 {showSlashMenu && (
@@ -1809,26 +1841,56 @@ export default function WhatsAppPortal() {
                 )}
 
                 {isRecording ? (
-                  <div className="wa-portal-recording-overlay">
-                    <div className="wa-portal-recording-left">
-                      <span className="wa-portal-recording-dot">🔴</span>
-                      <span className="wa-portal-recording-timer">{formatRecordingTime(recordingTime)}</span>
-                      <span className="wa-portal-recording-text">Recording audio...</span>
+                  <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifySelf: 'stretch', gap: '10px' }}>
+                    {/* Left: pulsing dot + timer */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1f2937', fontWeight: 500, fontSize: '0.9rem' }}>
+                      <span className="wa-portal-recording-dot" style={{ color: '#ef4444' }}>🔴</span>
+                      <span>Recording...</span>
+                      <span className="wa-portal-recording-timer" style={{ fontFamily: 'monospace', color: '#4b5563' }}>{formatRecordingTime(recordingTime)}</span>
                     </div>
-                    <div className="wa-portal-recording-right">
+
+                    {/* Center: wave visualizer */}
+                    <div className="wa-recording-wave-visualizer" style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'center' }}>
+                      <div className="wave-bar" style={{ width: '3px', height: '12px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '22px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.1s' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '8px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.2s' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '26px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.3s' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '16px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.15s' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '10px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.25s' }} />
+                      <div className="wave-bar" style={{ width: '3px', height: '20px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.05s' }} />
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button 
                         type="button"
                         className="wa-portal-recording-btn discard" 
                         onClick={handleDiscardRecording}
                         title="Discard recording"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
                       >
                         🗑️
                       </button>
                       <button 
                         type="button"
-                        className="wa-portal-recording-btn send" 
                         onClick={handleVoiceNote}
-                        title="Send voice note"
+                        style={{
+                          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '36px',
+                          height: '36px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)',
+                          transition: 'all 0.2s ease',
+                          flexShrink: 0
+                        }}
+                        title="Stop & Send"
                       >
                         ✈️
                       </button>
@@ -1837,7 +1899,7 @@ export default function WhatsAppPortal() {
                 ) : (
                   <>
                     {/* File Attachment */}
-                    <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)">
+                    <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)" style={{ color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                       📎
                       <input 
                         type="file" 
@@ -1852,6 +1914,7 @@ export default function WhatsAppPortal() {
                       className="wa-portal-action-btn" 
                       onClick={() => setShowQuickReplies(prev => !prev)}
                       title="Insert Quick Reply Template"
+                      style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer' }}
                     >
                       ⚡
                     </button>
@@ -1880,6 +1943,18 @@ export default function WhatsAppPortal() {
                         }
                       }}
                       rows={1}
+                      style={{ 
+                        flex: 1, 
+                        border: 'none', 
+                        outline: 'none', 
+                        resize: 'none', 
+                        color: '#1f2937', 
+                        backgroundColor: 'transparent',
+                        fontSize: '0.9rem',
+                        fontFamily: 'inherit',
+                        padding: '4px 0',
+                        maxHeight: '100px'
+                      }}
                     />
 
                     {/* Dynamic Action Button on the Far Right */}
@@ -1887,14 +1962,47 @@ export default function WhatsAppPortal() {
                       <button 
                         className="wa-portal-send-btn"
                         onClick={() => handleSendMessage()}
+                        style={{
+                          background: 'var(--brand)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '40px',
+                          height: '40px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          flexShrink: 0
+                        }}
                       >
                         ➡️
                       </button>
                     ) : (
-                      <VoiceNoteButton 
-                        isRecording={isRecording} 
-                        handleVoiceNote={handleVoiceNote} 
-                      />
+                      <button
+                        type="button"
+                        onClick={handleVoiceNote}
+                        style={{
+                          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '40px',
+                          height: '40px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '1.2rem',
+                          boxShadow: '0 0 12px rgba(16, 185, 129, 0.5)',
+                          transition: 'all 0.2s ease',
+                          flexShrink: 0
+                        }}
+                        title="Record voice note"
+                      >
+                        🎤
+                      </button>
                     )}
                   </>
                 )}
