@@ -54,6 +54,77 @@ const getQuoteSenderDisplayName = (participant, activeNumber) => {
   return `@${participant.split('@')[0]}`
 }
 
+const CustomAudioPlayer = ({ src }) => {
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [duration, setDuration] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
+  const audioRef = useRef(null)
+
+  const togglePlay = () => {
+    if (!audioRef.current) return
+    if (isPlaying) {
+      audioRef.current.pause()
+    } else {
+      audioRef.current.play().catch(err => console.warn('Audio play failed:', err))
+    }
+  }
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return
+    setCurrentTime(audioRef.current.currentTime)
+  }
+
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return
+    setDuration(audioRef.current.duration)
+  }
+
+  const handleSeek = (e) => {
+    if (!audioRef.current) return
+    const time = Number(e.target.value)
+    audioRef.current.currentTime = time
+    setCurrentTime(time)
+  }
+
+  const formatTime = (secs) => {
+    if (isNaN(secs)) return '0:00'
+    const m = Math.floor(secs / 60)
+    const s = Math.floor(secs % 60)
+    return `${m}:${s < 10 ? '0' : ''}${s}`
+  }
+
+  return (
+    <div className="wa-custom-audio-player">
+      <audio
+        ref={audioRef}
+        src={src}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={() => setIsPlaying(false)}
+      />
+      <button type="button" onClick={togglePlay} className="wa-audio-play-btn">
+        {isPlaying ? '⏸️' : '▶️'}
+      </button>
+      <div className="wa-audio-progress-container">
+        <input
+          type="range"
+          min={0}
+          max={duration || 100}
+          value={currentTime}
+          onChange={handleSeek}
+          className="wa-audio-slider"
+        />
+        <div className="wa-audio-time-info">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
   const { 
@@ -117,9 +188,35 @@ export default function WhatsAppPortal() {
   // Module 8: Rich Media states
   const [isDragging, setIsDragging] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const shouldDiscardRef = useRef(false)
   const mediaRecorderRef = useRef(null)
   const audioChunksRef = useRef([])
   const dragCounterRef = useRef(0)
+
+  useEffect(() => {
+    let interval
+    if (isRecording) {
+      setRecordingTime(0)
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
+    } else {
+      setRecordingTime(0)
+    }
+    return () => clearInterval(interval)
+  }, [isRecording])
+
+  const formatRecordingTime = (secs) => {
+    const m = Math.floor(secs / 60)
+    const s = secs % 60
+    return `${m}:${s < 10 ? '0' : ''}${s}`
+  }
+
+  const handleDiscardRecording = () => {
+    shouldDiscardRef.current = true
+    mediaRecorderRef.current?.stop()
+  }
   
   // --- SUBDATA STATES ---
   const [customerInfo, setCustomerInfo] = useState({
@@ -882,6 +979,11 @@ export default function WhatsAppPortal() {
       recorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop())
         setIsRecording(false)
+        if (shouldDiscardRef.current) {
+          shouldDiscardRef.current = false
+          addToast('Recording discarded', 'info')
+          return
+        }
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         if (blob.size < 1000) return addToast('Recording too short', 'warning')
         
@@ -1551,12 +1653,7 @@ export default function WhatsAppPortal() {
 
                         {showAudio && (
                           <div>
-                            <audio controls className="wa-media-audio">
-                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/mp4" />
-                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/ogg" />
-                              <source src={getMediaUrlWithToken(msg.media_url)} type="audio/mpeg" />
-                              Your browser does not support the audio element.
-                            </audio>
+                            <CustomAudioPlayer src={getMediaUrlWithToken(msg.media_url)} />
                             {msg.transcript && (
                               <div className="wa-bubble-transcript">
                                 <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
@@ -1679,66 +1776,96 @@ export default function WhatsAppPortal() {
                   </div>
                 )}
 
-                {/* File Attachment */}
-                <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)">
-                  📎
-                  <input 
-                    type="file" 
-                    style={{ display: 'none' }} 
-                    onChange={handleMediaUpload}
-                    disabled={uploading}
-                  />
-                </label>
+                {isRecording ? (
+                  <div className="wa-portal-recording-overlay">
+                    <div className="wa-portal-recording-left">
+                      <span className="wa-portal-recording-dot">🔴</span>
+                      <span className="wa-portal-recording-timer">{formatRecordingTime(recordingTime)}</span>
+                      <span className="wa-portal-recording-text">Recording audio...</span>
+                    </div>
+                    <div className="wa-portal-recording-right">
+                      <button 
+                        type="button"
+                        className="wa-portal-recording-btn discard" 
+                        onClick={handleDiscardRecording}
+                        title="Discard recording"
+                      >
+                        🗑️
+                      </button>
+                      <button 
+                        type="button"
+                        className="wa-portal-recording-btn send" 
+                        onClick={handleVoiceNote}
+                        title="Send voice note"
+                      >
+                        ✈️
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* File Attachment */}
+                    <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)">
+                      📎
+                      <input 
+                        type="file" 
+                        style={{ display: 'none' }} 
+                        onChange={handleMediaUpload}
+                        disabled={uploading}
+                      />
+                    </label>
 
-                {/* Module 8: Push-to-Talk Mic Button */}
-                <VoiceNoteButton 
-                  isRecording={isRecording} 
-                  handleVoiceNote={handleVoiceNote} 
-                />
+                    {/* Templates Selector */}
+                    <button 
+                      className="wa-portal-action-btn" 
+                      onClick={() => setShowQuickReplies(prev => !prev)}
+                      title="Insert Quick Reply Template"
+                    >
+                      ⚡
+                    </button>
 
-                {/* Templates Selector */}
-                <button 
-                  className="wa-portal-action-btn" 
-                  onClick={() => setShowQuickReplies(prev => !prev)}
-                  title="Insert Quick Reply Template"
-                >
-                  ⚡
-                </button>
+                    {/* Input Field */}
+                    <textarea 
+                      ref={inputRef}
+                      className="wa-portal-input-textarea"
+                      placeholder="Type a message..."
+                      value={inputText}
+                      onChange={e => {
+                        const val = e.target.value
+                        updateInputText(val)
+                        if (val.startsWith('/')) {
+                          setSlashCmd(val.toLowerCase())
+                          setShowSlashMenu(true)
+                        } else {
+                          setShowSlashMenu(false)
+                          setSlashCmd('')
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          handleSendMessage()
+                        }
+                      }}
+                      rows={1}
+                    />
 
-                {/* Input Field */}
-                <textarea 
-                  ref={inputRef}
-                  className="wa-portal-input-textarea"
-                  placeholder="Type a message..."
-                  value={inputText}
-                  onChange={e => {
-                    const val = e.target.value
-                    updateInputText(val)
-                    if (val.startsWith('/')) {
-                      setSlashCmd(val.toLowerCase())
-                      setShowSlashMenu(true)
-                    } else {
-                      setShowSlashMenu(false)
-                      setSlashCmd('')
-                    }
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
-                    }
-                  }}
-                  rows={1}
-                />
-
-                {/* Send button */}
-                <button 
-                  className="wa-portal-send-btn"
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputText.trim()}
-                >
-                  ➡️
-                </button>
+                    {/* Dynamic Action Button on the Far Right */}
+                    {inputText.trim() ? (
+                      <button 
+                        className="wa-portal-send-btn"
+                        onClick={() => handleSendMessage()}
+                      >
+                        ➡️
+                      </button>
+                    ) : (
+                      <VoiceNoteButton 
+                        isRecording={isRecording} 
+                        handleVoiceNote={handleVoiceNote} 
+                      />
+                    )}
+                  </>
+                )}
 
                 {/* Quick Replies Drawer — decoupled Module 8 component */}
                 {showQuickReplies && (

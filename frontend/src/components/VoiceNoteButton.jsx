@@ -3,21 +3,19 @@ import React from 'react';
 export default function VoiceNoteButton({ isRecording, handleVoiceNote }) {
   return (
     <button
-      className={`wa-portal-action-btn VoiceNoteButton ${isRecording ? 'animate-pulse' : ''}`}
+      className={`wa-portal-send-btn VoiceNoteButton ${isRecording ? 'animate-pulse' : ''}`}
       onClick={handleVoiceNote}
       title={isRecording ? 'Stop recording & send voice note' : 'Record a voice note'}
+      type="button"
       style={{
-        position: 'relative',
-        color: isRecording ? '#ef4444' : undefined,
-        transition: 'all 0.2s ease'
+        background: isRecording ? '#ef4444' : 'var(--brand)',
+        color: '#ffffff',
+        transition: 'all 0.2s ease',
+        fontSize: '1.2rem',
+        flexShrink: 0
       }}
     >
-      {isRecording ? (
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          animation: 'recordingPulse 1s ease-in-out infinite'
-        }}>🔴</span>
-      ) : '🎤'}
+      {isRecording ? '🔴' : '🎤'}
     </button>
   );
 }

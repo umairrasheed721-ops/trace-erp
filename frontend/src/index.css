@@ -2720,4 +2720,173 @@ a.btn[href^="whatsapp:"]:hover {
   color: #ef4444;
 }
 
+/* WhatsApp-Style Voice Recorder Overlay & Custom Audio Player */
+
+.wa-custom-audio-player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-top: 6px;
+  width: 100%;
+  max-width: 320px;
+  box-sizing: border-box;
+}
+
+.wa-audio-play-btn {
+  background: var(--brand);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  transition: transform 0.1s ease;
+}
+
+.wa-audio-play-btn:hover {
+  transform: scale(1.05);
+  background: var(--brand-dim);
+}
+
+.wa-audio-progress-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wa-audio-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.3);
+  outline: none;
+  cursor: pointer;
+}
+
+.wa-audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.wa-audio-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.wa-audio-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--brand);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.wa-audio-slider::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+.wa-audio-time-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* Recording Overlay inside Chat Input Bar */
+.wa-portal-recording-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.wa-portal-recording-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.wa-portal-recording-dot {
+  color: #ef4444;
+  animation: recordingPulse 1.2s ease-in-out infinite;
+  display: inline-block;
+}
+
+@keyframes recordingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.9); }
+}
+
+.wa-portal-recording-timer {
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 0.95rem;
+}
+
+.wa-portal-recording-text {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.wa-portal-recording-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wa-portal-recording-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease;
+  font-size: 1.2rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.wa-portal-recording-btn:hover {
+  transform: scale(1.1);
+  background: var(--bg-hover);
+}
+
+.wa-portal-recording-btn.discard {
+  color: #ef4444;
+}
+
+.wa-portal-recording-btn.send {
+  color: #10b981;
+}
+
 
