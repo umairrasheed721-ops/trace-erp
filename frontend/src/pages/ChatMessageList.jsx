@@ -419,6 +419,7 @@ export default function ChatMessageList({
                     style={{
                       position: 'relative',
                       maxWidth: '65%',
+                      width: 'fit-content',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: isOutgoing ? 'flex-end' : 'flex-start'
@@ -441,7 +442,9 @@ export default function ChatMessageList({
                       transform: (reactedMessageId === (msg.id || index)) ? 'scale(1.06)' : 'scale(1)',
                       transition: 'transform 0.15s ease',
                       marginTop: 0,
-                      marginBottom: 0
+                      marginBottom: 0,
+                      width: '100%',
+                      maxWidth: '100%'
                     }}
                   >
                     {/* Rendering Quoted block inside bubble */}
