@@ -1290,7 +1290,7 @@ export default function WhatsAppPortal() {
         }
       `}</style>
 
-      <div className="wa-portal-container">
+      <div className="wa-portal-container" style={{ backgroundColor: '#fcfcfc', border: '1px solid #eaeaea', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
         
         {/* --- LEFT PANEL: CONVERSATIONS LIST --- */}
         <ChatSidebar

@@ -435,16 +435,20 @@ export default function ChatMessageList({
                       e.preventDefault()
                       setContextMenu({ x: e.pageX, y: e.pageY, msg })
                     }}
-                    style={{ 
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                      borderRadius: borderRadius,
-                      transform: (reactedMessageId === (msg.id || index)) ? 'scale(1.06)' : 'scale(1)',
-                      transition: 'transform 0.15s ease',
-                      marginTop: 0,
-                      marginBottom: 0,
-                      width: '100%',
-                      maxWidth: '100%'
-                    }}
+                      style={{ 
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        borderRadius: '12px',
+                        backgroundColor: isOutgoing ? '#7c3aed' : '#ffffff',
+                        color: isOutgoing ? '#ffffff' : '#111827',
+                        lineHeight: '1.5',
+                        fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        transform: (reactedMessageId === (msg.id || index)) ? 'scale(1.02)' : 'scale(1)',
+                        transition: 'all 0.2s ease',
+                        marginTop: 0,
+                        marginBottom: 0,
+                        width: '100%',
+                        maxWidth: '100%'
+                      }}
                   >
                     {/* Rendering Quoted block inside bubble */}
                     {quoteInfo && (

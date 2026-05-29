@@ -288,6 +288,14 @@ export default function ChatSidebar({
                 key={c.phone} 
                 className={`wa-portal-thread-item ${isActive ? 'active' : ''}`}
                 onClick={() => handleChatSelect(c)}
+                style={{
+                  margin: '4px 8px',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  backgroundColor: isActive ? 'var(--bg-active, rgba(0,0,0,0.05))' : 'transparent',
+                  boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
+                  transition: 'all 0.2s ease'
+                }}
               >
                 <div className="wa-portal-avatar" style={{ overflow: 'hidden', padding: c.dpUrl ? 0 : undefined }}>
                   {c.dpUrl
@@ -298,15 +306,15 @@ export default function ChatSidebar({
                 </div>
                 <div className="wa-portal-thread-info">
                   <div className="wa-portal-thread-header">
-                    <span className="wa-portal-thread-name">
+                    <span className="wa-portal-thread-name" style={{ color: 'var(--text-primary, #111827)', fontWeight: 500 }}>
                       {c.customerName || `+${c.phone}`}
                     </span>
-                    <span className="wa-portal-thread-time">
+                    <span className="wa-portal-thread-time" style={{ color: 'var(--text-muted, #6b7280)' }}>
                       {c.lastMessage ? formatRelativeTime(c.lastMessage.created_at) : ''}
                     </span>
                   </div>
                   <div className="wa-portal-thread-preview">
-                    <span className="wa-portal-thread-preview-text">
+                    <span className="wa-portal-thread-preview-text" style={{ color: 'var(--text-muted, #6b7280)' }}>
                       {isContactTyping ? (
                         <span style={{ color: 'var(--green)', fontWeight: 'bold' }}>typing...</span>
                       ) : c.lastMessage ? (
