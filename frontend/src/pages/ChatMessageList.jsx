@@ -388,9 +388,9 @@ export default function ChatMessageList({
                 {showDateDivider && (
                   <div className="date-divider" style={{ position: 'sticky', top: '10px', zIndex: 10, textAlign: 'center', margin: '16px 0' }}>
                     <span style={{ 
-                      background: 'var(--bg-surface, #ffffff)', 
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-secondary, #6b7280)', 
+                      background: 'var(--wa-system-pill)', 
+                      border: '1px solid var(--wa-border)',
+                      color: 'var(--wa-text-muted)', 
                       padding: '4px 12px', 
                       borderRadius: '6px', 
                       fontSize: '0.72rem', 
@@ -438,9 +438,9 @@ export default function ChatMessageList({
                       style={{ 
                         boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                         borderRadius: '12px',
-                        backgroundColor: isOutgoing ? '#7c3aed' : '#ffffff',
-                        color: isOutgoing ? '#ffffff' : '#111827',
-                        border: isOutgoing ? 'none' : '1px solid #eaeaea',
+                        backgroundColor: isOutgoing ? 'var(--wa-bubble-out)' : 'var(--wa-bubble-in)',
+                        color: 'var(--wa-text-primary)',
+                        border: isOutgoing ? 'none' : '1px solid var(--wa-border)',
                         lineHeight: '1.5',
                         fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                         transform: (reactedMessageId === (msg.id || index)) ? 'scale(1.02)' : 'scale(1)',

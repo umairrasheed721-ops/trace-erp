@@ -27,6 +27,17 @@
   --orange: #f97316;
   --blue: #3b82f6;
   --purple: #a855f7;
+
+  /* WhatsApp Official Variables (Light Mode) */
+  --wa-chat-bg: #efeae2;
+  --wa-panel-bg: #ffffff;
+  --wa-header-bg: #f0f2f5;
+  --wa-bubble-in: #ffffff;
+  --wa-bubble-out: #d9fdd3;
+  --wa-text-primary: #111b21;
+  --wa-text-muted: #667781;
+  --wa-border: #d1d7db;
+  --wa-system-pill: #f1f1f2;
 }
 
 /* ─── Dark Theme (Default) ─── */
@@ -41,6 +52,17 @@
   --text-primary: #f1f2f6;
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
+
+  /* WhatsApp Official Variables (Dark Mode) */
+  --wa-chat-bg: #0b141a;
+  --wa-panel-bg: #111b21;
+  --wa-header-bg: #202c33;
+  --wa-bubble-in: #202c33;
+  --wa-bubble-out: #005c4b;
+  --wa-text-primary: #e9edef;
+  --wa-text-muted: #8696a0;
+  --wa-border: #222d34;
+  --wa-system-pill: #182229;
 
   --green-dim: rgba(34, 197, 94, 0.12);
   --yellow-dim: rgba(234, 179, 8, 0.12);
@@ -62,6 +84,17 @@
   --text-primary: #1e293b;
   --text-secondary: #475569;
   --text-muted: #64748b;
+
+  /* WhatsApp Official Variables (Light Mode) */
+  --wa-chat-bg: #efeae2;
+  --wa-panel-bg: #ffffff;
+  --wa-header-bg: #f0f2f5;
+  --wa-bubble-in: #ffffff;
+  --wa-bubble-out: #d9fdd3;
+  --wa-text-primary: #111b21;
+  --wa-text-muted: #667781;
+  --wa-border: #d1d7db;
+  --wa-system-pill: #f1f1f2;
 
   --green-dim: rgba(34, 197, 94, 0.08);
   --yellow-dim: rgba(234, 179, 8, 0.08);

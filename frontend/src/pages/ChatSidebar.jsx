@@ -63,7 +63,7 @@ export default function ChatSidebar({
   })
 
   return (
-    <div className="wa-portal-left">
+    <div className="wa-portal-left" style={{ backgroundColor: 'var(--wa-panel-bg)', borderRight: '1px solid var(--wa-border)' }}>
       <style>{`
         @keyframes shimmer {
           0% {
@@ -81,7 +81,7 @@ export default function ChatSidebar({
       `}</style>
 
       {/* Connection Status Indicator — Module 7: Pulse Dot */}
-      <div className="wa-portal-status-bar">
+      <div className="wa-portal-status-bar" style={{ borderBottom: '1px solid var(--wa-border)' }}>
         <div className="wa-pulse-dot" style={{ width: 16, height: 16 }}>
           <div
             className="wa-pulse-dot-inner"
@@ -92,7 +92,7 @@ export default function ChatSidebar({
           />
           <style>{`.wa-pulse-dot::before { background: ${getStatusColor(wsStatus)} !important; animation: ${wsStatus === 'CONNECTED' ? 'pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite' : 'none'} }`}</style>
         </div>
-        <span style={{ flex: 1 }}>
+        <span style={{ flex: 1, color: 'var(--wa-text-primary)' }}>
           WhatsApp: <strong style={{ color: getStatusColor(wsStatus) }}>{wsStatus ? wsStatus.toLowerCase() : ''}</strong>
         </span>
         {activeNumber && wsStatus === 'CONNECTED' && (
@@ -119,7 +119,7 @@ export default function ChatSidebar({
             background: 'rgba(168,85,247,0.08)',
             border: '1px solid rgba(168,85,247,0.2)',
             borderRadius: '8px',
-            color: 'var(--text-muted)',
+            color: 'var(--wa-text-muted)',
             fontSize: '0.65rem',
             padding: '3px 8px',
             cursor: 'pointer',
@@ -140,7 +140,7 @@ export default function ChatSidebar({
             background: 'rgba(255,255,255,0.08)',
             border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: '8px',
-            color: 'var(--text-color)',
+            color: 'var(--wa-text-primary)',
             fontSize: '0.85rem',
             padding: '3px 8px',
             cursor: 'pointer',
@@ -164,11 +164,12 @@ export default function ChatSidebar({
       </div>
 
       {/* Search Contacts */}
-      <div className="wa-portal-search">
+      <div className="wa-portal-search" style={{ borderBottom: '1px solid var(--wa-border)' }}>
         <input 
           type="text" 
           placeholder="Search or start new chat..." 
           className="wa-portal-search-input"
+          style={{ backgroundColor: 'var(--wa-header-bg)', border: '1px solid var(--wa-border)', color: 'var(--wa-text-primary)' }}
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
         />
@@ -184,7 +185,7 @@ export default function ChatSidebar({
           padding: '12px 16px',
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          borderBottom: '1px solid var(--border)'
+          borderBottom: '1px solid var(--wa-border)'
         }}
       >
         <style>{`.wa-portal-filter-pills::-webkit-scrollbar { display: none; }`}</style>
@@ -202,9 +203,9 @@ export default function ChatSidebar({
               style={{
                 padding: '6px 12px',
                 borderRadius: '6px',
-                border: isActive ? '1px solid var(--brand, #a855f7)' : '1px solid var(--border)',
+                border: isActive ? '1px solid var(--brand, #a855f7)' : '1px solid var(--wa-border)',
                 backgroundColor: isActive ? 'var(--brand-glow, rgba(168, 85, 247, 0.12))' : 'transparent',
-                color: isActive ? 'var(--brand, #a855f7)' : 'var(--text-secondary)',
+                color: isActive ? 'var(--brand, #a855f7)' : 'var(--wa-text-muted)',
                 fontSize: '0.78rem',
                 fontWeight: 500,
                 cursor: 'pointer',
@@ -214,14 +215,14 @@ export default function ChatSidebar({
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
+                  e.currentTarget.style.backgroundColor = 'var(--wa-header-bg)';
+                  e.currentTarget.style.color = 'var(--wa-text-primary)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
                   e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-secondary)';
+                  e.currentTarget.style.color = 'var(--wa-text-muted)';
                 }
               }}
             >
@@ -232,7 +233,7 @@ export default function ChatSidebar({
       </div>
 
       {/* Threads List — Module 7: Shimmer Skeletons */}
-      <div className="wa-portal-threads-list">
+      <div className="wa-portal-threads-list" style={{ backgroundColor: 'var(--wa-panel-bg)' }}>
         {loadingChats ? (
           <div style={{ padding: '0 15px' }}>
             {[...Array(6)].map((_, i) => (
@@ -243,7 +244,7 @@ export default function ChatSidebar({
                   alignItems: 'center', 
                   gap: '12px', 
                   padding: '12px 0', 
-                  borderBottom: '1px solid #f3f4f6' 
+                  borderBottom: '1px solid var(--wa-border)' 
                 }}
               >
                 <div 
@@ -277,7 +278,7 @@ export default function ChatSidebar({
             ))}
           </div>
         ) : filteredChats.length === 0 ? (
-          <div className="text-center p-8 text-muted italic">No chats found.</div>
+          <div className="text-center p-8 text-muted italic" style={{ color: 'var(--wa-text-muted)' }}>No chats found.</div>
         ) : (
           filteredChats.map(c => {
             const isActive = activeChat && activeChat.phone === c.phone
@@ -292,9 +293,10 @@ export default function ChatSidebar({
                   margin: '4px 8px',
                   borderRadius: '8px',
                   padding: '10px 12px',
-                  backgroundColor: isActive ? 'var(--bg-active, rgba(0,0,0,0.05))' : 'transparent',
+                  backgroundColor: isActive ? 'var(--wa-header-bg)' : 'transparent',
                   boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.05)' : 'none',
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  borderBottom: '1px solid var(--wa-border)'
                 }}
               >
                 <div className="wa-portal-avatar" style={{ overflow: 'hidden', padding: c.dpUrl ? 0 : undefined }}>
@@ -306,15 +308,15 @@ export default function ChatSidebar({
                 </div>
                 <div className="wa-portal-thread-info">
                   <div className="wa-portal-thread-header">
-                    <span className="wa-portal-thread-name" style={{ color: 'var(--text-primary, #111827)', fontWeight: 500 }}>
+                    <span className="wa-portal-thread-name" style={{ color: 'var(--wa-text-primary)', fontWeight: 500 }}>
                       {c.customerName || `+${c.phone}`}
                     </span>
-                    <span className="wa-portal-thread-time" style={{ color: 'var(--text-muted, #6b7280)' }}>
+                    <span className="wa-portal-thread-time" style={{ color: 'var(--wa-text-muted)' }}>
                       {c.lastMessage ? formatRelativeTime(c.lastMessage.created_at) : ''}
                     </span>
                   </div>
                   <div className="wa-portal-thread-preview">
-                    <span className="wa-portal-thread-preview-text" style={{ color: 'var(--text-muted, #6b7280)' }}>
+                    <span className="wa-portal-thread-preview-text" style={{ color: 'var(--wa-text-muted)' }}>
                       {isContactTyping ? (
                         <span style={{ color: 'var(--green)', fontWeight: 'bold' }}>typing...</span>
                       ) : c.lastMessage ? (

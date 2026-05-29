@@ -60,19 +60,19 @@ export default function ChatInputArea({
         .wa-quick-pill {
           padding: 6px 14px;
           border-radius: 20px;
-          border: 1px solid #e5e7eb;
-          background-color: #ffffff;
+          border: 1px solid var(--wa-border);
+          background-color: var(--wa-panel-bg);
           cursor: pointer;
           display: inline-flex;
           align-items: center;
           gap: 6px;
           font-size: 13px;
-          color: #374151;
+          color: var(--wa-text-primary);
           transition: all 0.2s ease;
           white-space: nowrap;
         }
         .wa-quick-pill:hover {
-          background-color: #f3f4f6;
+          background-color: var(--wa-header-bg);
           transform: scale(1.02);
         }
       `}</style>
@@ -119,12 +119,12 @@ export default function ChatInputArea({
           borderRadius: '30px', 
           margin: '15px', 
           padding: '10px 20px', 
-          backgroundColor: '#fff', 
+          backgroundColor: 'var(--wa-panel-bg)', 
           boxShadow: '0 5px 20px rgba(0,0,0,0.15)',
           display: 'flex',
           alignItems: 'center',
           position: 'relative',
-          border: '1px solid rgba(0,0,0,0.05)',
+          border: '1px solid var(--wa-border)',
           gap: '10px',
           transform: 'translateY(-2px)'
         }}
@@ -261,7 +261,7 @@ export default function ChatInputArea({
                 border: 'none', 
                 outline: 'none', 
                 resize: 'none', 
-                color: '#1f2937', 
+                color: 'var(--wa-text-primary)', 
                 backgroundColor: 'transparent',
                 fontSize: '0.9rem',
                 fontFamily: 'inherit',

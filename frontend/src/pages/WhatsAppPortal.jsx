@@ -1290,7 +1290,7 @@ export default function WhatsAppPortal() {
         }
       `}</style>
 
-      <div className="wa-portal-container" style={{ backgroundColor: '#fcfcfc', border: '1px solid #eaeaea', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+      <div className="wa-portal-container" style={{ backgroundColor: 'var(--wa-panel-bg)', border: '1px solid var(--wa-border)', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
         
         {/* --- LEFT PANEL: CONVERSATIONS LIST --- */}
         <ChatSidebar
@@ -1316,7 +1316,7 @@ export default function WhatsAppPortal() {
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', backgroundColor: 'var(--wa-chat-bg)' }}
         >
           {activeChat ? (
             <div className="wa-portal-main" style={{ display: 'flex', flexDirection: 'row', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
@@ -1332,7 +1332,7 @@ export default function WhatsAppPortal() {
                 />
                 
                 {/* Header */}
-                <div className="wa-portal-chat-header">
+                <div className="wa-portal-chat-header" style={{ backgroundColor: 'var(--wa-header-bg)', borderBottom: '1px solid var(--wa-border)' }}>
                   <div className="wa-portal-chat-header-info">
                     <div className="wa-portal-avatar">
                       {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
@@ -1464,8 +1464,8 @@ export default function WhatsAppPortal() {
                 className="wa-portal-right-panel wa-portal-right" 
                 style={{
                   width: '320px', 
-                  borderLeft: '1px solid #eee', 
-                  background: '#fafafa', 
+                  borderLeft: '1px solid var(--wa-border)', 
+                  background: 'var(--wa-panel-bg)', 
                   display: showCustomer360 ? 'flex' : 'none',
                   flexDirection: 'column',
                   gap: '15px',
@@ -1474,22 +1474,22 @@ export default function WhatsAppPortal() {
                 }}
               >
                 {/* Profile Card */}
-                <div className="wa-portal-profile-section" style={{ textAlign: 'center', backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                <div className="wa-portal-profile-section" style={{ textAlign: 'center', backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
                   <div className="wa-portal-profile-avatar" style={{ margin: '0 auto 10px auto' }}>
                     {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
                   </div>
-                  <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600 }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
-                  <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: '#6b7280' }}>+{activeChat.phone}</div>
+                  <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
+                  <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)' }}>+{activeChat.phone}</div>
                 </div>
 
                 {/* Order Status & COD Verification Badge Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>📦 Order Status</h5>
+                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
+                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>📦 Order Status</h5>
                   {loadingMessages ? (
                     <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
                   ) : customerInfo.latestOrder ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>Order #{customerInfo.latestOrder.id}</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--wa-text-primary)' }}>Order #{customerInfo.latestOrder.id}</div>
                       <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
                         <span className="wa-badge-status" style={{ 
                           backgroundColor: customerInfo.latestOrder.cod_verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', 
@@ -1504,13 +1504,13 @@ export default function WhatsAppPortal() {
                       </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic' }}>No active orders found.</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)', fontStyle: 'italic' }}>No active orders found.</div>
                   )}
                 </div>
 
                 {/* Quick Actions Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>⚡ Quick Actions</h5>
+                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
+                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>⚡ Quick Actions</h5>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <button
                       className="btn btn-secondary btn-sm"
@@ -1531,8 +1531,8 @@ export default function WhatsAppPortal() {
                 </div>
 
                 {/* Customer 360 Insights / LTV Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>💳 Customer LTV</h5>
+                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
+                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>💳 Customer LTV</h5>
                   {loadingMessages ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
@@ -1543,14 +1543,14 @@ export default function WhatsAppPortal() {
                       <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--brand, #10B981)' }}>
                         Rs. {customerInfo.orderHistory?.reduce((sum, o) => sum + Number(o.total_price || 0), 0).toLocaleString() || '0'}
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Total value over {customerInfo.orderHistory?.length || 0} orders</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--wa-text-muted)' }}>Total value over {customerInfo.orderHistory?.length || 0} orders</span>
                     </>
                   )}
                 </div>
 
                 {/* Gemini Chat Memory Section — Module 7: Enhanced Glass Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>🧠 Gemini Active Memory</h5>
+                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
+                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>🧠 Gemini Active Memory</h5>
                   {loadingMessages ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       <div className="right-panel-shimmer" style={{ height: '12px', width: '100%', borderRadius: '4px' }}></div>
@@ -1558,11 +1558,11 @@ export default function WhatsAppPortal() {
                       <div className="right-panel-shimmer" style={{ height: '12px', width: '40%', borderRadius: '4px' }}></div>
                     </div>
                   ) : customerInfo.geminiMemory ? (
-                    <div className="wa-gemini-memory" style={{ background: '#f9fafb', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', color: '#374151' }}>
+                    <div className="wa-gemini-memory" style={{ background: 'var(--wa-header-bg)', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--wa-text-primary)' }}>
                       {customerInfo.geminiMemory}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)', fontStyle: 'italic', padding: '8px', background: 'var(--wa-header-bg)', borderRadius: '6px', border: '1px dashed var(--wa-border)' }}>
                       No AI-extracted memory recorded yet.
                     </div>
                   )}
