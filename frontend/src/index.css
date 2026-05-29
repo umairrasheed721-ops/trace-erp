@@ -3375,5 +3375,7 @@ a.btn[href^="whatsapp:"]:hover {
   background-color: #ffffff !important;
   color: #111b21 !important;
 }
-
-
+/* Hover Actions visibility */
+.wa-bubble-wrapper:hover .hover-actions {
+  opacity: 1 !important;
+}

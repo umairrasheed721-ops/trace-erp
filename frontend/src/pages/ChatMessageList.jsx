@@ -415,8 +415,17 @@ export default function ChatMessageList({
                     margin: isGroupedWithPrev ? '2px 0' : '8px 0'
                   }}
                 >
-                  <div 
-                    className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
+                  <div
+                    style={{
+                      position: 'relative',
+                      maxWidth: '65%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: isOutgoing ? 'flex-end' : 'flex-start'
+                    }}
+                  >
+                    <div 
+                      className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
                     onDoubleClick={() => {
                       setReactedMessageId(msg.id || index)
                       handleQuoteClick(msg.isImageGrid ? msg.messages[0] : msg)
@@ -655,6 +664,7 @@ export default function ChatMessageList({
                       📋
                     </button>
                   </div>
+                  </div>
                 </div>
               </React.Fragment>
             )
@@ -678,10 +688,9 @@ export default function ChatMessageList({
           onClick={jumpToBottom}
           className="jump-present-badge"
           style={{
-            position: 'sticky',
-            bottom: '15px',
-            left: '100%',
-            transform: 'translateX(-60px)',
+            position: 'absolute',
+            bottom: '20px',
+            right: '20px',
             zIndex: 99,
             width: '42px',
             height: '42px',
