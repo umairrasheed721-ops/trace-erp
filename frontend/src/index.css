@@ -3015,4 +3015,182 @@ a.btn[href^="whatsapp:"]:hover {
   100% { transform: scale(1); opacity: 0.7; }
 }
 
+/* ==========================================================================
+   WHATSAPP DARK MODE THEME OVERRIDES
+   ========================================================================== */
+
+/* 1. Global Container */
+.wa-portal-container {
+  background-color: #111b21 !important;
+  color: #e9edef !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+/* 2. Left Sidebar */
+.wa-portal-left {
+  background-color: #111b21 !important;
+  border-right: 1px solid #222e35 !important;
+}
+
+.wa-portal-status-bar {
+  background-color: #202c33 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  color: #e9edef !important;
+}
+
+.wa-portal-search {
+  background-color: #111b21 !important;
+  padding: 8px 12px !important;
+}
+
+.wa-portal-search-input {
+  background-color: #202c33 !important;
+  border: none !important;
+  color: #e9edef !important;
+  border-radius: 8px !important;
+}
+
+.wa-portal-filter-pills {
+  background-color: #111b21 !important;
+}
+
+/* 3. Thread List Items */
+.wa-portal-thread-item {
+  background-color: #111b21 !important;
+  border-bottom: 1px solid #222e35 !important;
+  transition: background 0.15s ease !important;
+}
+
+.wa-portal-thread-item:hover {
+  background-color: #202c33 !important;
+}
+
+.wa-portal-thread-item.active {
+  background-color: #2a3942 !important;
+  border-left: none !important;
+}
+
+.wa-portal-thread-name {
+  color: #e9edef !important;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+}
+
+.wa-portal-thread-preview-text {
+  color: #8696a0 !important;
+}
+
+.wa-portal-thread-time {
+  color: #8696a0 !important;
+}
+
+/* 4. Chat Center Panel (Timeline) */
+.wa-portal-center {
+  background-color: #0b141a !important;
+}
+
+.wa-portal-chat-timeline {
+  background-color: #0b141a !important;
+  background-image: linear-gradient(rgba(11, 20, 26, 0.95), rgba(11, 20, 26, 0.95)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png') !important;
+  background-repeat: repeat !important;
+  background-size: auto !important;
+}
+
+/* 5. Chat Header */
+.wa-portal-chat-header {
+  background-color: #202c33 !important;
+  border-bottom: none !important;
+  color: #e9edef !important;
+  padding: 10px 16px !important;
+}
+
+.wa-portal-chat-header-info {
+  color: #e9edef !important;
+}
+
+.wa-portal-chat-header-info span {
+  color: #8696a0 !important;
+}
+
+/* 6. Message Bubbles */
+.wa-bubble {
+  box-shadow: 0 1px 0.5px rgba(0,0,0,0.13) !important;
+  border-radius: 8px !important;
+}
+
+.wa-bubble.incoming {
+  background-color: #202c33 !important;
+  color: #e9edef !important;
+  border: none !important;
+}
+
+.wa-bubble.outgoing {
+  background: #005c4b !important;
+  color: #e9edef !important;
+  border: none !important;
+}
+
+.wa-bubble-time {
+  color: #8696a0 !important;
+}
+
+.wa-bubble.outgoing .wa-bubble-time {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* 7. Chat Input Bar Area */
+.wa-portal-chat-input-bar-pill {
+  background-color: #202c33 !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+.wa-portal-input-textarea {
+  background-color: #2a3942 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 9px 12px !important;
+  color: #e9edef !important;
+  outline: none !important;
+}
+
+.wa-portal-input-textarea:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Icons & buttons inside input bar */
+.wa-portal-action-btn {
+  color: #8696a0 !important;
+}
+
+/* 8. Customer 360 Right Panel */
+.wa-portal-right {
+  background-color: #111b21 !important;
+  border-left: 1px solid #222e35 !important;
+}
+
+.wa-portal-profile-section {
+  background-color: #202c33 !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+.wa-portal-profile-name, .wa-portal-profile-title {
+  color: #e9edef !important;
+}
+
+.wa-portal-profile-phone {
+  color: #8696a0 !important;
+}
+
+.wa-gemini-memory {
+  background-color: #2a3942 !important;
+  color: #e9edef !important;
+}
+
 
