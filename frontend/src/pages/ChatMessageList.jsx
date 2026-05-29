@@ -441,7 +441,7 @@ export default function ChatMessageList({
                     )}
 
                     {/* Rendering Message Content */}
-                    {!showDoc && !msg.isImageGrid && <span>{msg.message}</span>}
+                    {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation}</span>}
 
                     {/* Rendering attachment media grid */}
                     {msg.isImageGrid && (
