@@ -254,6 +254,7 @@ export default function WhatsAppPortal() {
   const [humanHandoffActive, setHumanHandoffActive] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showCustomerInfo, setShowCustomerInfo] = useState(false)
+  const [showCustomer360, setShowCustomer360] = useState(false)
   
   // --- CONSTANTS ---
   const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
@@ -1376,16 +1377,16 @@ export default function WhatsAppPortal() {
                     </button>
                     <button
                       className="btn btn-secondary btn-sm"
-                      onClick={() => setShowCustomerInfo(prev => !prev)}
+                      onClick={() => setShowCustomer360(prev => !prev)}
                       title="Toggle Customer Info"
                       style={{
-                        background: showCustomerInfo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.05)',
+                        background: showCustomer360 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.05)',
                         border: '1px solid rgba(0,0,0,0.1)',
-                        color: showCustomerInfo ? 'var(--green, #10B981)' : '#374151',
+                        color: showCustomer360 ? 'var(--green, #10B981)' : '#374151',
                         fontWeight: 600
                       }}
                     >
-                      👤 Info {showCustomerInfo ? '◀' : '▶'}
+                      👤 Info {showCustomer360 ? '◀' : '▶'}
                     </button>
                     <button 
                       onClick={() => selectChat(activeChat)} 
@@ -1456,11 +1457,11 @@ export default function WhatsAppPortal() {
               </div>
 
               {/* CUSTOMER 360 RIGHT PANEL */}
-              {showCustomerInfo && (
+              {showCustomer360 && (
                 <div 
                   className="wa-portal-right"
                   style={{
-                    width: '300px',
+                    width: '320px',
                     borderLeft: '1px solid #eee',
                     background: '#fafafa',
                     display: 'flex',
@@ -1477,6 +1478,54 @@ export default function WhatsAppPortal() {
                     </div>
                     <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600 }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
                     <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: '#6b7280' }}>+{activeChat.phone}</div>
+                  </div>
+
+                  {/* Order Status & COD Verification Badge Card */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>📦 Order Status</h5>
+                    {loadingMessages ? (
+                      <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
+                    ) : customerInfo.latestOrder ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>Order #{customerInfo.latestOrder.id}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
+                          <span className="wa-badge-status" style={{ 
+                            backgroundColor: customerInfo.latestOrder.cod_verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', 
+                            color: customerInfo.latestOrder.cod_verified ? '#10b981' : '#f59e0b', 
+                            fontSize: '0.75rem', 
+                            padding: '4px 8px', 
+                            borderRadius: '6px', 
+                            fontWeight: 'bold' 
+                          }}>
+                            {customerInfo.latestOrder.cod_verified ? '🔐 COD Verified' : '⏳ COD Pending'}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic' }}>No active orders found.</div>
+                    )}
+                  </div>
+
+                  {/* Quick Actions Card */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>⚡ Quick Actions</h5>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleSendInvoice}
+                        disabled={!customerInfo.latestOrder}
+                        style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        📄 Send PDF Invoice
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => selectChat(activeChat)}
+                        style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        🔄 Sync Chat Timeline
+                      </button>
+                    </div>
                   </div>
 
                   {/* Customer 360 Insights / LTV Card */}
@@ -1513,75 +1562,6 @@ export default function WhatsAppPortal() {
                     ) : (
                       <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
                         No AI-extracted memory recorded yet.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Logistics & Latest Order Card */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>📦 Logistics Tracking</h5>
-                    {loadingMessages ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '70%', borderRadius: '4px' }}></div>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '85%', borderRadius: '4px' }}></div>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '60%', borderRadius: '4px' }}></div>
-                      </div>
-                    ) : customerInfo.latestOrder ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', color: '#4b5563' }}>
-                        <div>Courier: <strong>{customerInfo.latestOrder.courier || 'N/A'}</strong></div>
-                        <div>Tracking: <span style={{ fontFamily: 'monospace' }}>{customerInfo.latestOrder.tracking_number || 'N/A'}</span></div>
-                        <div>Status: <span style={{ color: 'var(--brand, #10B981)', fontWeight: 600 }}>{customerInfo.latestOrder.delivery_status || 'Pending'}</span></div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
-                        No logistics or tracking data available.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Order History Section */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>🛍️ Recent Orders</h5>
-                    
-                    {loadingMessages ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                            <div className="right-panel-shimmer" style={{ height: '12px', width: '80px', borderRadius: '4px' }}></div>
-                            <div className="right-panel-shimmer" style={{ height: '12px', width: '50px', borderRadius: '4px' }}></div>
-                          </div>
-                          <div className="right-panel-shimmer" style={{ height: '10px', width: '100px', borderRadius: '4px' }}></div>
-                        </div>
-                        <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                            <div className="right-panel-shimmer" style={{ height: '12px', width: '70px', borderRadius: '4px' }}></div>
-                            <div className="right-panel-shimmer" style={{ height: '12px', width: '60px', borderRadius: '4px' }}></div>
-                          </div>
-                          <div className="right-panel-shimmer" style={{ height: '10px', width: '90px', borderRadius: '4px' }}></div>
-                        </div>
-                      </div>
-                    ) : customerInfo.orderHistory.length === 0 ? (
-                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
-                        No Shopify order history matched for this phone.
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {customerInfo.orderHistory.slice(0, 3).map(o => (
-                          <div key={o.id} className="wa-order-history-item" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
-                            <div className="wa-order-history-header" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 500, fontSize: '0.8rem' }}>
-                              <span>Order #{o.id}</span>
-                              <span>Rs. {o.total_price}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: 4 }}>
-                              <span style={{ color: o.fulfillment_status === 'fulfilled' ? '#059669' : '#d97706' }}>
-                                {o.fulfillment_status || 'unfulfilled'}
-                              </span>
-                              <span style={{ color: o.financial_status === 'paid' ? '#059669' : '#dc2626' }}>
-                                {o.financial_status || 'unpaid'}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     )}
                   </div>
