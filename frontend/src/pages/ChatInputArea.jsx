@@ -33,6 +33,13 @@ export default function ChatInputArea({
   setSlashCmd,
   inputRef
 }) {
+  const QUICK_REPLIES = [
+    { id: 1, icon: '👋', text: 'Sir, kindly confirm your nearest landmark for delivery.', type: 'greeting' },
+    { id: 2, icon: '📦', text: 'Aapka parcel PostEx ko hand over kar diya hai.', type: 'logistics' },
+    { id: 3, icon: '⚠️', text: 'Rider aapki location par hai, kindly phone attend karein.', type: 'alert' },
+    { id: 4, icon: '✅', text: 'Order confirm karne ka shukriya!', type: 'success' }
+  ];
+
   return (
     <>
       <style>{`
@@ -50,31 +57,39 @@ export default function ChatInputArea({
           50% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.85); }
           100% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.5); }
         }
+        .wa-quick-pill {
+          padding: 6px 14px;
+          border-radius: 20px;
+          border: 1px solid #e5e7eb;
+          background-color: #ffffff;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: #374151;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+        .wa-quick-pill:hover {
+          background-color: #f3f4f6;
+          transform: scale(1.02);
+        }
       `}</style>
 
       {/* Quick Pills Row */}
-      {quickPills.length > 0 && (
-        <div className="wa-portal-quick-pills">
-          {quickPills.map(p => {
-            const pillKey = `pill:${p.pill_text?.substring(0, 20)}`
-            const isPillBusy = sendingReply === pillKey
-            return (
-              <span 
-                key={p.id} 
-                className="wa-quick-pill"
-                onClick={() => !isPillBusy && handleSendMessage(p.pill_text)}
-                style={{ 
-                  opacity: isPillBusy ? 0.5 : 1, 
-                  cursor: isPillBusy ? 'not-allowed' : 'pointer',
-                  pointerEvents: isPillBusy ? 'none' : 'auto'
-                }}
-              >
-                {isPillBusy ? '⏳' : p.pill_text}
-              </span>
-            )
-          })}
-        </div>
-      )}
+      <div className="wa-portal-quick-pills" style={{ display: 'flex', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {QUICK_REPLIES.map(p => (
+          <span 
+            key={p.id} 
+            className="wa-quick-pill"
+            onClick={() => updateInputText(p.text)}
+          >
+            <span>{p.icon}</span>
+            <span>{p.text}</span>
+          </span>
+        ))}
+      </div>
 
       {/* Quote Preview Frame */}
       {activeQuote && (
