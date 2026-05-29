@@ -33,31 +33,44 @@ export default function ChatInputArea({
   setSlashCmd,
   inputRef
 }) {
-  const [quickReplies, setQuickReplies] = React.useState([
-    { id: 1, text: '👋 Sir, kindly confirm your nearest landmark for delivery.' },
-    { id: 2, text: '📦 Aapka parcel PostEx ko hand over kar diya hai.' },
-    { id: 3, text: '⚠️ Rider aapki location par hai, kindly phone attend karein.' },
-    { id: 4, text: '✅ Order confirm karne ka shukriya!' }
-  ]);
-
-  React.useEffect(() => {
-    // TODO: Replace with actual TracePK API fetch (e.g., axios.get('/api/settings/quick-replies'))
-    const fetchCustomReplies = async () => {
+  const [quickReplies, setQuickReplies] = React.useState(() => {
+    const saved = localStorage.getItem('trace_quick_replies');
+    if (saved) {
       try {
-        // Simulated API response for now
-        const response = [
-          { id: 1, text: '👋 Sir, kindly confirm your nearest landmark for delivery.' },
-          { id: 2, text: '📦 Aapka parcel PostEx ko hand over kar diya hai.' },
-          { id: 3, text: '⚠️ Rider aapki location par hai, kindly phone attend karein.' },
-          { id: 4, text: '✅ Order confirm karne ka shukriya!' }
-        ];
-        setQuickReplies(response);
-      } catch (error) {
-        console.error("Failed to load custom replies", error);
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved quick replies", e);
       }
+    }
+    return [
+      { id: 1, text: '👋 Sir, kindly confirm your nearest landmark for delivery.' },
+      { id: 2, text: '📦 Aapka parcel PostEx ko hand over kar diya hai.' },
+      { id: 3, text: '⚠️ Rider aapki location par hai, kindly phone attend karein.' },
+      { id: 4, text: '✅ Order confirm karne ka shukriya!' }
+    ];
+  });
+
+  const [showManager, setShowManager] = React.useState(false);
+  const [newReplyText, setNewReplyText] = React.useState('');
+
+  const handleAddReply = () => {
+    if (!newReplyText.trim()) return;
+    const newReply = {
+      id: Date.now(),
+      text: newReplyText.trim()
     };
-    fetchCustomReplies();
-  }, []);
+    setQuickReplies(prev => [...prev, newReply]);
+    setNewReplyText('');
+  };
+
+  const handleDeleteReply = (id) => {
+    setQuickReplies(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleSaveAndClose = () => {
+    localStorage.setItem('trace_quick_replies', JSON.stringify(quickReplies));
+    setShowManager(false);
+  };
 
   return (
     <>
@@ -97,7 +110,7 @@ export default function ChatInputArea({
       `}</style>
 
       {/* Quick Pills Row */}
-      <div className="wa-portal-quick-pills" style={{ display: 'flex', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+      <div className="wa-portal-quick-pills" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {quickReplies.map(p => (
           <span 
             key={p.id} 
@@ -107,6 +120,28 @@ export default function ChatInputArea({
             <span>{p.text}</span>
           </span>
         ))}
+        <button 
+          type="button"
+          onClick={() => setShowManager(true)}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '15px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--wa-header-bg)',
+            minWidth: '32px',
+            minHeight: '32px',
+            flexShrink: 0
+          }}
+          title="Manage Quick Replies"
+        >
+          ⚙️
+        </button>
       </div>
 
       {/* Quote Preview Frame */}
@@ -347,6 +382,131 @@ export default function ChatInputArea({
           />
         )}
       </div>
+
+      {showManager && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(11, 20, 26, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <div 
+            style={{
+              backgroundColor: 'var(--wa-panel-bg)',
+              border: '1px solid var(--wa-border)',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '450px',
+              padding: '24px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--wa-border)', paddingBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>⚙️ Quick Replies Settings</h3>
+              <button 
+                onClick={handleSaveAndClose} 
+                style={{ background: 'none', border: 'none', color: 'var(--wa-text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
+              {quickReplies.length === 0 ? (
+                <div style={{ fontSize: '0.85rem', color: 'var(--wa-text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No quick replies. Add one below!</div>
+              ) : (
+                quickReplies.map(r => (
+                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--wa-header-bg)', padding: '8px 12px', borderRadius: '8px', gap: '8px' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--wa-text-primary)', wordBreak: 'break-word', flex: 1 }}>{r.text}</span>
+                    <button 
+                      onClick={() => handleDeleteReply(r.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', padding: '4px' }}
+                      title="Delete reply"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Add New Reply */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Type a new quick reply..." 
+                value={newReplyText}
+                onChange={e => setNewReplyText(e.target.value)}
+                style={{
+                  backgroundColor: 'var(--wa-header-bg)',
+                  border: '1px solid var(--wa-border)',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  color: 'var(--wa-text-primary)',
+                  fontSize: '0.85rem',
+                  outline: 'none'
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddReply();
+                  }
+                }}
+              />
+              <button 
+                onClick={handleAddReply}
+                style={{
+                  backgroundColor: '#005c4b',
+                  color: '#e9edef',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                ➕ Add Reply
+              </button>
+            </div>
+
+            {/* Save & Close */}
+            <button 
+              onClick={handleSaveAndClose}
+              style={{
+                backgroundColor: 'var(--brand)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                marginTop: '8px'
+              }}
+            >
+              Save & Close
+            </button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
