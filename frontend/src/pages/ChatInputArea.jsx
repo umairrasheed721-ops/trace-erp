@@ -24,7 +24,7 @@ export default function ChatInputArea({
   uploading,
   showQuickReplies,
   setShowQuickReplies,
-  quickReplies = [],
+  quickReplies: quickRepliesProp = [],
   handleSendQuickReply,
   showSlashMenu,
   setShowSlashMenu,
@@ -33,12 +33,31 @@ export default function ChatInputArea({
   setSlashCmd,
   inputRef
 }) {
-  const QUICK_REPLIES = [
-    { id: 1, icon: '👋', text: 'Sir, kindly confirm your nearest landmark for delivery.', type: 'greeting' },
-    { id: 2, icon: '📦', text: 'Aapka parcel PostEx ko hand over kar diya hai.', type: 'logistics' },
-    { id: 3, icon: '⚠️', text: 'Rider aapki location par hai, kindly phone attend karein.', type: 'alert' },
-    { id: 4, icon: '✅', text: 'Order confirm karne ka shukriya!', type: 'success' }
-  ];
+  const [quickReplies, setQuickReplies] = React.useState([
+    { id: 1, text: '👋 Sir, kindly confirm your nearest landmark for delivery.' },
+    { id: 2, text: '📦 Aapka parcel PostEx ko hand over kar diya hai.' },
+    { id: 3, text: '⚠️ Rider aapki location par hai, kindly phone attend karein.' },
+    { id: 4, text: '✅ Order confirm karne ka shukriya!' }
+  ]);
+
+  React.useEffect(() => {
+    // TODO: Replace with actual TracePK API fetch (e.g., axios.get('/api/settings/quick-replies'))
+    const fetchCustomReplies = async () => {
+      try {
+        // Simulated API response for now
+        const response = [
+          { id: 1, text: '👋 Sir, kindly confirm your nearest landmark for delivery.' },
+          { id: 2, text: '📦 Aapka parcel PostEx ko hand over kar diya hai.' },
+          { id: 3, text: '⚠️ Rider aapki location par hai, kindly phone attend karein.' },
+          { id: 4, text: '✅ Order confirm karne ka shukriya!' }
+        ];
+        setQuickReplies(response);
+      } catch (error) {
+        console.error("Failed to load custom replies", error);
+      }
+    };
+    fetchCustomReplies();
+  }, []);
 
   return (
     <>
@@ -79,13 +98,12 @@ export default function ChatInputArea({
 
       {/* Quick Pills Row */}
       <div className="wa-portal-quick-pills" style={{ display: 'flex', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {QUICK_REPLIES.map(p => (
+        {quickReplies.map(p => (
           <span 
             key={p.id} 
             className="wa-quick-pill"
             onClick={() => updateInputText(p.text)}
           >
-            <span>{p.icon}</span>
             <span>{p.text}</span>
           </span>
         ))}
@@ -324,7 +342,7 @@ export default function ChatInputArea({
         {/* Quick Replies Drawer — decoupled Module 8 component */}
         {showQuickReplies && (
           <QuickReplyPanel
-            quickReplies={quickReplies}
+            quickReplies={quickRepliesProp}
             sendingReply={sendingReply}
             onSend={handleSendQuickReply}
             onClose={() => setShowQuickReplies(false)}
