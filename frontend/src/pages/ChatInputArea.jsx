@@ -230,7 +230,7 @@ export default function ChatInputArea({
         ) : (
           <>
             {/* File Attachment */}
-            <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)" style={{ color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)" style={{ color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', minHeight: '40px' }}>
               📎
               <input 
                 type="file" 
@@ -245,12 +245,11 @@ export default function ChatInputArea({
               className="wa-portal-action-btn" 
               onClick={() => setShowQuickReplies(prev => !prev)}
               title="Insert Quick Reply Template"
-              style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', minHeight: '40px' }}
             >
               ⚡
             </button>
 
-            {/* Input Field */}
             <textarea 
               ref={inputRef}
               className="wa-portal-input-textarea"
@@ -267,12 +266,7 @@ export default function ChatInputArea({
                   setSlashCmd('')
                 }
               }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSendMessage()
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
               rows={1}
               style={{ 
                 flex: 1, 
@@ -283,7 +277,7 @@ export default function ChatInputArea({
                 backgroundColor: 'transparent',
                 fontSize: '0.9rem',
                 fontFamily: 'inherit',
-                padding: '4px 0',
+                padding: '12px 16px',
                 maxHeight: '100px'
               }}
             />
@@ -300,6 +294,8 @@ export default function ChatInputArea({
                   borderRadius: '50%',
                   width: '40px',
                   height: '40px',
+                  minWidth: '40px',
+                  minHeight: '40px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -321,6 +317,8 @@ export default function ChatInputArea({
                   borderRadius: '50%',
                   width: '40px',
                   height: '40px',
+                  minWidth: '40px',
+                  minHeight: '40px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
