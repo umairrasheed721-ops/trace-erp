@@ -3133,7 +3133,7 @@ a.btn[href^="whatsapp:"]:hover {
 [data-theme='dark'] .wa-portal-chat-timeline,
 :root:not([data-theme='light']) .wa-portal-chat-timeline {
   background-color: #0b141a !important;
-  background-image: linear-gradient(rgba(11, 20, 26, 0.95), rgba(11, 20, 26, 0.95)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png') !important;
+  background-image: linear-gradient(rgba(11, 20, 26, 0.6), rgba(11, 20, 26, 0.6)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png') !important;
   background-repeat: repeat !important;
   background-size: auto !important;
 }
@@ -3157,8 +3157,7 @@ a.btn[href^="whatsapp:"]:hover {
 
 [data-theme='dark'] .wa-bubble,
 :root:not([data-theme='light']) .wa-bubble {
-  box-shadow: 0 1px 0.5px rgba(0,0,0,0.13) !important;
-  border-radius: 8px !important;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13) !important;
 }
 
 [data-theme='dark'] .wa-bubble.incoming,
@@ -3166,6 +3165,7 @@ a.btn[href^="whatsapp:"]:hover {
   background-color: #202c33 !important;
   color: #e9edef !important;
   border: none !important;
+  border-radius: 0px 8px 8px 8px !important;
 }
 
 [data-theme='dark'] .wa-bubble.outgoing,
@@ -3173,15 +3173,11 @@ a.btn[href^="whatsapp:"]:hover {
   background: #005c4b !important;
   color: #e9edef !important;
   border: none !important;
+  border-radius: 8px 0px 8px 8px !important;
 }
 
 [data-theme='dark'] .wa-bubble-time,
 :root:not([data-theme='light']) .wa-bubble-time {
-  color: #8696a0 !important;
-}
-
-[data-theme='dark'] .wa-bubble.outgoing .wa-bubble-time,
-:root:not([data-theme='light']) .wa-bubble.outgoing .wa-bubble-time {
   color: rgba(255, 255, 255, 0.6) !important;
 }
 

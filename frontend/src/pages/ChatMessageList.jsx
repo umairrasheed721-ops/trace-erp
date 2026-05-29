@@ -65,6 +65,7 @@ const WaveSurfer = ({ src }) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
+  const [playbackRate, setPlaybackRate] = useState(1)
   const audioRef = useRef(null)
 
   const togglePlay = () => {
@@ -74,6 +75,16 @@ const WaveSurfer = ({ src }) => {
     } else {
       audioRef.current.play().catch(err => console.warn('Audio play failed:', err))
     }
+  }
+
+  const togglePlaybackRate = () => {
+    if (!audioRef.current) return
+    let nextRate = 1
+    if (playbackRate === 1) nextRate = 1.5
+    else if (playbackRate === 1.5) nextRate = 2
+    else nextRate = 1
+    audioRef.current.playbackRate = nextRate
+    setPlaybackRate(nextRate)
   }
 
   const handleTimeUpdate = () => {
@@ -152,9 +163,28 @@ const WaveSurfer = ({ src }) => {
             zIndex: 10
           }}
         />
-        <div className="wa-audio-time-info">
+        <div className="wa-audio-time-info" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
           <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span>{formatTime(duration)}</span>
+            <button 
+              type="button" 
+              onClick={togglePlaybackRate} 
+              style={{ 
+                backgroundColor: '#064236', 
+                borderRadius: '16px', 
+                color: '#e9edef', 
+                border: 'none', 
+                padding: '2px 8px', 
+                fontSize: '11px', 
+                fontWeight: 'bold', 
+                cursor: 'pointer',
+                marginLeft: '8px'
+              }}
+            >
+              {playbackRate}x
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -436,19 +466,21 @@ export default function ChatMessageList({
                         setContextMenu({ x: e.pageX, y: e.pageY, msg })
                       }}
                       style={{ 
-                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                        borderRadius: '12px',
-                        backgroundColor: isOutgoing ? 'var(--wa-bubble-out)' : 'var(--wa-bubble-in)',
-                        color: 'var(--wa-text-primary)',
-                        border: isOutgoing ? 'none' : '1px solid var(--wa-border)',
-                        lineHeight: '1.5',
+                        boxShadow: '0 1px 0.5px rgba(11,20,26,.13)',
+                        borderRadius: isOutgoing ? '8px 0px 8px 8px' : '0px 8px 8px 8px',
+                        backgroundColor: isOutgoing ? '#005c4b' : '#202c33',
+                        color: '#e9edef',
+                        border: 'none',
+                        lineHeight: '19px',
+                        fontSize: '14.2px',
                         fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                         transform: (reactedMessageId === (msg.id || index)) ? 'scale(1.02)' : 'scale(1)',
                         transition: 'all 0.2s ease',
                         marginTop: 0,
                         marginBottom: 0,
                         width: '100%',
-                        maxWidth: '100%'
+                        maxWidth: '100%',
+                        padding: '6px 7px 8px 9px'
                       }}
                     >
                     {/* Rendering Quoted block inside bubble */}
@@ -598,9 +630,19 @@ export default function ChatMessageList({
                       </a>
                     )}
 
-                    {/* Show time ONLY on the last message of that specific block */}
                     {!isGroupedWithNext && (
-                      <span className="wa-bubble-time">
+                      <span 
+                        className="wa-bubble-time"
+                        style={{
+                          color: 'rgba(255,255,255,0.6)',
+                          fontSize: '11px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          float: 'right',
+                          marginTop: '4px',
+                          marginLeft: '8px'
+                        }}
+                      >
                         {formatTime(msg.created_at)}
                         {isOutgoing && (
                           <span style={{ marginLeft: 4 }}>
