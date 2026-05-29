@@ -49,15 +49,15 @@ const getQuoteSenderDisplayName = (participant, activeNumber) => {
 const getIntentBadgeColors = (tag) => {
   switch (tag) {
     case 'Urgent':
-      return { backgroundColor: '#FEE2E2', color: '#991B1B' }
+      return { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }
     case 'Size Issue':
-      return { backgroundColor: '#E0E7FF', color: '#3730A3' }
+      return { backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.2)' }
     case 'Pricing':
-      return { backgroundColor: '#FEF3C7', color: '#92400E' }
+      return { backgroundColor: 'rgba(234, 179, 8, 0.1)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.2)' }
     case 'Address Update':
-      return { backgroundColor: '#D1FAE5', color: '#065F46' }
+      return { backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)' }
     default:
-      return { backgroundColor: '#F3F4F6', color: '#374151' }
+      return { backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }
   }
 }
 
@@ -386,18 +386,17 @@ export default function ChatMessageList({
             return (
               <React.Fragment key={msg.id || index}>
                 {showDateDivider && (
-                  <div className="date-divider" style={{ position: 'sticky', top: '10px', zIndex: 10, textAlign: 'center', margin: '15px 0' }}>
+                  <div className="date-divider" style={{ position: 'sticky', top: '10px', zIndex: 10, textAlign: 'center', margin: '16px 0' }}>
                     <span style={{ 
-                      background: 'rgba(30, 30, 36, 0.75)', 
-                      backdropFilter: 'blur(8px)', 
-                      WebkitBackdropFilter: 'blur(8px)',
-                      color: '#fff', 
-                      padding: '6px 16px', 
-                      borderRadius: '16px', 
-                      fontSize: '12px', 
+                      background: 'var(--bg-surface, #ffffff)', 
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary, #6b7280)', 
+                      padding: '4px 12px', 
+                      borderRadius: '6px', 
+                      fontSize: '0.72rem', 
                       fontWeight: '500',
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
+                      transition: 'all 0.2s ease'
                     }}>
                       {calculatedDate}
                     </span>

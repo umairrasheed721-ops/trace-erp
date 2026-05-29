@@ -179,19 +179,20 @@ export default function ChatSidebar({
         className="wa-portal-filter-pills"
         style={{
           display: 'flex',
-          gap: '8px',
+          gap: '6px',
           overflowX: 'auto',
-          padding: '10px 15px 15px 15px',
+          padding: '12px 16px',
           scrollbarWidth: 'none',
-          msOverflowStyle: 'none'
+          msOverflowStyle: 'none',
+          borderBottom: '1px solid var(--border)'
         }}
       >
         <style>{`.wa-portal-filter-pills::-webkit-scrollbar { display: none; }`}</style>
         {[
           { key: 'all', label: 'All' },
-          { key: 'unread', label: '🔵 Unread' },
-          { key: 'urgent', label: '🔴 Urgent' },
-          { key: 'orders', label: '📦 Orders' }
+          { key: 'unread', label: 'Unread' },
+          { key: 'urgent', label: 'Urgent' },
+          { key: 'orders', label: 'Orders' }
         ].map(p => {
           const isActive = activeFilter === p.key
           return (
@@ -199,17 +200,29 @@ export default function ChatSidebar({
               key={p.key}
               onClick={() => setActiveFilter(p.key)}
               style={{
-                padding: '6px 16px',
-                borderRadius: '20px',
-                border: 'none',
-                backgroundColor: isActive ? 'var(--brand, #10B981)' : '#f3f4f6',
-                color: isActive ? '#fff' : '#4b5563',
-                fontSize: '0.8rem',
-                fontWeight: 600,
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: isActive ? '1px solid var(--brand, #a855f7)' : '1px solid var(--border)',
+                backgroundColor: isActive ? 'var(--brand-glow, rgba(168, 85, 247, 0.12))' : 'transparent',
+                color: isActive ? 'var(--brand, #a855f7)' : 'var(--text-secondary)',
+                fontSize: '0.78rem',
+                fontWeight: 500,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 transition: 'all 0.2s ease',
-                boxShadow: isActive ? '0 2px 8px rgba(16, 185, 129, 0.4)' : 'none'
+                boxShadow: isActive ? '0 1px 4px rgba(168, 85, 247, 0.05)' : 'none'
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-secondary)';
+                }
               }}
             >
               {p.label}
