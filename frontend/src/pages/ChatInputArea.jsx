@@ -1,0 +1,321 @@
+import React from 'react'
+import QuickReplyPanel from '../components/QuickReplyPanel'
+
+const formatRecordingTime = (secs) => {
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return `${m}:${s < 10 ? '0' : ''}${s}`
+}
+
+export default function ChatInputArea({
+  activeChat,
+  activeQuote,
+  clearQuote,
+  quickPills = [],
+  sendingReply,
+  handleSendMessage,
+  inputText,
+  updateInputText,
+  isRecording,
+  recordingTime,
+  handleDiscardRecording,
+  handleVoiceNote,
+  handleMediaUpload,
+  uploading,
+  showQuickReplies,
+  setShowQuickReplies,
+  quickReplies = [],
+  handleSendQuickReply,
+  showSlashMenu,
+  setShowSlashMenu,
+  SLASH_COMMANDS = [],
+  slashCmd,
+  setSlashCmd,
+  inputRef
+}) {
+  return (
+    <>
+      <style>{`
+        @keyframes pulse-dot {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.9); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes bounce-wave {
+          0% { transform: scaleY(0.3); }
+          100% { transform: scaleY(1.2); }
+        }
+        @keyframes glow-mic {
+          0% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.5); }
+          50% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.85); }
+          100% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.5); }
+        }
+      `}</style>
+
+      {/* Quick Pills Row */}
+      {quickPills.length > 0 && (
+        <div className="wa-portal-quick-pills">
+          {quickPills.map(p => {
+            const pillKey = `pill:${p.pill_text?.substring(0, 20)}`
+            const isPillBusy = sendingReply === pillKey
+            return (
+              <span 
+                key={p.id} 
+                className="wa-quick-pill"
+                onClick={() => !isPillBusy && handleSendMessage(p.pill_text)}
+                style={{ 
+                  opacity: isPillBusy ? 0.5 : 1, 
+                  cursor: isPillBusy ? 'not-allowed' : 'pointer',
+                  pointerEvents: isPillBusy ? 'none' : 'auto'
+                }}
+              >
+                {isPillBusy ? '⏳' : p.pill_text}
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Quote Preview Frame */}
+      {activeQuote && (
+        <div className="wa-quote-preview-frame">
+          <div className="wa-quote-preview-content">
+            <span className="wa-quote-preview-sender">
+              @{activeQuote.participant_jid}
+            </span>
+            <span className="wa-quote-preview-text">
+              {activeQuote.text}
+            </span>
+          </div>
+          <button 
+            className="wa-quote-preview-cancel" 
+            onClick={() => clearQuote(activeChat.phone)}
+            title="Cancel quote"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Chat Input Bar */}
+      <div 
+        className="wa-portal-chat-input-bar-pill" 
+        style={{
+          borderRadius: '30px', 
+          margin: '15px', 
+          padding: '10px 20px', 
+          backgroundColor: '#fff', 
+          boxShadow: '0 5px 20px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          position: 'relative',
+          border: '1px solid rgba(0,0,0,0.05)',
+          gap: '10px',
+          transform: 'translateY(-2px)'
+        }}
+      >
+        
+        {/* Slash Command Palette */}
+        {showSlashMenu && (
+          <div className="slash-cmd-palette">
+            {SLASH_COMMANDS
+              .filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/')
+              .map(c => (
+                <div
+                  key={c.cmd}
+                  className="slash-cmd-item"
+                  onMouseDown={e => { e.preventDefault(); c.action(); }}
+                >
+                  <span className="slash-cmd-label">{c.label}</span>
+                  <span className="slash-cmd-desc">{c.desc}</span>
+                </div>
+              ))
+            }
+            {SLASH_COMMANDS.filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/').length === 0 && (
+              <div className="slash-cmd-empty">No matching commands</div>
+            )}
+          </div>
+        )}
+
+        {isRecording ? (
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifySelf: 'stretch', gap: '10px' }}>
+            {/* Left: pulsing dot + timer */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444', fontWeight: 600, fontSize: '0.9rem' }}>
+              <span className="wa-portal-recording-dot" style={{ display: 'inline-block', animation: 'pulse-dot 1s infinite' }}>🔴</span>
+              <span>Recording...</span>
+              <span className="wa-portal-recording-timer" style={{ fontFamily: 'monospace', color: '#4b5563', marginLeft: '4px' }}>{formatRecordingTime(recordingTime)}</span>
+            </div>
+
+            {/* Center: wave visualizer */}
+            <div className="wa-recording-wave-visualizer" style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'center' }}>
+              <div className="wave-bar" style={{ width: '3px', height: '12px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '22px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.1s' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '8px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.2s' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '26px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.3s' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '16px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.15s' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '10px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.25s' }} />
+              <div className="wave-bar" style={{ width: '3px', height: '20px', backgroundColor: '#10B981', borderRadius: '2px', display: 'inline-block', transformOrigin: 'center', animation: 'bounce-wave 0.6s infinite alternate 0.05s' }} />
+            </div>
+
+            {/* Right: Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                type="button"
+                className="wa-portal-recording-btn discard" 
+                onClick={handleDiscardRecording}
+                title="Discard recording"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+              >
+                🗑️
+              </button>
+              <button 
+                type="button"
+                onClick={handleVoiceNote}
+                style={{
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)',
+                  animation: 'glow-mic 2s infinite',
+                  transition: 'all 0.2s ease',
+                  flexShrink: 0
+                }}
+                title="Stop & Send"
+              >
+                ✈️
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* File Attachment */}
+            <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)" style={{ color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              📎
+              <input 
+                type="file" 
+                style={{ display: 'none' }} 
+                onChange={handleMediaUpload}
+                disabled={uploading}
+              />
+            </label>
+
+            {/* Templates Selector */}
+            <button 
+              className="wa-portal-action-btn" 
+              onClick={() => setShowQuickReplies(prev => !prev)}
+              title="Insert Quick Reply Template"
+              style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer' }}
+            >
+              ⚡
+            </button>
+
+            {/* Input Field */}
+            <textarea 
+              ref={inputRef}
+              className="wa-portal-input-textarea"
+              placeholder="Type a message..."
+              value={inputText}
+              onChange={e => {
+                const val = e.target.value
+                updateInputText(val)
+                if (val.startsWith('/')) {
+                  setSlashCmd(val.toLowerCase())
+                  setShowSlashMenu(true)
+                } else {
+                  setShowSlashMenu(false)
+                  setSlashCmd('')
+                }
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+              rows={1}
+              style={{ 
+                flex: 1, 
+                border: 'none', 
+                outline: 'none', 
+                resize: 'none', 
+                color: '#1f2937', 
+                backgroundColor: 'transparent',
+                fontSize: '0.9rem',
+                fontFamily: 'inherit',
+                padding: '4px 0',
+                maxHeight: '100px'
+              }}
+            />
+
+            {/* Dynamic Action Button on the Far Right */}
+            {inputText.trim() ? (
+              <button 
+                className="wa-portal-send-btn"
+                onClick={() => handleSendMessage()}
+                style={{
+                  background: 'var(--brand)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  flexShrink: 0
+                }}
+              >
+                ➡️
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleVoiceNote}
+                style={{
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  boxShadow: '0 0 12px rgba(16, 185, 129, 0.5)',
+                  animation: 'glow-mic 2s infinite',
+                  transition: 'all 0.2s ease',
+                  flexShrink: 0
+                }}
+                title="Record voice note"
+              >
+                🎤
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Quick Replies Drawer — decoupled Module 8 component */}
+        {showQuickReplies && (
+          <QuickReplyPanel
+            quickReplies={quickReplies}
+            sendingReply={sendingReply}
+            onSend={handleSendQuickReply}
+            onClose={() => setShowQuickReplies(false)}
+          />
+        )}
+      </div>
+    </>
+  )
+}

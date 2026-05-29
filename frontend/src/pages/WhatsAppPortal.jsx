@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { useNavigate } from 'react-router-dom'
+import { useTenant } from '../context/TenantContext'
 import VoiceNoteButton from '../components/VoiceNoteButton'
-import QuickReplyPanel from '../components/QuickReplyPanel'
 import MediaUploadOverlay from '../components/MediaUploadOverlay'
 import SettingsModal from '../components/SettingsModal'
 import { handleApiError, ERR } from '../utils/errorHandler'
 import { useQuoteDraft } from '../context/QuoteDraftContext'
+import ChatSidebar from './ChatSidebar'
+import ChatMessageList from './ChatMessageList'
+import ChatInputArea from './ChatInputArea'
 
 const getQuotedInfo = (msg) => {
   if (!msg) return null
@@ -127,6 +130,7 @@ const CustomAudioPlayer = ({ src }) => {
 
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
+  const { tenantId } = useTenant()
   const { 
     getDraft, 
     setDraftText, 
@@ -249,6 +253,7 @@ export default function WhatsAppPortal() {
   // --- MODULE 7: HUMAN HANDOFF STATE ---
   const [humanHandoffActive, setHumanHandoffActive] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showCustomerInfo, setShowCustomerInfo] = useState(false)
   
   // --- CONSTANTS ---
   const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
@@ -1262,232 +1267,45 @@ export default function WhatsAppPortal() {
 
   return (
     <div className="page-container p-6">
+      {/* Dynamic styles to inject shimmer and icon animations */}
+      <style>{`
+        @keyframes rightPanelShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        .right-panel-shimmer {
+          background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+          background-size: 200% 100%;
+          animation: rightPanelShimmer 1.5s infinite;
+        }
+        @keyframes lockPulse {
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.25); }
+          70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .lock-pulse-icon {
+          animation: lockPulse 2s infinite ease-in-out;
+        }
+      `}</style>
+
       <div className="wa-portal-container">
         
         {/* --- LEFT PANEL: CONVERSATIONS LIST --- */}
-        <div className="wa-portal-left">
-          
-          {/* Connection Status Indicator — Module 7: Pulse Dot */}
-          <div className="wa-portal-status-bar">
-            <div className="wa-pulse-dot" style={{ width: 16, height: 16 }}>
-              <div
-                className="wa-pulse-dot-inner"
-                style={{
-                  backgroundColor: getStatusColor(wsStatus),
-                  boxShadow: `0 0 8px ${getStatusColor(wsStatus)}`,
-                }}
-              />
-              <style>{`.wa-pulse-dot::before { background: ${getStatusColor(wsStatus)} !important; animation: ${wsStatus === 'CONNECTED' ? 'pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite' : 'none'} }`}</style>
-            </div>
-            <span style={{ flex: 1 }}>
-              WhatsApp: <strong style={{ color: getStatusColor(wsStatus) }}>{wsStatus.toLowerCase()}</strong>
-            </span>
-            {activeNumber && wsStatus === 'CONNECTED' && (
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: 'var(--green)',
-                background: 'rgba(34, 197, 94, 0.1)',
-                border: '1px solid rgba(34, 197, 94, 0.25)',
-                borderRadius: '10px',
-                padding: '2px 8px',
-                letterSpacing: '0.02em',
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-              }} title="Active WhatsApp account number">
-                📱 {activeNumber}
-              </span>
-            )}
-            {/* Cmd+K hint */}
-            <button
-              onClick={() => setShowCmdPalette(true)}
-              title="Open Command Palette (⌘K)"
-              style={{
-                background: 'rgba(168,85,247,0.08)',
-                border: '1px solid rgba(168,85,247,0.2)',
-                borderRadius: '8px',
-                color: 'var(--text-muted)',
-                fontSize: '0.65rem',
-                padding: '3px 8px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                flexShrink: 0,
-              }}
-            >
-              <span>⌘</span><span>K</span>
-            </button>
-            {/* Settings Trigger */}
-            <button
-              onClick={() => setShowSettings(true)}
-              title="System Settings"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: '8px',
-                color: 'var(--text-color)',
-                fontSize: '0.85rem',
-                padding: '3px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
-              }}
-            >
-              ⚙️
-            </button>
-          </div>
-
-          {/* Search Contacts */}
-          <div className="wa-portal-search">
-            <input 
-              type="text" 
-              placeholder="Search or start new chat..." 
-              className="wa-portal-search-input"
-              value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-            />
-          </div>
-
-          {/* Reactive Filter Tabs */}
-          <div className="wa-portal-filter-tabs">
-            {[
-              { key: 'all', label: 'All' },
-              { key: 'unread', label: `Unread ${chats.filter(c => c.unreadCount > 0).length > 0 ? `(${chats.filter(c => c.unreadCount > 0).length})` : ''}`.trim() },
-              { key: 'high_risk', label: '🚩 Risk' },
-              { key: 'stuck', label: '📦 Stuck' },
-            ].map(f => (
-              <button
-                key={f.key}
-                className={`wa-filter-tab ${activeFilter === f.key ? 'active' : ''}`}
-                onClick={() => setActiveFilter(f.key)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Threads List — Module 7: Skeleton Loaders */}
-          <div className="wa-portal-threads-list">
-            {loadingChats ? (
-              <div>
-                {[...Array(7)].map((_, i) => (
-                  <div key={i} className="skeleton-thread">
-                    <div className="skeleton skeleton-avatar" />
-                    <div className="skeleton-lines">
-                      <div className="skeleton skeleton-line" style={{ width: `${60 + (i % 3) * 15}%` }} />
-                      <div className="skeleton skeleton-line" style={{ width: `${40 + (i % 4) * 12}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredChats.length === 0 ? (
-              <div className="text-center p-8 text-muted italic">No chats found.</div>
-            ) : (
-              filteredChats.map(c => {
-                const isActive = activeChat && activeChat.phone === c.phone
-                const isContactTyping = typingStatus[c.phone]
-                
-                return (
-                  <div 
-                    key={c.phone} 
-                    className={`wa-portal-thread-item ${isActive ? 'active' : ''}`}
-                    onClick={() => selectChat(c)}
-                  >
-                    <div className="wa-portal-avatar" style={{ overflow: 'hidden', padding: c.dpUrl ? 0 : undefined }}>
-                      {c.dpUrl
-                        ? <img src={c.dpUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} onError={e => { e.target.style.display = 'none'; }}
-                          />
-                        : (c.customerName ? c.customerName.substring(0, 2).toUpperCase() : 'WA')
-                      }
-                    </div>
-                    <div className="wa-portal-thread-info">
-                      <div className="wa-portal-thread-header">
-                        <span className="wa-portal-thread-name">
-                          {c.customerName || `+${c.phone}`}
-                        </span>
-                        <span className="wa-portal-thread-time">
-                          {c.lastMessage ? formatRelativeTime(c.lastMessage.created_at) : ''}
-                        </span>
-                      </div>
-                      <div className="wa-portal-thread-preview">
-                        <span className="wa-portal-thread-preview-text">
-                          {isContactTyping ? (
-                            <span style={{ color: 'var(--green)', fontWeight: 'bold' }}>typing...</span>
-                          ) : c.lastMessage ? (
-                            c.lastMessage.message
-                          ) : (
-                            'No messages yet'
-                          )}
-                        </span>
-                        
-                        {/* Shopify Mini Badges */}
-                        {c.order && (
-                          <span 
-                            className="wa-badge-shopify-status"
-                            style={{
-                              backgroundColor: c.order.wa_verification_status === 'verified' ? 'var(--green-dim)' : 'var(--border-bright)',
-                              color: c.order.wa_verification_status === 'verified' ? 'var(--green)' : 'var(--text-secondary)'
-                            }}
-                          >
-                            {c.order.wa_verification_status === 'verified' ? 'COD OK' : 'COD Pending'}
-                          </span>
-                        )}
-
-                        {/* Unread badge count */}
-                        {c.unreadCount > 0 && (
-                          <span className="wa-portal-unread-badge">{c.unreadCount}</span>
-                        )}
-                        {/* Risk flag badge */}
-                        {(c.riskFlag === 'HIGH' || c.riskFlag === 'BLOCKED') && (
-                          <span style={{
-                            fontSize: '0.65rem',
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            color: 'var(--red, #ef4444)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: '8px',
-                            padding: '1px 5px',
-                            fontWeight: 700,
-                            marginLeft: 2,
-                            flexShrink: 0,
-                          }}>🚩</span>
-                        )}
-                        {/* Ad source badge */}
-                        {c.adPlatform && (
-                          <span style={{
-                            fontSize: '0.6rem',
-                            background: c.adPlatform === 'meta' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(236, 72, 153, 0.12)',
-                            color: c.adPlatform === 'meta' ? '#3b82f6' : '#ec4899',
-                            border: `1px solid ${c.adPlatform === 'meta' ? 'rgba(59,130,246,0.3)' : 'rgba(236,72,153,0.3)'}`,
-                            borderRadius: '8px',
-                            padding: '1px 5px',
-                            fontWeight: 600,
-                            marginLeft: 2,
-                            flexShrink: 0,
-                          }}>
-                            {c.adPlatform === 'meta' ? '🎯 Meta' : c.adPlatform === 'tiktok' ? '🎵 TikTok' : `📢 ${c.adPlatform}`}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
+        <ChatSidebar
+          chats={chats}
+          activeChat={activeChat}
+          handleChatSelect={selectChat}
+          wsStatus={wsStatus}
+          activeNumber={activeNumber}
+          searchText={searchText}
+          setSearchText={setSearchText}
+          activeFilter={activeFilter}
+          setActiveFilter={setActiveFilter}
+          loadingChats={loadingChats}
+          typingStatus={typingStatus}
+          setShowCmdPalette={setShowCmdPalette}
+          setShowSettings={setShowSettings}
+        />
 
         {/* --- CENTER PANEL: TIMELINE & CHAT INTERACTION --- */}
         <div 
@@ -1499,15 +1317,18 @@ export default function WhatsAppPortal() {
           style={{ position: 'relative' }}
         >
           {activeChat ? (
-            <>
-              {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
-              <MediaUploadOverlay
-                isDragging={isDragging}
-                uploading={uploading}
-                onUpload={(file) => {
-                  handleMediaUpload(file)
-                }}
-              />
+            <div style={{ display: 'flex', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+              {/* Wrapped Chat Area */}
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
+                {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
+                <MediaUploadOverlay
+                  isDragging={isDragging}
+                  uploading={uploading}
+                  onUpload={(file) => {
+                    handleMediaUpload(file)
+                  }}
+                />
+                
                 {/* Header */}
                 <div className="wa-portal-chat-header">
                   <div className="wa-portal-chat-header-info">
@@ -1553,6 +1374,19 @@ export default function WhatsAppPortal() {
                     >
                       📄 Invoice
                     </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowCustomerInfo(prev => !prev)}
+                      title="Toggle Customer Info"
+                      style={{
+                        background: showCustomerInfo ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.05)',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        color: showCustomerInfo ? 'var(--green, #10B981)' : '#374151',
+                        fontWeight: 600
+                      }}
+                    >
+                      👤 Info {showCustomerInfo ? '◀' : '▶'}
+                    </button>
                     <button 
                       onClick={() => selectChat(activeChat)} 
                       className="btn btn-secondary btn-sm"
@@ -1563,543 +1397,242 @@ export default function WhatsAppPortal() {
                   </div>
                 </div>
 
-              {/* Sync Progress Bar — Module 7 */}
-              {syncingMessages && (
-                <div className="wa-sync-progress">
-                  <div className="wa-sync-progress-bar" />
-                </div>
-              )}
-
-              {/* Human Handoff Banner — Module 5/7 */}
-              {humanHandoffActive && (
-                <div className="wa-handoff-banner">
-                  <span>🧑</span>
-                  <span>Human Agent Mode — Bot is silent for this chat</span>
-                  <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
-                </div>
-              )}
-
-              {/* Message Timeline */}
-              <div
-                className="wa-portal-chat-timeline"
-                style={{ position: 'relative' }}
-              >
-
-                {loadingMessages ? (
-                  <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {[...Array(6)].map((_, i) => (
-                      <div key={i} className={`skeleton skeleton-bubble ${i % 2 === 0 ? '' : 'outgoing'}`} style={{ width: `${40 + (i % 3) * 15}%` }} />
-                    ))}
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="text-center p-12 text-muted italic">No messages logged in this discussion.</div>
-                ) : (
-                  (() => {
-                    let lastDateString = null
-                    return messages.map((msg, index) => {
-                      const isOutgoing = msg.direction === 'outgoing'
-                      const showImage = msg.media_type === 'image' && msg.media_url
-                      const showAudio = msg.media_type === 'audio' && msg.media_url
-                      const showDoc = msg.media_type === 'document' && msg.media_url
-                      const quoteInfo = getQuotedInfo(msg)
-                      
-                      // Convert UNIX timestamps safely to the local browser timezone
-                      const calculatedDate = msg.timestamp 
-                        ? new Date(msg.timestamp * 1000).toLocaleDateString()
-                        : (msg.created_at ? new Date(msg.created_at).toLocaleDateString() : new Date().toLocaleDateString())
-
-                      let showDateDivider = false
-                      if (calculatedDate !== lastDateString) {
-                        showDateDivider = true
-                        lastDateString = calculatedDate
-                      }
-
-                      // Parse AI payment card data from transcript
-                      let paymentCardData = null
-                      if (msg.ai_processed && msg.media_type === 'image' && msg.transcript) {
-                        const amountMatch = msg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i)
-                        const txnMatch = msg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i)
-                        const bankMatch = msg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i)
-                        const statusMatch = msg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i)
-                        if (amountMatch) {
-                          paymentCardData = {
-                            amount: amountMatch[1],
-                            txnId: txnMatch?.[1] || null,
-                            bank: bankMatch?.[1]?.trim() || null,
-                            status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
-                          }
-                        }
-                      }
-
-                      return (
-                        <React.Fragment key={msg.id || index}>
-                          {showDateDivider && (
-                            <div className="date-divider" style={{ position: 'sticky', top: '10px', zIndex: 10, textAlign: 'center', margin: '15px 0' }}>
-                              <span style={{ background: '#333', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                {calculatedDate}
-                              </span>
-                            </div>
-                          )}
-                          <div 
-                            className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
-                            onDoubleClick={() => handleQuoteClick(msg)}
-                          >
-                            {/* Subtle Reply button on hover */}
-                            <button
-                              type="button"
-                              className="wa-bubble-reply-btn"
-                              title="Reply to this message"
-                              onClick={() => handleQuoteClick(msg)}
-                            >
-                              ↩️
-                            </button>
-
-                            {/* Rendering Quoted block inside bubble */}
-                            {quoteInfo && (
-                              <div className="wa-bubble-quote-block">
-                                <span className="wa-bubble-quote-sender">
-                                  {getQuoteSenderDisplayName(quoteInfo.participant, activeNumber)}
-                                </span>
-                                <span className="wa-bubble-quote-text">
-                                  {quoteInfo.text}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Rendering Message Content */}
-                            {!showDoc && <span>{msg.message}</span>}
-
-                            {/* Rendering Attachment Media types */}
-                            {showImage && (
-                              <div>
-                                <img 
-                                  src={getMediaUrlWithToken(msg.media_url)} 
-                                  alt="Sent media" 
-                                  className="wa-media-image"
-                                  onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url))}
-                                />
-                                {/* Module 7: AI Payment Card rendering */}
-                                {paymentCardData ? (
-                                  <div className="wa-ai-payment-card">
-                                    <div className="wa-ai-payment-card-header">
-                                      <span>💳</span>
-                                      <span>AI Payment Receipt</span>
-                                      <span className={`wa-ai-payment-card-badge ${paymentCardData.status === 'matched' ? 'matched' : paymentCardData.status === 'mismatch' ? 'mismatch' : 'reviewing'}`}>
-                                        {paymentCardData.status === 'matched' ? '✓ Verified' : paymentCardData.status === 'mismatch' ? '⚠ Mismatch' : '🔍 Reviewing'}
-                                      </span>
-                                    </div>
-                                    <div className="wa-ai-payment-card-amount">Rs. {paymentCardData.amount}</div>
-                                    <div className="wa-ai-payment-card-meta">
-                                      {paymentCardData.bank && <span>🏦 {paymentCardData.bank}</span>}
-                                      {paymentCardData.txnId && <span>TXN: {paymentCardData.txnId}</span>}
-                                    </div>
-                                  </div>
-                                ) : msg.transcript ? (
-                                  <div className="wa-bubble-transcript" style={{ marginTop: 8 }}>
-                                    <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🔍 OCR Result:</span>
-                                    <span className="wa-transcript-text">{msg.transcript}</span>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )}
-
-                            {showAudio && (
-                              <div>
-                                <CustomAudioPlayer src={getMediaUrlWithToken(msg.media_url)} />
-                                {msg.transcript && (
-                                  <div className="wa-bubble-transcript">
-                                    <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
-                                    <span className="wa-transcript-text">{msg.transcript}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {showDoc && (
-                              <a 
-                                href={getMediaUrlWithToken(msg.media_url)} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="wa-media-doc"
-                              >
-                                <span className="wa-media-doc-icon">📄</span>
-                                <div className="wa-media-doc-info">
-                                  <div className="wa-media-doc-name">{msg.message || 'Attached Document'}</div>
-                                  <div className="wa-media-doc-size">Click to open/download</div>
-                                </div>
-                              </a>
-                            )}
-
-                            <span className="wa-bubble-time">
-                              {formatTime(msg.created_at)}
-                              {isOutgoing && (
-                                <span style={{ marginLeft: 4 }}>
-                                  {msg.status === 'pending' || msg.status === 'sending' ? '⏳' : '✓'}
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        </React.Fragment>
-                      )
-                    })
-                  })()
-                )}
-
-                {/* Typing Indicator */}
-                {typingUsers[activeChat.phone] && (
-                  <div className="wa-typing-indicator-premium">
-                    <span className="typing-emoji">💬</span>
-                    <span>typing...</span>
+                {/* Sync Progress Bar — Module 7 */}
+                {syncingMessages && (
+                  <div className="wa-sync-progress">
+                    <div className="wa-sync-progress-bar" />
                   </div>
                 )}
-                
-                <div ref={timelineEndRef} />
+
+                {/* Human Handoff Banner — Module 5/7 */}
+                {humanHandoffActive && (
+                  <div className="wa-handoff-banner">
+                    <span>🧑</span>
+                    <span>Human Agent Mode — Bot is silent for this chat</span>
+                    <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
+                  </div>
+                )}
+
+                {/* Message Timeline */}
+                <ChatMessageList
+                  messages={messages}
+                  activeChat={activeChat}
+                  loadingMessages={loadingMessages}
+                  activeNumber={activeNumber}
+                  typingUsers={typingStatus}
+                  handleQuoteClick={handleQuoteClick}
+                  getMediaUrlWithToken={getMediaUrlWithToken}
+                  setZoomedImage={setZoomedImage}
+                  timelineEndRef={timelineEndRef}
+                />
+
+                {/* Input Area */}
+                <ChatInputArea
+                  activeChat={activeChat}
+                  activeQuote={activeQuote}
+                  clearQuote={clearQuote}
+                  quickPills={quickPills}
+                  sendingReply={sendingReply}
+                  handleSendMessage={handleSendMessage}
+                  inputText={inputText}
+                  updateInputText={updateInputText}
+                  isRecording={isRecording}
+                  recordingTime={recordingTime}
+                  handleDiscardRecording={handleDiscardRecording}
+                  handleVoiceNote={handleVoiceNote}
+                  handleMediaUpload={handleMediaUpload}
+                  uploading={uploading}
+                  showQuickReplies={showQuickReplies}
+                  setShowQuickReplies={setShowQuickReplies}
+                  quickReplies={quickReplies}
+                  handleSendQuickReply={handleSendQuickReply}
+                  showSlashMenu={showSlashMenu}
+                  setShowSlashMenu={setShowSlashMenu}
+                  SLASH_COMMANDS={SLASH_COMMANDS}
+                  slashCmd={slashCmd}
+                  setSlashCmd={setSlashCmd}
+                  inputRef={inputRef}
+                />
               </div>
 
-              {/* Quick Pills Row */}
-              {quickPills.length > 0 && (
-                <div className="wa-portal-quick-pills">
-                  {quickPills.map(p => {
-                    const pillKey = `pill:${p.pill_text?.substring(0, 20)}`
-                    const isPillBusy = sendingReply === pillKey
-                    return (
-                      <span 
-                        key={p.id} 
-                        className="wa-quick-pill"
-                        onClick={() => !isPillBusy && handleSendMessage(p.pill_text)}
-                        style={{ 
-                          opacity: isPillBusy ? 0.5 : 1, 
-                          cursor: isPillBusy ? 'not-allowed' : 'pointer',
-                          pointerEvents: isPillBusy ? 'none' : 'auto'
-                        }}
-                      >
-                        {isPillBusy ? '⏳' : p.pill_text}
-                      </span>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* Quote Preview Frame */}
-              {activeQuote && (
-                <div className="wa-quote-preview-frame">
-                  <div className="wa-quote-preview-content">
-                    <span className="wa-quote-preview-sender">
-                      @{activeQuote.participant_jid}
-                    </span>
-                    <span className="wa-quote-preview-text">
-                      {activeQuote.text}
-                    </span>
-                  </div>
-                  <button 
-                    className="wa-quote-preview-cancel" 
-                    onClick={() => clearQuote(activeChat.phone)}
-                    title="Cancel quote"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Chat Input Bar */}
-              <div 
-                className="wa-portal-chat-input-bar-pill" 
-                style={{
-                  borderRadius: '30px', 
-                  margin: '15px', 
-                  padding: '8px 18px', 
-                  backgroundColor: '#fff', 
-                  boxShadow: '0 5px 20px rgba(0,0,0,0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  position: 'relative',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  gap: '10px'
-                }}
-              >
-                
-                {/* Slash Command Palette */}
-                {showSlashMenu && (
-                  <div className="slash-cmd-palette">
-                    {SLASH_COMMANDS
-                      .filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/')
-                      .map(c => (
-                        <div
-                          key={c.cmd}
-                          className="slash-cmd-item"
-                          onMouseDown={e => { e.preventDefault(); c.action(); }}
-                        >
-                          <span className="slash-cmd-label">{c.label}</span>
-                          <span className="slash-cmd-desc">{c.desc}</span>
-                        </div>
-                      ))
-                    }
-                    {SLASH_COMMANDS.filter(c => c.cmd.startsWith(slashCmd) || slashCmd === '/').length === 0 && (
-                      <div className="slash-cmd-empty">No matching commands</div>
-                    )}
-                  </div>
-                )}
-
-                {isRecording ? (
-                  <div style={{ display: 'flex', alignItems: 'center', width: '100%', justifySelf: 'stretch', gap: '10px' }}>
-                    {/* Left: pulsing dot + timer */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#1f2937', fontWeight: 500, fontSize: '0.9rem' }}>
-                      <span className="wa-portal-recording-dot" style={{ color: '#ef4444' }}>🔴</span>
-                      <span>Recording...</span>
-                      <span className="wa-portal-recording-timer" style={{ fontFamily: 'monospace', color: '#4b5563' }}>{formatRecordingTime(recordingTime)}</span>
+              {/* CUSTOMER 360 RIGHT PANEL */}
+              {showCustomerInfo && (
+                <div 
+                  className="wa-portal-right"
+                  style={{
+                    width: '300px',
+                    borderLeft: '1px solid #eee',
+                    background: '#fafafa',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '15px',
+                    padding: '15px',
+                    overflowY: 'auto'
+                  }}
+                >
+                  {/* Profile Card */}
+                  <div className="wa-portal-profile-section" style={{ textAlign: 'center', backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <div className="wa-portal-profile-avatar" style={{ margin: '0 auto 10px auto' }}>
+                      {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
                     </div>
-
-                    {/* Center: wave visualizer */}
-                    <div className="wa-recording-wave-visualizer" style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'center' }}>
-                      <div className="wave-bar" style={{ width: '3px', height: '12px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '22px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.1s' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '8px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.2s' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '26px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.3s' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '16px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.15s' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '10px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.25s' }} />
-                      <div className="wave-bar" style={{ width: '3px', height: '20px', backgroundColor: '#10B981', borderRadius: '2px', animation: 'bounce-wave 0.6s infinite alternate 0.05s' }} />
-                    </div>
-
-                    {/* Right: Actions */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button 
-                        type="button"
-                        className="wa-portal-recording-btn discard" 
-                        onClick={handleDiscardRecording}
-                        title="Discard recording"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                      >
-                        🗑️
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={handleVoiceNote}
-                        style={{
-                          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '50%',
-                          width: '36px',
-                          height: '36px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          fontSize: '1rem',
-                          boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)',
-                          transition: 'all 0.2s ease',
-                          flexShrink: 0
-                        }}
-                        title="Stop & Send"
-                      >
-                        ✈️
-                      </button>
-                    </div>
+                    <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600 }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
+                    <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: '#6b7280' }}>+{activeChat.phone}</div>
                   </div>
-                ) : (
-                  <>
-                    {/* File Attachment */}
-                    <label className="wa-portal-action-btn" title="Send Media (Image, Audio, Document)" style={{ color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                      📎
-                      <input 
-                        type="file" 
-                        style={{ display: 'none' }} 
-                        onChange={handleMediaUpload}
-                        disabled={uploading}
-                      />
-                    </label>
 
-                    {/* Templates Selector */}
-                    <button 
-                      className="wa-portal-action-btn" 
-                      onClick={() => setShowQuickReplies(prev => !prev)}
-                      title="Insert Quick Reply Template"
-                      style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '1.2rem', cursor: 'pointer' }}
-                    >
-                      ⚡
-                    </button>
-
-                    {/* Input Field */}
-                    <textarea 
-                      ref={inputRef}
-                      className="wa-portal-input-textarea"
-                      placeholder="Type a message..."
-                      value={inputText}
-                      onChange={e => {
-                        const val = e.target.value
-                        updateInputText(val)
-                        if (val.startsWith('/')) {
-                          setSlashCmd(val.toLowerCase())
-                          setShowSlashMenu(true)
-                        } else {
-                          setShowSlashMenu(false)
-                          setSlashCmd('')
-                        }
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          handleSendMessage()
-                        }
-                      }}
-                      rows={1}
-                      style={{ 
-                        flex: 1, 
-                        border: 'none', 
-                        outline: 'none', 
-                        resize: 'none', 
-                        color: '#1f2937', 
-                        backgroundColor: 'transparent',
-                        fontSize: '0.9rem',
-                        fontFamily: 'inherit',
-                        padding: '4px 0',
-                        maxHeight: '100px'
-                      }}
-                    />
-
-                    {/* Dynamic Action Button on the Far Right */}
-                    {inputText.trim() ? (
-                      <button 
-                        className="wa-portal-send-btn"
-                        onClick={() => handleSendMessage()}
-                        style={{
-                          background: 'var(--brand)',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '50%',
-                          width: '40px',
-                          height: '40px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          fontSize: '1rem',
-                          flexShrink: 0
-                        }}
-                      >
-                        ➡️
-                      </button>
+                  {/* Customer 360 Insights / LTV Card */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>💳 Customer LTV</h5>
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '180px', borderRadius: '4px' }}></div>
+                      </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleVoiceNote}
-                        style={{
-                          background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '50%',
-                          width: '40px',
-                          height: '40px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          fontSize: '1.2rem',
-                          boxShadow: '0 0 12px rgba(16, 185, 129, 0.5)',
-                          transition: 'all 0.2s ease',
-                          flexShrink: 0
-                        }}
-                        title="Record voice note"
-                      >
-                        🎤
-                      </button>
+                      <>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--brand, #10B981)' }}>
+                          Rs. {customerInfo.orderHistory?.reduce((sum, o) => sum + Number(o.total_price || 0), 0).toLocaleString() || '0'}
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Total value over {customerInfo.orderHistory?.length || 0} orders</span>
+                      </>
                     )}
-                  </>
-                )}
-
-                {/* Quick Replies Drawer — decoupled Module 8 component */}
-                {showQuickReplies && (
-                  <QuickReplyPanel
-                    quickReplies={quickReplies}
-                    sendingReply={sendingReply}
-                    onSend={handleSendQuickReply}
-                    onClose={() => setShowQuickReplies(false)}
-                  />
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="wa-portal-chat-empty">
-              <span className="wa-portal-chat-empty-icon">💬</span>
-              <h2>WhatsApp Live Chat Support</h2>
-              <p style={{ marginTop: 8, color: 'var(--text-secondary)' }}>
-                Select a conversation from the left sidebar panel to start chatting in real time.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* --- RIGHT PANEL: CUSTOMER ORDER PROFILE & GEMINI ACTIVE MEMORY --- */}
-        <div className="wa-portal-right">
-          {activeChat ? (
-            <>
-              {/* Profile Card */}
-              <div className="wa-portal-profile-section" style={{ textAlign: 'center' }}>
-                <div className="wa-portal-profile-avatar">
-                  {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
-                </div>
-                <h4 className="wa-portal-profile-name">{activeChat.customerName || 'WhatsApp Customer'}</h4>
-                <div className="wa-portal-profile-phone">+{activeChat.phone}</div>
-              </div>
-
-              {/* Gemini Chat Memory Section — Module 7: Enhanced Glass Card */}
-              <div className="wa-portal-profile-section">
-                <h5 className="wa-portal-profile-title">🧠 Gemini Active Memory</h5>
-                {customerInfo.geminiMemory ? (
-                  <div className="wa-gemini-memory">
-                    <span style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-primary)' }}>
-                      {customerInfo.geminiMemory}
-                    </span>
                   </div>
-                ) : (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
-                    No AI-extracted memory recorded yet.
-                  </div>
-                )}
-              </div>
 
-              {/* Order History Section */}
-              <div className="wa-portal-profile-section" style={{ flex: 1 }}>
-                <h5 className="wa-portal-profile-title">🛍️ Shopify Order History</h5>
-                
-                {customerInfo.orderHistory.length === 0 ? (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', italic: true }}>
-                    No Shopify order history matched for this phone.
+                  {/* Gemini Chat Memory Section — Module 7: Enhanced Glass Card */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>🧠 Gemini Active Memory</h5>
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '100%', borderRadius: '4px' }}></div>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '90%', borderRadius: '4px' }}></div>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '40%', borderRadius: '4px' }}></div>
+                      </div>
+                    ) : customerInfo.geminiMemory ? (
+                      <div className="wa-gemini-memory" style={{ background: '#f9fafb', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', color: '#374151' }}>
+                        {customerInfo.geminiMemory}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
+                        No AI-extracted memory recorded yet.
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {customerInfo.orderHistory.map(o => (
-                      <div key={o.id} className="wa-order-history-item">
-                        <div className="wa-order-history-header">
-                          <span>Order #{o.id}</span>
-                          <span>Rs. {o.total_price}</span>
+
+                  {/* Logistics & Latest Order Card */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>📦 Logistics Tracking</h5>
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '70%', borderRadius: '4px' }}></div>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '85%', borderRadius: '4px' }}></div>
+                        <div className="right-panel-shimmer" style={{ height: '12px', width: '60%', borderRadius: '4px' }}></div>
+                      </div>
+                    ) : customerInfo.latestOrder ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', color: '#4b5563' }}>
+                        <div>Courier: <strong>{customerInfo.latestOrder.courier || 'N/A'}</strong></div>
+                        <div>Tracking: <span style={{ fontFamily: 'monospace' }}>{customerInfo.latestOrder.tracking_number || 'N/A'}</span></div>
+                        <div>Status: <span style={{ color: 'var(--brand, #10B981)', fontWeight: 600 }}>{customerInfo.latestOrder.delivery_status || 'Pending'}</span></div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
+                        No logistics or tracking data available.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Order History Section */}
+                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
+                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>🛍️ Recent Orders</h5>
+                    
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <div className="right-panel-shimmer" style={{ height: '12px', width: '80px', borderRadius: '4px' }}></div>
+                            <div className="right-panel-shimmer" style={{ height: '12px', width: '50px', borderRadius: '4px' }}></div>
+                          </div>
+                          <div className="right-panel-shimmer" style={{ height: '10px', width: '100px', borderRadius: '4px' }}></div>
                         </div>
-                        
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: 4 }}>
-                          <span className={`wa-badge-status ${o.fulfillment_status === 'fulfilled' ? 'fulfilled' : 'unfulfilled'}`}>
-                            {o.fulfillment_status || 'unfulfilled'}
-                          </span>
-                          <span className={`wa-badge-status ${o.financial_status === 'paid' ? 'fulfilled' : 'unfulfilled'}`}>
-                            {o.financial_status || 'unpaid'}
-                          </span>
-                        </div>
-
-                        {/* Order Date */}
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                          Ordered on: {new Date(o.created_at).toLocaleDateString()}
+                        <div style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <div className="right-panel-shimmer" style={{ height: '12px', width: '70px', borderRadius: '4px' }}></div>
+                            <div className="right-panel-shimmer" style={{ height: '12px', width: '60px', borderRadius: '4px' }}></div>
+                          </div>
+                          <div className="right-panel-shimmer" style={{ height: '10px', width: '90px', borderRadius: '4px' }}></div>
                         </div>
                       </div>
-                    ))}
+                    ) : customerInfo.orderHistory.length === 0 ? (
+                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
+                        No Shopify order history matched for this phone.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {customerInfo.orderHistory.slice(0, 3).map(o => (
+                          <div key={o.id} className="wa-order-history-item" style={{ borderBottom: '1px solid #f3f4f6', paddingBottom: '8px' }}>
+                            <div className="wa-order-history-header" style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 500, fontSize: '0.8rem' }}>
+                              <span>Order #{o.id}</span>
+                              <span>Rs. {o.total_price}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: 4 }}>
+                              <span style={{ color: o.fulfillment_status === 'fulfilled' ? '#059669' : '#d97706' }}>
+                                {o.fulfillment_status || 'unfulfilled'}
+                              </span>
+                              <span style={{ color: o.financial_status === 'paid' ? '#059669' : '#dc2626' }}>
+                                {o.financial_status || 'unpaid'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </>
+                </div>
+              )}
+            </div>
           ) : (
-            <div className="p-8 text-center text-muted italic text-sm">
-              Select a conversation to load customer information.
+            <div 
+              className="wa-portal-chat-empty"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                background: 'radial-gradient(circle at center, #ffffff 0%, #f4f6f8 100%)',
+                padding: '40px',
+                textAlign: 'center'
+              }}
+            >
+              <div 
+                className="lock-pulse-icon"
+                style={{ 
+                  width: '72px', 
+                  height: '72px', 
+                  borderRadius: '50%', 
+                  backgroundColor: 'rgba(16, 185, 129, 0.08)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '2.2rem', 
+                  marginBottom: '20px',
+                  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.15)'
+                }}
+              >
+                🔒
+              </div>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#1f2937', marginBottom: '8px', letterSpacing: '-0.02em' }}>
+                TracePK Workspace - End-to-End Encrypted
+              </h2>
+              <p style={{ color: '#6b7280', fontSize: '0.92rem', maxWidth: '340px', lineHeight: '1.6', margin: '0 auto 30px auto' }}>
+                Select a chat to view messages and customer history
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#10b981', fontWeight: 500, backgroundColor: 'rgba(16, 185, 129, 0.06)', padding: '6px 12px', borderRadius: '20px' }}>
+                <span>🛡️ Secure Connection Active</span>
+              </div>
             </div>
           )}
         </div>
+
       </div>
 
       {/* --- IMAGE ZOOM MODAL OVERLAY --- */}
@@ -2129,6 +1662,7 @@ export default function WhatsAppPortal() {
                 onChange={e => { setCmdQuery(e.target.value); setCmdActiveIdx(0); }}
                 autoComplete="off"
                 spellCheck={false}
+                type="text"
               />
               <span className="cmd-palette-kbd">ESC</span>
             </div>

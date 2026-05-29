@@ -2,6 +2,55 @@ const path = require('path');
 const fs = require('fs');
 const { transcodeToOpus, safeUnlink, TAG: FFMPEG_TAG } = require('./ffmpeg_transcode');
 
+async function analyzeCustomerIntent(text) {
+  try {
+    const { db } = require('../db');
+    const settings = db.prepare('SELECT api_key, model_name FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
+    if (!settings || !settings.api_key) {
+      return 'General';
+    }
+
+    const map = {
+      'gemini-1.5-flash': 'gemini-2.5-flash',
+      'gemini-1.5-pro': 'gemini-2.5-pro'
+    };
+    const model = map[settings.model_name] || settings.model_name || 'gemini-2.5-flash';
+    const apiKey = settings.api_key;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const prompt = `Analyze this e-commerce customer message and return a single tag from this list: [Urgent, Size Issue, Pricing, Address Update, General]. If none match, return 'General'. Message: ${text}`;
+
+    const payload = {
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }]
+    };
+
+    const fetchFn = typeof fetch === 'function' ? fetch : require('node-fetch');
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      return 'General';
+    }
+
+    const data = await res.json();
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const cleanTag = replyText.replace(/[^a-zA-Z\s]/g, '').trim();
+    const validTags = ['Urgent', 'Size Issue', 'Pricing', 'Address Update', 'General'];
+    const matched = validTags.find(t => t.toLowerCase() === cleanTag.toLowerCase());
+    return matched || 'General';
+  } catch (err) {
+    console.error('⚠️ analyzeCustomerIntent error:', err.message);
+    return 'General';
+  }
+}
+
+
 const SILENT_LOGGER = {
   level: 'silent',
   trace: () => {}, debug: () => {}, info: () => {},
@@ -790,6 +839,13 @@ async function processIncomingMessage(bot, msg, sock, db) {
   if (!text && !mediaDetails && !msg.message) return;
 
   const isOutgoing = msg.key.fromMe;
+
+  let tag = 'General';
+  if (!isOutgoing && text) {
+    tag = await analyzeCustomerIntent(text);
+  }
+  msg.intent_tag = tag;
+
   if (!isOutgoing && fromPhone) {
     bot.contactLastIncomingTimestamp[fromPhone] = Date.now();
     bot.activeChats.add(fromPhone);
@@ -857,9 +913,9 @@ async function processIncomingMessage(bot, msg, sock, db) {
       dbMessageId = existing.id;
     } else {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)
-      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
+      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag);
       dbMessageId = result.lastInsertRowid;
     }
   } catch (dbErr) {
@@ -909,7 +965,9 @@ async function processIncomingMessage(bot, msg, sock, db) {
           media_type: mediaType,
           status: 'sent',
           quote_context: incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          intent_tag: tag,
+          intent: tag
         }
       });
     } catch (e) {}
