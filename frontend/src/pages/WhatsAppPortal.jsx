@@ -255,6 +255,7 @@ export default function WhatsAppPortal() {
   const [showSettings, setShowSettings] = useState(false)
   const [showCustomerInfo, setShowCustomerInfo] = useState(false)
   const [showCustomer360, setShowCustomer360] = useState(false)
+  const [contextMenu, setContextMenu] = useState(null)
   
   // --- CONSTANTS ---
   const STUCK_STATUSES = ['Consignee Not Available', 'Attempted Delivery', 'Hold', 'Address Issue', 'RTO Initiated', 'Return to Sender']
@@ -1318,7 +1319,7 @@ export default function WhatsAppPortal() {
           style={{ position: 'relative' }}
         >
           {activeChat ? (
-            <div style={{ display: 'flex', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+            <div className="wa-portal-main" style={{ display: 'flex', flexDirection: 'row', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
               {/* Wrapped Chat Area */}
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
                 {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
@@ -1425,6 +1426,8 @@ export default function WhatsAppPortal() {
                   getMediaUrlWithToken={getMediaUrlWithToken}
                   setZoomedImage={setZoomedImage}
                   timelineEndRef={timelineEndRef}
+                  contextMenu={contextMenu}
+                  setContextMenu={setContextMenu}
                 />
 
                 {/* Input Area */}
@@ -1457,116 +1460,17 @@ export default function WhatsAppPortal() {
               </div>
 
               {/* CUSTOMER 360 RIGHT PANEL */}
-              {showCustomer360 && (
-                <div 
-                  className="wa-portal-right"
-                  style={{
-                    width: '320px',
-                    borderLeft: '1px solid #eee',
-                    background: '#fafafa',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '15px',
-                    padding: '15px',
-                    overflowY: 'auto'
-                  }}
-                >
-                  {/* Profile Card */}
-                  <div className="wa-portal-profile-section" style={{ textAlign: 'center', backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <div className="wa-portal-profile-avatar" style={{ margin: '0 auto 10px auto' }}>
-                      {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
-                    </div>
-                    <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600 }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
-                    <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: '#6b7280' }}>+{activeChat.phone}</div>
-                  </div>
-
-                  {/* Order Status & COD Verification Badge Card */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>📦 Order Status</h5>
-                    {loadingMessages ? (
-                      <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
-                    ) : customerInfo.latestOrder ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ fontSize: '0.85rem', color: '#4b5563' }}>Order #{customerInfo.latestOrder.id}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
-                          <span className="wa-badge-status" style={{ 
-                            backgroundColor: customerInfo.latestOrder.cod_verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', 
-                            color: customerInfo.latestOrder.cod_verified ? '#10b981' : '#f59e0b', 
-                            fontSize: '0.75rem', 
-                            padding: '4px 8px', 
-                            borderRadius: '6px', 
-                            fontWeight: 'bold' 
-                          }}>
-                            {customerInfo.latestOrder.cod_verified ? '🔐 COD Verified' : '⏳ COD Pending'}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic' }}>No active orders found.</div>
-                    )}
-                  </div>
-
-                  {/* Quick Actions Card */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>⚡ Quick Actions</h5>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={handleSendInvoice}
-                        disabled={!customerInfo.latestOrder}
-                        style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        📄 Send PDF Invoice
-                      </button>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => selectChat(activeChat)}
-                        style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        🔄 Sync Chat Timeline
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Customer 360 Insights / LTV Card */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>💳 Customer LTV</h5>
-                    {loadingMessages ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '180px', borderRadius: '4px' }}></div>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--brand, #10B981)' }}>
-                          Rs. {customerInfo.orderHistory?.reduce((sum, o) => sum + Number(o.total_price || 0), 0).toLocaleString() || '0'}
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Total value over {customerInfo.orderHistory?.length || 0} orders</span>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Gemini Chat Memory Section — Module 7: Enhanced Glass Card */}
-                  <div className="wa-portal-profile-section" style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' }}>
-                    <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px' }}>🧠 Gemini Active Memory</h5>
-                    {loadingMessages ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '100%', borderRadius: '4px' }}></div>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '90%', borderRadius: '4px' }}></div>
-                        <div className="right-panel-shimmer" style={{ height: '12px', width: '40%', borderRadius: '4px' }}></div>
-                      </div>
-                    ) : customerInfo.geminiMemory ? (
-                      <div className="wa-gemini-memory" style={{ background: '#f9fafb', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', color: '#374151' }}>
-                        {customerInfo.geminiMemory}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontStyle: 'italic', padding: '8px', background: '#f9fafb', borderRadius: '6px', border: '1px dashed #e5e7eb' }}>
-                        No AI-extracted memory recorded yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+              <div 
+                className="wa-portal-right-panel" 
+                style={{
+                  width: '320px', 
+                  borderLeft: '1px solid #eee', 
+                  background: '#fafafa', 
+                  display: showCustomer360 ? 'block' : 'none'
+                }}
+              >
+                <h3>Customer 360</h3>
+              </div>
             </div>
           ) : (
             <div 

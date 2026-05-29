@@ -61,7 +61,7 @@ const getIntentBadgeColors = (tag) => {
   }
 }
 
-const CustomAudioPlayer = ({ src }) => {
+const WaveSurfer = ({ src }) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -101,7 +101,7 @@ const CustomAudioPlayer = ({ src }) => {
   }
 
   return (
-    <div className="wa-custom-audio-player">
+    <div className="wa-custom-audio-player wa-wavesurfer-player">
       <audio
         ref={audioRef}
         src={src}
@@ -114,7 +114,25 @@ const CustomAudioPlayer = ({ src }) => {
       <button type="button" onClick={togglePlay} className="wa-audio-play-btn">
         {isPlaying ? '⏸️' : '▶️'}
       </button>
-      <div className="wa-audio-progress-container">
+      <div className="wa-audio-progress-container" style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '30px', margin: '4px 0' }}>
+          {[...Array(18)].map((_, idx) => {
+            const heightValue = 10 + Math.sin(idx * 0.8) * 12 + Math.cos(idx * 0.4) * 6
+            const isActive = (currentTime / (duration || 1)) > (idx / 18)
+            return (
+              <div 
+                key={idx}
+                style={{
+                  width: '3px',
+                  height: `${Math.max(4, heightValue)}px`,
+                  backgroundColor: isActive ? 'var(--brand, #a855f7)' : 'rgba(255, 255, 255, 0.25)',
+                  borderRadius: '1.5px',
+                  transition: 'background-color 0.15s ease'
+                }}
+              />
+            )
+          })}
+        </div>
         <input
           type="range"
           min={0}
@@ -122,6 +140,17 @@ const CustomAudioPlayer = ({ src }) => {
           value={currentTime}
           onChange={handleSeek}
           className="wa-audio-slider"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '30px',
+            margin: 0,
+            opacity: 0,
+            cursor: 'pointer',
+            zIndex: 10
+          }}
         />
         <div className="wa-audio-time-info">
           <span>{formatTime(currentTime)}</span>
@@ -141,9 +170,14 @@ export default function ChatMessageList({
   handleQuoteClick,
   getMediaUrlWithToken,
   setZoomedImage,
-  timelineEndRef
+  timelineEndRef,
+  contextMenu: parentContextMenu,
+  setContextMenu: parentSetContextMenu
 }) {
-  const [contextMenu, setContextMenu] = useState(null)
+  const [localContextMenu, setLocalContextMenu] = useState(null)
+  const contextMenu = parentContextMenu !== undefined ? parentContextMenu : localContextMenu
+  const setContextMenu = parentSetContextMenu !== undefined ? parentSetContextMenu : setLocalContextMenu
+
   const [reactedMessageId, setReactedMessageId] = useState(null)
   const [showJumpBadge, setShowJumpBadge] = useState(false)
   const timelineRef = useRef(null)
@@ -156,7 +190,7 @@ export default function ChatMessageList({
       window.removeEventListener('click', handleClose)
       window.removeEventListener('scroll', handleClose, true)
     }
-  }, [])
+  }, [setContextMenu])
 
   useEffect(() => {
     const el = timelineRef.current
@@ -385,20 +419,12 @@ export default function ChatMessageList({
                     className={`wa-bubble ${isOutgoing ? 'outgoing' : 'incoming'}`}
                     onDoubleClick={() => {
                       setReactedMessageId(msg.id || index)
-                      console.log('Double tap to react prep:', msg.id || index)
+                      handleQuoteClick(msg.isImageGrid ? msg.messages[0] : msg)
                       setTimeout(() => setReactedMessageId(null), 500)
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault()
-                      const representativeMsg = msg.isImageGrid ? msg.messages[0] : msg
-                      if (timelineRef.current) {
-                        const rect = timelineRef.current.getBoundingClientRect()
-                        const x = e.pageX - rect.left - window.scrollX
-                        const y = e.pageY - rect.top - window.scrollY
-                        setContextMenu({ x, y, msg: representativeMsg })
-                      } else {
-                        setContextMenu({ x: e.pageX, y: e.pageY, msg: representativeMsg })
-                      }
+                      setContextMenu({ x: e.pageX, y: e.pageY, msg })
                     }}
                     style={{ 
                       boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
@@ -441,7 +467,7 @@ export default function ChatMessageList({
                     )}
 
                     {/* Rendering Message Content */}
-                    {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation}</span>}
+                    {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation || ''}</span>}
 
                     {/* Rendering attachment media grid */}
                     {msg.isImageGrid && (
@@ -531,7 +557,7 @@ export default function ChatMessageList({
 
                     {showAudio && (
                       <div>
-                        <CustomAudioPlayer src={getMediaUrlWithToken(msg.media_url)} />
+                        <WaveSurfer src={getMediaUrlWithToken(msg.media_url)} />
                         {msg.transcript && (
                           <div className="wa-bubble-transcript">
                             <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>🎙️ Transcript:</span>
