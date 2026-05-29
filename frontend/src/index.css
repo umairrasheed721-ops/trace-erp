@@ -3016,130 +3016,144 @@ a.btn[href^="whatsapp:"]:hover {
 }
 
 /* ==========================================================================
-   WHATSAPP DARK MODE THEME OVERRIDES
+   WHATSAPP OFFICIAL LIGHT & DARK MODE THEMES OVERRIDES
    ========================================================================== */
 
-/* 1. Global Container */
-.wa-portal-container {
+/* ─── 1. DARK THEME SPECIFIC OVERRIDES ─── */
+
+[data-theme='dark'] .wa-portal-container,
+:root:not([data-theme='light']) .wa-portal-container {
   background-color: #111b21 !important;
   color: #e9edef !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 
-/* 2. Left Sidebar */
-.wa-portal-left {
+[data-theme='dark'] .wa-portal-left,
+:root:not([data-theme='light']) .wa-portal-left {
   background-color: #111b21 !important;
   border-right: 1px solid #222e35 !important;
 }
 
-.wa-portal-status-bar {
+[data-theme='dark'] .wa-portal-status-bar,
+:root:not([data-theme='light']) .wa-portal-status-bar {
   background-color: #202c33 !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
   color: #e9edef !important;
 }
 
-.wa-portal-search {
+[data-theme='dark'] .wa-portal-search,
+:root:not([data-theme='light']) .wa-portal-search {
   background-color: #111b21 !important;
   padding: 8px 12px !important;
 }
 
-.wa-portal-search-input {
+[data-theme='dark'] .wa-portal-search-input,
+:root:not([data-theme='light']) .wa-portal-search-input {
   background-color: #202c33 !important;
   border: none !important;
   color: #e9edef !important;
   border-radius: 8px !important;
 }
 
-.wa-portal-filter-pills {
+[data-theme='dark'] .wa-portal-filter-pills,
+:root:not([data-theme='light']) .wa-portal-filter-pills {
   background-color: #111b21 !important;
 }
 
-/* 3. Thread List Items */
-.wa-portal-thread-item {
+[data-theme='dark'] .wa-portal-thread-item,
+:root:not([data-theme='light']) .wa-portal-thread-item {
   background-color: #111b21 !important;
   border-bottom: 1px solid #222e35 !important;
-  transition: background 0.15s ease !important;
 }
 
-.wa-portal-thread-item:hover {
+[data-theme='dark'] .wa-portal-thread-item:hover,
+:root:not([data-theme='light']) .wa-portal-thread-item:hover {
   background-color: #202c33 !important;
 }
 
-.wa-portal-thread-item.active {
+[data-theme='dark'] .wa-portal-thread-item.active,
+:root:not([data-theme='light']) .wa-portal-thread-item.active {
   background-color: #2a3942 !important;
   border-left: none !important;
 }
 
-.wa-portal-thread-name {
+[data-theme='dark'] .wa-portal-thread-name,
+:root:not([data-theme='light']) .wa-portal-thread-name {
   color: #e9edef !important;
-  font-size: 0.95rem !important;
-  font-weight: 500 !important;
 }
 
-.wa-portal-thread-preview-text {
+[data-theme='dark'] .wa-portal-thread-preview-text,
+:root:not([data-theme='light']) .wa-portal-thread-preview-text {
   color: #8696a0 !important;
 }
 
-.wa-portal-thread-time {
+[data-theme='dark'] .wa-portal-thread-time,
+:root:not([data-theme='light']) .wa-portal-thread-time {
   color: #8696a0 !important;
 }
 
-/* 4. Chat Center Panel (Timeline) */
-.wa-portal-center {
+[data-theme='dark'] .wa-portal-center,
+:root:not([data-theme='light']) .wa-portal-center {
   background-color: #0b141a !important;
 }
 
-.wa-portal-chat-timeline {
+[data-theme='dark'] .wa-portal-chat-timeline,
+:root:not([data-theme='light']) .wa-portal-chat-timeline {
   background-color: #0b141a !important;
   background-image: linear-gradient(rgba(11, 20, 26, 0.95), rgba(11, 20, 26, 0.95)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png') !important;
   background-repeat: repeat !important;
   background-size: auto !important;
 }
 
-/* 5. Chat Header */
-.wa-portal-chat-header {
+[data-theme='dark'] .wa-portal-chat-header,
+:root:not([data-theme='light']) .wa-portal-chat-header {
   background-color: #202c33 !important;
   border-bottom: none !important;
   color: #e9edef !important;
-  padding: 10px 16px !important;
 }
 
-.wa-portal-chat-header-info {
+[data-theme='dark'] .wa-portal-chat-header-info,
+:root:not([data-theme='light']) .wa-portal-chat-header-info {
   color: #e9edef !important;
 }
 
-.wa-portal-chat-header-info span {
+[data-theme='dark'] .wa-portal-chat-header-info span,
+:root:not([data-theme='light']) .wa-portal-chat-header-info span {
   color: #8696a0 !important;
 }
 
-/* 6. Message Bubbles */
-.wa-bubble {
+[data-theme='dark'] .wa-bubble,
+:root:not([data-theme='light']) .wa-bubble {
   box-shadow: 0 1px 0.5px rgba(0,0,0,0.13) !important;
   border-radius: 8px !important;
 }
 
-.wa-bubble.incoming {
+[data-theme='dark'] .wa-bubble.incoming,
+:root:not([data-theme='light']) .wa-bubble.incoming {
   background-color: #202c33 !important;
   color: #e9edef !important;
   border: none !important;
 }
 
-.wa-bubble.outgoing {
+[data-theme='dark'] .wa-bubble.outgoing,
+:root:not([data-theme='light']) .wa-bubble.outgoing {
   background: #005c4b !important;
   color: #e9edef !important;
   border: none !important;
 }
 
-.wa-bubble-time {
+[data-theme='dark'] .wa-bubble-time,
+:root:not([data-theme='light']) .wa-bubble-time {
   color: #8696a0 !important;
 }
 
-.wa-bubble.outgoing .wa-bubble-time {
+[data-theme='dark'] .wa-bubble.outgoing .wa-bubble-time,
+:root:not([data-theme='light']) .wa-bubble.outgoing .wa-bubble-time {
   color: rgba(255, 255, 255, 0.6) !important;
 }
 
-/* 7. Chat Input Bar Area */
-.wa-portal-chat-input-bar-pill {
+[data-theme='dark'] .wa-portal-chat-input-bar-pill,
+:root:not([data-theme='light']) .wa-portal-chat-input-bar-pill {
   background-color: #202c33 !important;
   border: none !important;
   box-shadow: none !important;
@@ -3149,48 +3163,217 @@ a.btn[href^="whatsapp:"]:hover {
   transform: none !important;
 }
 
-.wa-portal-input-textarea {
+[data-theme='dark'] .wa-portal-input-textarea,
+:root:not([data-theme='light']) .wa-portal-input-textarea {
   background-color: #2a3942 !important;
   border: none !important;
   border-radius: 8px !important;
   padding: 9px 12px !important;
   color: #e9edef !important;
-  outline: none !important;
 }
 
-.wa-portal-input-textarea:focus {
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
-/* Icons & buttons inside input bar */
-.wa-portal-action-btn {
+[data-theme='dark'] .wa-portal-action-btn,
+:root:not([data-theme='light']) .wa-portal-action-btn {
   color: #8696a0 !important;
 }
 
-/* 8. Customer 360 Right Panel */
-.wa-portal-right {
+[data-theme='dark'] .wa-portal-right,
+:root:not([data-theme='light']) .wa-portal-right {
   background-color: #111b21 !important;
   border-left: 1px solid #222e35 !important;
 }
 
-.wa-portal-profile-section {
+[data-theme='dark'] .wa-portal-profile-section,
+:root:not([data-theme='light']) .wa-portal-profile-section {
   background-color: #202c33 !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
 }
 
-.wa-portal-profile-name, .wa-portal-profile-title {
+[data-theme='dark'] .wa-portal-profile-name,
+[data-theme='dark'] .wa-portal-profile-title,
+:root:not([data-theme='light']) .wa-portal-profile-name,
+:root:not([data-theme='light']) .wa-portal-profile-title {
   color: #e9edef !important;
 }
 
-.wa-portal-profile-phone {
+[data-theme='dark'] .wa-portal-profile-phone,
+:root:not([data-theme='light']) .wa-portal-profile-phone {
   color: #8696a0 !important;
 }
 
-.wa-gemini-memory {
+[data-theme='dark'] .wa-gemini-memory,
+:root:not([data-theme='light']) .wa-gemini-memory {
   background-color: #2a3942 !important;
   color: #e9edef !important;
+}
+
+/* ─── 2. LIGHT THEME SPECIFIC OVERRIDES ─── */
+
+[data-theme='light'] .wa-portal-container {
+  background-color: #ffffff !important;
+  color: #111b21 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+[data-theme='light'] .wa-portal-left {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e9edef !important;
+}
+
+[data-theme='light'] .wa-portal-status-bar {
+  background-color: #f0f2f5 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+  color: #111b21 !important;
+}
+
+[data-theme='light'] .wa-portal-search {
+  background-color: #ffffff !important;
+  padding: 8px 12px !important;
+}
+
+[data-theme='light'] .wa-portal-search-input {
+  background-color: #f0f2f5 !important;
+  border: none !important;
+  color: #111b21 !important;
+  border-radius: 8px !important;
+}
+
+[data-theme='light'] .wa-portal-filter-pills {
+  background-color: #ffffff !important;
+}
+
+[data-theme='light'] .wa-portal-thread-item {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e9edef !important;
+  transition: background 0.15s ease !important;
+}
+
+[data-theme='light'] .wa-portal-thread-item:hover {
+  background-color: #f0f2f5 !important;
+}
+
+[data-theme='light'] .wa-portal-thread-item.active {
+  background-color: #e9edef !important;
+  border-left: none !important;
+}
+
+[data-theme='light'] .wa-portal-thread-name {
+  color: #111b21 !important;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+}
+
+[data-theme='light'] .wa-portal-thread-preview-text {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-portal-thread-time {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-portal-center {
+  background-color: #efeae2 !important;
+}
+
+[data-theme='light'] .wa-portal-chat-timeline {
+  background-color: #efeae2 !important;
+  background-image: linear-gradient(rgba(239, 234, 226, 0.95), rgba(239, 234, 226, 0.95)), url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png') !important;
+  background-repeat: repeat !important;
+  background-size: auto !important;
+}
+
+[data-theme='light'] .wa-portal-chat-header {
+  background-color: #f0f2f5 !important;
+  border-bottom: none !important;
+  color: #111b21 !important;
+  padding: 10px 16px !important;
+}
+
+[data-theme='light'] .wa-portal-chat-header-info {
+  color: #111b21 !important;
+}
+
+[data-theme='light'] .wa-portal-chat-header-info span {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-bubble {
+  box-shadow: 0 1px 0.5px rgba(0,0,0,0.13) !important;
+  border-radius: 8px !important;
+}
+
+[data-theme='light'] .wa-bubble.incoming {
+  background-color: #ffffff !important;
+  color: #111b21 !important;
+  border: none !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing {
+  background: #d9fdd3 !important;
+  color: #111b21 !important;
+  border: none !important;
+}
+
+[data-theme='light'] .wa-bubble-time {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-bubble.outgoing .wa-bubble-time {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-portal-chat-input-bar-pill {
+  background-color: #f0f2f5 !important;
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  border-radius: 0 !important;
+  transform: none !important;
+}
+
+[data-theme='light'] .wa-portal-input-textarea {
+  background-color: #ffffff !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 9px 12px !important;
+  color: #111b21 !important;
+  outline: none !important;
+}
+
+[data-theme='light'] .wa-portal-input-textarea:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme='light'] .wa-portal-action-btn {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-portal-right {
+  background-color: #ffffff !important;
+  border-left: 1px solid #e9edef !important;
+}
+
+[data-theme='light'] .wa-portal-profile-section {
+  background-color: #f0f2f5 !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+
+[data-theme='light'] .wa-portal-profile-name,
+[data-theme='light'] .wa-portal-profile-title {
+  color: #111b21 !important;
+}
+
+[data-theme='light'] .wa-portal-profile-phone {
+  color: #667781 !important;
+}
+
+[data-theme='light'] .wa-gemini-memory {
+  background-color: #ffffff !important;
+  color: #111b21 !important;
 }
 
 
