@@ -1381,9 +1381,9 @@ export default function WhatsAppPortal() {
                       onClick={() => setShowCustomer360(prev => !prev)}
                       title="Toggle Customer Info"
                       style={{
-                        background: showCustomer360 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.05)',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        color: showCustomer360 ? 'var(--green, #10B981)' : '#374151',
+                        background: showCustomer360 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                        border: showCustomer360 ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255, 255, 255, 0.15)',
+                        color: showCustomer360 ? 'var(--green, #10B981)' : 'var(--text-color, #ffffff)',
                         fontWeight: 600
                       }}
                     >
