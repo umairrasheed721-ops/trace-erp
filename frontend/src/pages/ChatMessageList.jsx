@@ -682,7 +682,7 @@ export default function ChatMessageList({
                     {msg.mediaGroup && msg.mediaGroup.length > 1 && (() => {
                       const is3Images = msg.mediaGroup.length === 3;
                       const is2Images = msg.mediaGroup.length === 2;
-                      const urls = msg.mediaGroup.map(m => getMediaUrlWithToken(m.media_url));
+                      const urls = msg.mediaGroup.map(m => getMediaUrlWithToken(m.media_url || (m.mediaUrls && m.mediaUrls[0])));
                       
                       let gridStyle = {
                         display: 'grid',
@@ -713,7 +713,7 @@ export default function ChatMessageList({
                           <div className="media-grid-wrapper" style={gridStyle}>
                             {msg.mediaGroup.slice(0, 4).map((imgMsg, idx) => {
                               const isFourthOfMany = msg.mediaGroup.length >= 4 && idx === 3;
-                              const hasMore = msg.mediaGroup.length > 4;
+                               const hasMore = msg.mediaGroup.length > 4;
                               const cellId = imgMsg.id || `${msg.id}-${idx}`;
 
                               let cellStyle = {
@@ -735,7 +735,7 @@ export default function ChatMessageList({
                               return (
                                 <div key={cellId} className="wa-collage-cell" style={cellStyle}>
                                   <img 
-                                    src={getMediaUrlWithToken(imgMsg.media_url)} 
+                                    src={getMediaUrlWithToken(imgMsg.media_url || (imgMsg.mediaUrls && imgMsg.mediaUrls[0]))} 
                                     alt="Sent media grid" 
                                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                                     onClick={() => setLightbox({ images: urls, currentIndex: idx })}
@@ -746,7 +746,7 @@ export default function ChatMessageList({
                                     title="Copy Image"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleCopySingleImage(getMediaUrlWithToken(imgMsg.media_url), cellId);
+                                      handleCopySingleImage(getMediaUrlWithToken(imgMsg.media_url || (imgMsg.mediaUrls && imgMsg.mediaUrls[0])), cellId);
                                     }}
                                   >
                                     📋
