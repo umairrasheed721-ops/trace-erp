@@ -2,6 +2,19 @@ const path = require('path');
 const fs = require('fs');
 const { transcodeToOpus, safeUnlink, TAG: FFMPEG_TAG } = require('./ffmpeg_transcode');
 
+function getSecureMediaPath(fileName) {
+  const paths = [
+    path.join('/app/data/media', fileName),
+    path.join('/app/data/uploads', fileName),
+    path.join(process.cwd(), 'data', 'media', fileName)
+  ];
+  for (const p of paths) {
+    if (require('fs').existsSync(p)) return p;
+  }
+  return null; // Return null instead of crashing
+}
+
+
 async function analyzeCustomerIntent(text) {
   try {
     const { db } = require('../db');
@@ -299,8 +312,11 @@ async function processQueue(bot, sock, db) {
             const res = await fetch(mediaUrl);
             const buffer = await res.buffer();
             fs.writeFileSync(pendingAckPath, buffer);
-          } else if (fs.existsSync(mediaUrl)) {
-            fs.copyFileSync(mediaUrl, pendingAckPath);
+          } else {
+            const resolvedPath = getSecureMediaPath(path.basename(mediaUrl)) || (fs.existsSync(mediaUrl) ? mediaUrl : null);
+            if (resolvedPath) {
+              fs.copyFileSync(resolvedPath, pendingAckPath);
+            }
           }
           console.log(`[PENDING_ACK] Saved outgoing media copy to: ${pendingAckPath}`);
         }
@@ -514,16 +530,16 @@ async function processQueue(bot, sock, db) {
             };
             sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
-            const absInputPath = path.resolve(mediaUrl);
-            let transcodeOutputPath = null;
-            let finalAudioBuffer;
-            let finalMime = 'audio/ogg; codecs=opus';
-
-            if (!fs.existsSync(absInputPath)) {
-              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${absInputPath}`);
+            const resolvedPath = getSecureMediaPath(path.basename(mediaUrl)) || (fs.existsSync(path.resolve(mediaUrl)) ? path.resolve(mediaUrl) : null);
+            if (!resolvedPath) {
+              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${mediaUrl}`);
               resolve({ success: false, error: '[FFMPEG_ENCODE] Source audio file not found' });
               continue;
             }
+            const absInputPath = resolvedPath;
+            let transcodeOutputPath = null;
+            let finalAudioBuffer;
+            let finalMime = 'audio/ogg; codecs=opus';
 
             const inputSizeBytes = fs.statSync(absInputPath).size;
             console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
