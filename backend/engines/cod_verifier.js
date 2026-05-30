@@ -123,6 +123,13 @@ async function dispatchCODVerification(order) {
     // Step 3: Send voice note (if generated) then text instruction
     if (mp4Path && fs.existsSync(mp4Path)) {
       bot.sendMessage(phone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`);
+      try {
+        const relativeUrl = mp4Path ? `/uploads/cod_vn/${path.basename(mp4Path)}` : null;
+        db.prepare(`
+          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
+          VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', '[Voice Note]', ?, 'audio', 'sent', 'default')
+        `).run(orderId, orderId, phone, relativeUrl);
+      } catch(e) { console.error('Failed to log COD VN message:', e.message); }
     }
 
     // Send native WhatsApp poll for interaction
