@@ -122,7 +122,13 @@ async function dispatchCODVerification(order) {
 
     // Step 3: Send voice note (if generated) then text instruction
     if (mp4Path && fs.existsSync(mp4Path)) {
-      bot.sendMessage(phone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`);
+      // Force-send the audio
+      try {
+        await bot.sendMessage(phone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`, null, null, null, 'native', null, { force: true });
+        console.log('✅ COD VERIFIER: Audio force-sent successfully to:', phone);
+      } catch (err) {
+        console.error('❌ COD VERIFIER: Critical audio send failure:', err);
+      }
       try {
         const relativeUrl = mp4Path ? `/uploads/cod_vn/${path.basename(mp4Path)}` : null;
         db.prepare(`
@@ -144,7 +150,13 @@ async function dispatchCODVerification(order) {
         ]
       }]
     };
-    bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'list', listConfig);
+    // Force-send the list/message
+    try {
+      await bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'list', listConfig, { force: true });
+      console.log('✅ COD VERIFIER: Force-sent successfully to:', phone);
+    } catch (err) {
+      console.error('❌ COD VERIFIER: Critical send failure:', err);
+    }
     try {
       db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
