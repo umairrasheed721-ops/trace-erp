@@ -202,6 +202,68 @@ const getMsgTime = (m) => {
   return isNaN(parsedFormatted) ? 0 : parsedFormatted
 }
 
+const copyImageToClipboard = (imageUrl) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.src = imageUrl
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Failed to create blob from image'))
+          return
+        }
+        navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
+        .then(() => resolve(true))
+        .catch(err => reject(err))
+      }, 'image/png')
+    }
+    img.onerror = (err) => reject(new Error('Failed to load image for copying'))
+  })
+}
+
+const copyMultipleImagesToClipboard = async (imageUrls) => {
+  try {
+    const items = await Promise.all(
+      imageUrls.map(url => {
+        return new Promise((resolve, reject) => {
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          img.src = url
+          img.onload = () => {
+            const canvas = document.createElement('canvas')
+            canvas.width = img.naturalWidth
+            canvas.height = img.naturalHeight
+            const ctx = canvas.getContext('2d')
+            ctx.drawImage(img, 0, 0)
+            canvas.toBlob((blob) => {
+              if (blob) {
+                resolve(new ClipboardItem({ 'image/png': blob }))
+              } else {
+                reject(new Error('Blob generation failed'))
+              }
+            }, 'image/png')
+          }
+          img.onerror = () => reject(new Error('Image load failed'))
+        })
+      })
+    )
+    await navigator.clipboard.write(items)
+    return { type: 'images', count: items.length }
+  } catch (err) {
+    const textLinks = imageUrls.join('\n')
+    await navigator.clipboard.writeText(textLinks)
+    return { type: 'links', count: imageUrls.length }
+  }
+}
+
 export default function ChatMessageList({
   messages = [],
   activeChat,
@@ -222,6 +284,79 @@ export default function ChatMessageList({
   const [reactedMessageId, setReactedMessageId] = useState(null)
   const [showJumpBadge, setShowJumpBadge] = useState(false)
   const timelineRef = useRef(null)
+
+  const [copyStatus, setCopyStatus] = useState({ id: null, text: '' })
+  const [lightbox, setLightbox] = useState(null)
+
+  useEffect(() => {
+    if (!lightbox) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setLightbox(null)
+      } else if (e.key === 'ArrowRight') {
+        if (lightbox.currentIndex < lightbox.images.length - 1) {
+          setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }))
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (lightbox.currentIndex > 0) {
+          setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex - 1 }))
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lightbox])
+
+  const handleCopySingleImage = (url, uniqueId) => {
+    setCopyStatus({ id: uniqueId, text: 'Copying...' })
+    copyImageToClipboard(url)
+      .then(() => {
+        setCopyStatus({ id: uniqueId, text: 'Copied!' })
+        setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+      })
+      .catch((err) => {
+        console.error('Failed to copy image:', err)
+        navigator.clipboard.writeText(url)
+          .then(() => {
+            setCopyStatus({ id: uniqueId, text: 'Link Copied!' })
+            setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+          })
+          .catch(() => {
+            setCopyStatus({ id: uniqueId, text: 'Failed!' })
+            setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+          })
+      })
+  }
+
+  const handleCopyMultipleImages = (urls, uniqueId, mode = 'images') => {
+    setCopyStatus({ id: uniqueId, text: 'Copying...' })
+    if (mode === 'links') {
+      const textLinks = urls.join('\n')
+      navigator.clipboard.writeText(textLinks)
+        .then(() => {
+          setCopyStatus({ id: uniqueId, text: 'Links Copied!' })
+          setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+        })
+        .catch(() => {
+          setCopyStatus({ id: uniqueId, text: 'Failed!' })
+          setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+        })
+    } else {
+      copyMultipleImagesToClipboard(urls)
+        .then((result) => {
+          if (result.type === 'images') {
+            setCopyStatus({ id: uniqueId, text: 'Copied!' })
+          } else {
+            setCopyStatus({ id: uniqueId, text: 'Links Copied!' })
+          }
+          setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+        })
+        .catch(() => {
+          setCopyStatus({ id: uniqueId, text: 'Failed!' })
+          setTimeout(() => setCopyStatus({ id: null, text: '' }), 2000)
+        })
+    }
+  }
 
   useEffect(() => {
     const handleClose = () => setContextMenu(null)
@@ -536,120 +671,85 @@ export default function ChatMessageList({
                     {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation || ''}</span>}
 
                     {/* Rendering attachment media grid / mediaGroup collage */}
-                    {msg.mediaGroup && msg.mediaGroup.length > 1 && (
-                      <div 
-                        className="media-grid-wrapper"
-                        style={{ 
-                          display: 'grid', 
-                          gridTemplateColumns: msg.mediaGroup.length === 2 ? '1fr 1fr' : 'repeat(2, 1fr)', 
-                          gap: '4px', 
-                          maxWidth: '300px', 
-                          borderRadius: '12px', 
-                          overflow: 'hidden' 
-                        }}
-                      >
-                        {msg.mediaGroup.map((imgMsg, idx) => (
-                          <div key={imgMsg.id || idx} style={{ position: 'relative' }}>
-                            <img 
-                              src={getMediaUrlWithToken(imgMsg.media_url)} 
-                              alt="Sent media grid" 
-                              style={{ width: '100%', height: '120px', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
-                              onClick={() => setZoomedImage(getMediaUrlWithToken(imgMsg.media_url))}
-                            />
-                            {/* Parse OCR transcript for payment receipt inside grid items */}
-                            {(() => {
-                              let cardData = null
-                              if (imgMsg.ai_processed && imgMsg.transcript) {
-                                const amountMatch = imgMsg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i)
-                                const txnMatch = imgMsg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i)
-                                const bankMatch = imgMsg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i)
-                                const statusMatch = imgMsg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i)
-                                if (amountMatch) {
-                                  cardData = {
-                                    amount: amountMatch[1],
-                                    txnId: txnMatch?.[1] || null,
-                                    bank: bankMatch?.[1]?.trim() || null,
-                                    status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
-                                  }
-                                }
-                              }
-                              if (cardData) {
-                                return (
-                                  <div className="wa-ai-payment-card" style={{ marginTop: 4, padding: 6 }}>
-                                    <div className="wa-ai-payment-card-header" style={{ fontSize: '0.68rem' }}>
-                                      <span>💳 Receipt</span>
-                                    </div>
-                                    <div className="wa-ai-payment-card-amount" style={{ fontSize: '0.9rem' }}>Rs. {cardData.amount}</div>
-                                  </div>
-                                )
-                              } else if (imgMsg.transcript) {
-                                return (
-                                  <div className="wa-bubble-transcript" style={{ marginTop: 4, padding: '4px', background: 'rgba(0,0,0,0.03)', borderRadius: '4px' }}>
-                                    <span style={{ fontSize: '0.65rem', opacity: 0.7, display: 'block' }}>🔍 OCR:</span>
-                                    <span className="wa-transcript-text" style={{ fontSize: '0.7rem', display: 'block', maxHeight: '40px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{imgMsg.transcript}</span>
-                                  </div>
-                                )
-                              }
-                              return null
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {/* Rendering attachment media grid / mediaGroup collage */}
+                    {msg.mediaGroup && msg.mediaGroup.length > 1 && (() => {
+                      const is3Images = msg.mediaGroup.length === 3;
+                      const is2Images = msg.mediaGroup.length === 2;
+                      const urls = msg.mediaGroup.map(m => getMediaUrlWithToken(m.media_url));
+                      
+                      let gridStyle = {
+                        display: 'grid',
+                        gap: '4px',
+                        maxWidth: '300px',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        backgroundColor: 'rgba(0,0,0,0.05)'
+                      };
 
-                    {/* Rendering Attachment Media types */}
-                    {showImage && !msg.isImageGrid && (
-                      <div>
-                        {imageUrls.length > 1 ? (
-                          <div 
-                            style={{ 
-                              display: 'grid', 
-                              gridTemplateColumns: 'repeat(2, 1fr)', 
-                              gap: '2px', 
-                              overflow: 'hidden', 
-                              maxWidth: '300px', 
-                              borderRadius: '8px',
-                              backgroundColor: 'rgba(0,0,0,0.05)'
-                            }}
-                          >
-                            {imageUrls.slice(0, 4).map((url, idx) => {
-                              const isFourthOfMany = imageUrls.length >= 4 && idx === 3;
-                              const hasMore = imageUrls.length > 4;
+                      if (is2Images) {
+                        gridStyle.gridTemplateColumns = '1fr 1fr';
+                        gridStyle.gridTemplateRows = '1fr';
+                        gridStyle.height = '150px';
+                      } else if (is3Images) {
+                        gridStyle.gridTemplateColumns = '1.2fr 1fr';
+                        gridStyle.gridTemplateRows = '1fr 1fr';
+                        gridStyle.height = '240px';
+                      } else {
+                        // 4+ images
+                        gridStyle.gridTemplateColumns = '1fr 1fr';
+                        gridStyle.gridTemplateRows = '1fr 1fr';
+                        gridStyle.height = '240px';
+                      }
 
-                              // styling per layout
-                              let gridStyle = {
+                      return (
+                        <div style={{ width: '100%' }}>
+                          <div className="media-grid-wrapper" style={gridStyle}>
+                            {msg.mediaGroup.slice(0, 4).map((imgMsg, idx) => {
+                              const isFourthOfMany = msg.mediaGroup.length >= 4 && idx === 3;
+                              const hasMore = msg.mediaGroup.length > 4;
+                              const cellId = imgMsg.id || `${msg.id}-${idx}`;
+
+                              let cellStyle = {
+                                position: 'relative',
+                                height: '100%',
                                 width: '100%',
-                                objectFit: 'cover',
-                                cursor: 'pointer',
-                                display: 'block'
+                                overflow: 'hidden'
                               };
 
-                              if (imageUrls.length === 2) {
-                                gridStyle.height = '140px';
-                              } else if (imageUrls.length === 3) {
+                              if (is3Images) {
                                 if (idx === 0) {
-                                  gridStyle.gridColumn = 'span 2';
-                                  gridStyle.height = '180px';
+                                  cellStyle.gridRow = '1 / 3';
+                                  cellStyle.gridColumn = '1 / 2';
                                 } else {
-                                  gridStyle.height = '100px';
+                                  cellStyle.gridColumn = '2 / 3';
                                 }
-                              } else {
-                                // 4+ images
-                                gridStyle.height = '120px';
                               }
 
-                              if (isFourthOfMany && hasMore) {
-                                return (
-                                  <div 
-                                    key={idx} 
-                                    style={{ position: 'relative', height: gridStyle.height, gridColumn: gridStyle.gridColumn }}
-                                    onClick={() => setZoomedImage(getMediaUrlWithToken(url))}
+                              return (
+                                <div key={cellId} className="wa-collage-cell" style={cellStyle}>
+                                  <img 
+                                    src={getMediaUrlWithToken(imgMsg.media_url)} 
+                                    alt="Sent media grid" 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                    onClick={() => setLightbox({ images: urls, currentIndex: idx })}
+                                  />
+                                  <button 
+                                    type="button"
+                                    className="wa-collage-copy-btn" 
+                                    title="Copy Image"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopySingleImage(getMediaUrlWithToken(imgMsg.media_url), cellId);
+                                    }}
                                   >
-                                    <img 
-                                      src={getMediaUrlWithToken(url)} 
-                                      alt={`Collage ${idx}`} 
-                                      style={{ ...gridStyle, height: '100%' }}
-                                    />
+                                    📋
+                                  </button>
+                                  {copyStatus.id === cellId && (
+                                    <div className="wa-copy-feedback-overlay">
+                                      {copyStatus.text}
+                                    </div>
+                                  )}
+                                  {isFourthOfMany && hasMore && (
                                     <div 
                                       style={{
                                         position: 'absolute',
@@ -667,31 +767,263 @@ export default function ChatMessageList({
                                         pointerEvents: 'none'
                                       }}
                                     >
-                                      +{imageUrls.length - 3}
+                                      +{msg.mediaGroup.length - 3}
                                     </div>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <img 
-                                  key={idx}
-                                  src={getMediaUrlWithToken(url)} 
-                                  alt={`Collage ${idx}`} 
-                                  style={gridStyle}
-                                  onClick={() => setZoomedImage(getMediaUrlWithToken(url))}
-                                />
+                                  )}
+                                  {/* Parse OCR transcript for payment receipt inside grid items */}
+                                  {(() => {
+                                    let cardData = null;
+                                    if (imgMsg.ai_processed && imgMsg.transcript) {
+                                      const amountMatch = imgMsg.transcript.match(/Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/i);
+                                      const txnMatch = imgMsg.transcript.match(/TXN[:\s]?([A-Z0-9]+)/i);
+                                      const bankMatch = imgMsg.transcript.match(/Bank[:\s]?([\w\s]+?)(?:\s|,|\.|$)/i);
+                                      const statusMatch = imgMsg.transcript.match(/status[:\s]?(matched|mismatch|manual_review|verified)/i);
+                                      if (amountMatch) {
+                                        cardData = {
+                                          amount: amountMatch[1],
+                                          txnId: txnMatch?.[1] || null,
+                                          bank: bankMatch?.[1]?.trim() || null,
+                                          status: statusMatch?.[1]?.toLowerCase() || 'reviewing',
+                                        };
+                                      }
+                                    }
+                                    if (cardData) {
+                                      return (
+                                        <div className="wa-ai-payment-card-overlay" style={{
+                                          position: 'absolute',
+                                          bottom: 0, left: 0, right: 0,
+                                          background: 'rgba(32, 44, 51, 0.95)',
+                                          padding: '4px 6px',
+                                          fontSize: '0.65rem',
+                                          color: '#fff',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center',
+                                          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                                          pointerEvents: 'none'
+                                        }}>
+                                          <span>💳 Rs. {cardData.amount}</span>
+                                          <span style={{
+                                            fontSize: '0.55rem',
+                                            padding: '1px 3px',
+                                            borderRadius: '3px',
+                                            backgroundColor: cardData.status === 'matched' ? '#10b981' : cardData.status === 'mismatch' ? '#ef4444' : '#f59e0b',
+                                            color: '#fff',
+                                            fontWeight: 'bold'
+                                          }}>
+                                            {cardData.status === 'matched' ? 'Verified' : cardData.status === 'mismatch' ? 'Mismatch' : 'Review'}
+                                          </span>
+                                        </div>
+                                      );
+                                    } else if (imgMsg.transcript) {
+                                      return (
+                                        <div className="wa-bubble-transcript-overlay" style={{
+                                          position: 'absolute',
+                                          bottom: 0, left: 0, right: 0,
+                                          background: 'rgba(32, 44, 51, 0.95)',
+                                          padding: '4px 6px',
+                                          fontSize: '0.6rem',
+                                          color: '#e9edef',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                                          pointerEvents: 'none'
+                                        }} title={imgMsg.transcript}>
+                                          🔍 {imgMsg.transcript}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                </div>
                               );
                             })}
                           </div>
-                        ) : (
-                          <img 
-                            src={getMediaUrlWithToken(msg.media_url || imageUrls[0])} 
-                            alt="Sent media" 
-                            className="wa-media-image"
-                            style={{ maxWidth: '300px', display: 'block', borderRadius: '8px' }}
-                            onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url || imageUrls[0]))}
-                          />
+                          <div className="wa-collage-group-actions">
+                            <button 
+                              type="button"
+                              className="wa-collage-action-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyMultipleImages(urls, `group-${msg.id}`, 'images');
+                              }}
+                            >
+                              📋 {copyStatus.id === `group-${msg.id}` && copyStatus.text.includes('Copied') ? copyStatus.text : 'Copy Images'}
+                            </button>
+                            <button 
+                              type="button"
+                              className="wa-collage-action-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopyMultipleImages(urls, `group-${msg.id}`, 'links');
+                              }}
+                            >
+                              🔗 Copy Links
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Rendering Attachment Media types */}
+                    {showImage && !msg.isImageGrid && (
+                      <div>
+                        {imageUrls.length > 1 ? (() => {
+                          const is3Images = imageUrls.length === 3;
+                          const is2Images = imageUrls.length === 2;
+                          const urls = imageUrls.map(u => getMediaUrlWithToken(u));
+                          
+                          let gridStyle = {
+                            display: 'grid',
+                            gap: '4px',
+                            maxWidth: '300px',
+                            borderRadius: '12px',
+                            overflow: 'hidden',
+                            backgroundColor: 'rgba(0,0,0,0.05)'
+                          };
+
+                          if (is2Images) {
+                            gridStyle.gridTemplateColumns = '1fr 1fr';
+                            gridStyle.gridTemplateRows = '1fr';
+                            gridStyle.height = '150px';
+                          } else if (is3Images) {
+                            gridStyle.gridTemplateColumns = '1.2fr 1fr';
+                            gridStyle.gridTemplateRows = '1fr 1fr';
+                            gridStyle.height = '240px';
+                          } else {
+                            // 4+ images
+                            gridStyle.gridTemplateColumns = '1fr 1fr';
+                            gridStyle.gridTemplateRows = '1fr 1fr';
+                            gridStyle.height = '240px';
+                          }
+
+                          return (
+                            <div style={{ width: '100%' }}>
+                              <div className="media-grid-wrapper" style={gridStyle}>
+                                {imageUrls.slice(0, 4).map((url, idx) => {
+                                  const isFourthOfMany = imageUrls.length >= 4 && idx === 3;
+                                  const hasMore = imageUrls.length > 4;
+                                  const cellId = `${msg.id}-url-${idx}`;
+
+                                  let cellStyle = {
+                                    position: 'relative',
+                                    height: '100%',
+                                    width: '100%',
+                                    overflow: 'hidden'
+                                  };
+
+                                  if (is3Images) {
+                                    if (idx === 0) {
+                                      cellStyle.gridRow = '1 / 3';
+                                      cellStyle.gridColumn = '1 / 2';
+                                    } else {
+                                      cellStyle.gridColumn = '2 / 3';
+                                    }
+                                  }
+
+                                  return (
+                                    <div key={cellId} className="wa-collage-cell" style={cellStyle}>
+                                      <img 
+                                        src={getMediaUrlWithToken(url)} 
+                                        alt={`Collage ${idx}`} 
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                        onClick={() => setLightbox({ images: urls, currentIndex: idx })}
+                                      />
+                                      <button 
+                                        type="button"
+                                        className="wa-collage-copy-btn" 
+                                        title="Copy Image"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleCopySingleImage(getMediaUrlWithToken(url), cellId);
+                                        }}
+                                      >
+                                        📋
+                                      </button>
+                                      {copyStatus.id === cellId && (
+                                        <div className="wa-copy-feedback-overlay">
+                                          {copyStatus.text}
+                                        </div>
+                                      )}
+                                      {isFourthOfMany && hasMore && (
+                                        <div 
+                                          style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: '#ffffff',
+                                            fontSize: '1.4rem',
+                                            fontWeight: 'bold',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          +{imageUrls.length - 3}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="wa-collage-group-actions">
+                                <button 
+                                  type="button"
+                                  className="wa-collage-action-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyMultipleImages(urls, `group-url-${msg.id}`, 'images');
+                                  }}
+                                >
+                                  📋 {copyStatus.id === `group-url-${msg.id}` && copyStatus.text.includes('Copied') ? copyStatus.text : 'Copy Images'}
+                                </button>
+                                <button 
+                                  type="button"
+                                  className="wa-collage-action-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyMultipleImages(urls, `group-url-${msg.id}`, 'links');
+                                  }}
+                                >
+                                  🔗 Copy Links
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })() : (
+                          <div className="wa-collage-cell" style={{ position: 'relative', width: 'fit-content', overflow: 'hidden', borderRadius: '8px' }}>
+                            <img 
+                              src={getMediaUrlWithToken(msg.media_url || imageUrls[0])} 
+                              alt="Sent media" 
+                              className="wa-media-image"
+                              style={{ maxWidth: '300px', display: 'block', objectFit: 'cover', transition: 'transform 0.2s ease', cursor: 'zoom-in' }}
+                              onClick={() => {
+                                const url = getMediaUrlWithToken(msg.media_url || imageUrls[0]);
+                                setLightbox({ images: [url], currentIndex: 0 });
+                              }}
+                            />
+                            <button 
+                              type="button"
+                              className="wa-collage-copy-btn" 
+                              title="Copy Image"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCopySingleImage(getMediaUrlWithToken(msg.media_url || imageUrls[0]), `${msg.id}-single`);
+                              }}
+                            >
+                              📋
+                            </button>
+                            {copyStatus.id === `${msg.id}-single` && (
+                              <div className="wa-copy-feedback-overlay">
+                                {copyStatus.text}
+                              </div>
+                            )}
+                          </div>
                         )}
                         {/* Module 7: AI Payment Card rendering */}
                         {paymentCardData ? (
@@ -947,6 +1279,56 @@ export default function ChatMessageList({
             <span>📋</span>
             <strong>Copy Text</strong>
           </button>
+        </div>
+      )}
+
+      {/* Lightbox Carousel Overlay */}
+      {lightbox && (
+        <div className="wa-lightbox-overlay" onClick={() => setLightbox(null)}>
+          <button type="button" className="wa-lightbox-close-btn" onClick={() => setLightbox(null)}>
+            ✕
+          </button>
+          
+          {lightbox.images.length > 1 && (
+            <button 
+              type="button"
+              className="wa-lightbox-arrow-btn prev" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightbox(prev => ({ ...prev, currentIndex: Math.max(0, prev.currentIndex - 1) }));
+              }}
+              disabled={lightbox.currentIndex === 0}
+            >
+              ‹
+            </button>
+          )}
+
+          <div className="wa-lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <img 
+              src={lightbox.images[lightbox.currentIndex]} 
+              alt={`Zoomed view ${lightbox.currentIndex + 1}`} 
+              className="wa-lightbox-img" 
+            />
+            {lightbox.images.length > 1 && (
+              <div className="wa-lightbox-info-overlay">
+                Image {lightbox.currentIndex + 1} of {lightbox.images.length}
+              </div>
+            )}
+          </div>
+
+          {lightbox.images.length > 1 && (
+            <button 
+              type="button"
+              className="wa-lightbox-arrow-btn next" 
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightbox(prev => ({ ...prev, currentIndex: Math.min(prev.images.length - 1, prev.currentIndex + 1) }));
+              }}
+              disabled={lightbox.currentIndex === lightbox.images.length - 1}
+            >
+              ›
+            </button>
+          )}
         </div>
       )}
     </div>
