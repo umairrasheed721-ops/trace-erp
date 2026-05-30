@@ -187,4 +187,31 @@ router.post('/shopify', (req, res) => {
   }
 });
 
+// POST /api/webhooks/whatsapp/portal-hook
+router.post('/whatsapp/portal-hook', async (req, res) => {
+  const authHeader = req.headers.auth || req.query.token;
+  if (authHeader !== 'tracepk') {
+    console.warn('⚠️ Unauthorized Portal Webhook Attempt (Token Mismatch)');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const { msg } = req.body;
+  if (!msg) return res.status(400).json({ error: 'Missing msg payload' });
+
+  const tenantId = req.tenantId || 'default';
+  try {
+    const { getBot } = require('../engines/whatsapp_bot');
+    const { processIncomingMessage } = require('../engines/whatsapp_message_processor');
+    const { db: tenantDb } = require('../db');
+
+    const botInstance = getBot(tenantId);
+    await processIncomingMessage(botInstance, msg, botInstance.sock, tenantDb);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(`❌ [Portal Webhook] Error processing incoming message:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

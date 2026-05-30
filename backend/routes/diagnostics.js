@@ -516,4 +516,41 @@ router.get('/logs', (req, res) => {
     }
 });
 
+// GET /api/diagnostics/remote-logs
+router.get('/remote-logs', (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const DB_PATH = process.env.DB_PATH || (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT !== undefined || process.env.BOT_ENABLED === 'true' ? '/app/data/trace_erp.db' : path.join(__dirname, '../trace_erp.db'));
+        const DB_DIR = path.dirname(path.resolve(DB_PATH));
+        const logFilePath = path.join(DB_DIR, 'remote_errors.log');
+
+        if (!fs.existsSync(logFilePath)) {
+            return res.send(''); // Empty file if doesn't exist
+        }
+
+        res.download(logFilePath, 'remote_errors.log');
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/diagnostics/remote-logs/clear
+router.post('/remote-logs/clear', (req, res) => {
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const DB_PATH = process.env.DB_PATH || (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT !== undefined || process.env.BOT_ENABLED === 'true' ? '/app/data/trace_erp.db' : path.join(__dirname, '../trace_erp.db'));
+        const DB_DIR = path.dirname(path.resolve(DB_PATH));
+        const logFilePath = path.join(DB_DIR, 'remote_errors.log');
+
+        if (fs.existsSync(logFilePath)) {
+            fs.writeFileSync(logFilePath, '', 'utf8'); // Truncate the file
+        }
+        res.json({ success: true, message: 'Remote error log file cleared.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

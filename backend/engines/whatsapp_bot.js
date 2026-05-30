@@ -247,7 +247,16 @@ class WhatsAppBot {
         }, 60000);
       }
 
-      const { state, saveCreds } = await useMultiFileAuthState(this.getSessionPath());
+      let authState;
+      if (process.env.REDIS_URL) {
+        const { useRedisAuthState } = require('./redis_auth');
+        const redisAuth = await useRedisAuthState(this.tenantId, initAuthCreds, BufferJSON, process.env.REDIS_URL);
+        authState = { state: redisAuth.state, saveCreds: redisAuth.saveCreds };
+        this.wipeRedisSession = redisAuth.wipeSession;
+      } else {
+        authState = await useDbAuthState(initAuthCreds, BufferJSON);
+      }
+      const { state, saveCreds } = authState;
 
       let version;
       try {
@@ -537,7 +546,27 @@ class WhatsAppBot {
         const { messages, type } = m;
         if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
-          await processIncomingMessage(this, msg, this.sock, db);
+          try {
+            const port = process.env.PORT || 3001;
+            const url = `http://localhost:${port}/api/webhooks/whatsapp/portal-hook?tenant_id=${encodeURIComponent(this.tenantId)}`;
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Tenant-Id': this.tenantId,
+                'auth': 'tracepk'
+              },
+              body: JSON.stringify({ msg })
+            });
+            if (!response.ok) {
+              const errText = await response.text();
+              console.error(`[Portal Hook Router] API call failed: status=${response.status}, body=${errText}`);
+              await processIncomingMessage(this, msg, this.sock, db);
+            }
+          } catch (err) {
+            console.error(`[Portal Hook Router] Failed to route via API, falling back to local:`, err.message);
+            await processIncomingMessage(this, msg, this.sock, db);
+          }
         }
       });
 
@@ -548,19 +577,32 @@ class WhatsAppBot {
     }
   }
 
-  _wipeCreds() {
+  async _clearSessionStore() {
+    try {
+      if (process.env.REDIS_URL && typeof this.wipeRedisSession === 'function') {
+        await this.wipeRedisSession();
+      }
+    } catch (e) {
+      console.error('⚠️ Redis session wipe failed:', e.message);
+    }
+    try {
+      clearDbSession();
+    } catch (e) {
+      console.error('⚠️ DB session clear failed:', e.message);
+    }
     try {
       const sessionPath = this.getSessionPath();
       if (fs.existsSync(sessionPath)) {
-        const files = fs.readdirSync(sessionPath);
-        for (const f of files) {
-          if (f.endsWith('.json')) fs.unlinkSync(path.join(sessionPath, f));
-        }
-        console.log(`✅ Session creds wiped for tenant [${this.tenantId}]`);
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log(`✅ Session directory cleared for tenant [${this.tenantId}]`);
       }
     } catch (e) {
-      console.error('⚠️ Failed to wipe creds:', e.message);
+      console.error('⚠️ File session clear failed:', e.message);
     }
+  }
+
+  async _wipeCreds() {
+    await this._clearSessionStore();
   }
 
   variateTemplateMessage(text) {
@@ -1227,7 +1269,7 @@ class WhatsAppBot {
     };
   }
 
-  resetSession() {
+  async resetSession() {
     console.log(`🗑️ Manual session reset by admin for tenant [${this.tenantId}]...`);
     this.status = 'DISCONNECTED';
     this.qrCode = null;
@@ -1246,17 +1288,7 @@ class WhatsAppBot {
       try { oldSock.ws?.close(); } catch (_) {}
     }
 
-    try {
-      const sessionPath = this.getSessionPath();
-      if (fs.existsSync(sessionPath)) {
-        fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log(`✅ Session directory cleared for tenant [${this.tenantId}]`);
-      }
-    } catch (e) {
-      console.error('⚠️ Clear error:', e.message);
-    }
-
-    clearDbSession();
+    await this._clearSessionStore();
 
     setTimeout(() => this._connect(), 2000);
     return true;
@@ -1280,22 +1312,7 @@ class WhatsAppBot {
       try { oldSock.ws?.close(); } catch (_) {}
     }
 
-    try {
-      const sessionPath = this.getSessionPath();
-      if (fs.existsSync(sessionPath)) {
-        fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log(`✅ Session directory cleared on logout for tenant [${this.tenantId}]`);
-      }
-    } catch (e) {
-      console.error('⚠️ Clear session directory error:', e.message);
-    }
-
-    try {
-      db.prepare('DELETE FROM wa_session_store').run();
-      console.log(`[WA-DB] ✅ Session cleared from DB for tenant [${this.tenantId}]`);
-    } catch (e) {
-      console.error('[WA-DB] Clear failed:', e.message);
-    }
+    await this._clearSessionStore();
     return true;
   }
 

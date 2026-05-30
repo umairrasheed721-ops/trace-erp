@@ -7,6 +7,7 @@ export default function DiagnosticCenter() {
   const [loading, setLoading] = useState(false);
   const [auditResult, setAuditResult] = useState(null);
   const [smokeStatus, setSmokeStatus] = useState(null);
+  const [remoteLogs, setRemoteLogs] = useState([]);
 
   const fetchStats = async () => {
     try {
@@ -55,6 +56,65 @@ export default function DiagnosticCenter() {
       fetchStats();
     }
   }, [activeStoreId]);
+
+  useEffect(() => {
+    const fetchInitialLogs = async () => {
+      try {
+        const res = await fetch('/api/diagnostics/logs');
+        const data = await res.json();
+        const formatted = data.map(log => ({
+          ts: log.created_at,
+          msg: `[${log.module.toUpperCase()}] ${log.message}`
+        }));
+        setRemoteLogs(formatted.reverse());
+      } catch (err) {
+        console.error('Failed to fetch initial logs', err);
+      }
+    };
+    fetchInitialLogs();
+
+    const token = localStorage.getItem('trace_token');
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}?token=${encodeURIComponent(token)}`;
+    let socket;
+
+    try {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.event === 'error_logged') {
+            setRemoteLogs(prev => [...prev.slice(-99), {
+              ts: parsed.data.ts,
+              msg: parsed.data.msg
+            }]);
+          }
+        } catch (e) {}
+      };
+    } catch (err) {
+      console.error(err);
+    }
+
+    return () => {
+      if (socket) socket.close();
+    };
+  }, []);
+
+  const handleDownloadLogs = () => {
+    window.open('/api/diagnostics/remote-logs', '_blank');
+  };
+
+  const handleClearLogs = async () => {
+    if (!confirm('Clear all remote logs?')) return;
+    try {
+      await fetch('/api/diagnostics/remote-logs/clear', { method: 'POST' });
+      setRemoteLogs([]);
+      alert('Logs cleared!');
+    } catch (err) {
+      alert('Failed to clear logs: ' + err.message);
+    }
+  };
 
   if (user?.role !== 'admin' && user?.role !== 'owner') {
     return <div className="p-8">Access Denied. Admins only.</div>;
@@ -279,6 +339,37 @@ export default function DiagnosticCenter() {
           </div>
         </div>
       )}
+
+      {/* 🔴 REMOTE ERROR CONSOLE */}
+      <div className="bg-surface p-6 rounded-xl border border-border mt-8">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold text-red-500 flex items-center gap-2">
+            <span className="w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+            🔴 Real-time Remote Error Stream
+          </h3>
+          <div className="flex gap-2">
+            <button onClick={handleDownloadLogs} className="btn btn-secondary text-xs">
+              📥 Download Log File
+            </button>
+            <button onClick={handleClearLogs} className="btn btn-secondary text-xs text-red-400 border-red-500/20 hover:bg-red-500/10">
+              🗑️ Clear Logs
+            </button>
+          </div>
+        </div>
+        
+        <div className="bg-black/80 font-mono text-xs text-red-400 p-4 rounded-lg h-64 overflow-y-auto flex flex-col gap-1 border border-red-900/30">
+          {remoteLogs.length === 0 ? (
+            <div className="text-center py-24 text-muted italic">No error events captured yet. Monitoring live stream...</div>
+          ) : (
+            remoteLogs.map((log, index) => (
+              <div key={index} className="hover:bg-white/5 py-0.5 border-b border-white/5 flex gap-2">
+                <span className="text-muted shrink-0">[{new Date(log.ts).toLocaleTimeString()}]</span>
+                <span className="break-all">{log.msg}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

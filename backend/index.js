@@ -206,6 +206,25 @@ console.error = (...a) => {
     }
     // Persist errors to SQLite (survives restarts)
     try { logSystemError('ERROR', a.map(x => String(x)).join(' ').substring(0, 1000), 'server'); } catch (_) {}
+    
+    // Remote Logger: Pipe to remote_errors.log and broadcast via WebSocket
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logMsg = `[${new Date().toISOString()}] ERROR: ${a.map(x => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ')}\n`;
+      const dbPath = process.env.DB_PATH || (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT !== undefined || process.env.BOT_ENABLED === 'true' ? '/app/data/trace_erp.db' : path.join(__dirname, 'trace_erp.db'));
+      const dbDir = path.dirname(path.resolve(dbPath));
+      const logFilePath = path.join(dbDir, 'remote_errors.log');
+      fs.appendFileSync(logFilePath, logMsg, 'utf8');
+    } catch (err) {}
+
+    try {
+      const { broadcast } = require('./websocket');
+      broadcast('error_logged', {
+        ts: new Date().toISOString(),
+        msg: a.map(x => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ')
+      });
+    } catch (wsErr) {}
   } finally {
     isInternalError = false;
   }
