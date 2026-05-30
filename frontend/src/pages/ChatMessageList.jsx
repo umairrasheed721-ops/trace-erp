@@ -614,7 +614,8 @@ export default function ChatMessageList({
                         marginTop: 0,
                         marginBottom: 0,
                         width: 'fit-content',
-                        maxWidth: '75%',
+                        maxWidth: '100%',
+                        minWidth: 0,
                         wordBreak: 'break-word',
                         overflowWrap: 'break-word',
                         whiteSpace: 'pre-wrap',
@@ -627,9 +628,15 @@ export default function ChatMessageList({
                         className="wa-bubble-quote-block"
                         style={{
                           maxWidth: '100%',
+                          minWidth: 0,
                           overflow: 'hidden',
                           display: 'flex',
-                          flexDirection: 'column'
+                          flexDirection: 'column',
+                          backgroundColor: 'rgba(0, 0, 0, 0.15)',
+                          borderLeft: isOutgoing ? '4px solid #10b981' : '4px solid #3b82f6',
+                          borderRadius: '4px',
+                          padding: '6px 8px',
+                          marginBottom: '6px'
                         }}
                       >
                         <span className="wa-bubble-quote-sender">
