@@ -446,11 +446,12 @@ export default function ChatMessageList({
                   <div
                     style={{
                       position: 'relative',
-                      maxWidth: '65%',
+                      maxWidth: '75%',
                       width: 'fit-content',
                       display: 'flex',
                       flexDirection: 'column',
-                      alignItems: isOutgoing ? 'flex-end' : 'flex-start'
+                      alignItems: isOutgoing ? 'flex-end' : 'flex-start',
+                      alignSelf: isOutgoing ? 'flex-end' : 'flex-start'
                     }}
                   >
                     <div 
@@ -477,18 +478,36 @@ export default function ChatMessageList({
                         transition: 'all 0.2s ease',
                         marginTop: 0,
                         marginBottom: 0,
-                        width: '100%',
-                        maxWidth: '100%',
+                        width: 'fit-content',
+                        maxWidth: '75%',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'pre-wrap',
                         padding: '6px 7px 8px 9px'
                       }}
                     >
                     {/* Rendering Quoted block inside bubble */}
                     {quoteInfo && (
-                      <div className="wa-bubble-quote-block">
+                      <div 
+                        className="wa-bubble-quote-block"
+                        style={{
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}
+                      >
                         <span className="wa-bubble-quote-sender">
                           {getQuoteSenderDisplayName(quoteInfo.participant, activeNumber)}
                         </span>
-                        <span className="wa-bubble-quote-text">
+                        <span 
+                          className="wa-bubble-quote-text"
+                          style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
                           {quoteInfo.text}
                         </span>
                       </div>
