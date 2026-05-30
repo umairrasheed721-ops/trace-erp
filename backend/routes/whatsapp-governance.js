@@ -16,10 +16,22 @@ function normalizePhone(raw) {
   if (!raw) return '';
   // Strip JID suffix, +, spaces, dashes
   let n = String(raw).split('@')[0].replace(/[\+\-\s]/g, '').replace(/\D/g, '');
+  // Normalize double country code 9292 -> 92
+  if (n.startsWith('9292') && n.length > 12) {
+    n = n.substring(2);
+  }
+  // Normalize 9203 -> 923
+  if (n.startsWith('920') && n.length === 13) {
+    n = '92' + n.substring(3);
+  }
   // Pakistan short-form: 03XX -> 923XX
-  if (n.startsWith('0') && n.length === 11) n = '92' + n.substring(1);
+  if (n.startsWith('0') && n.length === 11) {
+    n = '92' + n.substring(1);
+  }
   // 10-digit with no country code
-  else if (!n.startsWith('92') && n.length === 10) n = '92' + n;
+  else if (!n.startsWith('92') && n.length === 10) {
+    n = '92' + n;
+  }
   return n;
 }
 

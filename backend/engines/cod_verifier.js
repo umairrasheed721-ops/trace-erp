@@ -11,6 +11,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { db } = require('../db');
 const bot = require('./whatsapp_bot');
+const { normalizePhone } = require('./whatsapp_message_processor');
 
 const COD_VN_DIR = process.env.COD_VN_DIR || path.join(process.cwd(), 'data', 'cod_vn');
 
@@ -92,10 +93,11 @@ function transcodeToMp4(inputBuffer, outputPath) {
 
 async function dispatchCODVerification(order) {
   const { id: orderId, phone, customer_name, ref_number } = order;
+  const normalizedPhone = normalizePhone(phone);
   const name = (customer_name || 'Customer').split(' ')[0];
   const ref = ref_number || `#${orderId}`;
 
-  console.log(`🔐 COD Verifier: Starting VN generation for order ${ref} → ${phone}`);
+  console.log(`🔐 COD Verifier: Starting VN generation for order ${ref} → ${normalizedPhone} (raw: ${phone})`);
 
   try {
     const script = `Assalam o Alaikum ${name} Sahab! Ye TRACE ERP ki taraf se call hai. Aapka Cash on Delivery order ${ref} confirm karne ke liye 1 reply karein ya cancel karne ke liye 2 reply karein. Shukriya!`;
@@ -118,14 +120,14 @@ async function dispatchCODVerification(order) {
     db.prepare(`
       INSERT INTO cod_pending_verifications (order_id, phone, status, vn_path, expires_at)
       VALUES (?, ?, 'pending', ?, ?)
-    `).run(orderId, phone, mp4Path || null, expiresStr);
+    `).run(orderId, normalizedPhone, mp4Path || null, expiresStr);
 
     // Step 3: Send voice note (if generated) then text instruction
     if (mp4Path && fs.existsSync(mp4Path)) {
       // Force-send the audio
       try {
-        await bot.sendMessage(phone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`, null, null, null, 'native', null, { force: true });
-        console.log('✅ COD VERIFIER: Audio force-sent successfully to:', phone);
+        await bot.directSendMessage(normalizedPhone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`, null, null, null, 'native', null, { force: true });
+        console.log('✅ COD VERIFIER: Audio force-sent successfully to:', normalizedPhone);
       } catch (err) {
         console.error('❌ COD VERIFIER: Critical audio send failure:', err);
       }
@@ -134,7 +136,7 @@ async function dispatchCODVerification(order) {
         db.prepare(`
           INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
           VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', '[Voice Note]', ?, 'audio', 'sent', 'default')
-        `).run(orderId, orderId, phone, relativeUrl);
+        `).run(orderId, orderId, normalizedPhone, relativeUrl);
       } catch(e) { console.error('Failed to log COD VN message:', e.message); }
     }
 
@@ -152,8 +154,8 @@ async function dispatchCODVerification(order) {
     };
     // Force-send the list/message
     try {
-      await bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'list', listConfig, { force: true });
-      console.log('✅ COD VERIFIER: Force-sent successfully to:', phone);
+      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'list', listConfig, { force: true });
+      console.log('✅ COD VERIFIER: Force-sent successfully to:', normalizedPhone);
     } catch (err) {
       console.error('❌ COD VERIFIER: Critical send failure:', err);
     }
@@ -161,7 +163,7 @@ async function dispatchCODVerification(order) {
       db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
         VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', ?, 'sent', 'default')
-      `).run(orderId, orderId, phone, listConfig.text);
+      `).run(orderId, orderId, normalizedPhone, listConfig.text);
     } catch(e) { console.error('Failed to log COD Poll message:', e.message); }
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);

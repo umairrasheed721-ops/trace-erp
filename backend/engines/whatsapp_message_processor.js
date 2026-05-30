@@ -74,8 +74,22 @@ const SILENT_LOGGER = {
 function normalizePhone(raw) {
   if (!raw) return '';
   let n = String(raw).split('@')[0].replace(/[\+\-\s]/g, '').replace(/\D/g, '');
-  if (n.startsWith('0') && n.length === 11) n = '92' + n.substring(1);
-  else if (!n.startsWith('92') && n.length === 10) n = '92' + n;
+  // Normalize double country code 9292 -> 92
+  if (n.startsWith('9292') && n.length > 12) {
+    n = n.substring(2);
+  }
+  // Normalize 9203 -> 923
+  if (n.startsWith('920') && n.length === 13) {
+    n = '92' + n.substring(3);
+  }
+  // Normalize 03 -> 923
+  if (n.startsWith('0') && n.length === 11) {
+    n = '92' + n.substring(1);
+  }
+  // Normalize 3 -> 923
+  else if (!n.startsWith('92') && n.length === 10) {
+    n = '92' + n;
+  }
   return n;
 }
 
