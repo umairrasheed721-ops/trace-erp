@@ -66,7 +66,7 @@ function initDb(db) {
   db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
   db.exec(`PRAGMA mmap_size = 536870912`);       // 512MB memory-mapped I/O
   db.exec(`PRAGMA foreign_keys = ON`);
-  db.exec(`PRAGMA busy_timeout = 5000`);         // Wait 5s instead of failing on lock
+  db.exec(`PRAGMA busy_timeout = 15000`);         // Wait 15s instead of failing on lock
   db.exec(`PRAGMA wal_autocheckpoint = 1000`);   // Checkpoint every 1000 pages
 
   db.exec(`
@@ -533,6 +533,7 @@ function getPrepared(sql) {
   const cache = _prepare_caches[tenantId];
   if (!cache.has(sql)) {
     const conn = getDbInstance();
+    if (cache.size > 1000) cache.clear();
     cache.set(sql, conn.prepare(sql));
   }
   return cache.get(sql);
@@ -865,6 +866,9 @@ function runMigrations(db) {
       created_at TEXT DEFAULT (datetime('now', '+5 hours'))
     );
   `);
+
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone_time ON whatsapp_messages(phone, created_at DESC)"); } catch(e){}
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_wa_msgs_tenant_phone ON whatsapp_messages(tenant_id, phone)"); } catch(e){}
 
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1`); } catch (e) {}
   try { db.exec(`ALTER TABLE whatsapp_settings ADD COLUMN ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'`); } catch (e) {}
