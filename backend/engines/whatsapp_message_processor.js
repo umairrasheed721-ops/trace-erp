@@ -159,6 +159,14 @@ function getMessageText(msg) {
     }
   }
 
+  if (content.listResponseMessage) {
+    const listResp = content.listResponseMessage;
+    if (listResp.singleSelectReply?.selectedRowId) {
+      return listResp.singleSelectReply.selectedRowId;
+    }
+    if (listResp.title) return listResp.title;
+  }
+
   return content.conversation || 
          content.extendedTextMessage?.text || 
          content.buttonsResponseMessage?.selectedDisplayText || 
@@ -1307,6 +1315,11 @@ async function processIncomingMessage(bot, msg, sock, db) {
           console.log(`🔐 COD Confirmed: Order ${pendingCOD.order_id} by ${fromPhone}`);
         } else {
           db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
+          const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+          if (order) {
+            const { broadcast } = require('../sse');
+            broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+          }
           await bot.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
           console.log(`🔐 COD Cancelled: Order ${pendingCOD.order_id} by ${fromPhone}`);
         }

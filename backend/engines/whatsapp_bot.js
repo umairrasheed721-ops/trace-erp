@@ -512,6 +512,11 @@ class WhatsAppBot {
                         console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
                       } else {
                         db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
+                        const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                        if (order) {
+                          const { broadcast } = require('../sse');
+                          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+                        }
                         await this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
                         console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
                       }
