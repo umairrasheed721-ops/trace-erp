@@ -31,7 +31,9 @@ export default function ChatInputArea({
   SLASH_COMMANDS = [],
   slashCmd,
   setSlashCmd,
-  inputRef
+  inputRef,
+  customerInfo,
+  handleTriggerCODVerification
 }) {
   const [quickReplies, setQuickReplies] = React.useState(() => {
     const saved = localStorage.getItem('trace_quick_replies');
@@ -111,6 +113,27 @@ export default function ChatInputArea({
 
       {/* Quick Pills Row */}
       <div className="wa-portal-quick-pills" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {customerInfo?.latestOrder && (
+          <span 
+            className="wa-quick-pill"
+            style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: '#10b981', color: '#10b981', fontWeight: 'bold' }}
+            onClick={() => handleTriggerCODVerification && handleTriggerCODVerification()}
+          >
+            🔐 COD Verify
+          </span>
+        )}
+        {customerInfo?.latestOrder?.tracking_number && (
+          <span 
+            className="wa-quick-pill"
+            style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: '#3b82f6', color: '#3b82f6', fontWeight: 'bold' }}
+            onClick={() => updateInputText('📦 Tracking Number: ' + customerInfo.latestOrder.tracking_number)}
+          >
+            📍 Track Parcel
+          </span>
+        )}
+        {customerInfo?.latestOrder && (
+          <span style={{ color: 'var(--wa-border)', margin: '0 4px' }}>|</span>
+        )}
         {quickReplies.map(p => (
           <span 
             key={p.id} 

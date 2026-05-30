@@ -1456,6 +1456,8 @@ export default function WhatsAppPortal() {
                   slashCmd={slashCmd}
                   setSlashCmd={setSlashCmd}
                   inputRef={inputRef}
+                  customerInfo={customerInfo}
+                  handleTriggerCODVerification={handleTriggerCODVerification}
                 />
               </div>
 
