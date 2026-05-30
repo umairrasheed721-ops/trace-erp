@@ -191,6 +191,17 @@ const WaveSurfer = ({ src }) => {
   )
 }
 
+const getMsgTime = (m) => {
+  if (!m) return 0
+  if (m.timestamp) return m.timestamp * 1000
+  if (!m.created_at) return 0
+  const parsed = Date.parse(m.created_at)
+  if (!isNaN(parsed)) return parsed
+  const formatted = String(m.created_at).trim().replace(' ', 'T')
+  const parsedFormatted = Date.parse(formatted)
+  return isNaN(parsedFormatted) ? 0 : parsedFormatted
+}
+
 export default function ChatMessageList({
   messages = [],
   activeChat,
@@ -236,14 +247,10 @@ export default function ChatMessageList({
   }, [messages])
 
   const groupedMessages = useMemo(() => {
-    const getMsgTime = (m) => {
-      if (!m) return 0
-      return m.timestamp ? m.timestamp * 1000 : (m.created_at ? new Date(m.created_at).getTime() : 0)
-    }
     const result = []
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i]
-      const isPureImage = msg.media_type === 'image' && msg.media_url && (!msg.message || msg.message === '[Image]' || msg.message.trim() === '')
+      const isPureImage = msg.media_type === 'image' && msg.media_url && (!msg.message || /^\[image\]$/i.test(msg.message.trim()) || msg.message.trim() === '')
       const msgTime = getMsgTime(msg)
       const last = result[result.length - 1]
       if (isPureImage && last) {
@@ -258,7 +265,7 @@ export default function ChatMessageList({
             last.timestamp = msg.timestamp
             continue
           } else {
-            const lastIsPure = last.media_type === 'image' && last.media_url && (!last.message || last.message === '[Image]' || last.message.trim() === '')
+            const lastIsPure = last.media_type === 'image' && last.media_url && (!last.message || /^\[image\]$/i.test(last.message.trim()) || last.message.trim() === '')
             if (lastIsPure) {
               last.mediaGroup = [{ ...last }, msg]
               last.messages = last.mediaGroup
@@ -346,11 +353,6 @@ export default function ChatMessageList({
             // Smart bubble grouping calculations
             const prevMsg = index > 0 ? groupedMessages[index - 1] : null
             const nextMsg = index < groupedMessages.length - 1 ? groupedMessages[index + 1] : null
-
-            const getMsgTime = (m) => {
-              if (!m) return 0
-              return m.timestamp ? m.timestamp * 1000 : (m.created_at ? new Date(m.created_at).getTime() : 0)
-            }
 
             const msgTime = getMsgTime(msg)
             const prevMsgTime = getMsgTime(prevMsg)
