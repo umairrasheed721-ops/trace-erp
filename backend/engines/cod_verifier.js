@@ -142,6 +142,12 @@ async function dispatchCODVerification(order) {
       selectableCount: 1
     };
     bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'native', pollConfig);
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+        VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', ?, 'sent', 'default')
+      `).run(orderId, orderId, phone, pollConfig.name);
+    } catch(e) { console.error('Failed to log COD Poll message:', e.message); }
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
   } catch (err) {
