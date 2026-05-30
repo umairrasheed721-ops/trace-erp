@@ -140,21 +140,15 @@ async function dispatchCODVerification(order) {
       } catch(e) { console.error('Failed to log COD VN message:', e.message); }
     }
 
-    // Replace Poll with Interactive List (High Compatibility)
-    const listConfig = {
-      text: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order receive hua hai. Kindly options me se choose kr k order confirm ya cancel karein:`,
-      buttonText: "Select Option",
-      sections: [{
-        title: "Order Status",
-        rows: [
-          { title: "✅ Confirm Order", rowId: "confirm" },
-          { title: "❌ Cancel Order", rowId: "cancel" }
-        ]
-      }]
+    // Hard-Fix Poll Payload Structure
+    const pollData = {
+      name: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order confirm karein:`,
+      values: ["✅ Confirm Order", "❌ Cancel Order"],
+      selectableCount: 1
     };
-    // Force-send the list/message
+    // Force-send the poll/message
     try {
-      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'list', listConfig, { force: true });
+      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'native', pollData, { force: true });
       console.log('✅ COD VERIFIER: Force-sent successfully to:', normalizedPhone);
     } catch (err) {
       console.error('❌ COD VERIFIER: Critical send failure:', err);
@@ -163,7 +157,7 @@ async function dispatchCODVerification(order) {
       db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
         VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', ?, 'sent', 'default')
-      `).run(orderId, orderId, normalizedPhone, listConfig.text);
+      `).run(orderId, orderId, normalizedPhone, pollData.name);
     } catch(e) { console.error('Failed to log COD Poll message:', e.message); }
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
