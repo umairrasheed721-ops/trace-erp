@@ -341,7 +341,10 @@ export default function ChatMessageList({
           let lastDateString = null
           return processedMessages.map((msg, index) => {
             const isOutgoing = msg.direction === 'outgoing'
-            const showImage = msg.media_type === 'image' && msg.media_url
+            const showImage = msg.media_type === 'image' && (msg.media_url || (msg.mediaUrls && msg.mediaUrls.length > 0))
+            const imageUrls = msg.mediaUrls && Array.isArray(msg.mediaUrls) && msg.mediaUrls.length > 0
+              ? msg.mediaUrls
+              : (msg.media_url ? [msg.media_url] : [])
             const showAudio = msg.media_type === 'audio' && msg.media_url
             const showDoc = msg.media_type === 'document' && msg.media_url
             const quoteInfo = getQuotedInfo(msg.isImageGrid ? msg.messages[0] : msg)
@@ -572,12 +575,99 @@ export default function ChatMessageList({
                     {/* Rendering Attachment Media types */}
                     {showImage && !msg.isImageGrid && (
                       <div>
-                        <img 
-                          src={getMediaUrlWithToken(msg.media_url)} 
-                          alt="Sent media" 
-                          className="wa-media-image"
-                          onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url))}
-                        />
+                        {imageUrls.length > 1 ? (
+                          <div 
+                            style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: 'repeat(2, 1fr)', 
+                              gap: '2px', 
+                              overflow: 'hidden', 
+                              maxWidth: '300px', 
+                              borderRadius: '8px',
+                              backgroundColor: 'rgba(0,0,0,0.05)'
+                            }}
+                          >
+                            {imageUrls.slice(0, 4).map((url, idx) => {
+                              const isFourthOfMany = imageUrls.length >= 4 && idx === 3;
+                              const hasMore = imageUrls.length > 4;
+
+                              // styling per layout
+                              let gridStyle = {
+                                width: '100%',
+                                objectFit: 'cover',
+                                cursor: 'pointer',
+                                display: 'block'
+                              };
+
+                              if (imageUrls.length === 2) {
+                                gridStyle.height = '140px';
+                              } else if (imageUrls.length === 3) {
+                                if (idx === 0) {
+                                  gridStyle.gridColumn = 'span 2';
+                                  gridStyle.height = '180px';
+                                } else {
+                                  gridStyle.height = '100px';
+                                }
+                              } else {
+                                // 4+ images
+                                gridStyle.height = '120px';
+                              }
+
+                              if (isFourthOfMany && hasMore) {
+                                return (
+                                  <div 
+                                    key={idx} 
+                                    style={{ position: 'relative', height: gridStyle.height, gridColumn: gridStyle.gridColumn }}
+                                    onClick={() => setZoomedImage(getMediaUrlWithToken(url))}
+                                  >
+                                    <img 
+                                      src={getMediaUrlWithToken(url)} 
+                                      alt={`Collage ${idx}`} 
+                                      style={{ ...gridStyle, height: '100%' }}
+                                    />
+                                    <div 
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: '#ffffff',
+                                        fontSize: '1.4rem',
+                                        fontWeight: 'bold',
+                                        pointerEvents: 'none'
+                                      }}
+                                    >
+                                      +{imageUrls.length - 3}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <img 
+                                  key={idx}
+                                  src={getMediaUrlWithToken(url)} 
+                                  alt={`Collage ${idx}`} 
+                                  style={gridStyle}
+                                  onClick={() => setZoomedImage(getMediaUrlWithToken(url))}
+                                />
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <img 
+                            src={getMediaUrlWithToken(msg.media_url || imageUrls[0])} 
+                            alt="Sent media" 
+                            className="wa-media-image"
+                            style={{ maxWidth: '300px', display: 'block', borderRadius: '8px' }}
+                            onClick={() => setZoomedImage(getMediaUrlWithToken(msg.media_url || imageUrls[0]))}
+                          />
+                        )}
                         {/* Module 7: AI Payment Card rendering */}
                         {paymentCardData ? (
                           <div className="wa-ai-payment-card">
