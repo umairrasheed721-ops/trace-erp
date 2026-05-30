@@ -1878,4 +1878,19 @@ router.delete('/templates/:id', (req, res) => {
   }
 });
 
+router.post('/test-poll', async (req, res) => {
+  const { phone, order_id } = req.body;
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order_id);
+    const { dispatchCODVerification } = require('../engines/cod_verifier');
+    
+    // Manual trigger without setImmediate to catch errors in the response
+    await dispatchCODVerification(order);
+    res.json({ success: true, message: 'Poll triggered successfully' });
+  } catch (e) {
+    console.error('❌ POLL TESTER FAILED:', e);
+    res.status(500).json({ success: false, error: e.message, stack: e.stack });
+  }
+});
+
 module.exports = router;
