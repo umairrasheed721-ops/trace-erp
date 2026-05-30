@@ -151,7 +151,7 @@ function CustomerSuccessSimulator({ storeId, addToast }) {
   };
 
   const getWaBadge = (status) => {
-    if (status === 'Verified') return <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🟢 Verified</span>;
+    if (status?.toLowerCase() === 'verified') return <span style={{ background: '#10b98120', color: '#10b981', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🟢 Verified</span>;
     if (status === 'Address_Updated') return <span style={{ background: '#3b82f620', color: '#3b82f6', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>✏️ Curated</span>;
     if (status === 'Cancelled') return <span style={{ background: '#ef444420', color: '#ef4444', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🔴 Cancelled</span>;
     return <span style={{ background: '#f59e0b20', color: '#f59e0b', padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600 }}>🟡 Pending</span>;

@@ -615,7 +615,7 @@ export default function EditOrderModal({
         if (res.error) throw new Error(res.error);
         alert(res.message);
         if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        if (action === 'SIMULATE_CONFIRM') setEditingOrder({ ...editingOrder, wa_verification_status: 'Verified' });
+        if (action === 'SIMULATE_CONFIRM') setEditingOrder({ ...editingOrder, wa_verification_status: 'verified' });
         if (action === 'SIMULATE_CANCEL') setEditingOrder({ ...editingOrder, wa_verification_status: 'Cancelled' });
         if (action === 'SEND_VERIFICATION') setEditingOrder({ ...editingOrder, wa_verification_status: 'Pending' });
       })
@@ -729,7 +729,7 @@ export default function EditOrderModal({
 
   // WhatsApp Status Badge Helper
   const getWaBadge = (status) => {
-    if (status === 'Verified') return <span style={{ background: '#10b98120', color: '#10b981', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>🟢 WhatsApp Verified</span>;
+    if (status?.toLowerCase() === 'verified') return <span style={{ background: '#10b98120', color: '#10b981', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>🟢 WhatsApp Verified</span>;
     if (status === 'Address_Updated') return <span style={{ background: '#3b82f620', color: '#3b82f6', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>✏️ Address Curated</span>;
     if (status === 'Cancelled') return <span style={{ background: '#ef444420', color: '#ef4444', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>🔴 Cancelled via WA</span>;
     return <span style={{ background: '#f59e0b20', color: '#f59e0b', padding: '4px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700 }}>🟡 COD Pending Verification</span>;
@@ -1439,7 +1439,7 @@ export default function EditOrderModal({
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>{editingOrder.customer_name}</span>
                         {editingOrder.wa_verification_status && (
-                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10, background: editingOrder.wa_verification_status === 'Verified' ? '#10b98120' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef444420' : '#f59e0b20', color: editingOrder.wa_verification_status === 'Verified' ? '#10b981' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef4444' : '#f59e0b', fontWeight: 'bold' }}>
+                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 10, background: editingOrder.wa_verification_status?.toLowerCase() === 'verified' ? '#10b98120' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef444420' : '#f59e0b20', color: editingOrder.wa_verification_status?.toLowerCase() === 'verified' ? '#10b981' : editingOrder.wa_verification_status === 'Cancelled' ? '#ef4444' : '#f59e0b', fontWeight: 'bold' }}>
                             {editingOrder.wa_verification_status}
                           </span>
                         )}

@@ -503,6 +503,11 @@ class WhatsAppBot {
 
                       if (isConfirm) {
                         db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+                        const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                        if (order) {
+                          const { broadcast } = require('../sse');
+                          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+                        }
                         await this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
                         console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
                       } else {

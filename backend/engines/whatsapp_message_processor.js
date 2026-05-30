@@ -1298,6 +1298,11 @@ async function processIncomingMessage(bot, msg, sock, db) {
         
         if (isConfirm) {
           db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+          const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+          if (order) {
+            const { broadcast } = require('../sse');
+            broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+          }
           await bot.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
           console.log(`🔐 COD Confirmed: Order ${pendingCOD.order_id} by ${fromPhone}`);
         } else {
@@ -1401,7 +1406,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
       return;
     }
 
-    const order = db.prepare(`SELECT id, store_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
+    const order = db.prepare(`SELECT id, store_id, shopify_order_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
     const orderId = order ? order.id : null;
     const storeId = order ? order.store_id : 1;
 
@@ -1459,8 +1464,12 @@ async function processIncomingMessage(bot, msg, sock, db) {
     
     if (orderId) {
       if (['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => lowerText.includes(w))) {
-        db.prepare(`UPDATE orders SET wa_verification_status = 'Verified' WHERE id = ?`).run(orderId);
+        db.prepare(`UPDATE orders SET wa_verification_status = 'verified' WHERE id = ?`).run(orderId);
         console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
+        if (order) {
+          const { broadcast } = require('../sse');
+          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+        }
       }
 
       if (settings.ai_responder_enabled !== 0) {
