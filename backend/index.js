@@ -422,15 +422,21 @@ app.get('/api/media/:filename', async (req, res) => {
     const filename = path.basename(req.params.filename);
     const storageDir = process.env.MEDIA_STORAGE_DIR 
       ? path.resolve(process.env.MEDIA_STORAGE_DIR)
-      : path.resolve(process.cwd(), 'storage', 'media');
-    const filePath = path.join(storageDir, filename);
+      : path.join(DB_DIR || '/app/data', 'media');
+    let filePath = path.join(storageDir, filename);
 
     // Verify file existence asynchronously
     try {
       await fsPromises.access(filePath);
     } catch (err) {
-      console.warn(`⚠️ Media file not found: ${filePath}`);
-      return res.status(404).json({ error: 'Media file not found' });
+      const fallbackPath = path.join(process.cwd(), 'storage', 'media', filename);
+      try {
+        await fsPromises.access(fallbackPath);
+        filePath = fallbackPath;
+      } catch (fallbackErr) {
+        console.warn(`⚠️ Media file not found: ${filePath}`);
+        return res.status(404).json({ error: 'Media file not found' });
+      }
     }
 
     // Tenant Isolation Check (Pillar 1)

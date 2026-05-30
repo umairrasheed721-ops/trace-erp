@@ -146,13 +146,13 @@ function getMessageText(msg) {
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   try {
+    const { DB_DIR } = require('../db');
+    const mediaDir = require('path').join(DB_DIR || '/app/data', 'media');
+    if (!require('fs').existsSync(mediaDir)) {
+      require('fs').mkdirSync(mediaDir, { recursive: true });
+    }
     const fsPromises = require('fs').promises;
     const crypto = require('crypto');
-    const storageDir = process.env.MEDIA_STORAGE_DIR 
-      ? path.resolve(process.env.MEDIA_STORAGE_DIR)
-      : path.resolve(process.cwd(), 'storage', 'media');
-    
-    await fsPromises.mkdir(storageDir, { recursive: true });
 
     const extMap = {
       'image/jpeg': 'jpg',
@@ -174,7 +174,7 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
 
     const uuid = crypto.randomUUID();
     const fileName = `${uuid}.${ext}`;
-    const filePath = path.join(storageDir, fileName);
+    const filePath = path.join(mediaDir, fileName);
 
     console.log(`📥 Decrypting and downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
     const buffer = await downloadMediaMessage(
