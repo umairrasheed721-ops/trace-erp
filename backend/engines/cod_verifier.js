@@ -132,21 +132,24 @@ async function dispatchCODVerification(order) {
       } catch(e) { console.error('Failed to log COD VN message:', e.message); }
     }
 
-    // Send native WhatsApp poll for interaction
-    const pollConfig = {
-      name: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order receive hua hai. Kindly options me se choose kr k order confirm ya cancel karein:`,
-      values: [
-        "✅ Confirm Order",
-        "❌ Cancel Order"
-      ],
-      selectableCount: 1
+    // Replace Poll with Interactive List (High Compatibility)
+    const listConfig = {
+      text: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order receive hua hai. Kindly options me se choose kr k order confirm ya cancel karein:`,
+      buttonText: "Select Option",
+      sections: [{
+        title: "Order Status",
+        rows: [
+          { title: "✅ Confirm Order", rowId: "confirm" },
+          { title: "❌ Cancel Order", rowId: "cancel" }
+        ]
+      }]
     };
-    bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'native', pollConfig);
+    bot.sendMessage(phone, null, true, null, null, null, null, null, null, 'list', listConfig);
     try {
       db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
         VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', ?, 'sent', 'default')
-      `).run(orderId, orderId, phone, pollConfig.name);
+      `).run(orderId, orderId, phone, listConfig.text);
     } catch(e) { console.error('Failed to log COD Poll message:', e.message); }
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
