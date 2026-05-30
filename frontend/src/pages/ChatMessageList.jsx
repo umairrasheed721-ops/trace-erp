@@ -418,6 +418,19 @@ export default function ChatMessageList({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   }
 
+  const renderMessageContent = (message) => {
+    if (message.messageType === 'poll' || (message.message && message.message.includes('Poll:'))) {
+      return (
+        <div className="tpk-poll-bubble" style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '10px', borderRadius: '8px', color: '#1e293b' }}>
+          <strong>📊 Order Verification Poll</strong>
+          <p style={{ margin: '5px 0' }}>{message.message.replace('🗳️ Poll: ', '').replace('Poll: ', '')}</p>
+          <span style={{ fontSize: '0.8em', color: '#0369a1' }}>Status: Live in WhatsApp</span>
+        </div>
+      );
+    }
+    return <span>{message.message || message.text || message.conversation || ''}</span>;
+  };
+
   const jumpToBottom = () => {
     timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -670,7 +683,7 @@ export default function ChatMessageList({
                     )}
 
                     {/* Rendering Message Content */}
-                    {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation || ''}</span>}
+                    {!showDoc && !msg.isImageGrid && renderMessageContent(msg)}
 
                     {/* Rendering attachment media grid / mediaGroup collage */}
                     {/* Rendering attachment media grid / mediaGroup collage */}
