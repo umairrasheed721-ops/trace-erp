@@ -202,67 +202,62 @@ const getMsgTime = (m) => {
   return isNaN(parsedFormatted) ? 0 : parsedFormatted
 }
 
-const copyImageToClipboard = (imageUrl) => {
+const copyImageToClipboard = async (imageUrl) => {
+  const response = await fetch(imageUrl);
+  const blob = await response.blob();
+  const objUrl = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.src = imageUrl
+    const img = new Image();
     img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, 0, 0)
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error('Failed to create blob from image'))
-          return
-        }
-        navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
-        ])
-        .then(() => resolve(true))
-        .catch(err => reject(err))
-      }, 'image/png')
-    }
-    img.onerror = (err) => reject(new Error('Failed to load image for copying'))
-  })
-}
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      canvas.toBlob((pngBlob) => {
+        URL.revokeObjectURL(objUrl);
+        if (!pngBlob) return reject(new Error('Blob failed'));
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+          .then(() => resolve(true)).catch(reject);
+      }, 'image/png');
+    };
+    img.onerror = () => reject(new Error('Image load failed'));
+    img.src = objUrl;
+  });
+};
 
 const copyMultipleImagesToClipboard = async (imageUrls) => {
   try {
     const items = await Promise.all(
-      imageUrls.map(url => {
+      imageUrls.map(async (url) => {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const objUrl = URL.createObjectURL(blob);
         return new Promise((resolve, reject) => {
-          const img = new Image()
-          img.crossOrigin = 'anonymous'
-          img.src = url
+          const img = new Image();
           img.onload = () => {
-            const canvas = document.createElement('canvas')
-            canvas.width = img.naturalWidth
-            canvas.height = img.naturalHeight
-            const ctx = canvas.getContext('2d')
-            ctx.drawImage(img, 0, 0)
-            canvas.toBlob((blob) => {
-              if (blob) {
-                resolve(new ClipboardItem({ 'image/png': blob }))
-              } else {
-                reject(new Error('Blob generation failed'))
-              }
-            }, 'image/png')
-          }
-          img.onerror = () => reject(new Error('Image load failed'))
-        })
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            canvas.toBlob((pngBlob) => {
+              URL.revokeObjectURL(objUrl);
+              if (pngBlob) resolve(new ClipboardItem({ 'image/png': pngBlob }));
+              else reject(new Error('Blob failed'));
+            }, 'image/png');
+          };
+          img.onerror = () => reject(new Error('Image load failed'));
+          img.src = objUrl;
+        });
       })
-    )
-    await navigator.clipboard.write(items)
-    return { type: 'images', count: items.length }
+    );
+    await navigator.clipboard.write(items);
+    return { type: 'images', count: items.length };
   } catch (err) {
-    const textLinks = imageUrls.join('\n')
-    await navigator.clipboard.writeText(textLinks)
-    return { type: 'links', count: imageUrls.length }
+    const textLinks = imageUrls.join('\n');
+    await navigator.clipboard.writeText(textLinks);
+    return { type: 'links', count: imageUrls.length };
   }
-}
+};
 
 export default function ChatMessageList({
   messages = [],
