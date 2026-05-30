@@ -306,13 +306,14 @@ export default function ChatMessageList({
             const lastProcessed = processedMessages[processedMessages.length - 1]
             
             if (isPureImage && lastProcessed) {
-              const lastTime = getMsgTime(lastProcessed.isImageGrid ? lastProcessed.messages[lastProcessed.messages.length - 1] : lastProcessed)
+              const lastTime = getMsgTime(lastProcessed.mediaGroup ? lastProcessed.mediaGroup[lastProcessed.mediaGroup.length - 1] : lastProcessed)
               const sameSender = lastProcessed.direction === msg.direction
               const withinOneMinute = Math.abs(msgTime - lastTime) <= 60000
               
               if (sameSender && withinOneMinute) {
-                if (lastProcessed.isImageGrid) {
-                  lastProcessed.messages.push(msg)
+                if (lastProcessed.mediaGroup) {
+                  lastProcessed.mediaGroup.push(msg)
+                  lastProcessed.messages = lastProcessed.mediaGroup
                   // Update grid block timing metadata
                   lastProcessed.created_at = msg.created_at
                   lastProcessed.timestamp = msg.timestamp
@@ -320,16 +321,13 @@ export default function ChatMessageList({
                 } else {
                   const lastIsPureImage = lastProcessed.media_type === 'image' && lastProcessed.media_url && (!lastProcessed.message || lastProcessed.message === '[Image]' || lastProcessed.message.trim() === '')
                   if (lastIsPureImage) {
-                    // Convert last message to a grid
-                    processedMessages[processedMessages.length - 1] = {
-                      isImageGrid: true,
-                      id: lastProcessed.id + '-grid',
-                      direction: lastProcessed.direction,
-                      created_at: msg.created_at,
-                      timestamp: msg.timestamp,
-                      messages: [lastProcessed, msg],
-                      status: msg.status
-                    }
+                    // Convert last message to a mediaGroup grid
+                    lastProcessed.mediaGroup = [lastProcessed, msg]
+                    lastProcessed.messages = lastProcessed.mediaGroup
+                    lastProcessed.isImageGrid = true
+                    lastProcessed.id = lastProcessed.id + '-grid'
+                    lastProcessed.created_at = msg.created_at
+                    lastProcessed.timestamp = msg.timestamp
                     continue
                   }
                 }
@@ -520,15 +518,25 @@ export default function ChatMessageList({
                     {/* Rendering Message Content */}
                     {!showDoc && !msg.isImageGrid && <span>{msg.message || msg.text || msg.conversation || ''}</span>}
 
-                    {/* Rendering attachment media grid */}
-                    {msg.isImageGrid && (
-                      <div className="media-grid-wrapper">
-                        {msg.messages.map((imgMsg, idx) => (
+                    {/* Rendering attachment media grid / mediaGroup collage */}
+                    {msg.mediaGroup && msg.mediaGroup.length > 1 && (
+                      <div 
+                        className="media-grid-wrapper"
+                        style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: msg.mediaGroup.length === 2 ? '1fr 1fr' : 'repeat(2, 1fr)', 
+                          gap: '4px', 
+                          maxWidth: '300px', 
+                          borderRadius: '12px', 
+                          overflow: 'hidden' 
+                        }}
+                      >
+                        {msg.mediaGroup.map((imgMsg, idx) => (
                           <div key={imgMsg.id || idx} style={{ position: 'relative' }}>
                             <img 
                               src={getMediaUrlWithToken(imgMsg.media_url)} 
                               alt="Sent media grid" 
-                              className="media-grid-image"
+                              style={{ width: '100%', height: '120px', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
                               onClick={() => setZoomedImage(getMediaUrlWithToken(imgMsg.media_url))}
                             />
                             {/* Parse OCR transcript for payment receipt inside grid items */}
