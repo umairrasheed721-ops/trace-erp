@@ -732,6 +732,8 @@ export default function ChatMessageList({
                                 }
                               }
 
+                              console.log('🖼️ DEBUG COLLAGE IMAGE:', { msgId: msg.id, rawMediaUrl: imgMsg.media_url, rawMediaUrls: imgMsg.mediaUrls, finalSrc: getMediaUrlWithToken(imgMsg.media_url || (imgMsg.mediaUrls && imgMsg.mediaUrls[0])) });
+
                               return (
                                 <div key={cellId} className="wa-collage-cell" style={cellStyle}>
                                   <img 
