@@ -1905,4 +1905,15 @@ router.post('/test-poll', async (req, res) => {
   }
 });
 
+router.get('/health', async (req, res) => {
+  const status = {
+    status: 'OK',
+    uptime: process.uptime(),
+    db_size: require('fs').statSync('database.sqlite').size,
+    bot_connected: global.bot ? global.bot.isOnline() : false,
+    timestamp: new Date().toISOString()
+  };
+  res.json(status);
+});
+
 module.exports = router;

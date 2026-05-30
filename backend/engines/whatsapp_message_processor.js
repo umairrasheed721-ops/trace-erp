@@ -222,6 +222,187 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   return null;
 }
 
+const FORMAL_COD_TEMPLATE = `Dear [Name],\n\nThis is a formal verification request for your Cash on Delivery order [OrderID] of Rs [Price]. Please confirm your order by replying to this message.\n\nThank you for choosing TRACE.`;
+const FORMAL_SHIPPING_TEMPLATE = `Dear [Name],\n\nWe are pleased to inform you that your order [OrderID] has been shipped via [Courier].\n\nTracking Number: [Tracking]\nLive Tracking Link: [Link]\n\nThank you for shopping with us.`;
+
+function detectOutboundType(message, poll) {
+  const text = String(message || '').toLowerCase();
+  if (
+    text.includes('cod order verification') || 
+    text.includes('confirm your order') || 
+    text.includes('verify order') || 
+    text.includes('confirm order') ||
+    text.includes('verification voice note') ||
+    (poll && poll.name && poll.name.toLowerCase().includes('cod'))
+  ) {
+    return 'COD Verification';
+  }
+  if (
+    text.includes('shipped') || 
+    text.includes('tracking') || 
+    text.includes('courier') || 
+    text.includes('track order') || 
+    text.includes('tracking id') ||
+    text.includes('order status update')
+  ) {
+    return 'Shipping Update';
+  }
+  return null;
+}
+
+function formatTemplate(templateStr, orderInfo) {
+  if (!templateStr) return '';
+  const name = orderInfo?.customer_name || 'Customer';
+  const orderId = orderInfo?.id || 'N/A';
+  const price = orderInfo?.price || 'N/A';
+  const courier = orderInfo?.courier || 'Courier';
+  const tracking = orderInfo?.tracking_number || 'N/A';
+  const link = tracking 
+    ? (courier === 'PostEx' 
+        ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` 
+        : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`) 
+    : 'N/A';
+
+  return templateStr
+    .replace(/\[Name\]/g, name)
+    .replace(/\[OrderID\]/g, orderId)
+    .replace(/\[Price\]/g, price)
+    .replace(/\[Courier\]/g, courier)
+    .replace(/\[Tracking\]/g, tracking)
+    .replace(/\[Link\]/g, link);
+}
+
+function cleanAndShortenForHuman(text) {
+  if (!text) return '';
+  let cleaned = text
+    .replace(/🤖\s*\[TRACE Support\]\s*/gi, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[*_~`]/g, '')
+    .replace(/[😊👍📦🙏✨🔘✅❌]/g, '')
+    .trim();
+
+  const lower = cleaned.toLowerCase();
+
+  if (lower.includes('verification request') || lower.includes('confirm your order') || lower.includes('confirm order')) {
+    return "Hi, order confirm krne k liye yes/confirm likh kr reply krden please.";
+  }
+
+  if (lower.includes('shipped') || lower.includes('tracking number') || lower.includes('tracking:')) {
+    const trackingMatch = cleaned.match(/Tracking(?:\s*Number)?:\s*(\w+)/i) || cleaned.match(/([A-Z0-9-]{8,20})/i);
+    const tracking = trackingMatch ? trackingMatch[0] : '';
+    if (tracking) {
+      return `Aapka order ship ho chuka hai. Tracking number ye hai: ${tracking}`;
+    }
+    return "Aapka order ship ho chuka hai. Hum tracking details share krdetey hain aapse.";
+  }
+
+  if (lower.includes('humare system mein aapka order exist')) {
+    return "Aapka order humare paas registered hai, koi help chahiye toh batayein.";
+  }
+
+  if (lower.includes('automated help') || lower.includes('unsubscribe')) {
+    return "Aapko help message nahi milenge ab.";
+  }
+
+  cleaned = cleaned.replace(/^Dear\s+[A-Za-z0-9\s]+,?\s*/i, '');
+  cleaned = cleaned.replace(/^Hi\s+[A-Za-z0-9\s]+,?\s*/i, '');
+  cleaned = cleaned.replace(/^Salam\s+[A-Za-z0-9\s]*!,?\s*/i, '');
+  
+  if (cleaned.length > 100) {
+    const sentences = cleaned.split(/[.!?\n]/);
+    if (sentences.length > 0 && sentences[0].trim().length > 10) {
+      cleaned = sentences[0].trim() + '.';
+    }
+  }
+
+  return cleaned;
+}
+
+function adaptiveStrategy(phone, messageItem, db, isManual = false) {
+  const cleanedPhone = phone.replace(/\D/g, '');
+  let hasComplained = false;
+  try {
+    const rows = db.prepare(`
+      SELECT message, intent FROM whatsapp_messages 
+      WHERE phone = ? AND direction = 'incoming' 
+      ORDER BY id DESC LIMIT 3
+    `).all(cleanedPhone);
+    
+    const complaintKeywords = [
+      'complain', 'complaint', 'why not visible', 'not visible', 'refund', 'fraud',
+      'scam', 'cheat', 'defective', 'damaged', 'broken', 'wrong item', 'fake',
+      'bad service', 'worst service', 'shikayat', 'kharab', 'wapas'
+    ];
+
+    for (const row of rows) {
+      const msgText = String(row.message || '').toLowerCase();
+      const isComplaintText = complaintKeywords.some(kw => msgText.includes(kw));
+      if (isComplaintText || row.intent === 'triage') {
+        hasComplained = true;
+        break;
+      }
+    }
+  } catch (err) {
+    console.error('⚠️ Error checking complaints in adaptiveStrategy:', err.message);
+  }
+
+  const messageType = detectOutboundType(messageItem.message, messageItem.poll);
+  let updatedMessage = messageItem.message;
+
+  let orderInfo = null;
+  try {
+    orderInfo = db.prepare(`
+      SELECT id, customer_name, price, courier, tracking_number 
+      FROM orders 
+      WHERE phone LIKE ? 
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${cleanedPhone.substring(cleanedPhone.length - 10)}%`);
+  } catch (err) {
+    console.error('⚠️ Error querying order in adaptiveStrategy:', err.message);
+  }
+
+  if (messageType === 'COD Verification') {
+    let templateStr = FORMAL_COD_TEMPLATE;
+    try {
+      const templateRow = db.prepare("SELECT content FROM whatsapp_templates WHERE type = 'confirmation' AND is_default = 1").get();
+      if (templateRow && templateRow.content) {
+        templateStr = templateRow.content;
+      }
+    } catch (e) {}
+    updatedMessage = formatTemplate(templateStr, orderInfo);
+  } else if (messageType === 'Shipping Update') {
+    let templateStr = FORMAL_SHIPPING_TEMPLATE;
+    try {
+      const templateRow = db.prepare("SELECT content FROM whatsapp_templates WHERE type = 'shipping' AND is_default = 1").get();
+      if (templateRow && templateRow.content) {
+        templateStr = templateRow.content;
+      }
+    } catch (e) {}
+    updatedMessage = formatTemplate(templateStr, orderInfo);
+  }
+
+  if (hasComplained) {
+    messageItem.quoteContext = null;
+    messageItem.buttons = null;
+    messageItem.buttonsMode = null;
+    messageItem.poll = null;
+
+    const isRealManual = isManual && !messageType;
+    if (!isRealManual) {
+      updatedMessage = cleanAndShortenForHuman(updatedMessage);
+    }
+  }
+
+  return {
+    message: updatedMessage,
+    quoteContext: messageItem.quoteContext,
+    buttons: messageItem.buttons,
+    buttonsMode: messageItem.buttonsMode,
+    poll: messageItem.poll,
+    hasComplained: hasComplained
+  };
+}
+
 async function processQueue(bot, sock, db) {
   const totalPending = (bot.priorityQueue?.length || 0) + bot.queue.length;
   if (bot.isProcessing || totalPending === 0) return;
@@ -258,7 +439,9 @@ async function processQueue(bot, sock, db) {
       bot.lastResetTime = Date.now();
     }
 
-    const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll } = activeQueue[0];
+    const queueItem = activeQueue[0];
+    const adaptedItem = adaptiveStrategy(queueItem.phone, queueItem, db, queueItem.isManual);
+    const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll } = adaptedItem;
     let cleaned = phone.replace(/\D/g, '');
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -1360,5 +1543,6 @@ module.exports = {
   getMessageText,
   saveMediaFile,
   processQueue,
-  processIncomingMessage
+  processIncomingMessage,
+  adaptiveStrategy
 };

@@ -27,7 +27,8 @@ const {
   getMessageText,
   saveMediaFile,
   processQueue,
-  processIncomingMessage
+  processIncomingMessage,
+  adaptiveStrategy
 } = require('./whatsapp_message_processor');
 
 // No hard limit on reconnects — we retry forever with backoff.
@@ -611,11 +612,21 @@ class WhatsAppBot {
     const jid = cleaned + '@s.whatsapp.net';
     const uuid = customMessageId || require('crypto').randomUUID();
 
+    const { db } = require('../db');
+    const adapted = adaptiveStrategy(phone, {
+      message, quoteContext, buttons, buttonsMode, poll
+    }, db, isManual);
+
+    let finalMessage = adapted.message;
+    quoteContext = adapted.quoteContext;
+    buttons = adapted.buttons;
+    buttonsMode = adapted.buttonsMode;
+    poll = adapted.poll;
+
     if (isManual) {
       console.log(`⚡ [DIRECT_SEND] Manual agent message to ${cleaned}. Refreshing 15-minute handoff lock.`);
       const until = Date.now() + 15 * 60 * 1000;
       try {
-        const { db } = require('../db');
         db.prepare(`
           INSERT INTO customer_profiles (phone, human_handoff_until, updated_at)
           VALUES (?, ?, datetime('now'))
@@ -627,8 +638,7 @@ class WhatsAppBot {
       }
     }
 
-    let finalMessage = message;
-    if (!isManual && finalMessage) {
+    if (!isManual && finalMessage && !adapted.hasComplained) {
       finalMessage = this.variateTemplateMessage(finalMessage);
     }
 
@@ -1449,6 +1459,10 @@ class WhatsAppBot {
       }
     }
     console.log('🔄 Deep History Sync completed!');
+  }
+
+  isOnline() {
+    return this.status === 'CONNECTED';
   }
 
   getStatus() {

@@ -298,7 +298,7 @@ router.put('/:id/cs-update', async (req, res) => {
       }
     }
 
-    broadcast('message', { type: 'order_updated', orderId: id });
+    broadcast('order_updated', { storeId: newOrder.store_id, shopifyOrderId: newOrder.shopify_order_id });
     res.json({ success: true, order: newOrder });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -594,8 +594,11 @@ router.post('/bulk-confirm', (req, res) => {
   try {
     const stmt = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?");
     for (const id of ids) {
+      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
       stmt.run(id);
-      broadcast('message', { type: 'order_updated', orderId: id });
+      if (order) {
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      }
     }
     res.json({ success: true, count: ids.length });
   } catch (err) {
@@ -624,6 +627,7 @@ router.post('/bulk-update-status', (req, res) => {
     const updatePL = db.prepare("UPDATE orders SET payment_date = ? WHERE id = ?");
 
     for (const id of ids) {
+      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
       stmt.run(status, id);
       
       // If marking as Delivered, also stamp the P&L payment date
@@ -634,7 +638,9 @@ router.post('/bulk-update-status', (req, res) => {
         updatePL.run(null, id);
       }
 
-      broadcast('message', { type: 'order_updated', orderId: id });
+      if (order) {
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      }
     }
     res.json({ success: true, count: ids.length });
   } catch (err) {
@@ -650,8 +656,11 @@ router.post('/bulk-revert', (req, res) => {
   try {
     const stmt = db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?");
     for (const id of ids) {
+      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
       stmt.run(id);
-      broadcast('message', { type: 'order_updated', orderId: id });
+      if (order) {
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      }
     }
     res.json({ success: true, count: ids.length });
   } catch (err) {
@@ -679,7 +688,7 @@ router.post('/bulk-book-postex', async (req, res) => {
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, 'PostEx', id);
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
-      broadcast('message', { type: 'order_updated', orderId: id });
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       success++;
     } catch (e) { failed++; }
   }
@@ -814,7 +823,7 @@ router.post('/bulk-book-instaworld', async (req, res) => {
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, id);
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name); } catch(e) {}
-      broadcast('message', { type: 'order_updated', orderId: id });
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       success++;
     } catch (e) { failed++; }
   }
@@ -825,9 +834,12 @@ router.post('/bulk-book-instaworld', async (req, res) => {
 router.post('/:id/revert-confirm', (req, res) => {
   try {
     const orderId = parseInt(req.params.id);
+    const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(orderId);
     db.prepare("UPDATE orders SET delivery_status = 'Pending', status_date = datetime('now') WHERE id = ?")
       .run(orderId);
-    broadcast('message', { type: 'order_updated', orderId: orderId });
+    if (order) {
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -857,7 +869,7 @@ router.patch('/:id/erp-status', (req, res) => {
   const orderId = parseInt(req.params.id);
 
   try {
-    const order = db.prepare('SELECT delivery_status FROM orders WHERE id = ?').get(orderId);
+    const order = db.prepare('SELECT store_id, shopify_order_id, delivery_status FROM orders WHERE id = ?').get(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const currentStatus = (order.delivery_status || '').toLowerCase();
@@ -876,7 +888,7 @@ router.patch('/:id/erp-status', (req, res) => {
     db.logOrderChange({ order_id: orderId, user_id: req.user?.id, type: 'ERP_STATUS_MANUAL', old_val: { delivery_status: oldStatus }, new_val: { delivery_status: erp_status } });
     db.logAction({ order_id: orderId, user_id: req.user?.id, action: 'ERP_STATUS_OVERRIDE', details: { from: oldStatus, to: erp_status, by: req.user?.username } });
 
-    broadcast('message', { type: 'order_updated', orderId });
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
     res.json({ success: true, from: oldStatus, to: erp_status });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -887,13 +899,16 @@ router.patch('/:id/erp-status', (req, res) => {
 router.post('/:id/confirm', (req, res) => {
   try {
     const orderId = parseInt(req.params.id);
+    const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(orderId);
     const result = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?")
       .run(orderId);
       
     console.log(`✅ Order ${orderId} confirmed. Rows affected: ${result.changes}`);
       
     // Broadcast update for real-time UI refresh
-    broadcast('message', { type: 'order_updated', orderId: orderId });
+    if (order) {
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+    }
     
     res.json({ success: true, changes: result.changes });
   } catch (err) {
