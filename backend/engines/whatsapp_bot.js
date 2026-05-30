@@ -231,8 +231,19 @@ class WhatsAppBot {
           } 
         } catch (e) {}
         setInterval(() => {
-          try { fs.writeFileSync(storePath, JSON.stringify(this.store), 'utf8'); } catch (e) {}
-        }, 10000);
+          try {
+            // 1. AUTO-PURGE: Prevent RAM explosion by keeping only the latest 35 messages per chat
+            for (const jid in this.store.messages) {
+              if (this.store.messages[jid].length > 35) {
+                this.store.messages[jid] = this.store.messages[jid].slice(-35);
+              }
+            }
+            // 2. I/O OPTIMIZATION: Write to disk every 60 seconds (instead of 10s) to free up the Event Loop
+            fs.writeFileSync(storePath, JSON.stringify(this.store), 'utf8');
+          } catch (e) {
+            console.error('[MEMORY_MANAGER] Auto-purge failed:', e.message);
+          }
+        }, 60000);
       }
 
       const { state, saveCreds } = await useMultiFileAuthState(this.getSessionPath());
