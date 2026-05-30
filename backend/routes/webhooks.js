@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { loadStatusMaps, applyMap } = require('../engines/tracking');
+const { fulfillShopifyOrder, syncSingleShopifyOrder } = require('../engines/shopify');
 
 // POST /api/webhooks/postex
 router.post('/postex', (req, res) => {
@@ -59,7 +60,6 @@ router.post('/postex', (req, res) => {
     if (['Delivered', 'Returned', 'Return Received', 'Cancelled'].includes(transactionStatus)) {
       const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
       if (store) {
-        const { fulfillShopifyOrder } = require('../engines/shopify');
         // If it's delivered, mark as paid too
         const isPaid = (transactionStatus === 'Delivered');
         fulfillShopifyOrder(store, order.shopify_order_id, trackingNumber, 'PostEx', isPaid)
@@ -97,7 +97,6 @@ router.post('/shopify', (req, res) => {
       return;
     }
 
-    const { syncSingleShopifyOrder } = require('../engines/shopify');
     // Fire and forget
     syncSingleShopifyOrder(store, orderId).catch(err => console.error(err));
   } catch (err) {
