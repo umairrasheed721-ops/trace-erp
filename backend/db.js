@@ -621,7 +621,42 @@ function logSystemError(level, message, module = 'server') {
   } catch (_) { } // Never let error logging crash anything
 }
 
-module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError, DB_DIR, DB_PATH, isProduction };
+function backupDatabase() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const backupDir = path.join(DB_DIR, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const mainBackupPath = path.join(backupDir, `trace_erp_backup_default_${timestamp}.db`);
+    
+    const conn = getDbInstance();
+    conn.exec(`VACUUM INTO '${mainBackupPath}'`);
+    console.log(`💾 [BACKUP] Successfully backed up default database to: ${mainBackupPath}`);
+    
+    // Cleanup old backups (> 7 days)
+    const files = fs.readdirSync(backupDir);
+    const now = Date.now();
+    const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+    
+    for (const file of files) {
+      const filePath = path.join(backupDir, file);
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > maxAgeMs) {
+        fs.unlinkSync(filePath);
+        console.log(`🗑️ [BACKUP] Cleaned up old backup file: ${filePath}`);
+      }
+    }
+  } catch (err) {
+    console.error('❌ [BACKUP] Database backup failed:', err.message);
+    logSystemError('ERROR', `[Database Backup] Failed: ${err.message}`, 'database');
+  }
+}
+
+module.exports = { db, prepare, transaction, exec: (sql) => db.exec(sql), logAction, logOrderChange, logSystemError, DB_DIR, DB_PATH, isProduction, backupDatabase };
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE users ADD COLUMN email TEXT").run(); } catch (e) { }

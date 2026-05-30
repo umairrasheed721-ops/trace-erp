@@ -147,6 +147,18 @@ module.exports = function schedulerInit() {
     try { await runSniperScan(); } catch (e) { console.error('Sniper cron error:', e.message); }
   });
 
+  // 7. Every day at midnight: Automated database backups
+  cron.schedule('0 0 * * *', async () => {
+    console.log('💾 [CRON] Starting daily database backup...');
+    try {
+      if (typeof db.backupDatabase === 'function') {
+        db.backupDatabase();
+      }
+    } catch (e) {
+      console.error('Backup cron error:', e.message);
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

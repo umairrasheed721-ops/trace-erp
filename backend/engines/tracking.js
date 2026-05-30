@@ -2,6 +2,7 @@ const fetch = require('node-fetch');
 const path = require('path');
 const db = require('../db');
 const { instaworldFetch } = require('./instaworld_http');
+const { postexBreaker, instaworldBreaker } = require('./circuit_breaker');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
@@ -115,9 +116,15 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
       batch.map(async order => {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const res = await fetch(`${baseUrl}${order.tracking_number}`, {
-              method: 'GET',
-              headers: { 'token': postex_token, 'Content-Type': 'application/json' },
+            const res = await postexBreaker.execute(async () => {
+              const fetchRes = await fetch(`${baseUrl}${order.tracking_number}`, {
+                method: 'GET',
+                headers: { 'token': postex_token, 'Content-Type': 'application/json' },
+              });
+              if (!fetchRes.ok && (fetchRes.status >= 500 || fetchRes.status === 429)) {
+                throw new Error(`HTTP ${fetchRes.status}`);
+              }
+              return fetchRes;
             });
 
             if (res.status === 429 || res.status === 503) {
@@ -132,7 +139,6 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   
             const data = await res.json();
   
-            // PostEx v1 individual response format
             let rawStatus = data?.dist?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
@@ -258,14 +264,20 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
   const trackOne = async (order, apiKey) => {
     try {
-      const res = await instaworldFetch(trackUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tracking_number: String(order.tracking_number).trim(),
-          api_key: apiKey
-        }),
-        proxyUrl: store.gas_proxy_url,
+      const res = await instaworldBreaker.execute(async () => {
+        const fetchRes = await instaworldFetch(trackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tracking_number: String(order.tracking_number).trim(),
+            api_key: apiKey
+          }),
+          proxyUrl: store.gas_proxy_url,
+        });
+        if (!fetchRes.ok && (fetchRes.status >= 500 || fetchRes.status === 429)) {
+          throw new Error(`HTTP ${fetchRes.status}`);
+        }
+        return fetchRes;
       });
 
       if (!res.ok) {
@@ -421,13 +433,18 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
         logs.push({ type: 'SYSTEM', tracking_number: 'ABORTED', status: 'Failed', details: 'Sync stopped by user' });
         break;
       }
-
       const batch = postexOrders.slice(i, i + batchSize);
       await Promise.allSettled(batch.map(async order => {
         try {
-          const res = await fetch(`${baseUrl}${order.tracking_number}`, {
-            method: 'GET',
-            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' }
+          const res = await postexBreaker.execute(async () => {
+            const fetchRes = await fetch(`${baseUrl}${order.tracking_number}`, {
+              method: 'GET',
+              headers: { 'token': store.postex_token, 'Content-Type': 'application/json' }
+            });
+            if (!fetchRes.ok && (fetchRes.status >= 500 || fetchRes.status === 429)) {
+              throw new Error(`HTTP ${fetchRes.status}`);
+            }
+            return fetchRes;
           });
           if (res.ok) {
             const data = await res.json();
@@ -491,12 +508,18 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
           if (success) break;
           try {
             const trimmedKey = String(key).trim();
-            const res = await instaworldFetch(trackUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
-              timeout: 30000,
-              proxyUrl: store.gas_proxy_url,
+            const res = await instaworldBreaker.execute(async () => {
+              const fetchRes = await instaworldFetch(trackUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tracking_number: String(order.tracking_number).trim(), api_key: trimmedKey }),
+                timeout: 30000,
+                proxyUrl: store.gas_proxy_url,
+              });
+              if (!fetchRes.ok && (fetchRes.status >= 500 || fetchRes.status === 429)) {
+                throw new Error(`HTTP ${fetchRes.status}`);
+              }
+              return fetchRes;
             });
 
             if (res.ok) {
