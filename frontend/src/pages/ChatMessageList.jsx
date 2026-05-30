@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 
 const getQuotedInfo = (msg) => {
   if (!msg) return null
@@ -235,6 +235,46 @@ export default function ChatMessageList({
     return () => el.removeEventListener('scroll', handleScroll)
   }, [messages])
 
+  const groupedMessages = useMemo(() => {
+    const getMsgTime = (m) => {
+      if (!m) return 0
+      return m.timestamp ? m.timestamp * 1000 : (m.created_at ? new Date(m.created_at).getTime() : 0)
+    }
+    const result = []
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      const isPureImage = msg.media_type === 'image' && msg.media_url && (!msg.message || msg.message === '[Image]' || msg.message.trim() === '')
+      const msgTime = getMsgTime(msg)
+      const last = result[result.length - 1]
+      if (isPureImage && last) {
+        const lastTime = getMsgTime(last.mediaGroup ? last.mediaGroup[last.mediaGroup.length - 1] : last)
+        const sameSender = last.direction === msg.direction
+        const withinWindow = Math.abs(msgTime - lastTime) <= 60000
+        if (sameSender && withinWindow) {
+          if (last.mediaGroup) {
+            last.mediaGroup.push(msg)
+            last.messages = last.mediaGroup
+            last.created_at = msg.created_at
+            last.timestamp = msg.timestamp
+            continue
+          } else {
+            const lastIsPure = last.media_type === 'image' && last.media_url && (!last.message || last.message === '[Image]' || last.message.trim() === '')
+            if (lastIsPure) {
+              last.mediaGroup = [{ ...last }, msg]
+              last.messages = last.mediaGroup
+              last.isImageGrid = true
+              last.created_at = msg.created_at
+              last.timestamp = msg.timestamp
+              continue
+            }
+          }
+        }
+      }
+      result.push({ ...msg })
+    }
+    return result
+  }, [messages])
+
   const formatTime = (isoString) => {
     if (!isoString) return ''
     const date = new Date(isoString)
@@ -287,57 +327,13 @@ export default function ChatMessageList({
             <div key={i} className={`skeleton skeleton-bubble ${i % 2 === 0 ? '' : 'outgoing'}`} style={{ width: `${40 + (i % 3) * 15}%` }} />
           ))}
         </div>
-      ) : messages.length === 0 ? (
-        <div className="text-center p-12 text-muted italic">No messages logged in this discussion.</div>
       ) : (
-        (() => {
-          // Preprocess messages to group consecutive pure image messages from the same sender within 1 minute
-          const processedMessages = []
-          for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i]
-            const isPureImage = msg.media_type === 'image' && msg.media_url && (!msg.message || msg.message === '[Image]' || msg.message.trim() === '')
-            
-            const getMsgTime = (m) => {
-              if (!m) return 0
-              return m.timestamp ? m.timestamp * 1000 : (m.created_at ? new Date(m.created_at).getTime() : 0)
-            }
-            
-            const msgTime = getMsgTime(msg)
-            const lastProcessed = processedMessages[processedMessages.length - 1]
-            
-            if (isPureImage && lastProcessed) {
-              const lastTime = getMsgTime(lastProcessed.mediaGroup ? lastProcessed.mediaGroup[lastProcessed.mediaGroup.length - 1] : lastProcessed)
-              const sameSender = lastProcessed.direction === msg.direction
-              const withinOneMinute = Math.abs(msgTime - lastTime) <= 60000
-              
-              if (sameSender && withinOneMinute) {
-                if (lastProcessed.mediaGroup) {
-                  lastProcessed.mediaGroup.push(msg)
-                  lastProcessed.messages = lastProcessed.mediaGroup
-                  // Update grid block timing metadata
-                  lastProcessed.created_at = msg.created_at
-                  lastProcessed.timestamp = msg.timestamp
-                  continue
-                } else {
-                  const lastIsPureImage = lastProcessed.media_type === 'image' && lastProcessed.media_url && (!lastProcessed.message || lastProcessed.message === '[Image]' || lastProcessed.message.trim() === '')
-                  if (lastIsPureImage) {
-                    // Convert last message to a mediaGroup grid
-                    lastProcessed.mediaGroup = [lastProcessed, msg]
-                    lastProcessed.messages = lastProcessed.mediaGroup
-                    lastProcessed.isImageGrid = true
-                    lastProcessed.id = lastProcessed.id + '-grid'
-                    lastProcessed.created_at = msg.created_at
-                    lastProcessed.timestamp = msg.timestamp
-                    continue
-                  }
-                }
-              }
-            }
-            processedMessages.push(msg)
-          }
-
-          let lastDateString = null
-          return processedMessages.map((msg, index) => {
+        groupedMessages.length === 0 ? (
+          <div className="text-center p-12 text-muted italic">No messages logged in this discussion.</div>
+        ) : (
+          (() => {
+            let lastDateString = null
+            return groupedMessages.map((msg, index) => {
             const isOutgoing = msg.direction === 'outgoing'
             const showImage = msg.media_type === 'image' && (msg.media_url || (msg.mediaUrls && msg.mediaUrls.length > 0))
             const imageUrls = msg.mediaUrls && Array.isArray(msg.mediaUrls) && msg.mediaUrls.length > 0
@@ -348,8 +344,8 @@ export default function ChatMessageList({
             const quoteInfo = getQuotedInfo(msg.isImageGrid ? msg.messages[0] : msg)
             
             // Smart bubble grouping calculations
-            const prevMsg = index > 0 ? processedMessages[index - 1] : null
-            const nextMsg = index < processedMessages.length - 1 ? processedMessages[index + 1] : null
+            const prevMsg = index > 0 ? groupedMessages[index - 1] : null
+            const nextMsg = index < groupedMessages.length - 1 ? groupedMessages[index + 1] : null
 
             const getMsgTime = (m) => {
               if (!m) return 0
@@ -816,7 +812,8 @@ export default function ChatMessageList({
               </React.Fragment>
             )
           })
-        })()
+          })()
+        )
       )}
 
       {/* Typing Indicator */}
