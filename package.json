@@ -8,7 +8,7 @@
     "dev:frontend": "cd frontend && npm run dev",
     "install:all": "npm install",
     "build": "node build_script.js",
-    "start": "node backend/scripts/auto_shrink.js && node --experimental-sqlite backend/index.js"
+    "start": "node --experimental-sqlite backend/index.js"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
