@@ -240,6 +240,7 @@ export default function SearchTool() {
   const [editingOrder, setEditingOrder] = useState(null)
   const [editorLoading, setEditorLoading] = useState(false)
   const [bookingId, setBookingId] = useState(null)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
   const [validCities, setValidCities] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
@@ -300,28 +301,42 @@ export default function SearchTool() {
       addToast('🛑 Zero Cost Block: Heal cost before confirming', 'error')
       return
     }
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed' } : o))
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/confirm`, { method: 'POST' })
       if (res.ok) {
         addToast('✅ Order Confirmed!', 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Confirmed' } : o))
+      } else {
+        throw new Error('Server rejected confirmation')
       }
-    } catch { addToast('Network error', 'error') }
+    } catch {
+      setAllOrders(previousOrders)
+      addToast('Network error / Failed to confirm order', 'error')
+    }
   }
 
   const handleRevertConfirm = async (orderId) => {
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending' } : o))
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/revert-confirm`, { method: 'POST' })
       if (res.ok) {
         addToast('↩️ Order reverted to Pending', 'info')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending' } : o))
+      } else {
+        throw new Error('Server rejected revert')
       }
-    } catch { addToast('Network error', 'error') }
+    } catch {
+      setAllOrders(previousOrders)
+      addToast('Network error / Failed to revert order', 'error')
+    }
   }
 
   const handleUpdateNotes = async (orderId, notes) => {
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes } : o))
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/notes`, {
@@ -331,12 +346,18 @@ export default function SearchTool() {
       })
       if (res.ok) {
         addToast('📝 Notes synced to Shopify', 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes } : o))
+      } else {
+        throw new Error('Server rejected note sync')
       }
-    } catch { addToast('Sync error', 'error') }
+    } catch {
+      setAllOrders(previousOrders)
+      addToast('Sync error / Failed to update notes', 'error')
+    }
   }
 
   const handleUpdateAddress = async (orderId, address) => {
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, address } : o))
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/address`, {
@@ -346,9 +367,53 @@ export default function SearchTool() {
       })
       if (res.ok) {
         addToast('🏠 Address synced to Shopify', 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, address } : o))
+      } else {
+        throw new Error('Server rejected address sync')
       }
-    } catch { addToast('Sync error', 'error') }
+    } catch {
+      setAllOrders(previousOrders)
+      addToast('Sync error / Failed to update address', 'error')
+    }
+  }
+
+  const handleManualStatusChange = async (orderId, newStatus) => {
+    if (!newStatus) return
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: newStatus } : o))
+    setStatusUpdatingId(orderId)
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      const res = await fetch(`${apiUrl}/api/orders/${orderId}/erp-status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_status: newStatus })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 409 && data.protected) {
+          if (confirm(`${data.error}\n\nDo you want to FORCE this change? (Admin Only)`)) {
+            const forceRes = await fetch(`${apiUrl}/api/orders/${orderId}/erp-status`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ erp_status: newStatus, force: true })
+            })
+            if (!forceRes.ok) throw new Error((await forceRes.json()).error)
+            addToast('Status updated successfully (Forced)', 'success')
+          } else {
+            setAllOrders(previousOrders)
+          }
+        } else {
+          throw new Error(data.error || 'Failed to update status')
+        }
+      } else {
+        addToast(`ERP Status updated to ${newStatus}`, 'success')
+      }
+    } catch (err) {
+      setAllOrders(previousOrders)
+      addToast(err.message, 'error')
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   const handleBulkUpdateStatus = async (newStatus) => {
@@ -644,6 +709,8 @@ export default function SearchTool() {
 
   const handleCancelBooking = async (orderId) => {
     if (!confirm('🛑 Cancel this courier booking?')) return
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, delivery_status: 'Confirmed' } : o))
     setBookingId(orderId)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -651,12 +718,15 @@ export default function SearchTool() {
       const data = await res.json()
       if (data.success) {
         addToast('✅ Booking Cancelled', 'info')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, delivery_status: 'Confirmed' } : o))
       } else {
-        addToast(`❌ Cancel Failed: ${data.error}`, 'error')
+        throw new Error(data.error || 'Courier rejected cancellation')
       }
-    } catch { addToast('Network error', 'error') }
-    finally { setBookingId(null) }
+    } catch (err) {
+      setAllOrders(previousOrders)
+      addToast(`❌ Cancel Failed: ${err.message}`, 'error')
+    } finally {
+      setBookingId(null)
+    }
   }
 
   const handleBookInstaworld = async (orderId, courier = 'TCS') => {
@@ -666,6 +736,8 @@ export default function SearchTool() {
       return
     }
     if (!confirm(`🌐 Book this order with ${courier}?`)) return
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: courier, delivery_status: 'Booked' } : o))
     setBookingId(orderId)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -679,10 +751,14 @@ export default function SearchTool() {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: courier, delivery_status: 'Booked' } : o))
       } else {
-        addToast(`❌ Booking Failed: ${data.error}`, 'error')
+        throw new Error(data.error || 'Booking rejected')
       }
-    } catch { addToast('Network error', 'error') }
-    finally { setBookingId(null) }
+    } catch (err) {
+      setAllOrders(previousOrders)
+      addToast(`❌ Booking Failed: ${err.message}`, 'error')
+    } finally {
+      setBookingId(null)
+    }
   }
 
   const handleBookPostEx = async (orderId) => {
@@ -692,6 +768,8 @@ export default function SearchTool() {
       return
     }
     if (!confirm('🚀 Book this order with PostEx? This will generate a real tracking number.')) return
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'PostEx', delivery_status: 'Booked' } : o))
     setBookingId(orderId)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
@@ -701,10 +779,11 @@ export default function SearchTool() {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
       } else {
-        addToast(`❌ Booking Failed: ${data.error}`, 'error')
+        throw new Error(data.error || 'Booking rejected')
       }
-    } catch (e) {
-      addToast('Network error while booking', 'error')
+    } catch (err) {
+      setAllOrders(previousOrders)
+      addToast(`❌ Booking Failed: ${err.message}`, 'error')
     } finally {
       setBookingId(null)
     }
@@ -1222,6 +1301,8 @@ export default function SearchTool() {
   }
 
   const updateOrderField = async (orderId, field, value) => {
+    const previousOrders = [...allOrders];
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o))
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
@@ -1229,15 +1310,15 @@ export default function SearchTool() {
         body: JSON.stringify({ [field]: value })
       })
       const data = await res.json()
-      // Backend returns full updated row (includes auto-stamped payment_date, payment_status)
-      if (data.order) {
+      if (res.ok && data.order) {
         setAllOrders(prev => prev.map(o => o.id === orderId ? data.order : o))
-      } else {
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o))
+      } else if (!res.ok) {
+        throw new Error(data.error || 'Server error')
       }
       addToast('✅ Saved', 'success')
-    } catch {
-      addToast('❌ Failed to save', 'error')
+    } catch (err) {
+      setAllOrders(previousOrders)
+      addToast(`❌ Failed to save: ${err.message}`, 'error')
     }
   }
 
@@ -1409,11 +1490,13 @@ export default function SearchTool() {
         formatCustomerName={formatCustomerName}
         fetchOrderDetails={fetchOrderDetails}
         bookingId={bookingId}
+        statusUpdatingId={statusUpdatingId}
         handleConfirmOrder={handleConfirmOrder}
         handleRevertConfirm={handleRevertConfirm}
         handleBookPostEx={handleBookPostEx}
         handleCancelBooking={handleCancelBooking}
         handleBookInstaworld={handleBookInstaworld}
+        handleManualStatusChange={handleManualStatusChange}
         updateOrderField={updateOrderField}
         setCustomerHistoryPhone={setCustomerHistoryPhone}
         setShowNameDialog={setShowNameDialog}

@@ -397,6 +397,9 @@ router.put('/:id', (req, res) => {
 
   // Return updated row so frontend can reflect all auto-changes
   const updated = db.prepare('SELECT o.*, s.shop_domain FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+  if (updated) {
+    broadcast('order_updated', { storeId: updated.store_id, shopifyOrderId: updated.shopify_order_id });
+  }
   res.json({ success: true, order: updated });
 } catch (err) {
   console.error('❌ Manual update error:', err.message);
@@ -533,6 +536,11 @@ router.post('/:id/address', async (req, res) => {
     // 2. Update local DB
     db.prepare('UPDATE orders SET address = ? WHERE id = ?').run(address, req.params.id);
 
+    const updated = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(req.params.id);
+    if (updated) {
+      broadcast('order_updated', { storeId: updated.store_id, shopifyOrderId: updated.shopify_order_id });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -560,6 +568,8 @@ router.put('/:id/address', async (req, res) => {
     const fullName = `${first_name} ${last_name}`.trim();
     const fullAddr = `${address1}${address2 ? ', ' + address2 : ''}`;
     db.prepare('UPDATE orders SET customer_name = ?, address = ?, city = ?, phone = ? WHERE id = ?').run(fullName, fullAddr, city, phone, order.id);
+
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
 
     res.json({ success: true });
   } catch (err) {
@@ -948,6 +958,8 @@ router.post('/:id/book-postex', async (req, res) => {
       console.warn('PostEx Booked but Shopify Fulfillment Failed:', shopifyErr.message);
     }
 
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
     res.json({ success: true, tracking_number: trackingNumber });
   } catch (err) {
     console.error('PostEx Booking Error:', err.message);
@@ -987,6 +999,8 @@ router.post('/:id/book-instaworld', async (req, res) => {
       console.warn('Instaworld Booked but Shopify Fulfillment Failed:', shopifyErr.message);
     }
 
+    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
     res.json({ success: true, tracking_number: trackingNumber });
   } catch (err) {
     console.error('Instaworld Booking Error:', err.message);
@@ -1018,6 +1032,7 @@ router.post('/:id/cancel-booking', async (req, res) => {
     if (success) {
       db.prepare('UPDATE orders SET tracking_number = NULL, delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
         .run(req.params.id);
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       res.json({ success: true });
     } else {
       res.status(500).json({ error: 'Courier API rejected cancellation' });

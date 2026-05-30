@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
@@ -458,11 +458,13 @@ export default function OrderTable({
   formatCustomerName,
   fetchOrderDetails,
   bookingId,
+  statusUpdatingId,
   handleConfirmOrder,
   handleRevertConfirm,
   handleBookPostEx,
   handleCancelBooking,
   handleBookInstaworld,
+  handleManualStatusChange,
   updateOrderField,
   setCustomerHistoryPhone,
   setShowNameDialog,
@@ -478,7 +480,46 @@ export default function OrderTable({
 }) {
   const { addToast, user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
-  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+
+  const tableRef = useRef(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
+
+  const handleScroll = useCallback(() => {
+    if (tableRef.current) {
+      const rect = tableRef.current.getBoundingClientRect()
+      const offset = rect.top < 0 ? -rect.top : 0
+      setScrollTop(offset)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleScroll)
+    handleScroll()
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
+  }, [handleScroll, filteredOrders])
+
+  const rowHeight = 44
+  const buffer = 10
+
+  const { startIndex, endIndex, topPadding, bottomPadding, visibleOrders } = useMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer)
+    const end = Math.min(filteredOrders.length, Math.ceil((scrollTop + viewportHeight) / rowHeight) + buffer)
+    const topPad = start * rowHeight
+    const bottomPad = (filteredOrders.length - end) * rowHeight
+    const visible = filteredOrders.slice(start, end)
+    return {
+      startIndex: start,
+      endIndex: end,
+      topPadding: topPad,
+      bottomPadding: bottomPad,
+      visibleOrders: visible
+    }
+  }, [scrollTop, viewportHeight, filteredOrders])
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
   const [activeTooltipOrderId, setActiveTooltipOrderId] = useState(null)
   const [hoveredOrderId, setHoveredOrderId] = useState(null)
@@ -544,39 +585,7 @@ export default function OrderTable({
     )
   }
 
-  const handleManualStatusChange = async (orderId, newStatus) => {
-    if (!newStatus) return
-    setStatusUpdatingId(orderId)
-    try {
-      const res = await fetch(`/api/orders/${orderId}/erp-status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ erp_status: newStatus })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (res.status === 409 && data.protected) {
-          if (confirm(`${data.error}\n\nDo you want to FORCE this change? (Admin Only)`)) {
-            const forceRes = await fetch(`/api/orders/${orderId}/erp-status`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ erp_status: newStatus, force: true })
-            })
-            if (!forceRes.ok) throw new Error((await forceRes.json()).error)
-            addToast('Status updated successfully (Forced)', 'success')
-          }
-        } else {
-          throw new Error(data.error || 'Failed to update status')
-        }
-      } else {
-        addToast(`ERP Status updated to ${newStatus}`, 'success')
-      }
-    } catch (err) {
-      addToast(err.message, 'error')
-    } finally {
-      setStatusUpdatingId(null)
-    }
-  }
+  // Relocated to SearchTool.jsx for Optimistic UI updates
 
   const [waTemplates, setWATemplates] = useState([])
 
@@ -616,7 +625,7 @@ export default function OrderTable({
           )}
         </div>
         
-        <table className="draggable-table">
+        <table ref={tableRef} className="draggable-table">
           <thead>
             <tr>
               <th style={{ width: 40, textAlign: 'center' }}>
@@ -684,12 +693,18 @@ export default function OrderTable({
             </tr>
           </thead>
           <tbody>
-            {filteredOrders.map((o, index) => {
+            {topPadding > 0 && (
+              <tr style={{ height: topPadding }}>
+                <td colSpan={cols.length + 1} style={{ padding: 0, height: topPadding, border: 'none' }} />
+              </tr>
+            )}
+            {visibleOrders.map((o, index) => {
+              const actualIndex = startIndex + index;
               return (
                 <OrderRow 
                   key={o.id} o={o} cols={cols}
                   isSelected={selectedIds.includes(o.id)}
-                  currentIndex={index}
+                  currentIndex={actualIndex}
                   lastSelectedIndex={lastSelectedIndex} setSelectedIds={setSelectedIds} setLastSelectedIndex={setLastSelectedIndex}
                   filteredOrdersLength={filteredOrders.length}
                   filteredOrdersIds={filteredOrdersIds}
@@ -707,6 +722,11 @@ export default function OrderTable({
                 />
               )
             })}
+            {bottomPadding > 0 && (
+              <tr style={{ height: bottomPadding }}>
+                <td colSpan={cols.length + 1} style={{ padding: 0, height: bottomPadding, border: 'none' }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
