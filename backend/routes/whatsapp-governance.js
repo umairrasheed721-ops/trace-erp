@@ -1286,23 +1286,47 @@ router.get('/gemini/profiles', (req, res) => {
 
 // GET /api/whatsapp-governance/gemini/memory/:phone
 router.get('/gemini/memory/:phone', (req, res) => {
-  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    let cleaned = req.params.phone.replace(/\D/g, '');
-    
-    // Verify phone belongs to this tenant
-    const hasRecord = db.prepare(`
-      SELECT 1 FROM orders WHERE phone LIKE ? AND tenant_id = ?
-      UNION ALL
-      SELECT 1 FROM whatsapp_messages WHERE phone = ? AND tenant_id = ?
-      LIMIT 1
-    `).get(`%${cleaned.substring(cleaned.length - 10)}%`, tenantId, cleaned, tenantId);
+    const rawPhone = req.params.phone;
+    const cleaned = rawPhone.replace(/\D/g, '');
+    const last10 = cleaned.substring(cleaned.length - 10);
 
-    if (!hasRecord) {
-      return res.status(404).json({ error: 'Chat memory not found' });
+    // Check customer_profiles first (source of truth for the profiles tab)
+    const profileExists = db.prepare(
+      'SELECT phone FROM customer_profiles WHERE phone = ? OR phone = ? OR phone LIKE ? LIMIT 1'
+    ).get(rawPhone, cleaned, `%${last10}`);
+
+    // Also check whatsapp_messages as fallback
+    const msgExists = !profileExists
+      ? db.prepare(
+          'SELECT 1 FROM whatsapp_messages WHERE phone = ? OR phone = ? OR phone LIKE ? LIMIT 1'
+        ).get(rawPhone, cleaned, `%${last10}`)
+      : null;
+
+    if (!profileExists && !msgExists) {
+      return res.status(404).json({ error: 'Customer not found', memory: [] });
     }
 
-    const memory = db.prepare('SELECT role, content, created_at FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 50').all(cleaned) || [];
+    // Try multiple phone formats to find memory rows
+    const phoneToUse = profileExists ? profileExists.phone : cleaned;
+    let memory = db.prepare(
+      'SELECT role, content, created_at FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 50'
+    ).all(phoneToUse) || [];
+
+    // If no memory found with exact phone, try the cleaned digits version
+    if (memory.length === 0 && phoneToUse !== cleaned) {
+      memory = db.prepare(
+        'SELECT role, content, created_at FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 50'
+      ).all(cleaned) || [];
+    }
+
+    // If still nothing, try last10 LIKE match
+    if (memory.length === 0) {
+      memory = db.prepare(
+        'SELECT role, content, created_at FROM gemini_chat_memory WHERE phone LIKE ? ORDER BY id ASC LIMIT 50'
+      ).all(`%${last10}`) || [];
+    }
+
     res.json({ success: true, memory });
   } catch (e) {
     res.status(500).json({ error: e.message });

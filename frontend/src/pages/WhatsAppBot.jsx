@@ -256,6 +256,7 @@ export default function WhatsAppBot() {
   const handleFetchMemory = async (phone) => {
     setSelectedCustomerPhone(phone)
     setLoadingMemory(true)
+    setCustomerMemory([])
     try {
       const res = await fetch(`/api/whatsapp-governance/gemini/memory/${phone}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
@@ -263,6 +264,11 @@ export default function WhatsAppBot() {
       const data = await res.json()
       if (data.success) {
         setCustomerMemory(data.memory || [])
+      } else if (res.status === 404) {
+        // Customer has a profile but no memory yet — show empty panel (not an error)
+        setCustomerMemory([])
+      } else {
+        addToast(data.error || 'Failed to load customer chat memory', 'error')
       }
     } catch (err) {
       addToast('Failed to load customer chat memory', 'error')
@@ -270,6 +276,7 @@ export default function WhatsAppBot() {
       setLoadingMemory(false)
     }
   }
+
 
   const handleTriggerAudit = async () => {
     setTriggeringAudit(true)
@@ -1086,7 +1093,9 @@ export default function WhatsAppBot() {
                       ))
                     ) : (
                       <div style={{ textAlign: 'center', opacity: 0.5, padding: 40, fontSize: '0.85rem' }}>
-                        Select a customer from the table to inspect their active Gemini RAG conversational memory buffer.
+                        {selectedCustomerPhone
+                          ? '💬 No conversation memory found yet for this customer. Memory builds up as they chat with the bot.'
+                          : 'Select a customer from the table to inspect their active Gemini RAG conversational memory buffer.'}
                       </div>
                     )}
                   </div>
