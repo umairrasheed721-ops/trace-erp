@@ -1152,31 +1152,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
     console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);
   }
 
-  if (mediaType === 'audio' && mediaUrl && dbMessageId && !alreadyExists) {
-    setImmediate(async () => {
-      try {
-        const { transcribeVoiceNote } = require('./stt_engine');
-        const { DB_DIR } = require('../db');
-        const absPath = mediaUrl.startsWith('/uploads/')
-          ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
-          : require('path').join(DB_DIR, 'uploads', mediaUrl);
-        await transcribeVoiceNote(fromPhone, dbMessageId, absPath);
-      } catch(e) { console.error('STT dispatch error:', e.message); }
-    });
-  }
-
-  if (mediaType === 'image' && mediaUrl && dbMessageId && !alreadyExists) {
-    setImmediate(async () => {
-      try {
-        const { scanReceiptOCR } = require('./ocr_engine');
-        const { DB_DIR } = require('../db');
-        const absPath = mediaUrl.startsWith('/uploads/')
-          ? require('path').join(DB_DIR, 'uploads', mediaUrl.substring(9))
-          : require('path').join(DB_DIR, 'uploads', mediaUrl);
-        await scanReceiptOCR(fromPhone, orderId, dbMessageId, absPath);
-      } catch(e) { console.error('OCR dispatch error:', e.message); }
-    });
-  }
+  // STT and Receipt OCR payment scanners have been disabled per user request
 
   if (!isOutgoing || !alreadyExists) {
     try {
@@ -1298,46 +1274,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
     return;
   }
 
-  try {
-    const pendingCOD = db.prepare(
-      `SELECT * FROM cod_pending_verifications WHERE phone = ? AND status = 'pending'
-       AND expires_at > datetime('now', '+5 hours') ORDER BY id DESC LIMIT 1`
-    ).get(fromPhone);
-
-    if (pendingCOD) {
-      const reply = text ? text.toLowerCase().trim() : '';
-      const isConfirm = reply === '1' || ['confirm', 'yes', 'haan', 'ji', 'ok', 'bilkul'].some(w => reply.includes(w));
-      const isCancel = reply === '2' || ['cancel', 'nahi', 'na', 'no', 'nain'].some(w => reply.includes(w));
-
-      if (isConfirm || isCancel) {
-        const newStatus = isConfirm ? 'confirmed' : 'cancelled';
-        db.prepare(`UPDATE cod_pending_verifications SET status = ?, replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(newStatus, pendingCOD.id);
-        
-        if (isConfirm) {
-          db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed', delivery_status = 'confirmed' WHERE id = ?`).run(pendingCOD.order_id);
-          const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-          if (order) {
-            const { broadcast } = require('../sse');
-            broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-          }
-          await bot.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
-          console.log(`🔐 COD Confirmed: Order ${pendingCOD.order_id} by ${fromPhone}`);
-        } else {
-          db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
-          const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-          if (order) {
-            const { broadcast } = require('../sse');
-            broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-          }
-          await bot.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
-          console.log(`🔐 COD Cancelled: Order ${pendingCOD.order_id} by ${fromPhone}`);
-        }
-        return;
-      }
-    }
-  } catch (codErr) {
-    console.error('🔐 COD interceptor error:', codErr.message);
-  }
+  // COD Pending Verification Interceptor has been disabled per user request (Auto-Verify disabled)
 
   try {
     const lastOutgoing = db.prepare(`
@@ -1380,7 +1317,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         const { broadcast } = require('../websocket');
         broadcast('human_handoff_required', { phone: fromPhone, reason: 'Customer clicked Speak to Agent button', preview: 'Handoff requested' });
       } catch (_) {}
-      bot.sendMessage(fromPhone, "🤖 [TRACE Support] Aapko support agent queue mein add kar diya gaya hai. Hamare representative jald hi aapse raabta karenge. Shukriya! 🙏", true);
+      bot.sendMessage(fromPhone, "Aapko support representative queue mein add kar diya gaya hai. Hamare agent jald hi aapse raabta karenge. Shukriya! 🙏", true);
       return;
     }
 
@@ -1404,7 +1341,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         ON CONFLICT(phone) DO UPDATE SET opted_out = 1, updated_at = datetime('now')
       `).run(fromPhone);
       console.log(`🔕 Customer ${fromPhone} opted out from bot auto-replies.`);
-      bot.sendMessage(fromPhone, "🤖 [TRACE Support] Aapko unsubscribe kar diya gaya hai. Ab aapko automated messages nahi milenge. Agar dobara activate karna ho toh 'Start' reply karein.", true);
+      bot.sendMessage(fromPhone, "Aapko automated messages se unsubscribe kar diya gaya hai. Agar dobara updates active karni hon toh 'Start' reply karein. Shukriya!", true);
       return;
     }
 
@@ -1418,7 +1355,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         ON CONFLICT(phone) DO UPDATE SET opted_out = 0, updated_at = datetime('now')
       `).run(fromPhone);
       console.log(`🔔 Customer ${fromPhone} opted in to bot auto-replies.`);
-      bot.sendMessage(fromPhone, "🤖 [TRACE Support] Automated help dobara activate kar di gayi hai. Aap kaisa help chahte hain?", true);
+      bot.sendMessage(fromPhone, "Automated chat updates dobara active kar di gayi hain. Aapki kis tarah madad ki jaye?", true);
       return;
     }
 
@@ -1437,29 +1374,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
       VALUES (?, ?, ?, 'incoming', ?)
     `).run(storeId, orderId, fromPhone, text);
 
-    const wismoKeywords = ['kahan', 'kahan hai', 'tracking', 'track', 'status', 'kab aayega', 'kab ayega', 'parcel', 'where is', 'where is my order', 'wismo', 'order kahan', 'consignment', 'delivery kab'];
-    const isWismo = wismoKeywords.some(w => lowerText.includes(w));
-    if (isWismo && orderId) {
-      const wismoOrder = db.prepare('SELECT tracking_number, courier, delivery_status, status_date FROM orders WHERE id = ?').get(orderId);
-      if (wismoOrder && wismoOrder.tracking_number) {
-        const tracking = wismoOrder.tracking_number;
-        const courier = wismoOrder.courier || 'Courier';
-        const status = wismoOrder.delivery_status || 'In Transit';
-        const trackLink = courier === 'PostEx'
-          ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}`
-          : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
-        const wismoReply = `📦 *Order Status Update*\n\nTracking: *${tracking}* (${courier})\nCurrent Status: *${status}*\n\n🔗 Live Track: ${trackLink}\n\nKoi aur sawaal ho toh zaroor batayein! 😊`;
-        
-        if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-          console.warn(`⚠️ [RATE-LIMIT] Skipping WISMO reply to ${fromPhone} — 2 consecutive bot replies without response.`);
-        } else {
-          bot.sendMessage(fromPhone, wismoReply, true);
-          bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-          console.log(`🚚 WISMO fast-intercept replied to ${fromPhone}`);
-        }
-        return;
-      }
-    }
+    // WISMO fast interceptor has been disabled; tracking queries will be handled smartly by Gemini
 
     const { generateAIResponse } = require('./gemini_engine');
     const geminiReply = await generateAIResponse(fromPhone, text);
@@ -1482,86 +1397,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
       return;
     }
 
-    const settings = db.prepare('SELECT ai_responder_enabled, ai_tracking_template, ai_landmark_template FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
-    
-    if (orderId) {
-      if (['confirm', 'yes', 'haan', 'ji', 'ok', 'verify', 'y'].some(w => lowerText.includes(w))) {
-        db.prepare(`UPDATE orders SET wa_verification_status = 'verified' WHERE id = ?`).run(orderId);
-        console.log(`✅ Auto-verified order #${orderId} via WA reply!`);
-        if (order) {
-          const { broadcast } = require('../sse');
-          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-        }
-      }
-
-      if (settings.ai_responder_enabled !== 0) {
-        if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
-          const tracking = order.tracking_number || 'N/A';
-          const courier = order.courier || 'Courier';
-          const status = order.delivery_status || 'In Transit';
-          const link = order.courier === 'PostEx' ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`;
-          
-          let reply = (settings.ai_tracking_template || '🤖 [TRACE Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}')
-            .replace(/\{tracking\}/g, tracking)
-            .replace(/\{courier\}/g, courier)
-            .replace(/\{status\}/g, status)
-            .replace(/\{link\}/g, link);
-
-          if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-            console.warn(`⚠️ [RATE-LIMIT] Skipping fallback tracking reply to ${fromPhone} — rate limit hit.`);
-          } else {
-            bot.sendMessage(fromPhone, reply, true);
-            bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-            console.log(`🤖 AI Fallback: Sent Tracking Intent reply to ${fromPhone}`);
-          }
-        }
-        else if (['near', 'opposite', 'beside', 'gali', 'house', 'makan', 'street', 'landmark', 'ke paas', 'samne'].some(w => lowerText.includes(w))) {
-          db.prepare(`UPDATE orders SET cs_notes = IFNULL(cs_notes, '') || ' [WA Landmark: ' || ? || ']' WHERE id = ?`).run(text, orderId);
-          
-          let reply = (settings.ai_landmark_template || '🤖 [TRACE Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.')
-            .replace(/\{landmark\}/g, text);
-
-          if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-            console.warn(`⚠️ [RATE-LIMIT] Skipping fallback landmark reply to ${fromPhone} — rate limit hit.`);
-          } else {
-            bot.sendMessage(fromPhone, reply, true);
-            bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-            console.log(`🤖 AI Fallback: Sent Landmark Intent reply to ${fromPhone}`);
-          }
-        }
-        else {
-          const customerName = order.customer_name || 'Customer';
-          const reply = `🤖 [TRACE Support] Hi *${customerName}*! Humare system mein aapka order exist karta hai. Agar aap apna parcel track karna chahte hain, toh reply mein *'kahan hai'* ya *'status'* likh kar bhejein. Shukriya!`;
-          if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-            console.warn(`⚠️ [RATE-LIMIT] Skipping fallback general-order reply to ${fromPhone} — rate limit hit.`);
-          } else {
-            bot.sendMessage(fromPhone, reply, true);
-            bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-            console.log(`🤖 AI Fallback: Sent general order holder message to ${fromPhone}`);
-          }
-        }
-      }
-    } else {
-      if (['kahan', 'tracking', 'status', 'kab aayega', 'parcel', 'where is', 'track'].some(w => lowerText.includes(w))) {
-        const reply = `🤖 [TRACE Support] Aapka phone number humare system mein kisi active order se register nahi mila. Agar aapne order kiya hai, toh kindly humein apna *order number* (e.g. TR12345) message karein taake hum update check kar sakein.`;
-        if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-          console.warn(`⚠️ [RATE-LIMIT] Skipping fallback no-order-tracking reply to ${fromPhone} — rate limit hit.`);
-        } else {
-          bot.sendMessage(fromPhone, reply, true);
-          bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-          console.log(`🤖 AI Fallback: Sent tracking request message to non-order holder ${fromPhone}`);
-        }
-      } else {
-        const reply = `🤖 [TRACE Support] Salam! Aapka message received ho gaya hai. Humare system mein is number se koi current order exist nahi karta. Agar aap new order place karna chahte hain ya agent se baat karna chahte hain, toh apna query reply karein. Humara customer support representative jald hi aapse raabta karega.`;
-        if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-          console.warn(`⚠️ [RATE-LIMIT] Skipping fallback general-help reply to ${fromPhone} — rate limit hit.`);
-        } else {
-          bot.sendMessage(fromPhone, reply, true);
-          bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
-          console.log(`🤖 AI Fallback: Sent general help reply to non-order holder ${fromPhone}`);
-        }
-      }
-    }
+    // Fallback template auto-responders have been completely removed per user request
   } catch (err) {
     console.error('❌ Error processing incoming WA message:', err.message);
   }

@@ -31,7 +31,6 @@ const TemplateManager = lazy(() => import('./pages/TemplateManager'))
 const DiagnosticCenter = lazy(() => import('./pages/DiagnosticCenter'))
 const SystemStatus = lazy(() => import('./pages/SystemStatus'))
 const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
-const AiDashboard = lazy(() => import('./pages/AiDashboard'))
 
 const PayoutReconciler = lazy(() => import('./pages/PayoutReconciler'))
 const TrackingPortal = lazy(() => import('./pages/TrackingPortal'))
@@ -96,7 +95,6 @@ function AppContent() {
                   <Route path="/prevention" element={<PreventionManager />} />
                   <Route path="/marketing" element={<MarketingIntelligence />} />
                   <Route path="/diagnostics" element={<DiagnosticCenter />} />
-                  <Route path="/ai-dashboard" element={<AiDashboard />} />
                   <Route path="/system-status" element={<SystemStatus />} />
                   <Route path="/status-mappings" element={<StatusMappingManager />} />
                 </Routes>

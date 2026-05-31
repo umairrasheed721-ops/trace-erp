@@ -857,7 +857,7 @@ function runMigrations(db) {
       api_key TEXT DEFAULT '',
       ai_active INTEGER DEFAULT 1,
       model_name TEXT DEFAULT 'gemini-2.5-flash',
-      system_prompt TEXT DEFAULT 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.',
+      system_prompt TEXT DEFAULT 'You are a helpful customer support representative for our e-commerce store. Your name is Zara/Hamza. You speak fluent Urdu, Roman Urdu, and English. You are polite, professional, and friendly. You must behave exactly like a real human support representative and never admit that you are an AI, bot, or automated system. Keep your replies concise and natural. Use the available tools to check order status, product stock, or register new orders when requested.',
       strictness TEXT DEFAULT 'balanced',
       auto_learning_enabled INTEGER DEFAULT 1,
       updated_at TEXT DEFAULT (datetime('now'))
@@ -1064,11 +1064,12 @@ function runMigrations(db) {
   }
 
   const geminiCount = db.prepare('SELECT COUNT(*) as count FROM gemini_bot_settings').get().count;
+  const humanPrompt = 'You are a helpful customer support representative for our e-commerce store. Your name is Zara/Hamza. You speak fluent Urdu, Roman Urdu, and English. You are polite, professional, and friendly. You must behave exactly like a real human support representative and never admit that you are an AI, bot, or automated system. Keep your replies concise and natural. Use the available tools to check order status, product stock, or register new orders when requested.';
   if (geminiCount === 0) {
     db.prepare(`
       INSERT INTO gemini_bot_settings (api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled)
-      VALUES ('', 1, 'gemini-2.5-flash', 'You are TRACE AI, the elite customer success and sales concierge for our e-commerce store. You speak fluent Urdu, Roman Urdu, and English. You are helpful, polite, and professional. Use your available tools to check order status, product stock, or create draft orders when requested.', 'balanced', 1)
-    `).run();
+      VALUES ('', 1, 'gemini-2.5-flash', ?, 'balanced', 1)
+    `).run(humanPrompt);
   } else {
     // Migration: Automatically upgrade deprecated gemini-1.5 models to gemini-2.5 equivalents in existing installations
     try {
@@ -1082,6 +1083,14 @@ function runMigrations(db) {
         SET model_name = 'gemini-2.5-pro'
         WHERE model_name = 'gemini-1.5-pro'
       `).run();
+      
+      // Auto-overwrite old TRACE AI system prompt with humanized prompt
+      db.prepare(`
+        UPDATE gemini_bot_settings
+        SET system_prompt = ?
+        WHERE system_prompt LIKE '%TRACE AI%' OR system_prompt = ''
+      `).run(humanPrompt);
+      console.log('✅ [Startup Migration] Auto-enriched gemini system prompt with humanized persona.');
     } catch (e) {
       console.error('⚠️ Failed to migrate gemini_bot_settings models:', e.message);
     }
