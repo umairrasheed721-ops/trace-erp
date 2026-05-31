@@ -1333,7 +1333,28 @@ router.get('/gemini/memory/:phone', (req, res) => {
   }
 });
 
+// POST /api/whatsapp-governance/gemini/reset-locks
+router.post('/gemini/reset-locks', (req, res) => {
+  try {
+    const result = db.prepare('UPDATE customer_profiles SET human_handoff_until = NULL').run();
+    // Also clear in-memory handoff contacts if bot is running
+    try {
+      const { getBot } = require('../engines/whatsapp_bot');
+      const bot = getBot();
+      if (bot) {
+        bot.humanHandoffContacts.clear();
+        bot.humanCooldowns = {};
+        bot.consecutiveBotReplies = {};
+      }
+    } catch(_) {}
+    res.json({ success: true, cleared: result.changes, message: `✅ Cleared ${result.changes} handoff locks. Bot is now active for all customers.` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/whatsapp-governance/gemini/usage-stats
+
 router.get('/gemini/usage-stats', (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);

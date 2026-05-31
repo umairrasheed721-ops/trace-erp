@@ -50,6 +50,7 @@ export default function WhatsAppBot() {
   const [loadingMemory, setLoadingMemory] = useState(false)
   const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [triggeringAudit, setTriggeringAudit] = useState(false)
+  const [resetLocks, setResetLocks] = useState(false)
 
   // --- SIMULATION SANDBOX STATE ---
   const [simPhone, setSimPhone] = useState('923001234567')
@@ -284,6 +285,23 @@ export default function WhatsAppBot() {
     }
   }
 
+
+  const handleResetLocks = async () => {
+    setResetLocks(true)
+    try {
+      const res = await fetch('/api/whatsapp-governance/gemini/reset-locks', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+      })
+      const data = await res.json()
+      if (data.success) addToast(data.message, 'success')
+      else addToast('Failed to reset locks', 'error')
+    } catch (e) {
+      addToast('Error resetting locks', 'error')
+    } finally {
+      setResetLocks(false)
+    }
+  }
 
   const handleTriggerAudit = async () => {
     setTriggeringAudit(true)
@@ -1290,6 +1308,13 @@ export default function WhatsAppBot() {
                     <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>📊 Gemini API Usage & Quota</h4>
                     <p className="text-muted" style={{ fontSize: '0.85rem' }}>Live tracking of your Gemini API calls. Free tier: <strong>1,500 requests/day</strong> · <strong>15 requests/minute</strong>.</p>
                   </div>
+                  <button
+                    onClick={handleResetLocks}
+                    disabled={resetLocks}
+                    style={{ padding: '10px 20px', borderRadius: 12, background: resetLocks ? '#334155' : 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#ef4444', fontWeight: 800, fontSize: '0.85rem', cursor: resetLocks ? 'not-allowed' : 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
+                  >
+                    {resetLocks ? '⌛ Clearing...' : '🔓 Reset Bot Locks'}
+                  </button>
                   {isCritical && (
                     <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 700, color: '#ef4444' }}>
                       ⚠️ CRITICAL — {today.percent_used}% of daily quota used!
