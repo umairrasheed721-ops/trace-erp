@@ -1183,12 +1183,19 @@ async function processIncomingMessage(bot, msg, sock, db) {
     // Check if this outgoing echo was sent by the bot itself (not a human)
     const isBotEcho = bot._botSentIds && bot._botSentIds.has(msg.key.id);
     if (isBotEcho) {
-      // This is our own bot reply echoed back — just save to DB for display, do NOT lock
       bot._botSentIds.delete(msg.key.id);
       console.log(`🤖 [BOT_ECHO] Skipping handoff lock for bot's own message echo to ${fromPhone}.`);
       return;
     }
-    // This is a real human (staff) manually sending from WhatsApp — apply cooldown
+
+    // Ignore historical messages replayed by Baileys after restart (older than 60 seconds)
+    const msgAge = Date.now() - (Number(msg.messageTimestamp) * 1000);
+    if (msgAge > 60000) {
+      console.log(`📜 [HISTORIC] Skipping old outgoing message (${Math.round(msgAge/1000)}s ago) for ${fromPhone}. Not a human message.`);
+      return;
+    }
+
+    // This is a fresh real human (staff) manually sending from WhatsApp — apply cooldown
     bot.humanCooldowns[fromPhone] = Date.now();
     console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 2 mins.`);
     
