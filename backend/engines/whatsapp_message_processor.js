@@ -1269,8 +1269,8 @@ async function processIncomingMessage(bot, msg, sock, db) {
   bot.consecutiveBotReplies[fromPhone] = 0;
 
   const lastHumanMsg = bot.humanCooldowns[fromPhone];
-  if (lastHumanMsg && (Date.now() - lastHumanMsg) < 30 * 60 * 1000) {
-    console.log(`⏳ Skipping bot auto-reply for ${fromPhone} due to active human manual override.`);
+  if (lastHumanMsg && (Date.now() - lastHumanMsg) < 2 * 60 * 1000) {
+    console.log(`⏳ Skipping bot auto-reply for ${fromPhone} due to active human manual override (2 min cooldown).`);
     return;
   }
 
@@ -1388,8 +1388,8 @@ async function processIncomingMessage(bot, msg, sock, db) {
           broadcast('human_handoff_required', { phone: fromPhone, reason: 'Gemini AI flagged handoff', preview: geminiReply.substring(0, 120) });
         } catch (_) {}
       }
-      if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 2) {
-        console.warn(`⚠️ [RATE-LIMIT] Skipping Gemini reply to ${fromPhone} — 2 consecutive bot replies without response.`);
+      if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 5) {
+        console.warn(`⚠️ [RATE-LIMIT] Skipping Gemini reply to ${fromPhone} — 5 consecutive bot replies without response.`);
       } else {
         bot.sendMessage(fromPhone, geminiReply, true);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
