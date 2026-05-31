@@ -25,7 +25,7 @@ export default function ApiStatusBanner() {
     return () => clearInterval(interval);
   }, []);
 
-  if (status === 'online' && (latency < 1000 || latency === null)) return null;
+  if (status === 'online' && (latency < 3000 || latency === null)) return null;
 
   return (
     <div className={`api-status-banner ${status}`} style={{
