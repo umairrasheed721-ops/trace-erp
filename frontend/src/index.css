@@ -562,7 +562,8 @@ input:focus, select:focus, textarea:focus, button:focus {
 
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.8rem;
 }
 
@@ -585,11 +586,9 @@ thead th {
 }
 
 tbody tr {
-  border-bottom: 1px solid var(--border);
   transition: var(--transition);
 }
 
-tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: var(--bg-hover); }
 
 tbody td {
@@ -599,6 +598,11 @@ tbody td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* Ultra Compact Mode */
