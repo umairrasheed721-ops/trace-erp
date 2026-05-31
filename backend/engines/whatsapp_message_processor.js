@@ -1121,7 +1121,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
     };
   }
 
-  const order = db.prepare(`SELECT id, store_id FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
+  const order = db.prepare(`SELECT id, store_id, shopify_order_id FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
   const orderId = order ? order.id : null;
   const storeId = order ? order.store_id : 1;
 
@@ -1138,6 +1138,15 @@ async function processIncomingMessage(bot, msg, sock, db) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
       `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag);
       dbMessageId = result.lastInsertRowid;
+
+      if (order && order.shopify_order_id) {
+        try {
+          const { broadcast } = require('../sse');
+          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+        } catch (e) {
+          console.error('Failed to broadcast WhatsApp message order_updated:', e.message);
+        }
+      }
     }
   } catch (dbErr) {
     console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);

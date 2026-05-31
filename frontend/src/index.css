@@ -3644,3 +3644,32 @@ a.btn[href^="whatsapp:"]:hover {
   border-radius: 20px;
   font-weight: 500;
 }
+
+/* Pulsing WhatsApp Unread Dot Badge */
+.wa-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  background-color: var(--red);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-surface), 0 0 8px var(--red);
+  animation: pulse-badge 1.5s infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse-badge {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}

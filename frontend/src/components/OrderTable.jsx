@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
@@ -13,6 +14,7 @@ const OrderRow = React.memo(({
   activeShopDomain
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
+  const navigate = useNavigate();
   const isClear = Math.abs(diff) <= 1;
   const { bg, color } = getStatusColor(o.delivery_status);
   const s = (o.delivery_status||'').toLowerCase();
@@ -171,17 +173,50 @@ const OrderRow = React.memo(({
                           <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
                             <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', flexShrink: 0 }} title="Call via SIM">📞</a>
                             
+                            {/* Main Chat Bubble button - redirects to portal */}
+                            {(() => {
+                              const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
+                              return (
+                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate('/whatsapp-portal', { state: { selectPhone: o.phone } });
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: 0,
+                                      cursor: 'pointer',
+                                      fontSize: '0.95rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      position: 'relative'
+                                    }}
+                                    title="Open Chat in Portal"
+                                  >
+                                    💬
+                                    {isUnread && <span className="wa-unread-badge"></span>}
+                                  </button>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Template dropdown arrow selection */}
                             <select 
                               className="wa-template-select"
                               style={{ 
                                 background: 'none', 
                                 border: 'none', 
-                                color: 'var(--green)', 
+                                color: 'var(--text-muted)', 
                                 cursor: 'pointer', 
-                                fontSize: '0.9rem',
+                                fontSize: '0.65rem',
                                 padding: 0,
-                                width: '20px'
+                                width: '12px',
+                                marginLeft: '-4px'
                               }}
+                              value=""
                               onChange={(e) => {
                                 const templateId = e.target.value;
                                 if (!templateId) return;
@@ -216,7 +251,7 @@ const OrderRow = React.memo(({
                                 e.target.value = ""; // Reset
                               }}
                             >
-                              <option value="">💬</option>
+                              <option value="" disabled>▼</option>
                               {waTemplates.map(t => (
                                 <option key={t.id} value={t.id}>{t.name}</option>
                               ))}
@@ -432,6 +467,8 @@ const OrderRow = React.memo(({
   return prev.o.id === next.o.id &&
          prev.o.delivery_status === next.o.delivery_status &&
          prev.o.tracking_number === next.o.tracking_number &&
+         prev.o.last_wa_direction === next.o.last_wa_direction &&
+         prev.o.last_wa_status === next.o.last_wa_status &&
          prev.isSelected === next.isSelected &&
          prev.statusUpdatingId === next.statusUpdatingId &&
          prev.bookingId === next.bookingId &&

@@ -217,7 +217,27 @@ router.get('/', (req, res) => {
     }
 
     const orders = db.prepare(`
-      SELECT o.*, s.shop_domain 
+      SELECT o.*, s.shop_domain,
+             (
+               SELECT direction 
+               FROM whatsapp_messages 
+               WHERE (order_id = o.id 
+                  OR phone = o.phone 
+                  OR phone = REPLACE(o.phone, '+', '') 
+                  OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+                 AND tenant_id = o.tenant_id
+               ORDER BY id DESC LIMIT 1
+             ) as last_wa_direction,
+             (
+               SELECT status 
+               FROM whatsapp_messages 
+               WHERE (order_id = o.id 
+                  OR phone = o.phone 
+                  OR phone = REPLACE(o.phone, '+', '') 
+                  OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+                 AND tenant_id = o.tenant_id
+               ORDER BY id DESC LIMIT 1
+             ) as last_wa_status
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE ${where}
@@ -396,7 +416,32 @@ router.put('/:id', (req, res) => {
   }
 
   // Return updated row so frontend can reflect all auto-changes
-  const updated = db.prepare('SELECT o.*, s.shop_domain FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+  const updated = db.prepare(`
+    SELECT o.*, s.shop_domain,
+           (
+             SELECT direction 
+             FROM whatsapp_messages 
+             WHERE (order_id = o.id 
+                OR phone = o.phone 
+                OR phone = REPLACE(o.phone, '+', '') 
+                OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+               AND tenant_id = o.tenant_id
+             ORDER BY id DESC LIMIT 1
+           ) as last_wa_direction,
+           (
+             SELECT status 
+             FROM whatsapp_messages 
+             WHERE (order_id = o.id 
+                OR phone = o.phone 
+                OR phone = REPLACE(o.phone, '+', '') 
+                OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+               AND tenant_id = o.tenant_id
+             ORDER BY id DESC LIMIT 1
+           ) as last_wa_status
+    FROM orders o 
+    JOIN stores s ON o.store_id = s.id 
+    WHERE o.id = ?
+  `).get(req.params.id);
   if (updated) {
     broadcast('order_updated', { storeId: updated.store_id, shopifyOrderId: updated.shopify_order_id });
   }
@@ -588,7 +633,27 @@ router.get('/export', (req, res) => {
 // GET /api/orders/by-shopify/:id - Fetch single order quickly by shopify ID for live UI updates
 router.get('/by-shopify/:id', (req, res) => {
   const order = db.prepare(`
-    SELECT o.*, s.shop_domain 
+    SELECT o.*, s.shop_domain,
+           (
+             SELECT direction 
+             FROM whatsapp_messages 
+             WHERE (order_id = o.id 
+                OR phone = o.phone 
+                OR phone = REPLACE(o.phone, '+', '') 
+                OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+               AND tenant_id = o.tenant_id
+             ORDER BY id DESC LIMIT 1
+           ) as last_wa_direction,
+           (
+             SELECT status 
+             FROM whatsapp_messages 
+             WHERE (order_id = o.id 
+                OR phone = o.phone 
+                OR phone = REPLACE(o.phone, '+', '') 
+                OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
+               AND tenant_id = o.tenant_id
+             ORDER BY id DESC LIMIT 1
+           ) as last_wa_status
     FROM orders o 
     JOIN stores s ON o.store_id = s.id 
     WHERE o.shopify_order_id = ?

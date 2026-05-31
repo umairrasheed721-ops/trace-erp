@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useTenant } from '../context/TenantContext'
 import VoiceNoteButton from '../components/VoiceNoteButton'
 import MediaUploadOverlay from '../components/MediaUploadOverlay'
@@ -131,6 +131,8 @@ const CustomAudioPlayer = ({ src }) => {
 export default function WhatsAppPortal() {
   const { addToast } = useApp()
   const { tenantId } = useTenant()
+  const location = useLocation()
+  const hasAutoSelected = useRef(false)
   const { 
     getDraft, 
     setDraftText, 
@@ -472,6 +474,16 @@ export default function WhatsAppPortal() {
     setActiveChat(chat)
     // Clear unread badge in state
     setChats(prev => prev.map(c => c.phone === chat.phone ? { ...c, unreadCount: 0 } : c))
+    
+    // Call backend API to mark latest incoming message as read
+    const token = localStorage.getItem('trace_token') || '';
+    fetch(`/api/whatsapp-governance/chats/${chat.phone}/read`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    }).catch(err => console.error('Failed to mark chat as read:', err));
+
     // Trigger sync
     setSyncTrigger(prev => prev + 1)
   }
@@ -1253,6 +1265,27 @@ export default function WhatsAppPortal() {
       Object.values(typingTimersRef.current).forEach(clearTimeout)
     }
   }, [])
+
+  // Handle auto-selection of chat passed in routing state
+  useEffect(() => {
+    if (chats.length > 0 && location.state?.selectPhone && !hasAutoSelected.current) {
+      const targetPhone = location.state.selectPhone;
+      const matchedChat = chats.find(c => c.phone === targetPhone || c.phone.replace(/\D/g,'') === targetPhone.replace(/\D/g,''));
+      if (matchedChat) {
+        hasAutoSelected.current = true;
+        selectChat(matchedChat);
+      } else {
+        // Construct temp chat if it doesn't exist in active chats yet
+        const tempChat = {
+          phone: targetPhone,
+          customerName: 'Customer',
+          unreadCount: 0
+        };
+        hasAutoSelected.current = true;
+        selectChat(tempChat);
+      }
+    }
+  }, [chats, location.state])
 
   // Filter conversations
   const filteredChats = chats.filter(c => {

@@ -593,6 +593,49 @@ router.get('/chats/:phone', async (req, res) => {
   }
 });
 
+// POST /api/whatsapp-governance/chats/:phone/read
+router.post('/chats/:phone/read', async (req, res) => {
+  const { phone } = req.params;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+  try {
+    const normalized = normalizePhone(phone);
+    
+    // Find the latest incoming message for this contact that is not 'read'
+    const latestIncoming = db.prepare(`
+      SELECT id FROM whatsapp_messages 
+      WHERE phone = ? AND direction = 'incoming' AND tenant_id = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(normalized, tenantId);
+
+    if (latestIncoming) {
+      db.prepare(`
+        UPDATE whatsapp_messages 
+        SET status = 'read' 
+        WHERE id = ?
+      `).run(latestIncoming.id);
+      
+      // Also find the order matching this phone to broadcast live update
+      const last10 = normalized.substring(normalized.length - 10);
+      const order = db.prepare(`
+        SELECT store_id, shopify_order_id FROM orders 
+        WHERE phone LIKE ? AND tenant_id = ?
+        ORDER BY id DESC LIMIT 1
+      `).get(`%${last10}%`, tenantId);
+      
+      if (order && order.shopify_order_id) {
+        try {
+          const { broadcast } = require('../sse');
+          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+        } catch (err) {}
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/whatsapp-governance/chats/:phone/send
 router.post('/chats/:phone/send', async (req, res) => {
   const { phone } = req.params;
@@ -609,7 +652,7 @@ router.post('/chats/:phone/send', async (req, res) => {
     const last10 = cleaned.substring(cleaned.length - 10);
     // Find latest order for store_id and order_id mapping
     const order = db.prepare(`
-      SELECT id, store_id FROM orders 
+      SELECT id, store_id, shopify_order_id FROM orders 
       WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
     `).get(`%${last10}%`, tenantId);
@@ -692,6 +735,14 @@ router.post('/chats/:phone/send', async (req, res) => {
       created_at: new Date().toISOString()
     };
 
+    // Broadcast message update to trigger live indicators refresh
+    if (order && order.shopify_order_id) {
+      try {
+        const { broadcast } = require('../sse');
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      } catch (err) {}
+    }
+
     res.json({ success: true, message: newMsg });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -714,7 +765,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
     const last10 = cleaned.substring(cleaned.length - 10);
     // Find latest order for store_id and order_id mapping
     const order = db.prepare(`
-      SELECT id, store_id FROM orders 
+      SELECT id, store_id, shopify_order_id FROM orders 
       WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
     `).get(`%${last10}%`, tenantId);
@@ -793,6 +844,14 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
 
     // Queue message via Baileys bot with isManual = true
     bot.sendMessage(cleaned, caption, true, absolutePath, mediaType, req.file.originalname, clientUuid, verifiedQuote);
+
+    // Broadcast message update to trigger live indicators refresh
+    if (order && order.shopify_order_id) {
+      try {
+        const { broadcast } = require('../sse');
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      } catch (err) {}
+    }
 
     res.json({ 
       success: true, 
