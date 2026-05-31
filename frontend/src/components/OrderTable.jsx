@@ -178,8 +178,15 @@ const OrderRow = React.memo(({
   const isPending = !s.includes('delivered') && !s.includes('return') && !s.includes('cancel');
   const dateAged = isPending && daysOld >= 5;
 
+  const rowClassName = useMemo(() => {
+    let classes = [];
+    if (isSelected) classes.push('row-selected');
+    if (o.payment_status === 'COD Cancelled') classes.push('cod-cancelled-row');
+    return classes.join(' ');
+  }, [isSelected, o.payment_status]);
+
   return (
-    <tr key={o.id} className={isSelected ? 'row-selected' : ''}>
+    <tr key={o.id} className={rowClassName}>
                   <td style={{ textAlign: 'center' }}>
                     <input 
                       type="checkbox" 
@@ -980,6 +987,12 @@ export default function OrderTable({
         @keyframes tooltipFade {
           from { opacity: 0; transform: translateY(5px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        .cod-cancelled-row {
+          background: rgba(239, 68, 68, 0.08) !important;
+        }
+        .cod-cancelled-row:hover {
+          background: rgba(239, 68, 68, 0.15) !important;
         }
       `}</style>
     </>

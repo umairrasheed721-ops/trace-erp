@@ -511,7 +511,7 @@ class WhatsAppBot {
                       } catch (e) {}
 
                       if (isConfirm) {
-                        db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+                        db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed', delivery_status = 'confirmed' WHERE id = ?`).run(pendingCOD.order_id);
                         const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
                         if (order) {
                           const { broadcast } = require('../sse');
