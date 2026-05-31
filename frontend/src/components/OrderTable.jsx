@@ -5,13 +5,57 @@ import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCe
 import { useApp } from '../context/AppContext'
 
 
+// Cost breakdown helper component moved to file level
+const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
+  if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
+  if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
+
+  const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
+  const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
+
+  return (
+    <div className="cost-tooltip shadow-xl">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
+        <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px', opacity: 0.6 }}
+        >
+          ✖
+        </button>
+      </div>
+      <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
+        {breakdown.map((item, i) => (
+          <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
+              <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
+              <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+          <span>Landed Total:</span>
+          <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
+          <span>Pkg Total:</span>
+          <span>Rs {totalPkg.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const OrderRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
   handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getPhoneOrderCount,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
-  activeShopDomain
+  activeShopDomain, breakdown, loadingBreakdown, setBreakdown
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
@@ -435,7 +479,13 @@ const OrderRow = React.memo(({
                             ℹ️
                           </button>
                         </div>
-                        {String(activeTooltipOrderId) === String(o.id) && <CostBreakdownTooltip orderId={o.id} />}
+                        {String(activeTooltipOrderId) === String(o.id) && (
+                          <CostBreakdownTooltip 
+                            loadingBreakdown={loadingBreakdown}
+                            breakdown={breakdown}
+                            onClose={() => { setActiveTooltipOrderId(null); setBreakdown(null); }}
+                          />
+                        )}
                       </td>
                     ) : null
                     if (col.id === 'profit') {
@@ -469,6 +519,8 @@ const OrderRow = React.memo(({
          prev.statusUpdatingId === next.statusUpdatingId &&
          prev.bookingId === next.bookingId &&
          prev.activeTooltipOrderId === next.activeTooltipOrderId &&
+         prev.breakdown === next.breakdown &&
+         prev.loadingBreakdown === next.loadingBreakdown &&
          prev.cols === next.cols;
 });
 export default function OrderTable({
@@ -575,48 +627,7 @@ export default function OrderTable({
     finally { setLoadingBreakdown(false) }
   }
 
-  const CostBreakdownTooltip = ({ orderId }) => {
-    if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
-    if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
-
-    const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
-    const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
-
-    return (
-      <div className="cost-tooltip shadow-xl">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
-          <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
-          <button 
-            onClick={(e) => { e.stopPropagation(); setActiveTooltipOrderId(null); setBreakdown(null); }}
-            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', padding: '0 4px', opacity: 0.6 }}
-          >
-            ✖
-          </button>
-        </div>
-        <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
-          {breakdown.map((item, i) => (
-            <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
-                <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
-                <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-            <span>Landed Total:</span>
-            <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
-            <span>Pkg Total:</span>
-            <span>Rs {totalPkg.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // CostBreakdownTooltip moved to file level
 
   // Relocated to SearchTool.jsx for Optimistic UI updates
 
@@ -752,6 +763,9 @@ export default function OrderTable({
                   user={user} statusUpdatingId={statusUpdatingId} handleManualStatusChange={handleManualStatusChange}
                   ERP_STATUSES={ERP_STATUSES} getStatusColor={getStatusColor}
                   activeShopDomain={localStorage.getItem('trace_active_shop')}
+                  breakdown={breakdown}
+                  loadingBreakdown={loadingBreakdown}
+                  setBreakdown={setBreakdown}
                 />
               )
             })}
