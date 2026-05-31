@@ -464,11 +464,7 @@ const OrderRow = React.memo(({
   );
 }, (prev, next) => {
   // Custom equality check for fast rendering
-  return prev.o.id === next.o.id &&
-         prev.o.delivery_status === next.o.delivery_status &&
-         prev.o.tracking_number === next.o.tracking_number &&
-         prev.o.last_wa_direction === next.o.last_wa_direction &&
-         prev.o.last_wa_status === next.o.last_wa_status &&
+  return prev.o === next.o &&
          prev.isSelected === next.isSelected &&
          prev.statusUpdatingId === next.statusUpdatingId &&
          prev.bookingId === next.bookingId &&
