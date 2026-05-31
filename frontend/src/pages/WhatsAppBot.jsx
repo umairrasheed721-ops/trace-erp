@@ -1270,7 +1270,6 @@ export default function WhatsAppBot() {
               </div>
             </div>
           )}
-          )}
 
           {/* ── Sub-Tab: Usage & Quota ── */}
           {activeSubTabG === 'usage' && (() => {
