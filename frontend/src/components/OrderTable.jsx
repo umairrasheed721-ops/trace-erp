@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
@@ -49,13 +50,95 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
   )
 }
 
+// Wrapper component to handle React Portal positioning and boundary checking dynamically via fixed positioning
+const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose }) => {
+  const [coords, setCoords] = useState({ top: 0, left: 0, visible: false })
+  const tooltipRef = useRef(null)
+
+  const updatePosition = useCallback(() => {
+    if (!triggerEl || !tooltipRef.current) return
+    
+    const triggerRect = triggerEl.getBoundingClientRect()
+    const tooltipHeight = tooltipRef.current.offsetHeight
+    const tooltipWidth = 260
+    
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+    
+    // Default to positioning above the button
+    let top = triggerRect.top - tooltipHeight - 8
+    
+    // If it overflows the top of the viewport, position it below the button
+    if (top < 10) {
+      top = triggerRect.bottom + 8
+      
+      // If it also overflows the bottom of the viewport, constrain it
+      if (top + tooltipHeight > viewportHeight - 10) {
+        const spaceAbove = triggerRect.top
+        const spaceBelow = viewportHeight - triggerRect.bottom
+        if (spaceAbove > spaceBelow) {
+          top = Math.max(10, triggerRect.top - tooltipHeight - 8)
+        } else {
+          top = Math.min(viewportHeight - tooltipHeight - 10, triggerRect.bottom + 8)
+        }
+      }
+    }
+
+    // Align right edge of tooltip with right edge of button
+    let left = triggerRect.right - tooltipWidth
+    
+    // Ensure the tooltip doesn't overflow the screen boundaries horizontally
+    if (left < 10) left = 10
+    if (left + tooltipWidth > viewportWidth - 10) {
+      left = viewportWidth - tooltipWidth - 10
+    }
+
+    setCoords({ top, left, visible: true })
+  }, [triggerEl])
+
+  useLayoutEffect(() => {
+    updatePosition()
+    
+    window.addEventListener('resize', updatePosition, { passive: true })
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true })
+    
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, { capture: true })
+    }
+  }, [updatePosition, loadingBreakdown, breakdown])
+
+  return (
+    <div 
+      ref={tooltipRef}
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        width: 260,
+        zIndex: 999999,
+        visibility: coords.visible ? 'visible' : 'hidden',
+        opacity: coords.visible ? 1 : 0,
+        transition: 'opacity 0.15s ease',
+        pointerEvents: 'auto'
+      }}
+    >
+      <CostBreakdownTooltip 
+        loadingBreakdown={loadingBreakdown}
+        breakdown={breakdown}
+        onClose={onClose}
+      />
+    </div>
+  )
+}
+
 const OrderRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
   handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getPhoneOrderCount,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
-  activeShopDomain, breakdown, loadingBreakdown, setBreakdown
+  activeShopDomain, setTooltipTriggerEl
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
@@ -463,7 +546,9 @@ const OrderRow = React.memo(({
                               if (String(activeTooltipOrderId) === String(o.id)) {
                                 setActiveTooltipOrderId(null);
                                 setBreakdown(null);
+                                setTooltipTriggerEl(null);
                               } else {
+                                setTooltipTriggerEl(e.currentTarget);
                                 setActiveTooltipOrderId(o.id);
                                 fetchBreakdown(o.id);
                               }
@@ -479,13 +564,6 @@ const OrderRow = React.memo(({
                             ℹ️
                           </button>
                         </div>
-                        {String(activeTooltipOrderId) === String(o.id) && (
-                          <CostBreakdownTooltip 
-                            loadingBreakdown={loadingBreakdown}
-                            breakdown={breakdown}
-                            onClose={() => { setActiveTooltipOrderId(null); setBreakdown(null); }}
-                          />
-                        )}
                       </td>
                     ) : null
                     if (col.id === 'profit') {
@@ -519,8 +597,6 @@ const OrderRow = React.memo(({
          prev.statusUpdatingId === next.statusUpdatingId &&
          prev.bookingId === next.bookingId &&
          prev.activeTooltipOrderId === next.activeTooltipOrderId &&
-         prev.breakdown === next.breakdown &&
-         prev.loadingBreakdown === next.loadingBreakdown &&
          prev.cols === next.cols;
 });
 export default function OrderTable({
@@ -610,6 +686,7 @@ export default function OrderTable({
   const [hoveredOrderId, setHoveredOrderId] = useState(null)
   const [breakdown, setBreakdown] = useState(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
+  const [tooltipTriggerEl, setTooltipTriggerEl] = useState(null)
 
   // Memoize derived arrays/functions to avoid new refs on every render
   const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
@@ -763,9 +840,7 @@ export default function OrderTable({
                   user={user} statusUpdatingId={statusUpdatingId} handleManualStatusChange={handleManualStatusChange}
                   ERP_STATUSES={ERP_STATUSES} getStatusColor={getStatusColor}
                   activeShopDomain={localStorage.getItem('trace_active_shop')}
-                  breakdown={breakdown}
-                  loadingBreakdown={loadingBreakdown}
-                  setBreakdown={setBreakdown}
+                  setTooltipTriggerEl={setTooltipTriggerEl}
                 />
               )
             })}
@@ -822,17 +897,24 @@ export default function OrderTable({
           </div>
         </div>
       )}
+      
+      {/* Cost Breakdown Tooltip Portal */}
+      {activeTooltipOrderId && tooltipTriggerEl && createPortal(
+        <TooltipPortalWrapper
+          triggerEl={tooltipTriggerEl}
+          loadingBreakdown={loadingBreakdown}
+          breakdown={breakdown}
+          onClose={() => { setActiveTooltipOrderId(null); setBreakdown(null); setTooltipTriggerEl(null); }}
+        />,
+        document.body
+      )}
+
       <style>{`
         .cost-tooltip {
-          position: absolute;
-          bottom: 100%;
-          right: 0;
           background: #1a1a1a;
           border: 1px solid rgba(255,255,255,0.15);
           width: 260px;
           border-radius: 10px;
-          z-index: 1000;
-          margin-bottom: 8px;
           box-shadow: 0 12px 30px rgba(0,0,0,0.5);
           animation: tooltipFade 0.2s ease;
           overflow: hidden;
