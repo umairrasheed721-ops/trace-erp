@@ -47,6 +47,7 @@ export default function WhatsAppBot() {
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('')
   const [customerMemory, setCustomerMemory] = useState([])
   const [loadingMemory, setLoadingMemory] = useState(false)
+  const [showMemoryModal, setShowMemoryModal] = useState(false)
   const [triggeringAudit, setTriggeringAudit] = useState(false)
 
   // --- SIMULATION SANDBOX STATE ---
@@ -257,6 +258,7 @@ export default function WhatsAppBot() {
     setSelectedCustomerPhone(phone)
     setLoadingMemory(true)
     setCustomerMemory([])
+    setShowMemoryModal(true)
     try {
       const res = await fetch(`/api/whatsapp-governance/gemini/memory/${phone}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
@@ -265,7 +267,6 @@ export default function WhatsAppBot() {
       if (data.success) {
         setCustomerMemory(data.memory || [])
       } else if (res.status === 404) {
-        // Customer has a profile but no memory yet — show empty panel (not an error)
         setCustomerMemory([])
       } else {
         addToast(data.error || 'Failed to load customer chat memory', 'error')
@@ -1035,70 +1036,130 @@ export default function WhatsAppBot() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <div>
                 <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🗂️ Enriched Customer Profiles & Conversational Memory</h4>
-                <p className="text-muted" style={{ fontSize: '0.85rem' }}>Inspect long-term preferences, sizing traits, and multi-turn chat history extracted autonomously by Gemini.</p>
+                <p className="text-muted" style={{ fontSize: '0.85rem' }}>Inspect long-term preferences, sizing traits, and multi-turn chat history extracted autonomously by Gemini. Click <strong>View Memory</strong> on any customer to open their conversation history.</p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left: Customer Profiles Table */}
-                <div className="lg:col-span-2" style={{ maxHeight: 500, overflowY: 'auto', background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)' }}>
-                  <table className="w-full" style={{ fontSize: '0.85rem' }}>
-                    <thead style={{ background: 'var(--bg-header)', position: 'sticky', top: 0, zIndex: 10 }}>
+              {/* Full-width Customer Profiles Table */}
+              <div style={{ overflowX: 'auto', background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)' }}>
+                <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: 'var(--bg-header)', position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800, whiteSpace: 'nowrap' }}>Phone</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800, whiteSpace: 'nowrap' }}>Customer Name</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Extracted Preferences</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800, whiteSpace: 'nowrap' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {geminiProfiles.length === 0 ? (
                       <tr>
-                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Phone</th>
-                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Customer Name</th>
-                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Extracted Preferences</th>
-                        <th style={{ padding: '14px 20px', textAlign: 'left', fontWeight: 800 }}>Action</th>
+                        <td colSpan={4} style={{ padding: 40, textAlign: 'center', opacity: 0.5 }}>No customer profiles found yet. Profiles are built as customers chat with the bot.</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {geminiProfiles.map((p, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-dim)' }}>
-                          <td style={{ padding: '14px 20px', fontWeight: 800 }}>+{p.phone}</td>
-                          <td style={{ padding: '14px 20px', fontWeight: 700 }}>
-                            {p.customer_name || 'Customer'}
-                            {p.vip_status === 1 && <span style={{ marginLeft: 8, background: 'var(--orange-dim)', color: 'var(--orange)', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 800 }}>👑 VIP</span>}
-                          </td>
-                          <td style={{ padding: '14px 20px', opacity: 0.8, fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.preferences}</td>
-                          <td style={{ padding: '14px 20px' }}>
-                            <button 
-                              className="btn btn-secondary"
-                              onClick={() => handleFetchMemory(p.phone)}
-                              style={{ padding: '6px 14px', fontSize: '0.75rem', fontWeight: 700 }}
-                            >
-                              🔍 View Memory
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    ) : geminiProfiles.map((p, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-dim)', transition: 'background 0.15s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-header)'}
+                        onMouseLeave={e => e.currentTarget.style.background = ''}
+                      >
+                        <td style={{ padding: '14px 20px', fontWeight: 800, whiteSpace: 'nowrap' }}>+{p.phone}</td>
+                        <td style={{ padding: '14px 20px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {p.customer_name || 'Customer'}
+                          {p.vip_status === 1 && <span style={{ marginLeft: 8, background: 'var(--orange-dim)', color: 'var(--orange)', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 800 }}>👑 VIP</span>}
+                        </td>
+                        <td style={{ padding: '14px 20px', opacity: 0.8, fontFamily: 'monospace', fontSize: '0.8rem', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.preferences}</td>
+                        <td style={{ padding: '14px 20px' }}>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => handleFetchMemory(p.phone)}
+                            style={{ padding: '6px 16px', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                          >
+                            🔍 View Memory
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Memory Modal Overlay */}
+          {showMemoryModal && (
+            <div
+              onClick={() => setShowMemoryModal(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 9999,
+                background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 24
+              }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: 'var(--bg-card)', borderRadius: 24, border: '1px solid var(--border)',
+                  width: '100%', maxWidth: 680, maxHeight: '85vh',
+                  display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                  boxShadow: '0 32px 80px rgba(0,0,0,0.6)'
+                }}
+              >
+                {/* Modal Header */}
+                <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-header)', flexShrink: 0 }}>
+                  <div>
+                    <h3 style={{ fontWeight: 800, fontSize: '1.1rem', margin: 0 }}>🧠 Gemini Chat Memory</h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.8rem', opacity: 0.6 }}>+{selectedCustomerPhone} • Last 50 messages</p>
+                  </div>
+                  <button
+                    onClick={() => setShowMemoryModal(false)}
+                    style={{ background: 'var(--bg-active)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 10, padding: '6px 14px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
+                  >
+                    ✕ Close
+                  </button>
                 </div>
 
-                {/* Right: Active Memory Viewer */}
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <h5 style={{ fontWeight: 800, fontSize: '1rem', margin: 0, color: 'var(--primary)' }}>
-                    🧠 Active Chat Memory {selectedCustomerPhone ? `(+${selectedCustomerPhone})` : ''}
-                  </h5>
-                  <div style={{ flex: 1, maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {loadingMemory ? (
-                      <div style={{ textAlign: 'center', opacity: 0.5, padding: 40 }}>⌛ Loading memory buffer...</div>
-                    ) : customerMemory.length > 0 ? (
-                      customerMemory.map((m, idx) => (
-                        <div key={idx} style={{ background: m.role === 'model' ? 'var(--bg-header)' : '#334155', padding: 12, borderRadius: 12, borderLeft: `4px solid ${m.role === 'model' ? 'var(--primary)' : 'var(--green)'}` }}>
-                          <div style={{ fontSize: '0.75rem', fontWeight: 800, opacity: 0.6, marginBottom: 4 }}>
-                            {m.role === 'model' ? '🤖 Gemini AI' : '👤 Customer'} • {m.created_at}
-                          </div>
-                          <div style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{m.content}</div>
+                {/* Modal Body */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {loadingMemory ? (
+                    <div style={{ textAlign: 'center', padding: 60, opacity: 0.5 }}>
+                      <div style={{ fontSize: '2rem', marginBottom: 12 }}>⌛</div>
+                      <div>Loading conversation memory...</div>
+                    </div>
+                  ) : customerMemory.length > 0 ? (
+                    customerMemory.map((m, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: m.role === 'model' ? 'var(--bg-active)' : 'var(--primary-dim, #1e293b)',
+                          padding: '12px 16px', borderRadius: 14,
+                          borderLeft: `4px solid ${m.role === 'model' ? 'var(--primary)' : 'var(--green)'}`,
+                          marginLeft: m.role === 'model' ? 0 : 32
+                        }}
+                      >
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, opacity: 0.55, marginBottom: 6 }}>
+                          {m.role === 'model' ? '🤖 Gemini AI' : '👤 Customer'} &nbsp;•&nbsp; {m.created_at}
                         </div>
-                      ))
-                    ) : (
-                      <div style={{ textAlign: 'center', opacity: 0.5, padding: 40, fontSize: '0.85rem' }}>
-                        {selectedCustomerPhone
-                          ? '💬 No conversation memory found yet for this customer. Memory builds up as they chat with the bot.'
-                          : 'Select a customer from the table to inspect their active Gemini RAG conversational memory buffer.'}
+                        <div style={{ fontSize: '0.88rem', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{m.content}</div>
                       </div>
-                    )}
-                  </div>
+                    ))
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: 60, opacity: 0.5 }}>
+                      <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>💬</div>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>No Memory Found</div>
+                      <div style={{ fontSize: '0.85rem' }}>This customer hasn't chatted with the bot yet, or memory hasn't been recorded.</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-header)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', opacity: 0.5 }}>{customerMemory.length} message{customerMemory.length !== 1 ? 's' : ''} in memory</span>
+                  <button
+                    onClick={() => setShowMemoryModal(false)}
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 20px', fontSize: '0.85rem', fontWeight: 700 }}
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>
