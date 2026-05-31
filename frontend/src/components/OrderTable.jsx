@@ -5,6 +5,33 @@ import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
 
+// Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
+const COLUMN_WIDTHS = {
+  ref_number: 110,
+  order_date: 100,
+  customer_name: 140,
+  phone: 110,
+  address: 240,
+  city: 90,
+  items: 220,
+  tracking_number: 130,
+  courier: 90,
+  courier_status: 120,
+  delivery_status: 120,
+  payment_status: 90,
+  paid_amount: 100,
+  price: 90,
+  cost: 95,
+  profit: 95,
+  order_source: 90,
+  status_date: 120,
+  payment_ref: 140,
+  payment_date: 110,
+  postex_weight: 90,
+  edit: 80,
+  notes: 180
+}
+
 
 // Cost breakdown helper component moved to file level
 const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
@@ -692,6 +719,12 @@ export default function OrderTable({
   const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
   const getPhoneOrderCount = useCallback((phone) => allOrders.filter(o => o.phone === phone).length, [allOrders])
 
+  const totalTableWidth = useMemo(() => {
+    const checkboxWidth = 40;
+    const colsWidth = cols.reduce((sum, col) => sum + (COLUMN_WIDTHS[col.id] || 120), 0);
+    return checkboxWidth + colsWidth;
+  }, [cols]);
+
   const fetchBreakdown = async (orderId) => {
     setLoadingBreakdown(true)
     try {
@@ -729,7 +762,7 @@ export default function OrderTable({
 
   return (
     <>
-      <div className="table-wrapper">
+      <div className="table-wrapper" style={{ minWidth: '100%', width: '100%', overflowX: 'auto' }}>
         <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
@@ -746,10 +779,18 @@ export default function OrderTable({
           )}
         </div>
         
-        <table ref={tableRef} className="draggable-table">
+        <table 
+          ref={tableRef} 
+          className="draggable-table" 
+          style={{ 
+            tableLayout: 'fixed', 
+            width: '100%', 
+            minWidth: totalTableWidth 
+          }}
+        >
           <thead>
             <tr>
-              <th style={{ width: 40, textAlign: 'center' }}>
+              <th style={{ width: 40, minWidth: 40, maxWidth: 40, textAlign: 'center' }}>
                 <input 
                   type="checkbox" 
                   checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
@@ -767,7 +808,16 @@ export default function OrderTable({
                   onDragOver={onDragOver}
                   onDrop={() => onDrop(idx)}
                   onClick={() => handleHeaderSort(col.id)}
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  style={{ 
+                    cursor: 'pointer', 
+                    userSelect: 'none',
+                    width: COLUMN_WIDTHS[col.id] || 120,
+                    minWidth: COLUMN_WIDTHS[col.id] || 120,
+                    maxWidth: COLUMN_WIDTHS[col.id] || 120,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
                 >
                   <div className="flex items-center gap-1">
                     {col.id === 'cost' ? (
@@ -795,11 +845,19 @@ export default function OrderTable({
               ))}
             </tr>
             <tr className="header-search-row">
-              <th style={{ padding: '4px 8px' }}></th>
+              <th style={{ width: 40, minWidth: 40, maxWidth: 40, padding: '4px 8px' }}></th>
               {cols.map(col => {
                 const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
                 return (
-                  <th key={col.id} style={{ padding: '4px 8px' }}>
+                  <th 
+                    key={col.id} 
+                    style={{ 
+                      padding: '4px 8px',
+                      width: COLUMN_WIDTHS[col.id] || 120,
+                      minWidth: COLUMN_WIDTHS[col.id] || 120,
+                      maxWidth: COLUMN_WIDTHS[col.id] || 120,
+                    }}
+                  >
                     {isFiltered && (
                       <input 
                         className="header-search-input"

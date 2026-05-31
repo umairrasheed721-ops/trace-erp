@@ -17,7 +17,7 @@ export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
       <textarea
         ref={inputRef}
         className="form-textarea"
-        style={{ fontSize: '0.72rem', minHeight: 60, width: 220 }}
+        style={{ fontSize: '0.72rem', minHeight: 60, width: '100%', boxSizing: 'border-box' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
@@ -77,7 +77,7 @@ export const CityCell = React.memo(function CityCell({ order, onSave }) {
         ref={inputRef}
         type="text"
         className="form-input"
-        style={{ fontSize: '0.72rem', width: 120, padding: '2px 4px' }}
+        style={{ fontSize: '0.72rem', width: '100%', boxSizing: 'border-box', padding: '2px 4px' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
@@ -114,7 +114,7 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
       <input
         type="number"
         className="form-input"
-        style={{ width: 80, fontSize: '0.72rem', padding: '2px 4px' }}
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.72rem', padding: '2px 4px' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
@@ -146,7 +146,7 @@ export const CourierFeeCell = React.memo(function CourierFeeCell({ order, onSave
       <input
         type="number"
         className="form-input"
-        style={{ width: 70, fontSize: '0.72rem', padding: '2px 4px' }}
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.72rem', padding: '2px 4px' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
@@ -178,7 +178,7 @@ export const CostCell = React.memo(function CostCell({ order, onSave }) {
       <input
         type="number"
         className="form-input"
-        style={{ width: 70, fontSize: '0.72rem', padding: '2px 4px' }}
+        style={{ width: '100%', boxSizing: 'border-box', fontSize: '0.72rem', padding: '2px 4px' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
@@ -209,7 +209,7 @@ export const NoteCell = React.memo(function NoteCell({ order, onSave }) {
     return (
       <textarea
         className="form-textarea"
-        style={{ fontSize: '0.72rem', minHeight: 60, width: 180 }}
+        style={{ fontSize: '0.72rem', minHeight: 60, width: '100%', boxSizing: 'border-box' }}
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
