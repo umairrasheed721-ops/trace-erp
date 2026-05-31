@@ -965,6 +965,20 @@ function runMigrations(db) {
   // Feature 10: Receipt OCR Payment Scanner
   try { db.exec(`CREATE TABLE IF NOT EXISTS payment_ocr_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, phone TEXT NOT NULL, image_path TEXT, raw_ocr_result TEXT, detected_amount REAL, detected_txn_id TEXT, detected_bank TEXT, confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', scanned_at TEXT DEFAULT (datetime('now', '+5 hours')))`); } catch(e){}
 
+  // Gemini Usage Tracker
+  try { db.exec(`CREATE TABLE IF NOT EXISTS gemini_usage_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT,
+    direction TEXT DEFAULT 'outbound',
+    status TEXT DEFAULT 'success',
+    model TEXT DEFAULT 'gemini-2.5-flash',
+    tool_called TEXT DEFAULT NULL,
+    error_msg TEXT DEFAULT NULL,
+    response_ms INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+  )`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_usage_created ON gemini_usage_logs(created_at DESC)`); } catch(e){}
+
   // Phase 4/5: Final Sweep Database Migrations
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN quote_context TEXT DEFAULT NULL`); } catch(e){}

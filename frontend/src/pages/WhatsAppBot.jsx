@@ -44,6 +44,7 @@ export default function WhatsAppBot() {
   })
   const [geminiProfiles, setGeminiProfiles] = useState([])
   const [geminiAuditLogs, setGeminiAuditLogs] = useState([])
+  const [geminiUsage, setGeminiUsage] = useState(null)
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('')
   const [customerMemory, setCustomerMemory] = useState([])
   const [loadingMemory, setLoadingMemory] = useState(false)
@@ -87,13 +88,14 @@ export default function WhatsAppBot() {
 
   const fetchData = async () => {
     try {
-      const [statusRes, queueRes, settingsRes, gemSetRes, gemProfRes, gemAudRes] = await Promise.all([
+      const [statusRes, queueRes, settingsRes, gemSetRes, gemProfRes, gemAudRes, gemUsageRes] = await Promise.all([
         fetch('/api/whatsapp/status', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
         fetch('/api/whatsapp-governance/queue', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
         fetch('/api/whatsapp-governance/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
         fetch('/api/whatsapp-governance/gemini/settings', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
         fetch('/api/whatsapp-governance/gemini/profiles', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
-        fetch('/api/whatsapp-governance/gemini/audit-logs', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
+        fetch('/api/whatsapp-governance/gemini/audit-logs', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }),
+        fetch('/api/whatsapp-governance/gemini/usage-stats', { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } })
       ])
       
       if (statusRes.ok) setStatus(await statusRes.json())
@@ -113,6 +115,10 @@ export default function WhatsAppBot() {
       if (gemAudRes.ok) {
         const ga = await gemAudRes.json()
         if (ga?.logs) setGeminiAuditLogs(ga.logs)
+      }
+      if (gemUsageRes.ok) {
+        const gu = await gemUsageRes.json()
+        if (gu?.success) setGeminiUsage(gu)
       }
       setLoading(false)
     } catch (err) {
@@ -879,6 +885,7 @@ export default function WhatsAppBot() {
               { id: 'profiles', label: '🗂️ Customer Profiles & Memory' },
               { id: 'tools', label: '🛠️ Tool Calling & Capabilities' },
               { id: 'audit', label: '🌙 Nightly Self-Learning Audit' },
+              { id: 'usage', label: '📊 Usage & Quota' },
             ].map(sub => (
               <button
                 key={sub.id}
@@ -1263,7 +1270,156 @@ export default function WhatsAppBot() {
               </div>
             </div>
           )}
+          )}
+
+          {/* ── Sub-Tab: Usage & Quota ── */}
+          {activeSubTabG === 'usage' && (() => {
+            const u = geminiUsage;
+            const today = u?.today || { total: 0, success: 0, errors: 0, avg_response_ms: 0, daily_limit: 1500, percent_used: 0 };
+            const hourly = u?.hourly || Array.from({ length: 24 }, (_, i) => ({ hour: i, calls: 0 }));
+            const recentLogs = u?.recentLogs || [];
+            const toolBreakdown = u?.toolBreakdown || [];
+            const maxHourlyCalls = Math.max(...hourly.map(h => h.calls), 1);
+            const isWarning = today.percent_used >= 70;
+            const isCritical = today.percent_used >= 90;
+            const barColor = isCritical ? 'var(--red, #ef4444)' : isWarning ? 'var(--orange, #f97316)' : 'var(--primary)';
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>📊 Gemini API Usage & Quota</h4>
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>Live tracking of your Gemini API calls. Free tier: <strong>1,500 requests/day</strong> · <strong>15 requests/minute</strong>.</p>
+                  </div>
+                  {isCritical && (
+                    <div style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 700, color: '#ef4444' }}>
+                      ⚠️ CRITICAL — {today.percent_used}% of daily quota used!
+                    </div>
+                  )}
+                  {isWarning && !isCritical && (
+                    <div style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid #f97316', borderRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 700, color: '#f97316' }}>
+                      ⚠️ WARNING — {today.percent_used}% of daily quota used
+                    </div>
+                  )}
+                </div>
+
+                {/* Quota Progress Bar */}
+                <div style={{ background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)', padding: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Daily Quota Used</span>
+                    <span style={{ fontWeight: 800, fontSize: '0.95rem', color: barColor }}>{today.total} / {today.daily_limit} calls ({today.percent_used}%)</span>
+                  </div>
+                  <div style={{ background: 'var(--bg-header)', borderRadius: 999, height: 18, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 999,
+                      width: `${Math.min(today.percent_used, 100)}%`,
+                      background: `linear-gradient(90deg, ${barColor}, ${isCritical ? '#dc2626' : isWarning ? '#ea580c' : '#4f46e5'})`,
+                      transition: 'width 0.6s ease',
+                      boxShadow: `0 0 12px ${barColor}55`
+                    }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.75rem', opacity: 0.5 }}>
+                    <span>Resets at midnight UTC</span>
+                    <span>{today.daily_limit - today.total} calls remaining today</span>
+                  </div>
+                </div>
+
+                {/* Stats Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+                  {[
+                    { label: 'Total Today', value: today.total, icon: '🔢', color: 'var(--primary)' },
+                    { label: 'Successful', value: today.success, icon: '✅', color: 'var(--green)' },
+                    { label: 'Errors', value: today.errors, icon: '❌', color: 'var(--red, #ef4444)' },
+                    { label: 'Avg Response', value: `${today.avg_response_ms}ms`, icon: '⚡', color: 'var(--orange, #f97316)' },
+                  ].map((stat, i) => (
+                    <div key={i} style={{ background: 'var(--bg-active)', borderRadius: 16, border: '1px solid var(--border)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={{ fontSize: '1.5rem' }}>{stat.icon}</span>
+                      <span style={{ fontSize: '1.6rem', fontWeight: 900, color: stat.color }}>{stat.value}</span>
+                      <span style={{ fontSize: '0.75rem', opacity: 0.6, fontWeight: 600 }}>{stat.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Hourly Call Chart */}
+                <div style={{ background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)', padding: 24 }}>
+                  <h5 style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 20 }}>📈 Calls Per Hour — Today</h5>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100, overflowX: 'auto' }}>
+                    {hourly.map((h, i) => {
+                      const heightPct = maxHourlyCalls > 0 ? (h.calls / maxHourlyCalls) * 100 : 0;
+                      const now = new Date().getHours();
+                      const isNow = h.hour === now;
+                      return (
+                        <div key={i} title={`${h.hour}:00 — ${h.calls} calls`} style={{ flex: 1, minWidth: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                          <div style={{
+                            width: '100%', borderRadius: '4px 4px 0 0',
+                            height: `${Math.max(heightPct, h.calls > 0 ? 8 : 2)}%`,
+                            background: isNow ? 'var(--primary)' : h.calls > 0 ? '#4f46e580' : 'var(--bg-header)',
+                            transition: 'height 0.4s ease',
+                            boxShadow: isNow ? '0 0 8px var(--primary)' : 'none'
+                          }} />
+                          {i % 4 === 0 && <span style={{ fontSize: '0.6rem', opacity: 0.4 }}>{h.hour}h</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tool Breakdown + Recent Logs side by side */}
+                <div style={{ display: 'grid', gridTemplateColumns: toolBreakdown.length > 0 ? '1fr 2fr' : '1fr', gap: 16 }}>
+                  {toolBreakdown.length > 0 && (
+                    <div style={{ background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)', padding: 24 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '0.9rem', marginBottom: 16 }}>🛠️ Tool Calls Today</h5>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {toolBreakdown.map((t, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-header)', borderRadius: 10 }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{t.tool_called}</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 900, color: 'var(--primary)' }}>{t.count}x</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent Logs */}
+                  <div style={{ background: 'var(--bg-active)', borderRadius: 20, border: '1px solid var(--border)', overflowX: 'auto' }}>
+                    <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '0.9rem', margin: 0 }}>📋 Last 50 API Calls</h5>
+                    </div>
+                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                      <thead style={{ background: 'var(--bg-header)' }}>
+                        <tr>
+                          <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800 }}>Time</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800 }}>Phone</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800 }}>Status</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800 }}>Tool</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 800 }}>Speed</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentLogs.length === 0 ? (
+                          <tr><td colSpan={5} style={{ padding: 30, textAlign: 'center', opacity: 0.4 }}>No API calls logged yet. Calls appear here as customers message the bot.</td></tr>
+                        ) : recentLogs.map((log, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-dim)' }}>
+                            <td style={{ padding: '10px 14px', opacity: 0.6, whiteSpace: 'nowrap' }}>{log.created_at?.slice(11, 19)}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.78rem' }}>+{log.phone || '—'}</td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800, background: log.status === 'success' ? 'var(--green-dim)' : 'rgba(239,68,68,0.15)', color: log.status === 'success' ? 'var(--green)' : '#ef4444' }}>
+                                {log.status === 'success' ? '✅ OK' : '❌ ERR'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 14px', opacity: 0.7, fontSize: '0.75rem' }}>{log.tool_called || '—'}</td>
+                            <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.75rem', color: log.response_ms > 3000 ? 'var(--orange)' : 'var(--green)' }}>{log.response_ms > 0 ? `${log.response_ms}ms` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
+
       )}
     </div>
   )

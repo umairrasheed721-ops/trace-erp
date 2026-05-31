@@ -1,5 +1,12 @@
 const { db } = require('../db');
 
+function logGeminiUsage({ phone = null, status = 'success', model = 'gemini-2.5-flash', toolCalled = null, errorMsg = null, responseMs = 0 }) {
+  try {
+    db.prepare(`INSERT INTO gemini_usage_logs (phone, status, model, tool_called, error_msg, response_ms) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(phone, status, model, toolCalled, errorMsg, responseMs);
+  } catch(e) { /* silent */ }
+}
+
 function resolveModelName(modelName) {
   const map = {
     'gemini-1.5-flash': 'gemini-2.5-flash',
@@ -306,6 +313,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
       tools: geminiTools
     };
 
+    const _startMs = Date.now();
     console.log(`🚀 Sending prompt to Gemini (${model})...`);
     let res = await fetch(url, {
       method: 'POST',
@@ -382,6 +390,10 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
 
     console.log(`🤖 Gemini AI Reply to ${cleanedPhone}: ${replyText}`);
 
+    // Log usage
+    const toolName = part?.functionCall?.name || null;
+    logGeminiUsage({ phone: cleanedPhone, status: 'success', model, toolCalled: toolName, responseMs: Date.now() - _startMs });
+
     // --- 📏 SIZE EXTRACTOR (Post-AI, fire-and-forget) ---
     setImmediate(() => extractSizeFromMessage(cleanedPhone, userMessage));
 
@@ -392,6 +404,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
 
   } catch (err) {
     console.error('❌ generateAIResponse error:', err.message);
+    try { logGeminiUsage({ phone: cleanedPhone, status: 'error', errorMsg: err.message }); } catch(_){}
     return null;
   }
 }

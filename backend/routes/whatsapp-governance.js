@@ -1333,6 +1333,75 @@ router.get('/gemini/memory/:phone', (req, res) => {
   }
 });
 
+// GET /api/whatsapp-governance/gemini/usage-stats
+router.get('/gemini/usage-stats', (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Total calls today
+    const todayStats = db.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count,
+        ROUND(AVG(response_ms)) as avg_response_ms
+      FROM gemini_usage_logs 
+      WHERE created_at LIKE ?
+    `).get(`${today}%`) || {};
+
+    // Hourly breakdown for today (24 hours)
+    const hourly = db.prepare(`
+      SELECT 
+        CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        COUNT(*) as calls
+      FROM gemini_usage_logs
+      WHERE created_at LIKE ?
+      GROUP BY hour
+      ORDER BY hour ASC
+    `).all(`${today}%`) || [];
+
+    // Fill all 24 hours with 0s
+    const hourlyFull = Array.from({ length: 24 }, (_, i) => {
+      const found = hourly.find(h => h.hour === i);
+      return { hour: i, calls: found ? found.calls : 0 };
+    });
+
+    // Last 50 logs
+    const recentLogs = db.prepare(`
+      SELECT id, phone, status, model, tool_called, error_msg, response_ms, created_at
+      FROM gemini_usage_logs
+      ORDER BY id DESC
+      LIMIT 50
+    `).all() || [];
+
+    // Tool usage breakdown
+    const toolBreakdown = db.prepare(`
+      SELECT tool_called, COUNT(*) as count
+      FROM gemini_usage_logs
+      WHERE created_at LIKE ? AND tool_called IS NOT NULL
+      GROUP BY tool_called
+      ORDER BY count DESC
+    `).all(`${today}%`) || [];
+
+    res.json({
+      success: true,
+      today: {
+        total: todayStats.total || 0,
+        success: todayStats.success_count || 0,
+        errors: todayStats.error_count || 0,
+        avg_response_ms: todayStats.avg_response_ms || 0,
+        daily_limit: 1500,
+        percent_used: Math.round(((todayStats.total || 0) / 1500) * 100)
+      },
+      hourly: hourlyFull,
+      recentLogs,
+      toolBreakdown
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/whatsapp-governance/gemini/audit-logs
 router.get('/gemini/audit-logs', (req, res) => {
   try {
