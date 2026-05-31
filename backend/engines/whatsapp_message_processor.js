@@ -1060,12 +1060,21 @@ async function processIncomingMessage(bot, msg, sock, db) {
   if (!text && !mediaDetails && !msg.message) return;
 
   const isOutgoing = msg.key.fromMe;
+  // Calculate message age — used to skip processing of historical messages replayed by Baileys on restart
+  const msgAgeMs = Date.now() - (Number(msg.messageTimestamp) * 1000);
+  const isHistoric = msgAgeMs > 60000;
 
   let tag = 'General';
-  if (!isOutgoing && text) {
+  if (!isOutgoing && !isHistoric && text) {
     tag = await analyzeCustomerIntent(text);
   }
   msg.intent_tag = tag;
+
+  // Skip all further processing for historic messages replayed by Baileys on restart
+  if (isHistoric && !isOutgoing) {
+    console.log(`📜 [HISTORIC_SKIP] Ignoring old incoming message (${Math.round(msgAgeMs/1000)}s ago) from ${fromPhone}.`);
+    return;
+  }
 
   if (!isOutgoing && fromPhone) {
     bot.contactLastIncomingTimestamp[fromPhone] = Date.now();
@@ -1189,9 +1198,8 @@ async function processIncomingMessage(bot, msg, sock, db) {
     }
 
     // Ignore historical messages replayed by Baileys after restart (older than 60 seconds)
-    const msgAge = Date.now() - (Number(msg.messageTimestamp) * 1000);
-    if (msgAge > 60000) {
-      console.log(`📜 [HISTORIC] Skipping old outgoing message (${Math.round(msgAge/1000)}s ago) for ${fromPhone}. Not a human message.`);
+    if (isHistoric) {
+      console.log(`📜 [HISTORIC] Skipping old outgoing message (${Math.round(msgAgeMs/1000)}s ago) for ${fromPhone}. Not a human message.`);
       return;
     }
 
