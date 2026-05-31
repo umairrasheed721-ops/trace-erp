@@ -153,6 +153,7 @@ class WhatsAppBot {
     // --- 🤖 MODULE 5: AUTO-RESPONSE STUDIO ---
     this.humanHandoffContacts = new Set(); // phones currently in human-intervention mode
     this.consecutiveBotReplies = {};       // phone -> count of consecutive bot replies without a human reply
+    this._botSentIds = new Set();          // message IDs sent by the bot itself (to detect echoes)
 
     // --- ⚡ FIX: HIGH-PRIORITY QUEUE (active chat sessions jump the bulk queue) ---
     this.priorityQueue = [];   // Messages from live agent sessions or active incoming chats
@@ -934,6 +935,9 @@ class WhatsAppBot {
       } catch (e) {}
 
       const messageId = sentMsg?.key?.id || uuid;
+      // Track this ID so the echo back from WhatsApp is identified as a bot message, not human
+      this._botSentIds.add(messageId);
+      setTimeout(() => this._botSentIds.delete(messageId), 30000); // auto-cleanup after 30s
       this.hourlyCount++;
       console.log(`✉️ [DIRECT] Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
       this._addAuditLog(cleaned, 'Sent', '');

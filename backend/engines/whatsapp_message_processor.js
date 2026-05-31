@@ -1180,17 +1180,26 @@ async function processIncomingMessage(bot, msg, sock, db) {
   }
 
   if (isOutgoing) {
+    // Check if this outgoing echo was sent by the bot itself (not a human)
+    const isBotEcho = bot._botSentIds && bot._botSentIds.has(msg.key.id);
+    if (isBotEcho) {
+      // This is our own bot reply echoed back — just save to DB for display, do NOT lock
+      bot._botSentIds.delete(msg.key.id);
+      console.log(`🤖 [BOT_ECHO] Skipping handoff lock for bot's own message echo to ${fromPhone}.`);
+      return;
+    }
+    // This is a real human (staff) manually sending from WhatsApp — apply cooldown
     bot.humanCooldowns[fromPhone] = Date.now();
-    console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 30 mins.`);
+    console.log(`👤 Human manual message detected for ${fromPhone}. Bot auto-replies paused for 2 mins.`);
     
-    const until = Date.now() + 15 * 60 * 1000;
+    const until = Date.now() + 2 * 60 * 1000;
     try {
       db.prepare(`
         INSERT INTO customer_profiles (phone, human_handoff_until, updated_at)
         VALUES (?, ?, datetime('now'))
         ON CONFLICT(phone) DO UPDATE SET human_handoff_until = ?, updated_at = datetime('now')
       `).run(fromPhone, String(until), String(until));
-      console.log(`🧑 [HANDOFF_LOCK] Set 15-minute handoff lock in DB for ${fromPhone} due to outgoing human message.`);
+      console.log(`🧑 [HANDOFF_LOCK] Set 2-minute handoff lock in DB for ${fromPhone} due to human manual message.`);
     } catch (e) {
       console.error('⚠️ Failed to set human handoff lock in DB:', e.message);
     }
