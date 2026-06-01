@@ -329,7 +329,7 @@ export default function WhatsAppPortal() {
     { cmd: '/risk', label: '🚩 Risk Flag', desc: 'View/set customer risk profile', action: () => { setShowSlashMenu(false); updateInputText(''); } },
   ];
 
-  const templateSlashCommands = quickReplies.map(t => {
+  const templateSlashCommands = (quickReplies || []).map(t => {
     const code = '/' + t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^\/|\/$)/g, '');
     return {
       cmd: code,
@@ -356,6 +356,7 @@ export default function WhatsAppPortal() {
   const cmdPaletteInputRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const inputRef = useRef(null)
+  const lastWsActivityRef = useRef(Date.now())
   
   // --- FETCH CHATS ---
   const fetchChats = async (silent = false) => {
@@ -524,7 +525,13 @@ export default function WhatsAppPortal() {
   // --- WEBSOCKET CLIENT CONFIGURATION ---
   const connectWebSocket = () => {
     if (wsRef.current) {
-      wsRef.current.close()
+      wsRef.current.onclose = null
+      wsRef.current.onerror = null
+      wsRef.current.onmessage = null
+      wsRef.current.onopen = null
+      try {
+        wsRef.current.close()
+      } catch (e) {}
     }
 
     const token = localStorage.getItem('trace_token')
@@ -540,9 +547,15 @@ export default function WhatsAppPortal() {
     socket.onopen = () => {
       console.log('🔌 WhatsApp Portal connected to WS')
       setWsStatus('CONNECTED')
+      if (lastWsActivityRef.current !== undefined) {
+        lastWsActivityRef.current = Date.now()
+      }
     }
 
     socket.onmessage = (event) => {
+      if (lastWsActivityRef.current !== undefined) {
+        lastWsActivityRef.current = Date.now()
+      }
       try {
         const payload = JSON.parse(event.data)
         const { event: wsEvent, data } = payload
@@ -611,7 +624,7 @@ export default function WhatsAppPortal() {
                 const msgIdMatch = (newMsg.message_id && (m.message_id === newMsg.message_id || m.id === newMsg.message_id));
                 
                 if (uuidMatch || idMatch || msgIdMatch) return true;
-
+ 
                 // Fallback Match (Aggressive Content + Time check)
                 if (m.direction === 'outgoing' && newMsg.direction === 'outgoing') {
                   const contentMatch = (m.message && newMsg.message && m.message.trim() === newMsg.message.trim());
@@ -1247,7 +1260,16 @@ export default function WhatsAppPortal() {
     // Setup heartbeat ping loop
     const pingInterval = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'ping' }))
+        try {
+          wsRef.current.send(JSON.stringify({ type: 'ping' }))
+        } catch (e) {}
+      }
+
+      // Check for half-open connection (no server response/activity for 60 seconds)
+      const lastActivity = lastWsActivityRef.current || 0
+      if (Date.now() - lastActivity > 60000) {
+        console.warn('⚠️ No WebSocket activity for 60s (half-open connection). Reconnecting...')
+        connectWebSocket()
       }
     }, 30000)
 

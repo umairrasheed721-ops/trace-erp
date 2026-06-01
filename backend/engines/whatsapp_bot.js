@@ -838,41 +838,59 @@ class WhatsAppBot {
             };
             const resolvedPath = getSecureMediaPath(path.basename(mediaUrl)) || (fs.existsSync(path.resolve(mediaUrl)) ? path.resolve(mediaUrl) : null);
             if (!resolvedPath) {
-              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${mediaUrl}`);
-              throw new Error('[FFMPEG_ENCODE] Source audio file not found');
-            }
-            const absInputPath = resolvedPath;
-            let transcodeOutputPath = null;
-            let finalAudioBuffer;
-            let finalMime = 'audio/ogg; codecs=opus';
+              console.warn(`${FFMPEG_TAG} [DIRECT] SOURCE_MISSING local path for=${mediaUrl}. Falling back to URL payload.`);
+              payload = {
+                audio: { url: mediaUrl },
+                ptt: true,
+                mimetype: 'audio/mp4'
+              };
+            } else {
+              const absInputPath = resolvedPath;
+              let transcodeOutputPath = null;
+              let finalAudioBuffer = null;
+              let finalMime = 'audio/ogg; codecs=opus';
 
-            const inputSizeBytes = fs.statSync(absInputPath).size;
-            console.log(`${FFMPEG_TAG} [DIRECT] INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
-
-            try {
-              const result = await transcodeToOpus(absInputPath);
-              transcodeOutputPath = result.outputPath;
-              const outStat = fs.statSync(transcodeOutputPath);
-              console.log(`${FFMPEG_TAG} [DIRECT] OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
-              finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
-              if (finalAudioBuffer.length < 100) {
-                throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
+              try {
+                const inputSizeBytes = fs.statSync(absInputPath).size;
+                console.log(`${FFMPEG_TAG} [DIRECT] INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
+                const result = await transcodeToOpus(absInputPath);
+                transcodeOutputPath = result.outputPath;
+                const outStat = fs.statSync(transcodeOutputPath);
+                console.log(`${FFMPEG_TAG} [DIRECT] OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
+                finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
+                if (finalAudioBuffer.length < 100) {
+                  throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
+                }
+              } catch (transcodeErr) {
+                console.error(`${FFMPEG_TAG} [DIRECT] TRANSCODE_FAIL  error=${transcodeErr.message}`);
+                try {
+                  finalAudioBuffer = fs.readFileSync(absInputPath);
+                  finalMime = 'audio/mp4';
+                  console.warn(`${FFMPEG_TAG} [DIRECT] FALLBACK  sending raw file with mime=audio/mp4`);
+                } catch (readErr) {
+                  console.error(`${FFMPEG_TAG} [DIRECT] READ_FAIL  error=${readErr.message}`);
+                  finalAudioBuffer = null;
+                }
               }
-            } catch (transcodeErr) {
-              console.error(`${FFMPEG_TAG} [DIRECT] TRANSCODE_FAIL  error=${transcodeErr.message}`);
-              finalAudioBuffer = fs.readFileSync(absInputPath);
-              finalMime = 'audio/mp4';
-              console.warn(`${FFMPEG_TAG} [DIRECT] FALLBACK  sending raw file with mime=audio/mp4`);
-            }
 
-            payload = {
-              audio: finalAudioBuffer,
-              ptt: true,
-              mimetype: finalMime,
-            };
+              if (finalAudioBuffer) {
+                payload = {
+                  audio: finalAudioBuffer,
+                  ptt: true,
+                  mimetype: finalMime,
+                };
+              } else {
+                console.warn(`${FFMPEG_TAG} [DIRECT] Fallback to URL payload due to read/transcode failure.`);
+                payload = {
+                  audio: { url: mediaUrl },
+                  ptt: true,
+                  mimetype: 'audio/mp4'
+                };
+              }
 
-            if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
-              try { await safeUnlink(transcodeOutputPath); } catch(_) {}
+              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
+                try { await safeUnlink(transcodeOutputPath); } catch(_) {}
+              }
             }
           } else if (finalMediaType === 'video') {
             payload = { 

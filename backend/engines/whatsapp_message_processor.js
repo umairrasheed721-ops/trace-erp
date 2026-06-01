@@ -748,63 +748,79 @@ async function processQueue(bot, sock, db) {
             };
             sentMsg = await safeSend(jid, payload);
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
-            const resolvedPath = getSecureMediaPath(path.basename(mediaUrl)) || (fs.existsSync(path.resolve(mediaUrl)) ? path.resolve(mediaUrl) : null);
-            if (!resolvedPath) {
-              console.error(`${FFMPEG_TAG} SOURCE_MISSING path=${mediaUrl}`);
-              resolve({ success: false, error: '[FFMPEG_ENCODE] Source audio file not found' });
-              continue;
-            }
-            const absInputPath = resolvedPath;
-            let transcodeOutputPath = null;
-            let finalAudioBuffer;
-            let finalMime = 'audio/ogg; codecs=opus';
+             const resolvedPath = getSecureMediaPath(path.basename(mediaUrl)) || (fs.existsSync(path.resolve(mediaUrl)) ? path.resolve(mediaUrl) : null);
+             if (!resolvedPath) {
+               console.warn(`${FFMPEG_TAG} SOURCE_MISSING local path for=${mediaUrl}. Falling back to URL payload.`);
+               const payload = {
+                 audio: { url: mediaUrl },
+                 ptt: true,
+                 mimetype: 'audio/mp4'
+               };
+               sentMsg = await safeSend(jid, payload);
+             } else {
+               const absInputPath = resolvedPath;
+               let transcodeOutputPath = null;
+               let finalAudioBuffer = null;
+               let finalMime = 'audio/ogg; codecs=opus';
 
-            const inputSizeBytes = fs.statSync(absInputPath).size;
-            console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
+               try {
+                 const inputSizeBytes = fs.statSync(absInputPath).size;
+                 console.log(`${FFMPEG_TAG} INPUT  path=${absInputPath}  size=${inputSizeBytes}B  type=${finalMediaType}`);
+                 const result = await transcodeToOpus(absInputPath);
+                 transcodeOutputPath = result.outputPath;
+                 const outStat = fs.statSync(transcodeOutputPath);
+                 console.log(`${FFMPEG_TAG} OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
+                 finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
+                 if (finalAudioBuffer.length < 100) {
+                   throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
+                 }
+               } catch (transcodeErr) {
+                 console.error(`${FFMPEG_TAG} TRANSCODE_FAIL  error=${transcodeErr.message}`);
+                 try {
+                   finalAudioBuffer = fs.readFileSync(absInputPath);
+                   finalMime = 'audio/mp4';
+                   console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
+                 } catch (readErr) {
+                   console.error(`${FFMPEG_TAG} READ_FAIL  error=${readErr.message}`);
+                   finalAudioBuffer = null;
+                 }
+               }
 
-            try {
-              const result = await transcodeToOpus(absInputPath);
-              transcodeOutputPath = result.outputPath;
+               let payload;
+               if (finalAudioBuffer) {
+                 payload = {
+                   audio: finalAudioBuffer,
+                   ptt: true,
+                   mimetype: finalMime,
+                 };
 
-              const outStat = fs.statSync(transcodeOutputPath);
-              console.log(`${FFMPEG_TAG} OUTPUT path=${transcodeOutputPath}  size=${outStat.size}B  duration=${result.durationSec}s`);
+                 if (pendingAckPath) {
+                   try {
+                     fs.writeFileSync(pendingAckPath, finalAudioBuffer);
+                     console.log(`[PENDING_ACK] Saved audio VN buffer to: ${pendingAckPath}`);
+                   } catch (err) {
+                     console.error('⚠️ Failed to save pending_ack voice note:', err.message);
+                   }
+                 }
 
-              finalAudioBuffer = fs.readFileSync(transcodeOutputPath);
+                 console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
+               } else {
+                 console.warn(`${FFMPEG_TAG} Fallback to URL payload due to read/transcode failure.`);
+                 payload = {
+                   audio: { url: mediaUrl },
+                   ptt: true,
+                   mimetype: 'audio/mp4'
+                 };
+               }
 
-              if (finalAudioBuffer.length < 100) {
-                throw new Error(`${FFMPEG_TAG} Output buffer suspiciously small (${finalAudioBuffer.length}B) — transcode likely failed`);
-              }
-            } catch (transcodeErr) {
-              console.error(`${FFMPEG_TAG} TRANSCODE_FAIL  error=${transcodeErr.message}`);
-              finalAudioBuffer = fs.readFileSync(absInputPath);
-              finalMime = 'audio/mp4';
-              console.warn(`${FFMPEG_TAG} FALLBACK  sending raw file with mime=audio/mp4`);
-            }
-
-            const payload = {
-              audio: finalAudioBuffer,
-              ptt: true,
-              mimetype: finalMime,
-            };
-
-            if (pendingAckPath) {
-              try {
-                fs.writeFileSync(pendingAckPath, finalAudioBuffer);
-                console.log(`[PENDING_ACK] Saved audio VN buffer to: ${pendingAckPath}`);
-              } catch (err) {
-                console.error('⚠️ Failed to save pending_ack voice note:', err.message);
-              }
-            }
-
-            console.log(`${FFMPEG_TAG} SEND  jid=${jid}  mime=${finalMime}  bufSize=${finalAudioBuffer.length}B  ptt=true`);
-            
-            try {
-              sentMsg = await safeSend(jid, payload);
-            } finally {
-              if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
-                await safeUnlink(transcodeOutputPath);
-              }
-            }
+               try {
+                 sentMsg = await safeSend(jid, payload);
+               } finally {
+                 if (transcodeOutputPath && transcodeOutputPath !== absInputPath) {
+                   try { await safeUnlink(transcodeOutputPath); } catch(_) {}
+                 }
+               }
+             }
           } else if (finalMediaType === 'video') {
             const payload = { 
               video: { url: mediaUrl }, 
@@ -1408,14 +1424,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
       return;
     }
 
-    const order = db.prepare(`SELECT id, store_id, shopify_order_id, tracking_number, courier, delivery_status, wa_verification_status, address FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(fromPhone.length - 10)}%`);
-    const orderId = order ? order.id : null;
-    const storeId = order ? order.store_id : 1;
 
-    db.prepare(`
-      INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-      VALUES (?, ?, ?, 'incoming', ?)
-    `).run(storeId, orderId, fromPhone, text);
 
     // WISMO fast interceptor has been disabled; tracking queries will be handled smartly by Gemini
 
