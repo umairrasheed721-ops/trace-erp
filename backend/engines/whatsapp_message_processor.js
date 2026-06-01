@@ -619,13 +619,26 @@ async function processQueue(bot, sock, db) {
 
         const delays = [2000, 4000, 8000];
         let attempt = 0;
+
+        // Track this ID before sending to prevent a race condition where the outgoing echo event 
+        // is processed by the incoming message handler before sock.sendMessage resolves.
+        if (bot._botSentIds) {
+          bot._botSentIds.add(uuid);
+        }
+        const deleteTimeout = bot._botSentIds ? setTimeout(() => bot._botSentIds.delete(uuid), 30000) : null;
+
         while (true) {
           try {
             const options = { messageId: uuid };
-            return await sock.sendMessage(jid, payload, options);
+            const sent = await sock.sendMessage(jid, payload, options);
+            return sent;
           } catch (err) {
             attempt++;
             if (attempt > 3) {
+              if (bot._botSentIds) {
+                bot._botSentIds.delete(uuid);
+              }
+              if (deleteTimeout) clearTimeout(deleteTimeout);
               throw err;
             }
             const delay = delays[attempt - 1];
@@ -814,6 +827,12 @@ async function processQueue(bot, sock, db) {
       }
 
       const messageId = sentMsg?.key?.id || uuid;
+      if (bot._botSentIds && messageId !== uuid) {
+        bot._botSentIds.add(messageId);
+        setTimeout(() => {
+          if (bot._botSentIds) bot._botSentIds.delete(messageId);
+        }, 30000);
+      }
       bot.hourlyCount++;
       console.log(`✉️ Sent to ${cleaned} (Total this hour: ${bot.hourlyCount})`);
       bot._addAuditLog(cleaned, 'Sent', '');

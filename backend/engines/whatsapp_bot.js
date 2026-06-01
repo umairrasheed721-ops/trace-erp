@@ -914,6 +914,11 @@ class WhatsAppBot {
       let attempt = 0;
       let sentMsg;
 
+      // Track this ID before sending to prevent a race condition where the outgoing echo event 
+      // is processed by the incoming message handler before sock.sendMessage resolves.
+      this._botSentIds.add(uuid);
+      const deleteTimeout = setTimeout(() => this._botSentIds.delete(uuid), 30000);
+
       while (true) {
         try {
           const sendOptions = { messageId: uuid };
@@ -922,6 +927,8 @@ class WhatsAppBot {
         } catch (err) {
           attempt++;
           if (attempt > 3) {
+            this._botSentIds.delete(uuid);
+            clearTimeout(deleteTimeout);
             throw err;
           }
           const retryDelay = delays[attempt - 1];
@@ -935,9 +942,10 @@ class WhatsAppBot {
       } catch (e) {}
 
       const messageId = sentMsg?.key?.id || uuid;
-      // Track this ID so the echo back from WhatsApp is identified as a bot message, not human
-      this._botSentIds.add(messageId);
-      setTimeout(() => this._botSentIds.delete(messageId), 30000); // auto-cleanup after 30s
+      if (messageId !== uuid) {
+        this._botSentIds.add(messageId);
+        setTimeout(() => this._botSentIds.delete(messageId), 30000);
+      }
       this.hourlyCount++;
       console.log(`✉️ [DIRECT] Sent to ${cleaned} (Total this hour: ${this.hourlyCount})`);
       this._addAuditLog(cleaned, 'Sent', '');
