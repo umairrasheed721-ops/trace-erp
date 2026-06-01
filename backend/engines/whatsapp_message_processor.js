@@ -1360,7 +1360,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         const { broadcast } = require('../websocket');
         broadcast('human_handoff_required', { phone: fromPhone, reason: 'Customer clicked Speak to Agent button', preview: 'Handoff requested' });
       } catch (_) {}
-      bot.sendMessage(fromPhone, "Aapko support representative queue mein add kar diya gaya hai. Hamare agent jald hi aapse raabta karenge. Shukriya! 🙏", true);
+      bot.sendMessage(fromPhone, "Aapko support representative queue mein add kar diya gaya hai. Hamare agent jald hi aapse raabta karenge. Shukriya! 🙏", false);
       return;
     }
 
@@ -1384,7 +1384,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         ON CONFLICT(phone) DO UPDATE SET opted_out = 1, updated_at = datetime('now')
       `).run(fromPhone);
       console.log(`🔕 Customer ${fromPhone} opted out from bot auto-replies.`);
-      bot.sendMessage(fromPhone, "Aapko automated messages se unsubscribe kar diya gaya hai. Agar dobara updates active karni hon toh 'Start' reply karein. Shukriya!", true);
+      bot.sendMessage(fromPhone, "Aapko automated messages se unsubscribe kar diya gaya hai. Agar dobara updates active karni hon toh 'Start' reply karein. Shukriya!", false);
       return;
     }
 
@@ -1398,7 +1398,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
         ON CONFLICT(phone) DO UPDATE SET opted_out = 0, updated_at = datetime('now')
       `).run(fromPhone);
       console.log(`🔔 Customer ${fromPhone} opted in to bot auto-replies.`);
-      bot.sendMessage(fromPhone, "Automated chat updates dobara active kar di gayi hain. Aapki kis tarah madad ki jaye?", true);
+      bot.sendMessage(fromPhone, "Automated chat updates dobara active kar di gayi hain. Aapki kis tarah madad ki jaye?", false);
       return;
     }
 
@@ -1434,7 +1434,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
       if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 5) {
         console.warn(`⚠️ [RATE-LIMIT] Skipping Gemini reply to ${fromPhone} — 5 consecutive bot replies without response.`);
       } else {
-        bot.sendMessage(fromPhone, geminiReply, true);
+        bot.sendMessage(fromPhone, geminiReply, false);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
       }
       return;

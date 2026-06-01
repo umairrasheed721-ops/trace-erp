@@ -518,7 +518,7 @@ class WhatsAppBot {
                           const { broadcast } = require('../sse');
                           broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                         }
-                        await this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, true);
+                        await this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, false);
                         console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
                       } else {
                         db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
@@ -527,7 +527,7 @@ class WhatsAppBot {
                           const { broadcast } = require('../sse');
                           broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                         }
-                        await this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, true);
+                        await this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, false);
                         console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
                       }
                     }
@@ -1223,7 +1223,7 @@ class WhatsAppBot {
       return;
     }
 
-    this.sendMessage(phone, msg, true)
+    this.sendMessage(phone, msg, false)
       .finally(() => {
         if (this.processingReplies) this.processingReplies.delete(phone);
       });
