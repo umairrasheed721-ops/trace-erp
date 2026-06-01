@@ -1062,7 +1062,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
   const isOutgoing = msg.key.fromMe;
   // Calculate message age — used to skip processing of historical messages replayed by Baileys on restart
   const msgAgeMs = Date.now() - (Number(msg.messageTimestamp) * 1000);
-  const isHistoric = msgAgeMs > 60000;
+  const isHistoric = msgAgeMs > 10 * 60 * 1000; // 10 minutes threshold (safe against system clock drift)
 
   let tag = 'General';
   if (!isOutgoing && !isHistoric && text) {
