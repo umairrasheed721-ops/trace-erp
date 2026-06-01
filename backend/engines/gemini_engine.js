@@ -32,11 +32,11 @@ async function fetchWithRetry(url, options, maxRetries = 3, initialDelayMs = 200
           const cloneRes = res.clone();
           const body = await cloneRes.json();
           const errMsg = body?.error?.message || '';
-          const secondsMatch = errMsg.match(/try again in (\d+)\s*s/i) || errMsg.match(/limit exceeded.*try again in (\d+)/i) || errMsg.match(/(\d+)\s*(seconds|sec)/i);
+          const secondsMatch = errMsg.match(/(?:retry|try again) in ([\d\.]+)\s*s/i) || errMsg.match(/([\d\.]+)\s*(?:seconds|sec|s\b)/i);
           if (secondsMatch) {
-            const parsedSec = parseInt(secondsMatch[1], 10);
+            const parsedSec = parseFloat(secondsMatch[1]);
             if (!isNaN(parsedSec) && parsedSec > 0) {
-              delay = (parsedSec + 1) * 1000;
+              delay = Math.ceil(parsedSec + 1) * 1000;
             }
           }
         } catch (e) {
