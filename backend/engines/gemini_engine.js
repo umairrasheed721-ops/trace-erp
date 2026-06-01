@@ -125,13 +125,73 @@ const geminiTools = [
           },
           required: ['phone', 'preference_key', 'preference_value']
         }
+      },
+      {
+        name: 'fetchCatalog',
+        description: 'Fetch the available product catalog, sizing recommendations, and product images matching a specific size.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            size: { type: 'STRING', description: 'The requested size (e.g. M, L, XL, 2XL, 3XL, 4XL, 5XL, 6XL).' }
+          },
+          required: ['size']
+        }
       }
     ]
   }
 ];
 
-// Helper to execute local DB tools
-function executeToolCall(name, args) {
+const MOCK_CATALOG = {
+  'M': [
+    { title: 'Classic Oxford Shirt - Medium', price: 2999, sku: 'OX-M', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 15 },
+    { title: 'Premium Polo Shirt - Medium', price: 2499, sku: 'PL-M', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 8 }
+  ],
+  'L': [
+    { title: 'Classic Oxford Shirt - Large', price: 2999, sku: 'OX-L', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 20 },
+    { title: 'Premium Polo Shirt - Large', price: 2499, sku: 'PL-L', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 12 }
+  ],
+  'XL': [
+    { title: 'Classic Oxford Shirt - XL', price: 2999, sku: 'OX-XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 18 },
+    { title: 'Premium Polo Shirt - XL', price: 2499, sku: 'PL-XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 14 }
+  ],
+  '2XL': [
+    { title: 'Premium Crewneck Sweatshirt - 2XL', price: 3499, sku: 'CN-2XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 6 },
+    { title: 'Urban Cargo Pants - 2XL', price: 3999, sku: 'CG-2XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 4 }
+  ],
+  '3XL': [
+    { title: 'Premium Crewneck Sweatshirt - 3XL', price: 3499, sku: 'CN-3XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 10 },
+    { title: 'Urban Cargo Pants - 3XL', price: 3999, sku: 'CG-3XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 5 }
+  ],
+  '4XL': [
+    { title: 'Premium Crewneck Sweatshirt - 4XL', price: 3499, sku: 'CN-4XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 12 },
+    { title: 'Urban Cargo Pants - 4XL', price: 3999, sku: 'CG-4XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 7 }
+  ],
+  '5XL': [
+    { title: 'Premium Crewneck Sweatshirt - 5XL', price: 3499, sku: 'CN-5XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 8 },
+    { title: 'Urban Cargo Pants - 5XL', price: 3999, sku: 'CG-5XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 3 }
+  ],
+  '6XL': [
+    { title: 'Premium Crewneck Sweatshirt - 6XL', price: 3499, sku: 'CN-6XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 5 },
+    { title: 'Urban Cargo Pants - 6XL', price: 3999, sku: 'CG-6XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 2 }
+  ]
+};
+
+function normalizeSizeInput(raw) {
+  if (!raw) return 'XL';
+  const norm = String(raw).trim().toUpperCase();
+  if (norm === 'M' || norm.includes('MED')) return 'M';
+  if (norm === 'L' || norm.includes('LARGE')) return 'L';
+  if (norm === 'XL' || norm.includes('EXTRA LARGE') || norm.includes('EXTRALARGE')) return 'XL';
+  if (norm.includes('2XL') || norm.includes('2 XL') || norm.includes('XXL') || norm.includes('DOUBLE')) return '2XL';
+  if (norm.includes('3XL') || norm.includes('3 XL') || norm.includes('XXXL') || norm.includes('TRIPLE')) return '3XL';
+  if (norm.includes('4XL') || norm.includes('4 XL') || norm.includes('XXXXL')) return '4XL';
+  if (norm.includes('5XL') || norm.includes('5 XL')) return '5XL';
+  if (norm.includes('6XL') || norm.includes('6 XL')) return '6XL';
+  return norm;
+}
+
+// Helper to execute local DB tools (Made async to support API requests)
+async function executeToolCall(name, args) {
   console.log(`🛠️ Gemini Tool Execution: ${name}`, args);
   try {
     if (name === 'getOrderStatus') {
@@ -178,6 +238,48 @@ function executeToolCall(name, args) {
       broadcastMemoryUpdate(cleaned);
 
       return { success: true, message: `Profile updated: ${args.preference_key} = ${args.preference_value}` };
+    }
+
+    if (name === 'fetchCatalog') {
+      const normSize = normalizeSizeInput(args.size);
+      let products = [];
+      try {
+        const store = db.prepare('SELECT shop_domain, access_token FROM stores LIMIT 1').get();
+        if (store && store.access_token && store.access_token !== 'PENDING') {
+          const fetchFn = typeof fetch === 'function' ? fetch : require('node-fetch');
+          const res = await fetchFn(`https://${store.shop_domain}/admin/api/2024-10/products.json?limit=50`, {
+            headers: { 'X-Shopify-Access-Token': store.access_token }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const shopifyProducts = data.products || [];
+            shopifyProducts.forEach(p => {
+              p.variants.forEach(v => {
+                const matchSize = v.title.trim().toUpperCase() === normSize || 
+                                  v.sku.trim().toUpperCase().includes(normSize) ||
+                                  p.title.trim().toUpperCase().includes(normSize);
+                if (matchSize) {
+                  const image = p.images.find(img => img.id === v.image_id) || p.image || p.images[0] || {};
+                  products.push({
+                    title: `${p.title} (${v.title})`,
+                    sku: v.sku || '',
+                    price: parseFloat(v.price || 0),
+                    image_url: image.src || '',
+                    inventory_qty: v.inventory_quantity || 0
+                  });
+                }
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ fetchCatalog Shopify API error:', err.message);
+      }
+      
+      if (products.length === 0) {
+        products = MOCK_CATALOG[normSize] || MOCK_CATALOG['XL'] || [];
+      }
+      return { success: true, size: normSize, products };
     }
 
     return { success: false, message: `Unknown tool ${name}` };
@@ -334,7 +436,7 @@ VIP Status: ${profile.vip_status === 1 ? 'YES (High Value Buyer)' : 'Standard'}
 Saved Preferences: ${profile.preferences}
 
 --- INSTRUCTIONS ---
-You are chatting with this customer on WhatsApp. Keep your responses concise, friendly, and formatted for WhatsApp (use emojis, bold text *like this*). If they ask about order status, stock, or want to buy something, use your available tools first before replying.
+You are chatting with this customer on WhatsApp. Keep your responses concise, friendly, and formatted for WhatsApp (use emojis, bold text *like this*). If they ask about order status, stock, sizing recommendations, or what products are available in their size, use your available tools first (like checkProductStock, getOrderStatus, or fetchCatalog) before replying.
 `;
 
     // 4. Fetch Short-Term Chat Memory (Rolling context window: latest 6 messages)
@@ -389,9 +491,13 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
     let part = candidate.content?.parts?.[0];
 
     // --- CHECK FOR FUNCTION CALL ---
+    let fetchCatalogResult = null;
     if (part?.functionCall) {
       const call = part.functionCall;
-      const toolResult = executeToolCall(call.name, call.args);
+      const toolResult = await executeToolCall(call.name, call.args);
+      if (call.name === 'fetchCatalog' && toolResult && toolResult.success) {
+        fetchCatalogResult = toolResult;
+      }
 
       // Append model functionCall request to contents
       contents.push({
@@ -434,8 +540,12 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
       part = candidate?.content?.parts?.[0];
     }
 
-    const replyText = part?.text || '';
+    let replyText = part?.text || '';
     if (!replyText) return null;
+
+    if (fetchCatalogResult) {
+      replyText += '\n__CATALOG_JSON__' + JSON.stringify(fetchCatalogResult);
+    }
 
     // --- SAVE TO CHAT MEMORY ---
     try {

@@ -1410,20 +1410,67 @@ async function processIncomingMessage(bot, msg, sock, db) {
     const { generateAIResponse } = require('./gemini_engine');
     const geminiReply = await generateAIResponse(fromPhone, text);
     if (geminiReply) {
+      let textReply = geminiReply;
+      let catalogData = null;
+      if (typeof geminiReply === 'string' && geminiReply.includes('__CATALOG_JSON__')) {
+        const parts = geminiReply.split('__CATALOG_JSON__');
+        textReply = parts[0].trim();
+        try {
+          catalogData = JSON.parse(parts[1]);
+        } catch (e) {
+          console.error('Failed to parse catalog JSON from Gemini reply:', e.message);
+        }
+      }
+
       const handoffKeywords = ['human agent', 'human support', 'live agent', 'connect you to', 'escalat', 'transfer you'];
-      const needsHandoff = handoffKeywords.some(kw => geminiReply.toLowerCase().includes(kw));
+      const needsHandoff = handoffKeywords.some(kw => textReply.toLowerCase().includes(kw));
       if (needsHandoff) {
         bot.setHumanHandoff(fromPhone, true);
         try {
           const { broadcast } = require('../websocket');
-          broadcast('human_handoff_required', { phone: fromPhone, reason: 'Gemini AI flagged handoff', preview: geminiReply.substring(0, 120) });
+          broadcast('human_handoff_required', { phone: fromPhone, reason: 'Gemini AI flagged handoff', preview: textReply.substring(0, 120) });
         } catch (_) {}
       }
       if ((bot.consecutiveBotReplies[fromPhone] || 0) >= 5) {
         console.warn(`⚠️ [RATE-LIMIT] Skipping Gemini reply to ${fromPhone} — 5 consecutive bot replies without response.`);
       } else {
-        bot.sendMessage(fromPhone, geminiReply, false);
+        // Send the natural language chat reply
+        bot.sendMessage(fromPhone, textReply, false);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
+
+        // If a structured catalog was fetched, send List & Carousel cards
+        if (catalogData && catalogData.products && catalogData.products.length > 0) {
+          try {
+            const listConfig = {
+              text: `Available products in size ${catalogData.size}:`,
+              buttonText: "Select Product",
+              sections: [
+                {
+                  title: "Trace Catalog",
+                  rows: catalogData.products.slice(0, 10).map(p => ({
+                    title: p.title.substring(0, 24),
+                    description: `Rs. ${p.price} | Stock: ${p.inventory_qty}`,
+                    rowId: `view_product_${p.sku}`
+                  }))
+                }
+              ]
+            };
+            
+            // Dispatch dynamic WhatsApp List
+            await bot.sendMessage(fromPhone, listConfig, false, null, 'list');
+
+            // Dispatch top 3 catalog item images in background
+            for (const p of catalogData.products.slice(0, 3)) {
+              if (p.image_url) {
+                bot.sendMessage(fromPhone, `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`, false, p.image_url, 'image').catch(err => {
+                  console.error('Failed to send catalog image message:', err.message);
+                });
+              }
+            }
+          } catch (catalogErr) {
+            console.error('⚠️ Failed to dispatch catalog interactive messages:', catalogErr.message);
+          }
+        }
       }
       return;
     }

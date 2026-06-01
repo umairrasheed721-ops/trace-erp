@@ -159,6 +159,22 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 8. Every day at midnight UTC: Nightly Self-Learning Audit Loop
+  cron.schedule('0 0 * * *', async () => {
+    console.log('🌙 [CRON] Starting Self-Learning Audit Loop...');
+    try {
+      const { runNightlyAuditService } = require('./engines/audit_service');
+      // Fire-and-forget: execute asynchronously to not block the scheduler thread
+      runNightlyAuditService().catch(err => {
+        console.error('Audit service error inside scheduler:', err.message);
+      });
+    } catch (e) {
+      console.error('[Audit Cron Error]:', e.message);
+    }
+  }, {
+    timezone: "UTC"
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

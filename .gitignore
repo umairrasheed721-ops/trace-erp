@@ -55,6 +55,8 @@ scratch/*.txt
 .vscode/
 *.suo
 *.ntvs*
-*.njsproj
-*.sln
 *.sw?
+
+# Project generated audit files & activity logs
+logs/
+improvement_sheet.md
