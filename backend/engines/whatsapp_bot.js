@@ -378,7 +378,7 @@ class WhatsAppBot {
               if (msgTimestamp && msgTimestamp < cutoffTimestamp) continue;
 
               const remoteJid = msg.key?.remoteJid;
-              if (!remoteJid || remoteJid.includes('@g.us')) continue;
+              if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) continue;
               
               if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
               this.store.messages[remoteJid].push(msg);

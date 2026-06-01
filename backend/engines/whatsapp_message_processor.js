@@ -1018,7 +1018,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
   if (!msg.message) return;
   
   const remoteJid = msg.key?.remoteJid;
-  if (!remoteJid || remoteJid.includes('@g.us')) return;
+  if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) return;
   
   if (!bot.store.messages[remoteJid]) bot.store.messages[remoteJid] = [];
   bot.store.messages[remoteJid].push(msg);
