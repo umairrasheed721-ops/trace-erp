@@ -172,6 +172,15 @@ class WhatsAppBot {
       return;
     }
 
+    // Periodically clean up local state caches to prevent memory leaks
+    setInterval(() => {
+      try {
+        this._cleanOldStates();
+      } catch (e) {
+        console.error('⚠️ Failed to clean old bot states:', e.message);
+      }
+    }, 3600000); // Clean every hour
+
     setTimeout(() => this._connect(), 5000);
   }
 
@@ -543,31 +552,44 @@ class WhatsAppBot {
 
       this.sock.ev.removeAllListeners('messages.upsert');
 
-      this.sock.ev.on('messages.upsert', async (m) => {
+      this.sock.ev.on('messages.upsert', (m) => {
         const { messages, type } = m;
         if (type !== 'notify' && type !== 'append') return;
         for (const msg of messages) {
-          try {
-            const port = process.env.PORT || 3001;
-            const url = `http://localhost:${port}/api/webhooks/whatsapp/portal-hook?tenant_id=${encodeURIComponent(this.tenantId)}`;
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Tenant-Id': this.tenantId,
-                'auth': 'tracepk'
-              },
-              body: JSON.stringify({ msg })
+          // Process message asynchronously in setImmediate so Baileys main event loop is never blocked
+          setImmediate(() => {
+            tenantContext.run(this.tenantId, async () => {
+              try {
+                const port = process.env.PORT || 3001;
+                const url = `http://localhost:${port}/api/webhooks/whatsapp/portal-hook?tenant_id=${encodeURIComponent(this.tenantId)}`;
+                const response = await fetch(url, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Tenant-Id': this.tenantId,
+                    'auth': 'tracepk'
+                  },
+                  body: JSON.stringify({ msg })
+                });
+                if (!response.ok) {
+                  const errText = await response.text();
+                  console.error(`[Portal Hook Router] API call failed: status=${response.status}, body=${errText}`);
+                  try {
+                    await processIncomingMessage(this, msg, this.sock, db);
+                  } catch (localErr) {
+                    console.error('[Local Process Error]', localErr.message);
+                  }
+                }
+              } catch (err) {
+                console.error(`[Portal Hook Router] Failed to route via API, falling back to local:`, err.message);
+                try {
+                  await processIncomingMessage(this, msg, this.sock, db);
+                } catch (localErr) {
+                  console.error('[Local Process Error]', localErr.message);
+                }
+              }
             });
-            if (!response.ok) {
-              const errText = await response.text();
-              console.error(`[Portal Hook Router] API call failed: status=${response.status}, body=${errText}`);
-              await processIncomingMessage(this, msg, this.sock, db);
-            }
-          } catch (err) {
-            console.error(`[Portal Hook Router] Failed to route via API, falling back to local:`, err.message);
-            await processIncomingMessage(this, msg, this.sock, db);
-          }
+          });
         }
       });
 
@@ -1187,7 +1209,49 @@ class WhatsAppBot {
   }
 
   async _processQueue() {
-    await processQueue(this, this.sock, db);
+    try {
+      await tenantContext.run(this.tenantId, async () => {
+        await processQueue(this, this.sock, db);
+      });
+    } catch (err) {
+      console.error(`❌ [_processQueue] Error for tenant [${this.tenantId}]:`, err.message);
+    }
+  }
+
+  _cleanOldStates() {
+    const now = Date.now();
+    
+    // Clean humanCooldowns (older than 24 hours)
+    for (const phone in this.humanCooldowns) {
+      if (now - this.humanCooldowns[phone] > 24 * 3600 * 1000) {
+        delete this.humanCooldowns[phone];
+      }
+    }
+    
+    // Clean contactMessageTimestamps (older than 24 hours)
+    for (const phone in this.contactMessageTimestamps) {
+      this.contactMessageTimestamps[phone] = (this.contactMessageTimestamps[phone] || []).filter(t => now - t < 24 * 3600 * 1000);
+      if (this.contactMessageTimestamps[phone].length === 0) {
+        delete this.contactMessageTimestamps[phone];
+      }
+    }
+    
+    // Clean contactLastIncomingTimestamp (older than 24 hours)
+    for (const phone in this.contactLastIncomingTimestamp) {
+      if (now - this.contactLastIncomingTimestamp[phone] > 24 * 3600 * 1000) {
+        delete this.contactLastIncomingTimestamp[phone];
+      }
+    }
+    
+    // Clean consecutiveBotReplies if size grows too large
+    const replyKeys = Object.keys(this.consecutiveBotReplies);
+    if (replyKeys.length > 1000) {
+      for (const phone of replyKeys) {
+        if (!this.activeChats.has(phone)) {
+          delete this.consecutiveBotReplies[phone];
+        }
+      }
+    }
   }
 
   _addAuditLog(phone, status, error) {

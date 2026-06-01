@@ -18,8 +18,13 @@ function resolveModelName(modelName) {
 async function fetchWithRetry(url, options, maxRetries = 3, initialDelayMs = 2000) {
   let attempt = 0;
   while (attempt < maxRetries) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds timeout per request
+    
     try {
-      const res = await fetch(url, options);
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       if (res.status === 429) {
         attempt++;
         if (attempt >= maxRetries) {
@@ -49,6 +54,7 @@ async function fetchWithRetry(url, options, maxRetries = 3, initialDelayMs = 200
       }
       return res;
     } catch (err) {
+      clearTimeout(timeoutId);
       attempt++;
       if (attempt >= maxRetries) {
         throw err;
@@ -331,8 +337,14 @@ Saved Preferences: ${profile.preferences}
 You are chatting with this customer on WhatsApp. Keep your responses concise, friendly, and formatted for WhatsApp (use emojis, bold text *like this*). If they ask about order status, stock, or want to buy something, use your available tools first before replying.
 `;
 
-    // 4. Fetch Short-Term Chat Memory
-    const memoryRows = db.prepare('SELECT role, content FROM gemini_chat_memory WHERE phone = ? ORDER BY id ASC LIMIT 20').all(cleanedPhone) || [];
+    // 4. Fetch Short-Term Chat Memory (Rolling context window: latest 6 messages)
+    const memoryRows = db.prepare(`
+      SELECT role, content FROM (
+        SELECT id, role, content FROM gemini_chat_memory 
+        WHERE phone = ? 
+        ORDER BY id DESC LIMIT 6
+      ) ORDER BY id ASC
+    `).all(cleanedPhone) || [];
     
     // Build Gemini contents array
     let contents = memoryRows.map(m => ({
@@ -368,7 +380,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
     let data = await res.json();
     if (!res.ok) {
       console.error('❌ Gemini API Error:', data);
-      return null;
+      return "Shukriya! Aapka message receive ho chuka hai. Hamare support representative jald hi aapse raabta karenge. 🙏";
     }
 
     let candidate = data.candidates?.[0];
@@ -415,7 +427,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
       let secondData = await secondRes.json();
       if (!secondRes.ok) {
         console.error('❌ Gemini Second API Error:', secondData);
-        return null;
+        return "Shukriya! Aapka message receive ho chuka hai. Hamare support representative jald hi aapse raabta karenge. 🙏";
       }
 
       candidate = secondData.candidates?.[0];
@@ -449,7 +461,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
   } catch (err) {
     console.error('❌ generateAIResponse error:', err.message);
     try { logGeminiUsage({ phone: cleanedPhone, status: 'error', errorMsg: err.message }); } catch(_){}
-    return null;
+    return "Shukriya! Aapka message receive ho chuka hai. Hamare support representative jald hi aapse raabta karenge. 🙏";
   }
 }
 

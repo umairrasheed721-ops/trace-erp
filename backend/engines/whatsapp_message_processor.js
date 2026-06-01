@@ -327,7 +327,7 @@ function cleanAndShortenForHuman(text) {
 }
 
 function adaptiveStrategy(phone, messageItem, db, isManual = false) {
-  const cleanedPhone = phone.replace(/\D/g, '');
+  const cleanedPhone = (phone || '').replace(/\D/g, '');
   let hasComplained = false;
   try {
     const rows = db.prepare(`
@@ -402,11 +402,8 @@ function adaptiveStrategy(phone, messageItem, db, isManual = false) {
   }
 
   return {
+    ...messageItem,
     message: updatedMessage,
-    quoteContext: messageItem.quoteContext,
-    buttons: messageItem.buttons,
-    buttonsMode: messageItem.buttonsMode,
-    poll: messageItem.poll,
     hasComplained: hasComplained
   };
 }
@@ -430,8 +427,9 @@ async function processQueue(bot, sock, db) {
 
   bot.isProcessing = true;
 
-  while ((!bot.isPaused && !bot.isSleeping) && ((bot.priorityQueue?.length || 0) + bot.queue.length > 0)) {
-    const activeQueue = (bot.priorityQueue?.length > 0) ? bot.priorityQueue : bot.queue;
+  try {
+    while ((!bot.isPaused && !bot.isSleeping) && ((bot.priorityQueue?.length || 0) + bot.queue.length > 0)) {
+      const activeQueue = (bot.priorityQueue?.length > 0) ? bot.priorityQueue : bot.queue;
     const queueType = (activeQueue === bot.priorityQueue) ? 'PRIORITY' : 'BULK';
     
     const now = Date.now();
@@ -1045,8 +1043,11 @@ async function processQueue(bot, sock, db) {
       resolve({ success: false, error: reason });
     }
   }
-
-  bot.isProcessing = false;
+  } catch (err) {
+    console.error('❌ CRITICAL error in processQueue loop:', err.stack || err.message);
+  } finally {
+    bot.isProcessing = false;
+  }
 }
 
 async function processIncomingMessage(bot, msg, sock, db) {

@@ -198,19 +198,31 @@ router.post('/whatsapp/portal-hook', async (req, res) => {
   const { msg } = req.body;
   if (!msg) return res.status(400).json({ error: 'Missing msg payload' });
 
-  const tenantId = req.tenantId || 'default';
+  const tenantId = req.query.tenant_id || req.headers['x-tenant-id'] || req.tenantId || 'default';
+  
+  // Acknowledge immediately to prevent hanging webhooks and duplicate retries
+  res.json({ success: true });
+
   try {
     const { getBot } = require('../engines/whatsapp_bot');
     const { processIncomingMessage } = require('../engines/whatsapp_message_processor');
     const { db: tenantDb } = require('../db');
+    const tenantContext = require('../tenant-context');
 
     const botInstance = getBot(tenantId);
-    await processIncomingMessage(botInstance, msg, botInstance.sock, tenantDb);
-
-    res.json({ success: true });
+    
+    // Process in background under the correct AsyncLocalStorage tenant context
+    setImmediate(() => {
+      tenantContext.run(tenantId, async () => {
+        try {
+          await processIncomingMessage(botInstance, msg, botInstance.sock, tenantDb);
+        } catch (err) {
+          console.error(`❌ [Portal Webhook Background] Error processing message for tenant [${tenantId}]:`, err.stack || err.message);
+        }
+      });
+    });
   } catch (err) {
-    console.error(`❌ [Portal Webhook] Error processing incoming message:`, err.message);
-    res.status(500).json({ error: err.message });
+    console.error(`❌ [Portal Webhook] Error setting up background task:`, err.message);
   }
 });
 
