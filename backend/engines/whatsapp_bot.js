@@ -676,20 +676,7 @@ class WhatsAppBot {
     buttonsMode = adapted.buttonsMode;
     poll = adapted.poll;
 
-    if (isManual) {
-      console.log(`⚡ [DIRECT_SEND] Manual agent message to ${cleaned}. Refreshing 15-minute handoff lock.`);
-      const until = Date.now() + 15 * 60 * 1000;
-      try {
-        db.prepare(`
-          INSERT INTO customer_profiles (phone, human_handoff_until, updated_at)
-          VALUES (?, ?, datetime('now'))
-          ON CONFLICT(phone) DO UPDATE SET human_handoff_until = ?, updated_at = datetime('now')
-        `).run(cleaned, String(until), String(until));
-        console.log(`🧑 [HANDOFF_LOCK] Refreshed 15-minute handoff lock in DB for ${cleaned}`);
-      } catch (e) {
-        console.error('⚠️ Failed to refresh human handoff lock in DB:', e.message);
-      }
-    }
+
 
     if (!isManual && finalMessage && !adapted.hasComplained) {
       finalMessage = this.variateTemplateMessage(finalMessage);
