@@ -15,6 +15,51 @@ function resolveModelName(modelName) {
   return map[modelName] || modelName || 'gemini-2.5-flash';
 }
 
+async function fetchWithRetry(url, options, maxRetries = 3, initialDelayMs = 2000) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429) {
+        attempt++;
+        if (attempt >= maxRetries) {
+          return res;
+        }
+
+        let delay = initialDelayMs * Math.pow(2, attempt - 1);
+
+        try {
+          const cloneRes = res.clone();
+          const body = await cloneRes.json();
+          const errMsg = body?.error?.message || '';
+          const secondsMatch = errMsg.match(/try again in (\d+)\s*s/i) || errMsg.match(/limit exceeded.*try again in (\d+)/i) || errMsg.match(/(\d+)\s*(seconds|sec)/i);
+          if (secondsMatch) {
+            const parsedSec = parseInt(secondsMatch[1], 10);
+            if (!isNaN(parsedSec) && parsedSec > 0) {
+              delay = (parsedSec + 1) * 1000;
+            }
+          }
+        } catch (e) {
+          // ignore cloning/parsing error
+        }
+
+        console.warn(`⚠️ Gemini API 429 (Rate Limit). Retrying attempt ${attempt}/${maxRetries} in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      const delay = initialDelayMs * Math.pow(2, attempt - 1);
+      console.warn(`⚠️ Fetch error: ${err.message}. Retrying attempt ${attempt}/${maxRetries} in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /**
  * 🧠 TRACE ERP: Gemini Autonomous AI Orchestration Engine
  * Implements RAG memory, Function Calling (Tool Use), and Nightly Self-Learning Audit.
@@ -255,13 +300,12 @@ function checkAdAttribution(phone, text) {
 }
 
 async function generateAIResponse(phone, userMessage) {
+  let cleanedPhone = (phone || '').replace(/\D/g, '');
   try {
     const settings = db.prepare('SELECT api_key, ai_active, model_name, system_prompt FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
     if (!settings || settings.ai_active === 0 || !settings.api_key) {
       return null; // Fallback to standard regex templates
     }
-
-    let cleanedPhone = phone.replace(/\D/g, '');
 
     // 1. Fetch Customer Profile
     let profile = db.prepare('SELECT customer_name, preferences, vip_status FROM customer_profiles WHERE phone = ?').get(cleanedPhone) || { customer_name: 'Customer', preferences: '{}', vip_status: 0 };
@@ -315,7 +359,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
 
     const _startMs = Date.now();
     console.log(`🚀 Sending prompt to Gemini (${model})...`);
-    let res = await fetch(url, {
+    let res = await fetchWithRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -362,7 +406,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
         tools: geminiTools
       };
 
-      let secondRes = await fetch(url, {
+      let secondRes = await fetchWithRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(secondPayload)
@@ -459,7 +503,7 @@ Output your analysis strictly in the following JSON format:
       generationConfig: { responseMimeType: 'application/json' }
     };
 
-    let res = await fetch(url, {
+    let res = await fetchWithRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
