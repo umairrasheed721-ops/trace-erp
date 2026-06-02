@@ -231,10 +231,23 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         // 🤖 AUTO-WHATSAPP TRIGGER
         if (status === 'Pending' && (addr.phone || customer.phone)) {
-          const appUrl = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
-          const link = `${appUrl}/api/public/confirm-order/${token}`;
-          const msg = `Hi ${fullName}, thank you for your order ${order.name} at TRACE! 📦\n\nPlease confirm your order by clicking here: ${link}`;
-          bot.sendMessage(addr.phone || customer.phone, msg);
+          try {
+            const settings = db.prepare('SELECT cod_verification_enabled FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+            if (settings.cod_verification_enabled !== 0) {
+              const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
+              if (insertedOrder) {
+                const { dispatchCODVerification } = require('./cod_verifier');
+                const tenantId = require('../tenant-context').getStore() || 'default';
+                setImmediate(() => {
+                  require('../tenant-context').run(tenantId, () => {
+                    dispatchCODVerification(insertedOrder).catch(err => console.error('Failed to dispatch auto COD verification:', err));
+                  });
+                });
+              }
+            }
+          } catch (err) {
+            console.error('Failed to trigger COD verification in batch sync:', err.message);
+          }
         }
 
         count++;
@@ -835,10 +848,23 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
       // 🤖 AUTO-WHATSAPP TRIGGER
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
-        const appUrl = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
-        const link = `${appUrl}/api/public/confirm-order/${token}`;
-        const msg = `Hi ${fullName}, thank you for your order ${order.name} at TRACE! 📦\n\nPlease confirm your order by clicking here: ${link}`;
-        bot.sendMessage(addr.phone || customer.phone, msg);
+        try {
+          const settings = db.prepare('SELECT cod_verification_enabled FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+          if (settings.cod_verification_enabled !== 0) {
+            const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
+            if (insertedOrder) {
+              const { dispatchCODVerification } = require('./cod_verifier');
+              const tenantId = require('../tenant-context').getStore() || 'default';
+              setImmediate(() => {
+                require('../tenant-context').run(tenantId, () => {
+                  dispatchCODVerification(insertedOrder).catch(err => console.error('Failed to dispatch auto COD verification:', err));
+                });
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to trigger COD verification in single sync:', err.message);
+        }
       }
 
       console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
