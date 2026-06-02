@@ -40,7 +40,19 @@ export default function WhatsAppBot() {
     model_name: 'gemini-2.5-flash',
     system_prompt: '',
     strictness: 'balanced',
-    auto_learning_enabled: 1
+    auto_learning_enabled: 1,
+    tool_check_stock: 1,
+    tool_order_status: 1,
+    tool_create_order: 1,
+    tool_update_profile: 1,
+    tool_fetch_catalog: 1,
+    tool_recommendations: 1,
+    feature_interactive_lists: 1,
+    feature_quick_replies: 1,
+    feature_media_cards: 1,
+    feature_voice_notes: 1,
+    voice_name: 'Aoede',
+    recommendation_rules: '{}'
   })
   const [geminiProfiles, setGeminiProfiles] = useState([])
   const [geminiAuditLogs, setGeminiAuditLogs] = useState([])
@@ -1193,99 +1205,419 @@ export default function WhatsAppBot() {
           {/* Sub-Tab G3: Tool Calling & Capabilities */}
           {activeSubTabG === 'tools' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              <div>
-                <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🛠️ Gemini Function Calling & Tool Capabilities</h4>
-                <p className="text-muted" style={{ fontSize: '0.85rem' }}>Explore the live database tools Gemini can autonomously execute during WhatsApp conversations.</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)' }}>
+                <div>
+                  <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🛠️ Gemini Function Calling & Tool Capabilities</h4>
+                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>Enable, disable, and customize the live database tools and messaging features Gemini executes.</p>
+                </div>
+                <button 
+                  className="btn btn-primary"
+                  disabled={saving}
+                  onClick={handleSaveGeminiSettings}
+                  style={{ padding: '10px 24px', fontWeight: 700, borderRadius: 30 }}
+                >
+                  {saving ? '⌛ Saving...' : '💾 Save Gemini Settings'}
+                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>📦</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Live Stock & Price Checker (`checkProductStock`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries `product_master_costs` in real-time to answer inventory questions, confirm pricing, and recommend available variants.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 1. Live Stock & Price Checker */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>📦</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Live Stock & Price Checker (`checkProductStock`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries `product_master_costs` in real-time to answer inventory questions, confirm pricing, and recommend available variants.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.tool_check_stock === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.tool_check_stock === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.tool_check_stock === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.tool_check_stock === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, tool_check_stock: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.tool_check_stock === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>📡</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Order Tracking Radar (`getOrderStatus`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini pulls live airway bill numbers, courier names (PostEx/Instaworld), and delivery statuses directly from the `orders` table.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 2. Order Tracking Radar */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>📡</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Order Tracking Radar (`getOrderStatus`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini pulls live airway bill numbers, courier names (PostEx/Instaworld), and delivery statuses directly from the `orders` table.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.tool_order_status === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.tool_order_status === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.tool_order_status === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.tool_order_status === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, tool_order_status: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.tool_order_status === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>📝</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Autonomous Draft Order Creator (`createDraftOrder`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>When a customer requests to buy via WhatsApp, Gemini conducts an interview, collects complete shipping details, and auto-inserts a Draft order.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 3. Autonomous Draft Order Creator */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>📝</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Autonomous Draft Order Creator (`createDraftOrder`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>When a customer requests to buy via WhatsApp, Gemini conducts an interview, collects complete shipping details, and auto-inserts a Draft order.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.tool_create_order === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.tool_create_order === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.tool_create_order === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.tool_create_order === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, tool_create_order: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.tool_create_order === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>🗂️</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Customer Profile Enricher (`updateCustomerProfile`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini extracts persistent traits (sizing, delivery timing preferences, special landmarks) and saves them into the customer's long-term profile.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 4. Customer Profile Enricher */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>🗂️</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Customer Profile Enricher (`updateCustomerProfile`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini extracts persistent traits (sizing, delivery timing preferences, special landmarks) and saves them into the customer's long-term profile.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.tool_update_profile === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.tool_update_profile === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.tool_update_profile === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.tool_update_profile === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, tool_update_profile: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.tool_update_profile === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>📏</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Sizing Catalog Explorer (`fetchCatalog`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries size inventory lists directly from the active Shopify catalog and matches customer sizing preferences.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 5. Sizing Catalog Explorer */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>📏</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Sizing Catalog Explorer (`fetchCatalog`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries size inventory lists directly from the active Shopify catalog and matches customer sizing preferences.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.tool_fetch_catalog === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.tool_fetch_catalog === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.tool_fetch_catalog === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.tool_fetch_catalog === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, tool_fetch_catalog: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.tool_fetch_catalog === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>📈</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Cross-Selling & Upselling Engine (`getMatchingRecommendations`)</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini identifies items of interest and matches complementary pairs (e.g. shirt &rarr; cargo pants) to pitch to users, increasing AOV.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 6. Cross-Selling & Upselling Engine */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>📈</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Cross-Selling & Upselling Engine (`getMatchingRecommendations`)</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini identifies items of interest and matches complementary pairs (e.g. shirt &rarr; cargo pants) to pitch to users, increasing AOV.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                    <div>
+                      <label style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: 8, 
+                        fontWeight: 700, 
+                        cursor: 'pointer', 
+                        fontSize: '0.8rem', 
+                        background: geminiSettings.tool_recommendations === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                        color: geminiSettings.tool_recommendations === 1 ? 'var(--green)' : 'var(--red)', 
+                        padding: '6px 14px', 
+                        borderRadius: 20, 
+                        border: geminiSettings.tool_recommendations === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                        transition: 'all 0.2s ease'
+                      }}>
+                        <input 
+                          type="checkbox" 
+                          checked={geminiSettings.tool_recommendations === 1}
+                          onChange={e => setGeminiSettings({ ...geminiSettings, tool_recommendations: e.target.checked ? 1 : 0 })}
+                          style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                        />
+                        <span>{geminiSettings.tool_recommendations === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                      </label>
+                    </div>
+                    {geminiSettings.tool_recommendations === 1 && (
+                      <div style={{ marginTop: 4 }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8', display: 'block', marginBottom: 6 }}>🎯 Recommendation Mapping Rules (JSON):</label>
+                        <textarea
+                          value={geminiSettings.recommendation_rules || ''}
+                          onChange={e => setGeminiSettings({ ...geminiSettings, recommendation_rules: e.target.value })}
+                          placeholder='e.g., {"Oxford Shirt": "Cargo Pants", "Chino Shorts": "Polo Shirt"}'
+                          rows={3}
+                          className="premium-input w-full"
+                          style={{ 
+                            fontFamily: 'monospace', 
+                            fontSize: '0.8rem', 
+                            padding: '10px 14px', 
+                            borderRadius: 12, 
+                            background: 'var(--bg-card)', 
+                            border: '1px solid var(--border)',
+                            color: '#fff'
+                          }}
+                        />
+                        <span className="text-muted" style={{ fontSize: '0.75rem', marginTop: 4, display: 'block' }}>Map search keywords or item names to target recommendation items.</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>🔘</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Interactive List Menus</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Renders single-select interactive dropdown lists natively within WhatsApp for size selections and menu routing.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 7. Interactive List Menus */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>🔘</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Interactive List Menus</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Renders single-select interactive dropdown lists natively within WhatsApp for size selections and menu routing.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.feature_interactive_lists === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.feature_interactive_lists === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.feature_interactive_lists === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.feature_interactive_lists === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, feature_interactive_lists: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.feature_interactive_lists === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>💬</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Quick-Reply Decision Buttons</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Sends quick-reply button cards (Yes/No) directly to client screens for instant confirmations and checkout flows.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 8. Quick-Reply Decision Buttons */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>💬</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Quick-Reply Decision Buttons</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Sends quick-reply button cards (Yes/No) directly to client screens for instant confirmations and checkout flows.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.feature_quick_replies === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.feature_quick_replies === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.feature_quick_replies === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.feature_quick_replies === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, feature_quick_replies: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.feature_quick_replies === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>🖼️</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Media Card Streaming</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Delivers product visual cards (attaching visual clothing mocks or Shopify media URLs) in the background asynchronously.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 9. Media Card Streaming */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>🖼️</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Media Card Streaming</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Delivers product visual cards (attaching visual clothing mocks or Shopify media URLs) in the background asynchronously.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      fontWeight: 700, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem', 
+                      background: geminiSettings.feature_media_cards === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                      color: geminiSettings.feature_media_cards === 1 ? 'var(--green)' : 'var(--red)', 
+                      padding: '6px 14px', 
+                      borderRadius: 20, 
+                      border: geminiSettings.feature_media_cards === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      <input 
+                        type="checkbox" 
+                        checked={geminiSettings.feature_media_cards === 1}
+                        onChange={e => setGeminiSettings({ ...geminiSettings, feature_media_cards: e.target.checked ? 1 : 0 })}
+                        style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                      />
+                      <span>{geminiSettings.feature_media_cards === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                    </label>
                   </div>
                 </div>
 
-                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  <div style={{ fontSize: '2.5rem' }}>🎙️</div>
-                  <div>
-                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>PTT Voice Note Transcoding</h5>
-                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Automatically transcodes incoming/outgoing voice notes to native WhatsApp `.ogg` Opus files using FFmpeg in real-time.</p>
-                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                {/* 10. PTT Voice Note Transcoding */}
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '2.5rem' }}>🎙️</div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>PTT Voice Note Transcoding</h5>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Automatically transcodes incoming/outgoing voice notes to native WhatsApp `.ogg` Opus files using FFmpeg in real-time.</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                    <div>
+                      <label style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: 8, 
+                        fontWeight: 700, 
+                        cursor: 'pointer', 
+                        fontSize: '0.8rem', 
+                        background: geminiSettings.feature_voice_notes === 1 ? 'var(--green-dim)' : 'var(--red-dim)', 
+                        color: geminiSettings.feature_voice_notes === 1 ? 'var(--green)' : 'var(--red)', 
+                        padding: '6px 14px', 
+                        borderRadius: 20, 
+                        border: geminiSettings.feature_voice_notes === 1 ? '1px solid var(--green)' : '1px solid var(--red)',
+                        transition: 'all 0.2s ease'
+                      }}>
+                        <input 
+                          type="checkbox" 
+                          checked={geminiSettings.feature_voice_notes === 1}
+                          onChange={e => setGeminiSettings({ ...geminiSettings, feature_voice_notes: e.target.checked ? 1 : 0 })}
+                          style={{ accentColor: 'var(--green)', width: 16, height: 16 }}
+                        />
+                        <span>{geminiSettings.feature_voice_notes === 1 ? 'ACTIVE 🟢' : 'DISABLED 🔴'}</span>
+                      </label>
+                    </div>
+                    {geminiSettings.feature_voice_notes === 1 && (
+                      <div style={{ marginTop: 4 }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#94a3b8', display: 'block', marginBottom: 6 }}>🎙️ Choose Voice Avatar:</label>
+                        <select
+                          value={geminiSettings.voice_name || 'Aoede'}
+                          onChange={e => setGeminiSettings({ ...geminiSettings, voice_name: e.target.value })}
+                          className="premium-input w-full"
+                          style={{ 
+                            fontSize: '0.8rem', 
+                            padding: '10px 14px', 
+                            borderRadius: 12, 
+                            background: 'var(--bg-card)', 
+                            border: '1px solid var(--border)',
+                            color: '#fff'
+                          }}
+                        >
+                          <option value="Aoede">Aoede (Default Female)</option>
+                          <option value="Charon">Charon (Male)</option>
+                          <option value="Fenrir">Fenrir (Deep Voice)</option>
+                          <option value="Kore">Kore (Soft Female)</option>
+                          <option value="Puck">Puck (Energetic)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

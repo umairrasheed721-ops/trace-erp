@@ -1432,6 +1432,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
 
     // WISMO fast interceptor has been disabled; tracking queries will be handled smartly by Gemini
 
+    const settings = db.prepare('SELECT * FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get() || {};
     const { generateAIResponse } = require('./gemini_engine');
     const geminiReply = await generateAIResponse(fromPhone, text);
     if (geminiReply) {
@@ -1468,30 +1469,38 @@ async function processIncomingMessage(bot, msg, sock, db) {
         // If a structured catalog was fetched, send List & Carousel cards
         if (catalogData && catalogData.products && catalogData.products.length > 0) {
           try {
-            const listConfig = {
-              text: `Available products in size ${catalogData.size}:`,
-              buttonText: "Select Product",
-              sections: [
-                {
-                  title: "Trace Catalog",
-                  rows: catalogData.products.slice(0, 10).map(p => ({
-                    title: p.title.substring(0, 24),
-                    description: `Rs. ${p.price} | Stock: ${p.inventory_qty}`,
-                    rowId: `view_product_${p.sku}`
-                  }))
-                }
-              ]
-            };
-            
-            // Dispatch dynamic WhatsApp List
-            await bot.sendMessage(fromPhone, listConfig, false, null, 'list');
+            if (settings.feature_interactive_lists !== 0) {
+              const listConfig = {
+                text: `Available products in size ${catalogData.size}:`,
+                buttonText: "Select Product",
+                sections: [
+                  {
+                    title: "Trace Catalog",
+                    rows: catalogData.products.slice(0, 10).map(p => ({
+                      title: p.title.substring(0, 24),
+                      description: `Rs. ${p.price} | Stock: ${p.inventory_qty}`,
+                      rowId: `view_product_${p.sku}`
+                    }))
+                  }
+                ]
+              };
+              
+              // Dispatch dynamic WhatsApp List
+              await bot.sendMessage(fromPhone, listConfig, false, null, 'list');
+            } else {
+              // Fallback to text list of products
+              const listText = catalogData.products.slice(0, 10).map((p, idx) => `${idx + 1}. *${p.title}* - Rs. ${p.price} (Stock: ${p.inventory_qty})`).join('\n');
+              await bot.sendMessage(fromPhone, `Available products in size ${catalogData.size}:\n\n${listText}`, false);
+            }
 
             // Dispatch top 3 catalog item images in background
-            for (const p of catalogData.products.slice(0, 3)) {
-              if (p.image_url) {
-                bot.sendMessage(fromPhone, `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`, false, p.image_url, 'image').catch(err => {
-                  console.error('Failed to send catalog image message:', err.message);
-                });
+            if (settings.feature_media_cards !== 0) {
+              for (const p of catalogData.products.slice(0, 3)) {
+                if (p.image_url) {
+                  bot.sendMessage(fromPhone, `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`, false, p.image_url, 'image').catch(err => {
+                    console.error('Failed to send catalog image message:', err.message);
+                  });
+                }
               }
             }
           } catch (catalogErr) {
@@ -1505,19 +1514,24 @@ async function processIncomingMessage(bot, msg, sock, db) {
             const rec = recommendationData.recommendation;
 
             // Dispatch upsell product image in background
-            if (rec.image_url) {
+            if (rec.image_url && settings.feature_media_cards !== 0) {
               bot.sendMessage(fromPhone, `*${rec.title}*\nPrice: Rs. ${rec.price}\nSKU: ${rec.sku}`, false, rec.image_url, 'image').catch(err => {
                 console.error('Failed to send recommended product image message:', err.message);
               });
             }
 
             // Dispatch interactive button card (Yes/No)
-            const buttonText = `Would you like to add *${rec.title}* (Rs. ${rec.price}) in size ${recommendationData.size} to your order?`;
-            const buttons = [
-              { label: "Yes, add it! ✅", value: `Yes, add ${rec.title} (SKU: ${rec.sku}) to my order` },
-              { label: "No, thanks ❌", value: "No thanks, proceed with my current selection" }
-            ];
-            await bot.sendMessage(fromPhone, buttonText, false, null, null, null, null, null, buttons, 'native');
+            if (settings.feature_quick_replies !== 0) {
+              const buttonText = `Would you like to add *${rec.title}* (Rs. ${rec.price}) in size ${recommendationData.size} to your order?`;
+              const buttons = [
+                { label: "Yes, add it! ✅", value: `Yes, add ${rec.title} (SKU: ${rec.sku}) to my order` },
+                { label: "No, thanks ❌", value: "No thanks, proceed with my current selection" }
+              ];
+              await bot.sendMessage(fromPhone, buttonText, false, null, null, null, null, null, buttons, 'native');
+            } else {
+              const textMessage = `Would you like to add *${rec.title}* (Rs. ${rec.price}) in size ${recommendationData.size} to your order? Reply with "Yes, add ${rec.title} (SKU: ${rec.sku}) to my order" to add it.`;
+              await bot.sendMessage(fromPhone, textMessage, false);
+            }
 
           } catch (recErr) {
             console.error('⚠️ Failed to dispatch recommendation interactive messages:', recErr.message);

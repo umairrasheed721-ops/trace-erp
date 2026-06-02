@@ -501,7 +501,7 @@ function checkAdAttribution(phone, text) {
 async function generateAIResponse(phone, userMessage) {
   let cleanedPhone = (phone || '').replace(/\D/g, '');
   try {
-    const settings = db.prepare('SELECT api_key, ai_active, model_name, system_prompt FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
+    const settings = db.prepare('SELECT * FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
     if (!settings || settings.ai_active === 0 || !settings.api_key) {
       return null; // Fallback to standard regex templates
     }
@@ -555,11 +555,31 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
     const model = resolveModelName(settings.model_name);
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+    // 3.5. Filter tools dynamically based on configuration switches
+    const enabledDeclarations = [];
+    const fullToolsList = geminiTools[0]?.functionDeclarations || [];
+    
+    fullToolsList.forEach(decl => {
+      let isEnabled = true;
+      if (decl.name === 'checkProductStock' && settings.tool_check_stock === 0) isEnabled = false;
+      if (decl.name === 'getOrderStatus' && settings.tool_order_status === 0) isEnabled = false;
+      if (decl.name === 'createDraftOrder' && settings.tool_create_order === 0) isEnabled = false;
+      if (decl.name === 'updateCustomerProfile' && settings.tool_update_profile === 0) isEnabled = false;
+      if (decl.name === 'fetchCatalog' && settings.tool_fetch_catalog === 0) isEnabled = false;
+      if (decl.name === 'getMatchingRecommendations' && settings.tool_recommendations === 0) isEnabled = false;
+      
+      if (isEnabled) {
+        enabledDeclarations.push(decl);
+      }
+    });
+
+    const activeTools = enabledDeclarations.length > 0 ? [{ functionDeclarations: enabledDeclarations }] : undefined;
+
     // --- FIRST GEMINI FETCH (Check for Tool Call) ---
     let payload = {
       systemInstruction: { parts: [{ text: fullSystemPrompt }] },
       contents,
-      tools: geminiTools
+      tools: activeTools
     };
 
     const _startMs = Date.now();
@@ -615,7 +635,7 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
       let secondPayload = {
         systemInstruction: { parts: [{ text: fullSystemPrompt }] },
         contents,
-        tools: geminiTools
+        tools: activeTools
       };
 
       let secondRes = await fetchWithRetry(url, {

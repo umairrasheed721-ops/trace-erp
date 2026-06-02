@@ -983,6 +983,20 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN quote_context TEXT DEFAULT NULL`); } catch(e){}
 
+  // Gemini Bot Features Customization
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_check_stock INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_order_status INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_create_order INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_update_profile INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_fetch_catalog INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_recommendations INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN feature_interactive_lists INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN feature_quick_replies INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN feature_media_cards INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN feature_voice_notes INTEGER DEFAULT 1`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN voice_name TEXT DEFAULT 'Aoede'`); } catch(e){}
+  try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN recommendation_rules TEXT DEFAULT '{}'`); } catch(e){}
+
   // FTS5 Virtual Table for Search
   try {
     db.exec(`

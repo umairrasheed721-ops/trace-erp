@@ -1252,7 +1252,15 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
 // GET /api/whatsapp-governance/gemini/settings
 router.get('/gemini/settings', (req, res) => {
   try {
-    const s = db.prepare('SELECT api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled FROM gemini_bot_settings ORDER BY id DESC LIMIT 1').get();
+    const s = db.prepare(`
+      SELECT 
+        api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled,
+        tool_check_stock, tool_order_status, tool_create_order, tool_update_profile, tool_fetch_catalog, tool_recommendations,
+        feature_interactive_lists, feature_quick_replies, feature_media_cards, feature_voice_notes,
+        voice_name, recommendation_rules
+      FROM gemini_bot_settings 
+      ORDER BY id DESC LIMIT 1
+    `).get();
     res.json(s || {});
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1261,12 +1269,25 @@ router.get('/gemini/settings', (req, res) => {
 
 // POST /api/whatsapp-governance/gemini/settings
 router.post('/gemini/settings', (req, res) => {
-  const { api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled } = req.body;
+  const { 
+    api_key, ai_active, model_name, system_prompt, strictness, auto_learning_enabled,
+    tool_check_stock, tool_order_status, tool_create_order, tool_update_profile, tool_fetch_catalog, tool_recommendations,
+    feature_interactive_lists, feature_quick_replies, feature_media_cards, feature_voice_notes,
+    voice_name, recommendation_rules
+  } = req.body;
   try {
     db.prepare(`
       UPDATE gemini_bot_settings SET
-        api_key = ?, ai_active = ?, model_name = ?, system_prompt = ?, strictness = ?, auto_learning_enabled = ?, updated_at = datetime('now')
-    `).run(api_key || '', ai_active ? 1 : 0, model_name || 'gemini-2.5-flash', system_prompt || '', strictness || 'balanced', auto_learning_enabled ? 1 : 0);
+        api_key = ?, ai_active = ?, model_name = ?, system_prompt = ?, strictness = ?, auto_learning_enabled = ?,
+        tool_check_stock = ?, tool_order_status = ?, tool_create_order = ?, tool_update_profile = ?, tool_fetch_catalog = ?, tool_recommendations = ?,
+        feature_interactive_lists = ?, feature_quick_replies = ?, feature_media_cards = ?, feature_voice_notes = ?,
+        voice_name = ?, recommendation_rules = ?, updated_at = datetime('now')
+    `).run(
+      api_key || '', ai_active ? 1 : 0, model_name || 'gemini-2.5-flash', system_prompt || '', strictness || 'balanced', auto_learning_enabled ? 1 : 0,
+      tool_check_stock ? 1 : 0, tool_order_status ? 1 : 0, tool_create_order ? 1 : 0, tool_update_profile ? 1 : 0, tool_fetch_catalog ? 1 : 0, tool_recommendations ? 1 : 0,
+      feature_interactive_lists ? 1 : 0, feature_quick_replies ? 1 : 0, feature_media_cards ? 1 : 0, feature_voice_notes ? 1 : 0,
+      voice_name || 'Aoede', recommendation_rules || '{}'
+    );
 
     res.json({ success: true });
   } catch (e) {
