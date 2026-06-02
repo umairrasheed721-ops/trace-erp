@@ -46,17 +46,18 @@ async function uploadBufferToDrive(buffer, fileName, mimeType) {
       parents: [parentFolderId]
     };
 
-    const media = {
-      mimeType: mimeType,
-      body: Readable.from(buffer)
-    };
+    const bufferStream = Readable.from(buffer);
 
     console.log(`📡 [Google Drive Service] Uploading ${fileName} (${(buffer.length / 1024).toFixed(1)} KB)...`);
     
     const response = await drive.files.create({
       requestBody: fileMetadata,
-      media: media,
-      fields: 'id, webViewLink, webContentLink'
+      resource: fileMetadata, // backwards compatibility
+      media: {
+        mimeType: mimeType,
+        body: bufferStream
+      },
+      fields: 'id, name, webViewLink, webContentLink'
     });
 
     const fileId = response.data.id;
