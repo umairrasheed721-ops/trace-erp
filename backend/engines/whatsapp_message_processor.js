@@ -180,6 +180,7 @@ function getMessageText(msg) {
 }
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
+  console.log('📸 Media received, attempting Drive upload...');
   try {
     const crypto = require('crypto');
     const { uploadBufferToDrive } = require('../services/googleDrive');
@@ -206,25 +207,38 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
     const fileName = `${uuid}.${ext}`;
 
     console.log(`📥 Decrypting and downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
-    const buffer = await downloadMediaMessage(
-      msg,
-      'buffer',
-      {},
-      { logger: SILENT_LOGGER }
-    );
+    let buffer;
+    try {
+      buffer = await downloadMediaMessage(
+        msg,
+        'buffer',
+        {},
+        { logger: SILENT_LOGGER }
+      );
+    } catch (downloadErr) {
+      console.error('❌ Baileys media decryption failed:', downloadErr.message);
+      return null;
+    }
 
     if (buffer) {
       console.log(`💾 Offloading WhatsApp media directly to Google Drive: ${fileName}`);
-      const driveFile = await uploadBufferToDrive(buffer, fileName, mediaDetails.mimeType);
-      if (driveFile) {
-        console.log(`📡 Media successfully offloaded to Drive: ID=${driveFile.id}, URL=${driveFile.url}`);
-        return { url: driveFile.url, id: driveFile.id };
-      } else {
-        console.warn(`⚠️ Google Drive upload returned null for message ${msg.key.id}`);
+      
+      // Wrap the entire Drive upload block in a robust try...catch
+      try {
+        const driveFile = await uploadBufferToDrive(buffer, fileName, mediaDetails.mimeType);
+        if (driveFile) {
+          console.log('✅ Drive upload successful');
+          console.log(`📡 Media successfully offloaded to Drive: ID=${driveFile.id}, URL=${driveFile.url}`);
+          return { url: driveFile.url, id: driveFile.id };
+        } else {
+          console.warn(`⚠️ Google Drive upload returned null for message ${msg.key.id}`);
+        }
+      } catch (uploadErr) {
+        console.error('❌ Drive Upload Failed:', uploadErr.message);
       }
     }
-  } catch (e) {
-    console.warn(`⚠️ Failed to process/offload media for message ${msg.key.id}:`, e.message);
+  } catch (error) {
+    console.error('❌ Drive Upload Failed:', error.message);
   }
   return null;
 }
