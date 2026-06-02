@@ -161,17 +161,15 @@ router.post('/instaworld', (req, res) => {
 
 // POST /api/webhooks/shopify
 router.post('/shopify', (req, res) => {
-  // Shopify sends X-Shopify-Shop-Domain and X-Shopify-Topic headers
   const shopDomain = req.headers['x-shopify-shop-domain'];
   const topic = req.headers['x-shopify-topic'];
-  const orderId = req.body?.id;
+  const payload = req.body;
 
-  // Immediate 200 OK so Shopify doesn't timeout
   res.status(200).send('OK');
 
-  if (!shopDomain || !orderId) return;
+  if (!shopDomain || !payload || !payload.id) return;
 
-  console.log(`⚡ [Shopify Webhook] Received ${topic} for Order ${orderId} from ${shopDomain}`);
+  console.log(`⚡ [Shopify Webhook] Received ${topic} from ${shopDomain}`);
 
   try {
     const store = db.prepare('SELECT * FROM stores WHERE shop_domain = ?').get(shopDomain);
@@ -180,8 +178,19 @@ router.post('/shopify', (req, res) => {
       return;
     }
 
-    // Fire and forget
-    syncSingleShopifyOrder(store, orderId).catch(err => console.error(err));
+    if (topic && topic.startsWith('products/')) {
+      if (topic === 'products/delete') {
+        db.prepare('DELETE FROM products WHERE store_id = ? AND shopify_product_id = ?').run(store.id, String(payload.id));
+        console.log(`🗑️ [Shopify Webhook] Deleted product ${payload.id} from local cache.`);
+      } else {
+        const { syncShopifyProduct } = require('../engines/shopify');
+        syncShopifyProduct(db, store.id, store.shop_domain, payload);
+        console.log(`🔄 [Shopify Webhook] Synced product ${payload.id} to local cache.`);
+      }
+    } else {
+      // Order webhook
+      syncSingleShopifyOrder(store, payload.id).catch(err => console.error(err));
+    }
   } catch (err) {
     console.error('Webhook processing error:', err.message);
   }

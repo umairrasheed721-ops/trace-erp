@@ -168,6 +168,8 @@ function initDb(db) {
       title TEXT,
       image_url TEXT,
       price REAL,
+      inventory_qty INTEGER DEFAULT 0,
+      product_url TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(store_id, shopify_variant_id)
     );
@@ -982,6 +984,8 @@ function runMigrations(db) {
   // Phase 4/5: Final Sweep Database Migrations
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN quote_context TEXT DEFAULT NULL`); } catch(e){}
+  try { db.exec(`ALTER TABLE products ADD COLUMN inventory_qty INTEGER DEFAULT 0`); } catch(e){}
+  try { db.exec(`ALTER TABLE products ADD COLUMN product_url TEXT DEFAULT ''`); } catch(e){}
 
   // Gemini Bot Features Customization
   try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_check_stock INTEGER DEFAULT 1`); } catch(e){}

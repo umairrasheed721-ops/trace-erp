@@ -175,6 +175,15 @@ module.exports = function schedulerInit() {
     timezone: "UTC"
   });
 
+  // 9. Every day at 1:00 AM: Pull full Shopify product catalog and sync to local cache
+  cron.schedule('0 1 * * *', async () => {
+    console.log('🔄 [CRON] Starting daily full Shopify catalog pull & sync...');
+    const { syncFullProductCatalog } = require('./engines/shopify');
+    for (const store of getAllStores()) {
+      try { await syncFullProductCatalog(store); } catch (e) { console.error('Full catalog sync cron error:', e.message); }
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

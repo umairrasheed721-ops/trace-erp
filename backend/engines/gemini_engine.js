@@ -272,37 +272,39 @@ async function executeToolCall(name, args) {
       const normSize = normalizeSizeInput(args.size);
       let products = [];
       try {
-        const store = db.prepare('SELECT shop_domain, access_token FROM stores LIMIT 1').get();
-        if (store && store.access_token && store.access_token !== 'PENDING') {
-          const fetchFn = typeof fetch === 'function' ? fetch : require('node-fetch');
-          const res = await fetchFn(`https://${store.shop_domain}/admin/api/2024-10/products.json?limit=50`, {
-            headers: { 'X-Shopify-Access-Token': store.access_token }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            const shopifyProducts = data.products || [];
-            shopifyProducts.forEach(p => {
-              p.variants.forEach(v => {
-                const matchSize = v.title.trim().toUpperCase() === normSize || 
-                                  v.sku.trim().toUpperCase().includes(normSize) ||
-                                  p.title.trim().toUpperCase().includes(normSize);
-                if (matchSize) {
-                  const image = p.images.find(img => img.id === v.image_id) || p.image || p.images[0] || {};
-                  products.push({
-                    title: `${p.title} (${v.title})`,
-                    sku: v.sku || '',
-                    price: parseFloat(v.price || 0),
-                    image_url: image.src || '',
-                    inventory_qty: v.inventory_quantity || 0,
-                    product_url: store ? `https://${store.shop_domain}/products/${p.handle}` : ''
-                  });
-                }
-              });
-            });
+        const store = db.prepare('SELECT id FROM stores LIMIT 1').get();
+        if (store) {
+          const rows = db.prepare(`
+            SELECT title, sku, price, image_url, inventory_qty, product_url 
+            FROM products 
+            WHERE store_id = ? 
+            AND (
+              sku LIKE ? 
+              OR title LIKE ? 
+              OR title LIKE ?
+              OR title LIKE ?
+            )
+          `).all(
+            store.id,
+            `%-${normSize}`,
+            `%(${normSize})%`,
+            `%/ ${normSize})%`,
+            `%(${normSize} /%`
+          );
+
+          if (rows && rows.length > 0) {
+            products = rows.map(r => ({
+              title: r.title,
+              sku: r.sku || '',
+              price: r.price,
+              image_url: r.image_url || '',
+              inventory_qty: r.inventory_qty || 0,
+              product_url: r.product_url || ''
+            }));
           }
         }
       } catch (err) {
-        console.error('⚠️ fetchCatalog Shopify API error:', err.message);
+        console.error('⚠️ fetchCatalog local DB query error:', err.message);
       }
       
       if (products.length === 0) {

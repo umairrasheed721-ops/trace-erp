@@ -1061,6 +1061,75 @@ async function syncSpecificOrders(store, shopifyIds) {
   return updatedCount;
 }
 
+function syncShopifyProduct(db, storeId, shopDomain, p) {
+  try {
+    p.variants.forEach(v => {
+      const image = p.images.find(img => img.id === v.image_id) || p.image || p.images[0] || {};
+      const productUrl = `https://${shopDomain}/products/${p.handle}`;
+      db.prepare(`
+        INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price, inventory_qty, product_url, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        storeId,
+        String(p.id),
+        String(v.id),
+        v.sku || '',
+        `${p.title} (${v.title})`,
+        image.src || '',
+        parseFloat(v.price || 0),
+        v.inventory_quantity || 0,
+        productUrl
+      );
+    });
+  } catch (err) {
+    console.error('Error syncing Shopify product to local DB:', err.message);
+  }
+}
+
+async function syncFullProductCatalog(store) {
+  const { db } = require('../db');
+  console.log(`🔄 Starting full Shopify catalog sync for store ${store.shop_domain}...`);
+  try {
+    const fetchFn = typeof fetch === 'function' ? fetch : require('node-fetch');
+    let url = `https://${store.shop_domain}/admin/api/2024-10/products.json?limit=250`;
+    let page = 1;
+    
+    while (url) {
+      console.log(`📡 Fetching products page ${page}...`);
+      const res = await fetchFn(url, {
+        headers: { 'X-Shopify-Access-Token': store.access_token }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Shopify API error: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      const shopifyProducts = data.products || [];
+      console.log(`📦 Received ${shopifyProducts.length} products on page ${page}`);
+      
+      shopifyProducts.forEach(p => {
+        syncShopifyProduct(db, store.id, store.shop_domain, p);
+      });
+      
+      const linkHeader = res.headers.get('link');
+      url = null;
+      if (linkHeader) {
+        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+        if (match) {
+          url = match[1];
+          page++;
+        }
+      }
+    }
+    console.log(`✅ Full Shopify catalog sync completed for store ${store.shop_domain}`);
+    return true;
+  } catch (err) {
+    console.error(`❌ Full catalog sync failed:`, err.message);
+    return false;
+  }
+}
+
 module.exports = { 
   fetchShopifyOrders, 
   refreshShopifyUpdates, 
@@ -1072,5 +1141,7 @@ module.exports = {
   updateShopifyAddress,
   syncSpecificOrders,
   fetchVariantImagesGraphQL,
-  mapShopifyStatus 
+  mapShopifyStatus,
+  syncShopifyProduct,
+  syncFullProductCatalog
 };
