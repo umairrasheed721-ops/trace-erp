@@ -766,14 +766,10 @@ class WhatsAppBot {
         });
 
         const interactivePayload = {
-          viewOnceMessage: {
-            message: {
-              interactiveMessage: {
-                body: { text: finalMessage || 'Please select an option:' },
-                nativeFlowMessage: {
-                  buttons: nativeButtons
-                }
-              }
+          interactiveMessage: {
+            body: { text: finalMessage || 'Please select an option:' },
+            nativeFlowMessage: {
+              buttons: nativeButtons
             }
           }
         };
@@ -793,31 +789,27 @@ class WhatsAppBot {
       } else if (options?.list || (mediaType === 'list' && message && typeof message === 'object')) {
         const listConfig = options.list || message;
         payload = {
-          viewOnceMessage: {
-            message: {
-              interactiveMessage: {
-                body: { text: listConfig.text },
-                footer: listConfig.footer ? { text: listConfig.footer } : undefined,
-                header: listConfig.header ? { title: listConfig.header } : undefined,
-                nativeFlowMessage: {
-                  buttons: [
-                    {
-                      name: "single_select",
-                      buttonParamsJson: JSON.stringify({
-                        title: listConfig.buttonText || "Options",
-                        sections: listConfig.sections.map(sec => ({
-                          title: sec.title,
-                          rows: sec.rows.map(row => ({
-                            title: row.title,
-                            description: row.description || "",
-                            id: row.rowId
-                          }))
-                        }))
-                      })
-                    }
-                  ]
+          interactiveMessage: {
+            body: { text: listConfig.text },
+            footer: listConfig.footer ? { text: listConfig.footer } : undefined,
+            header: listConfig.header ? { title: listConfig.header } : undefined,
+            nativeFlowMessage: {
+              buttons: [
+                {
+                  name: "single_select",
+                  buttonParamsJson: JSON.stringify({
+                    title: listConfig.buttonText || "Options",
+                    sections: listConfig.sections.map(sec => ({
+                      title: sec.title,
+                      rows: sec.rows.map(row => ({
+                        title: row.title,
+                        description: row.description || "",
+                        id: row.rowId
+                      }))
+                    }))
+                  })
                 }
-              }
+              ]
             }
           }
         };
@@ -988,8 +980,8 @@ class WhatsAppBot {
         let dbMessageContent;
         if (poll) {
           dbMessageContent = `🗳️ Poll: ${poll.name}`;
-        } else if (payload.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
-          dbMessageContent = payload.viewOnceMessage.message.interactiveMessage.body?.text || 'Interactive List';
+        } else if (payload.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select' || payload.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
+          dbMessageContent = payload.interactiveMessage?.body?.text || payload.viewOnceMessage?.message?.interactiveMessage?.body?.text || 'Interactive List';
         } else {
           dbMessageContent = mediaUrl ? `[${finalMediaType.toUpperCase()}] ${finalMessage || ''}` : finalMessage;
         }
@@ -1083,8 +1075,8 @@ class WhatsAppBot {
         let dbMessageContent;
         if (poll) {
           dbMessageContent = `🗳️ Poll: ${poll.name}`;
-        } else if (payload?.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
-          dbMessageContent = payload.viewOnceMessage.message.interactiveMessage.body?.text || 'Interactive List';
+        } else if (payload?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select' || payload?.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
+          dbMessageContent = payload.interactiveMessage?.body?.text || payload.viewOnceMessage?.message?.interactiveMessage?.body?.text || 'Interactive List';
         } else {
           dbMessageContent = mediaUrl ? `[${finalMediaType.toUpperCase()}] ${finalMessage || ''}` : finalMessage;
         }

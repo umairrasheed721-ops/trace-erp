@@ -592,7 +592,7 @@ async function processQueue(bot, sock, db) {
           console.error('[CRITICAL] Blocked null/non-object payload:', payload);
           return null;
         }
-        const isTextPayload = !payload.image && !payload.audio && !payload.video && !payload.document && !payload.poll && !payload.viewOnceMessage;
+        const isTextPayload = !payload.image && !payload.audio && !payload.video && !payload.document && !payload.poll && !payload.viewOnceMessage && !payload.interactiveMessage;
         if (isTextPayload) {
           const txt = typeof payload.text === 'string' ? payload.text.trim() : '';
           if (!txt) {
@@ -708,14 +708,10 @@ async function processQueue(bot, sock, db) {
         });
 
         const interactivePayload = {
-          viewOnceMessage: {
-            message: {
-              interactiveMessage: {
-                body: { text: message || 'Please select an option:' },
-                nativeFlowMessage: {
-                  buttons: nativeButtons
-                }
-              }
+          interactiveMessage: {
+            body: { text: message || 'Please select an option:' },
+            nativeFlowMessage: {
+              buttons: nativeButtons
             }
           }
         };
@@ -732,6 +728,34 @@ async function processQueue(bot, sock, db) {
         } else {
           sentMsg = await safeSend(jid, interactivePayload);
         }
+      } else if (mediaType === 'list' && message && typeof message === 'object') {
+        const listConfig = message;
+        const interactivePayload = {
+          interactiveMessage: {
+            body: { text: listConfig.text },
+            footer: listConfig.footer ? { text: listConfig.footer } : undefined,
+            header: listConfig.header ? { title: listConfig.header } : undefined,
+            nativeFlowMessage: {
+              buttons: [
+                {
+                  name: "single_select",
+                  buttonParamsJson: JSON.stringify({
+                    title: listConfig.buttonText || "Options",
+                    sections: listConfig.sections.map(sec => ({
+                      title: sec.title,
+                      rows: sec.rows.map(row => ({
+                        title: row.title,
+                        description: row.description || "",
+                        id: row.rowId
+                      }))
+                    }))
+                  })
+                }
+              ]
+            }
+          }
+        };
+        sentMsg = await safeSend(jid, interactivePayload);
       } else {
         if (mediaUrl) {
           if (finalMediaType === 'image') {
@@ -1466,45 +1490,79 @@ async function processIncomingMessage(bot, msg, sock, db) {
         bot.sendMessage(fromPhone, textReply, false);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
 
-        // If a structured catalog was fetched, send List & Carousel cards
+        // If a structured catalog was fetched, send unique media cards
         if (catalogData && catalogData.products && catalogData.products.length > 0) {
           try {
-            if (settings.feature_interactive_lists !== 0) {
-              const listConfig = {
-                text: `Available products in size ${catalogData.size}:`,
-                buttonText: "Select Product",
-                sections: [
-                  {
-                    title: "Trace Catalog",
-                    rows: catalogData.products.slice(0, 10).map(p => ({
-                      title: p.title.substring(0, 24),
-                      description: `Rs. ${p.price} | Stock: ${p.inventory_qty}`,
-                      rowId: `view_product_${p.sku}`
-                    }))
-                  }
-                ]
-              };
+            // Group variations by base product title to deduplicate
+            const grouped = {};
+            for (const p of catalogData.products) {
+              let title = p.title || '';
               
-              // Dispatch dynamic WhatsApp List
-              await bot.sendMessage(fromPhone, listConfig, false, null, 'list');
-            } else {
-              // Fallback to text list of products
-              const listText = catalogData.products.slice(0, 10).map((p, idx) => `${idx + 1}. *${p.title}* - Rs. ${p.price} (Stock: ${p.inventory_qty})`).join('\n');
-              await bot.sendMessage(fromPhone, `Available products in size ${catalogData.size}:\n\n${listText}`, false);
+              // Extract variant parts
+              let variantPart = '';
+              const parenMatch = title.match(/\(([^)]+)\)/);
+              if (parenMatch) {
+                variantPart = parenMatch[1]; // e.g. "Maroon / M"
+              } else {
+                const hyphenIndex = title.indexOf(' - ');
+                if (hyphenIndex !== -1) {
+                  variantPart = title.substring(hyphenIndex + 3).trim(); // e.g. "Medium"
+                }
+              }
+              
+              // Get base title by stripping paren & hyphen suffix
+              let baseTitle = title.replace(/\([^)]*\)/g, '').split(' - ')[0].trim();
+              const groupKey = baseTitle.toLowerCase();
+              
+              // Extract color from variant part
+              let color = '';
+              if (variantPart) {
+                const parts = variantPart.split(/[\/,]/);
+                for (const part of parts) {
+                  const cleanedPart = part.trim();
+                  // Check if this part is a size. If not, it's color/variation!
+                  const isSize = /^(m|l|xl|2xl|3xl|4xl|5xl|6xl|s|xs|xxl|xxxl|medium|large|small|double\s*xl|triple\s*xl)$/i.test(cleanedPart);
+                  if (!isSize && cleanedPart) {
+                    color = cleanedPart;
+                    break;
+                  }
+                }
+              }
+              
+              if (!grouped[groupKey]) {
+                grouped[groupKey] = {
+                  baseTitle: baseTitle,
+                  firstVariant: p,
+                  price: p.price,
+                  colors: new Set()
+                };
+              }
+              
+              if (color) {
+                grouped[groupKey].colors.add(color);
+              }
             }
 
-            // Dispatch top 3 catalog item images in background
+            // Dispatch unique images with variations listed in caption
             if (settings.feature_media_cards !== 0) {
-              for (const p of catalogData.products.slice(0, 3)) {
+              const uniqueGroups = Object.values(grouped).slice(0, 3); // Cap at 3 unique products
+              for (const g of uniqueGroups) {
+                const p = g.firstVariant;
                 if (p.image_url) {
-                  bot.sendMessage(fromPhone, `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`, false, p.image_url, 'image').catch(err => {
+                  let caption = `*${g.baseTitle}*\nPrice: Rs. ${g.price}`;
+                  if (g.colors.size > 0) {
+                    caption += `\nAvailable Colors: ${Array.from(g.colors).join(', ')}`;
+                  }
+                  caption += `\nSKU: ${p.sku}`;
+                  
+                  bot.sendMessage(fromPhone, caption, false, p.image_url, 'image').catch(err => {
                     console.error('Failed to send catalog image message:', err.message);
                   });
                 }
               }
             }
           } catch (catalogErr) {
-            console.error('⚠️ Failed to dispatch catalog interactive messages:', catalogErr.message);
+            console.error('❌ Failed to process catalog data:', catalogErr.message);
           }
         }
 
