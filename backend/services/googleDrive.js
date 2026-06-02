@@ -30,16 +30,20 @@ try {
  * @returns {Promise<{id: string, url: string} | null>} File details or null on failure
  */
 async function uploadBufferToDrive(buffer, fileName, mimeType) {
+  const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  if (!parentFolderId || parentFolderId.trim() === '') {
+    throw new Error('GOOGLE_DRIVE_FOLDER_ID is undefined or empty. A valid folder ID must be provided to upload via Service Account.');
+  }
+
   if (!drive) {
     console.warn('⚠️ [Google Drive Service] Skip upload: Google Drive client is not initialized.');
     return null;
   }
 
   try {
-    const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
     const fileMetadata = {
       name: fileName,
-      parents: parentFolderId ? [parentFolderId] : []
+      parents: [parentFolderId]
     };
 
     const media = {
