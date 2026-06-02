@@ -136,6 +136,18 @@ const geminiTools = [
           },
           required: ['size']
         }
+      },
+      {
+        name: 'getMatchingRecommendations',
+        description: 'Get automated matching product recommendations (e.g., pairs shirts with cargo pants) to cross-sell to the customer in their preferred size.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            product_sku_or_title: { type: 'STRING', description: 'SKU or title of the product they are looking at or ordering.' },
+            size: { type: 'STRING', description: 'Preferred size (e.g., M, L, XL, 2XL, 3XL, 4XL, 5XL, 6XL).' }
+          },
+          required: ['product_sku_or_title', 'size']
+        }
       }
     ]
   }
@@ -144,33 +156,49 @@ const geminiTools = [
 const MOCK_CATALOG = {
   'M': [
     { title: 'Classic Oxford Shirt - Medium', price: 2999, sku: 'OX-M', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 15 },
-    { title: 'Premium Polo Shirt - Medium', price: 2499, sku: 'PL-M', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 8 }
+    { title: 'Premium Polo Shirt - Medium', price: 2499, sku: 'PL-M', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 8 },
+    { title: 'Premium Crewneck Sweatshirt - Medium', price: 3499, sku: 'CN-M', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 10 },
+    { title: 'Urban Cargo Pants - Medium', price: 3999, sku: 'CG-M', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 5 }
   ],
   'L': [
     { title: 'Classic Oxford Shirt - Large', price: 2999, sku: 'OX-L', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 20 },
-    { title: 'Premium Polo Shirt - Large', price: 2499, sku: 'PL-L', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 12 }
+    { title: 'Premium Polo Shirt - Large', price: 2499, sku: 'PL-L', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 12 },
+    { title: 'Premium Crewneck Sweatshirt - Large', price: 3499, sku: 'CN-L', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 12 },
+    { title: 'Urban Cargo Pants - Large', price: 3999, sku: 'CG-L', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 8 }
   ],
   'XL': [
     { title: 'Classic Oxford Shirt - XL', price: 2999, sku: 'OX-XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 18 },
-    { title: 'Premium Polo Shirt - XL', price: 2499, sku: 'PL-XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 14 }
+    { title: 'Premium Polo Shirt - XL', price: 2499, sku: 'PL-XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 14 },
+    { title: 'Premium Crewneck Sweatshirt - XL', price: 3499, sku: 'CN-XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 15 },
+    { title: 'Urban Cargo Pants - XL', price: 3999, sku: 'CG-XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 10 }
   ],
   '2XL': [
+    { title: 'Classic Oxford Shirt - 2XL', price: 2999, sku: 'OX-2XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 12 },
+    { title: 'Premium Polo Shirt - 2XL', price: 2499, sku: 'PL-2XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 10 },
     { title: 'Premium Crewneck Sweatshirt - 2XL', price: 3499, sku: 'CN-2XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 6 },
     { title: 'Urban Cargo Pants - 2XL', price: 3999, sku: 'CG-2XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 4 }
   ],
   '3XL': [
+    { title: 'Classic Oxford Shirt - 3XL', price: 2999, sku: 'OX-3XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 8 },
+    { title: 'Premium Polo Shirt - 3XL', price: 2499, sku: 'PL-3XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 5 },
     { title: 'Premium Crewneck Sweatshirt - 3XL', price: 3499, sku: 'CN-3XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 10 },
     { title: 'Urban Cargo Pants - 3XL', price: 3999, sku: 'CG-3XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 5 }
   ],
   '4XL': [
+    { title: 'Classic Oxford Shirt - 4XL', price: 2999, sku: 'OX-4XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 10 },
+    { title: 'Premium Polo Shirt - 4XL', price: 2499, sku: 'PL-4XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 6 },
     { title: 'Premium Crewneck Sweatshirt - 4XL', price: 3499, sku: 'CN-4XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 12 },
     { title: 'Urban Cargo Pants - 4XL', price: 3999, sku: 'CG-4XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 7 }
   ],
   '5XL': [
+    { title: 'Classic Oxford Shirt - 5XL', price: 2999, sku: 'OX-5XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 5 },
+    { title: 'Premium Polo Shirt - 5XL', price: 2499, sku: 'PL-5XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 3 },
     { title: 'Premium Crewneck Sweatshirt - 5XL', price: 3499, sku: 'CN-5XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 8 },
     { title: 'Urban Cargo Pants - 5XL', price: 3999, sku: 'CG-5XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 3 }
   ],
   '6XL': [
+    { title: 'Classic Oxford Shirt - 6XL', price: 2999, sku: 'OX-6XL', image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500', inventory_qty: 3 },
+    { title: 'Premium Polo Shirt - 6XL', price: 2499, sku: 'PL-6XL', image_url: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=500', inventory_qty: 2 },
     { title: 'Premium Crewneck Sweatshirt - 6XL', price: 3499, sku: 'CN-6XL', image_url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500', inventory_qty: 5 },
     { title: 'Urban Cargo Pants - 6XL', price: 3999, sku: 'CG-6XL', image_url: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500', inventory_qty: 2 }
   ]
@@ -280,6 +308,69 @@ async function executeToolCall(name, args) {
         products = MOCK_CATALOG[normSize] || MOCK_CATALOG['XL'] || [];
       }
       return { success: true, size: normSize, products };
+    }
+
+    if (name === 'getMatchingRecommendations') {
+      const normSize = normalizeSizeInput(args.size);
+      const queryItem = String(args.product_sku_or_title || '').toUpperCase();
+      let category = 'SHIRT'; // Default fallback
+      
+      if (queryItem.includes('SHIRT') || queryItem.includes('POLO') || queryItem.startsWith('OX') || queryItem.startsWith('PL')) {
+        category = 'PANTS';
+      } else if (queryItem.includes('PANT') || queryItem.includes('CARGO') || queryItem.includes('TROUSER') || queryItem.includes('JEAN') || queryItem.startsWith('CG')) {
+        category = 'SHIRT';
+      } else if (queryItem.includes('SWEATSHIRT') || queryItem.includes('SWEATER') || queryItem.includes('HOODIE') || queryItem.startsWith('CN')) {
+        category = 'PANTS';
+      }
+
+      let recommendation = null;
+
+      // 1. Try to search in local database
+      try {
+        const searchKeyword = category === 'PANTS' ? '%Pant%' : '%Shirt%';
+        const row = db.prepare(`
+          SELECT parent_title, variant_title, sku, selling_price, inventory_qty 
+          FROM product_master_costs 
+          WHERE (parent_title LIKE ? OR variant_title LIKE ?) 
+          AND (variant_title LIKE ? OR sku LIKE ?) 
+          AND inventory_qty > 0 
+          LIMIT 1
+        `).get(searchKeyword, searchKeyword, `%${normSize}%`, `%${normSize}%`);
+
+        if (row) {
+          recommendation = {
+            title: `${row.parent_title} (${row.variant_title})`,
+            price: row.selling_price || 2999,
+            sku: row.sku || '',
+            image_url: category === 'PANTS' ? 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=500' : 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500',
+            inventory_qty: row.inventory_qty || 0
+          };
+        }
+      } catch (dbErr) {
+        console.error('⚠️ getMatchingRecommendations DB lookup error:', dbErr.message);
+      }
+
+      // 2. Fall back to high-quality mock recommendations matching the size if db empty/failed
+      if (!recommendation) {
+        const mockItems = MOCK_CATALOG[normSize] || MOCK_CATALOG['XL'] || [];
+        // Find matching item in mock list or grab the first available
+        const found = mockItems.find(item => {
+          const titleUpper = item.title.toUpperCase();
+          if (category === 'PANTS') {
+            return titleUpper.includes('PANT') || titleUpper.includes('CARGO') || item.sku.startsWith('CG');
+          } else {
+            return titleUpper.includes('SHIRT') || titleUpper.includes('POLO') || item.sku.startsWith('OX') || item.sku.startsWith('PL');
+          }
+        });
+        
+        recommendation = found || mockItems[0] || null;
+      }
+
+      if (!recommendation) {
+        return { success: false, message: 'No matching recommendations available at the moment.' };
+      }
+
+      return { success: true, size: normSize, recommendation };
     }
 
     return { success: false, message: `Unknown tool ${name}` };
@@ -436,7 +527,7 @@ VIP Status: ${profile.vip_status === 1 ? 'YES (High Value Buyer)' : 'Standard'}
 Saved Preferences: ${profile.preferences}
 
 --- INSTRUCTIONS ---
-You are chatting with this customer on WhatsApp. Keep your responses concise, friendly, and formatted for WhatsApp (use emojis, bold text *like this*). If they ask about order status, stock, sizing recommendations, or what products are available in their size, use your available tools first (like checkProductStock, getOrderStatus, or fetchCatalog) before replying.
+You are chatting with this customer on WhatsApp. Keep your responses concise, friendly, and formatted for WhatsApp (use emojis, bold text *like this*). If they ask about order status, stock, sizing recommendations, or what products are available in their size, use your available tools first (like checkProductStock, getOrderStatus, or fetchCatalog) before replying. When they express interest in buying a product or are ready to purchase, call the getMatchingRecommendations tool to find a matching product in their size (e.g. pants if they buy a shirt) and suggest/cross-sell it to them.
 `;
 
     // 4. Fetch Short-Term Chat Memory (Rolling context window: latest 6 messages)
@@ -492,11 +583,14 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
 
     // --- CHECK FOR FUNCTION CALL ---
     let fetchCatalogResult = null;
+    let getMatchingRecommendationsResult = null;
     if (part?.functionCall) {
       const call = part.functionCall;
       const toolResult = await executeToolCall(call.name, call.args);
       if (call.name === 'fetchCatalog' && toolResult && toolResult.success) {
         fetchCatalogResult = toolResult;
+      } else if (call.name === 'getMatchingRecommendations' && toolResult && toolResult.success) {
+        getMatchingRecommendationsResult = toolResult;
       }
 
       // Append model functionCall request to contents
@@ -545,6 +639,9 @@ You are chatting with this customer on WhatsApp. Keep your responses concise, fr
 
     if (fetchCatalogResult) {
       replyText += '\n__CATALOG_JSON__' + JSON.stringify(fetchCatalogResult);
+    }
+    if (getMatchingRecommendationsResult) {
+      replyText += '\n__RECOMMENDATION_JSON__' + JSON.stringify(getMatchingRecommendationsResult);
     }
 
     // --- SAVE TO CHAT MEMORY ---

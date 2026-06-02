@@ -1050,6 +1050,31 @@ async function processQueue(bot, sock, db) {
   }
 }
 
+function extractSerializedTag(text, tag) {
+  if (typeof text !== 'string') return { cleanText: '', data: null };
+  const tagIndex = text.indexOf(tag);
+  if (tagIndex === -1) return { cleanText: text, data: null };
+  
+  const rawPayload = text.substring(tagIndex + tag.length);
+  let cleanText = text.substring(0, tagIndex).trim();
+  let jsonString = rawPayload;
+  
+  const nextTagIndex = rawPayload.search(/__[A-Z_]+__/);
+  if (nextTagIndex !== -1) {
+    jsonString = rawPayload.substring(0, nextTagIndex);
+    const remainingTags = rawPayload.substring(nextTagIndex);
+    cleanText = cleanText + '\n' + remainingTags;
+  }
+  
+  try {
+    const data = JSON.parse(jsonString.trim());
+    return { cleanText, data };
+  } catch (e) {
+    console.error(`Failed to parse tag ${tag}:`, e.message);
+    return { cleanText, data: null };
+  }
+}
+
 async function processIncomingMessage(bot, msg, sock, db) {
   if (!msg.message) return;
   
@@ -1412,14 +1437,16 @@ async function processIncomingMessage(bot, msg, sock, db) {
     if (geminiReply) {
       let textReply = geminiReply;
       let catalogData = null;
-      if (typeof geminiReply === 'string' && geminiReply.includes('__CATALOG_JSON__')) {
-        const parts = geminiReply.split('__CATALOG_JSON__');
-        textReply = parts[0].trim();
-        try {
-          catalogData = JSON.parse(parts[1]);
-        } catch (e) {
-          console.error('Failed to parse catalog JSON from Gemini reply:', e.message);
-        }
+      let recommendationData = null;
+
+      if (typeof textReply === 'string') {
+        const catExtract = extractSerializedTag(textReply, '__CATALOG_JSON__');
+        textReply = catExtract.cleanText;
+        catalogData = catExtract.data;
+
+        const recExtract = extractSerializedTag(textReply, '__RECOMMENDATION_JSON__');
+        textReply = recExtract.cleanText;
+        recommendationData = recExtract.data;
       }
 
       const handoffKeywords = ['human agent', 'human support', 'live agent', 'connect you to', 'escalat', 'transfer you'];
@@ -1469,6 +1496,31 @@ async function processIncomingMessage(bot, msg, sock, db) {
             }
           } catch (catalogErr) {
             console.error('⚠️ Failed to dispatch catalog interactive messages:', catalogErr.message);
+          }
+        }
+
+        // If a structured recommendation was fetched, send interactive button card and product image
+        if (recommendationData && recommendationData.recommendation) {
+          try {
+            const rec = recommendationData.recommendation;
+
+            // Dispatch upsell product image in background
+            if (rec.image_url) {
+              bot.sendMessage(fromPhone, `*${rec.title}*\nPrice: Rs. ${rec.price}\nSKU: ${rec.sku}`, false, rec.image_url, 'image').catch(err => {
+                console.error('Failed to send recommended product image message:', err.message);
+              });
+            }
+
+            // Dispatch interactive button card (Yes/No)
+            const buttonText = `Would you like to add *${rec.title}* (Rs. ${rec.price}) in size ${recommendationData.size} to your order?`;
+            const buttons = [
+              { label: "Yes, add it! ✅", value: `Yes, add ${rec.title} (SKU: ${rec.sku}) to my order` },
+              { label: "No, thanks ❌", value: "No thanks, proceed with my current selection" }
+            ];
+            await bot.sendMessage(fromPhone, buttonText, false, null, null, null, null, null, buttons, 'native');
+
+          } catch (recErr) {
+            console.error('⚠️ Failed to dispatch recommendation interactive messages:', recErr.message);
           }
         }
       }
