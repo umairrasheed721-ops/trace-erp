@@ -1,9 +1,21 @@
 require('dotenv').config();
-require('./scripts/run_migrations');
-const { logSystemError } = require('./db');
+const { execSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
 // --- 🛡️ GLOBAL CRASH PREVENTERS (BULLETPROOF) ---
 // These handlers catch ALL errors — server NEVER exits due to unhandled errors.
+let logSystemErrorReal = null;
+function logSystemError(...args) {
+  if (logSystemErrorReal) {
+    try {
+      logSystemErrorReal(...args);
+    } catch (_) {}
+  } else {
+    console.error('[Early Boot Error Logger]', ...args);
+  }
+}
+
 process.on('uncaughtException', (err) => {
   if (err && (err.code === 'EIO' || (err.message && err.message.includes('EIO')))) return;
   console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
@@ -33,6 +45,59 @@ if (missing.length > 0) {
   process.exit(1);
 }
 console.log('✅ Environment Health Check Passed.');
+
+// --- 🩹 AUTO-HEALER ROUTINE (DISK CLEANUP) ---
+function checkDiskSpace() {
+  try {
+    const isProduction = process.env.NODE_ENV === 'production' || 
+                         process.env.RAILWAY_ENVIRONMENT !== undefined ||
+                         process.env.BOT_ENABLED === 'true';
+    const checkPath = isProduction ? '/app/data' : '.';
+    const stdout = execSync(`df -k "${checkPath}" 2>/dev/null`).toString();
+    const lines = stdout.trim().split('\n');
+    if (lines.length < 2) return null;
+    const parts = lines[1].split(/\s+/);
+    if (parts.length < 6) return null;
+    const availableKB = parseInt(parts[3], 10);
+    if (isNaN(availableKB)) return null;
+    return Math.round(availableKB / 1024); // return MB
+  } catch (e) {
+    return null;
+  }
+}
+
+const availableMB = checkDiskSpace();
+if (availableMB !== null) {
+  console.log(`💾 Auto-Healer Check: Available disk space is ${availableMB} MB`);
+  if (availableMB < 50) {
+    console.warn(`🚨 Auto-Healer: Critical disk space detected (${availableMB} MB). Starting emergency cleanup...`);
+    try {
+      const truncateScript = path.join(__dirname, 'scripts', 'truncate_logs.js');
+      const purgeScript = path.join(__dirname, 'scripts', 'purge_old_media.js');
+      const optimizeScript = path.join(__dirname, 'scripts', 'optimize_db.js');
+
+      console.log('1/3: Truncating message logs older than 15 days...');
+      execSync(`node "${truncateScript}"`, { stdio: 'inherit', env: process.env });
+
+      console.log('2/3: Purging old media older than 30 days from Google Drive...');
+      execSync(`node "${purgeScript}"`, { stdio: 'inherit', env: process.env });
+
+      console.log('3/3: Reclaiming unused space via database VACUUM...');
+      execSync(`node "${optimizeScript}"`, { stdio: 'inherit', env: process.env });
+
+      console.log('Auto-Healer: Disk space freed automatically');
+    } catch (err) {
+      console.error('❌ Auto-Healer failed to complete cleanup sequence:', err.message);
+    }
+  }
+} else {
+  console.warn('⚠️ Auto-Healer: Unable to check disk space.');
+}
+
+// Now initialize migrations and database connections
+require('./scripts/run_migrations');
+const dbModuleForStartup = require('./db');
+logSystemErrorReal = dbModuleForStartup.logSystemError;
 if (process.env.INSTAWORLD_PROXY_URL) {
   const fmt = process.env.INSTAWORLD_PROXY_FORMAT || 'simple (default when proxy set)';
   console.log(`🌐 Instaworld tracking → proxy (${fmt}). Book/cancel/cities use direct API unless INSTAWORLD_PROXY_FORMAT=relay.`);
@@ -59,7 +124,6 @@ console.warn  = (...a) => { pushLog('WARN',  a); try { originalWarn.apply(consol
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const db = require('./db');
 // --- 🛡️ SAFE ROUTE LOADER — a broken route never crashes the server ---
 // Tracks every module's load status for the System Status dashboard.
