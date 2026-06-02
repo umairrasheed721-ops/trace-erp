@@ -171,6 +171,7 @@ const syncRoutes        = safeRequire('./routes/sync',         'Sync');
 const customerSuccessRoutes = safeRequire('./routes/customer-success', 'CustomerSuccess');
 const whatsappGovernanceRoutes = safeRequire('./routes/whatsapp-governance', 'WhatsAppGovernance');
 const settingsRoutes    = safeRequire('./routes/settings',     'Settings');
+const systemRoutes      = safeRequire('./routes/system',       'System');
 
 // Reset any stuck sync statuses on startup
 try {
@@ -346,6 +347,7 @@ app.use((req, res, next) => {
   if (req.path.includes('/api/users/permissions')) return next();
   if (req.path === '/api/wake-up-test' || req.originalUrl.includes('wake-up-test')) return next();
   if (req.path === '/api/fire-test' || req.originalUrl.includes('fire-test')) return next();
+  if (req.path === '/api/system/storage-audit') return next();
   
   // Live SSE Endpoint handles its own token from query
   if (req.path === '/api/live') {
@@ -583,6 +585,7 @@ app.use('/api/scheduler', schedulerRoutes);
 app.use('/api/customer-success', customerSuccessRoutes);
 app.use('/api/whatsapp-governance', whatsappGovernanceRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/system', systemRoutes);
 
 const citiesRoutes = require('./routes/cities');
 app.use('/api/cities', citiesRoutes);
@@ -630,6 +633,15 @@ const { initWebSocket } = require('./websocket');
 const server = app.listen(PORT, () => {
   console.log(`🚀 TRACE ERP Backend running on http://localhost:${PORT}`);
   schedulerInit();
+
+  // Safe Startup Storage Audit
+  try {
+    const { runStorageAudit } = require('./scripts/storage_audit');
+    console.log('📊 Executing startup storage audit...');
+    runStorageAudit(true);
+  } catch (auditErr) {
+    console.error('⚠️ Startup storage audit failed:', auditErr.message);
+  }
 });
 initWebSocket(server);
 
