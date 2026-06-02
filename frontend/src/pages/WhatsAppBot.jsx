@@ -1234,6 +1234,60 @@ export default function WhatsAppBot() {
                     <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
                   </div>
                 </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📏</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Sizing Catalog Explorer (`fetchCatalog`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini queries size inventory lists directly from the active Shopify catalog and matches customer sizing preferences.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📈</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Cross-Selling & Upselling Engine (`getMatchingRecommendations`)</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Gemini identifies items of interest and matches complementary pairs (e.g. shirt &rarr; cargo pants) to pitch to users, increasing AOV.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>🔘</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Interactive List Menus</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Renders single-select interactive dropdown lists natively within WhatsApp for size selections and menu routing.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>💬</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Quick-Reply Decision Buttons</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Sends quick-reply button cards (Yes/No) directly to client screens for instant confirmations and checkout flows.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>🖼️</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>Media Card Streaming</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Delivers product visual cards (attaching visual clothing mocks or Shopify media URLs) in the background asynchronously.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
+
+                <div style={{ background: 'var(--bg-active)', padding: 24, borderRadius: 20, border: '1px solid var(--border)', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: '2.5rem' }}>🎙️</div>
+                  <div>
+                    <h5 style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 6 }}>PTT Voice Note Transcoding</h5>
+                    <p className="text-muted" style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>Automatically transcodes incoming/outgoing voice notes to native WhatsApp `.ogg` Opus files using FFmpeg in real-time.</p>
+                    <span style={{ marginTop: 10, display: 'inline-block', background: 'var(--green-dim)', color: 'var(--green)', padding: '4px 12px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 800 }}>STATUS: ACTIVE 🟢</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
