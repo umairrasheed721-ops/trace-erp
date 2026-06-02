@@ -1490,73 +1490,17 @@ async function processIncomingMessage(bot, msg, sock, db) {
         bot.sendMessage(fromPhone, textReply, false);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
 
-        // If a structured catalog was fetched, send unique media cards
+        // If a structured catalog was fetched, send media cards for each variation
         if (catalogData && catalogData.products && catalogData.products.length > 0) {
           try {
-            // Group variations by base product title to deduplicate
-            const grouped = {};
-            for (const p of catalogData.products) {
-              let title = p.title || '';
-              
-              // Extract variant parts
-              let variantPart = '';
-              const parenMatch = title.match(/\(([^)]+)\)/);
-              if (parenMatch) {
-                variantPart = parenMatch[1]; // e.g. "Maroon / M"
-              } else {
-                const hyphenIndex = title.indexOf(' - ');
-                if (hyphenIndex !== -1) {
-                  variantPart = title.substring(hyphenIndex + 3).trim(); // e.g. "Medium"
-                }
-              }
-              
-              // Get base title by stripping paren & hyphen suffix
-              let baseTitle = title.replace(/\([^)]*\)/g, '').split(' - ')[0].trim();
-              const groupKey = baseTitle.toLowerCase();
-              
-              // Extract color from variant part
-              let color = '';
-              if (variantPart) {
-                const parts = variantPart.split(/[\/,]/);
-                for (const part of parts) {
-                  const cleanedPart = part.trim();
-                  // Check if this part is a size. If not, it's color/variation!
-                  const isSize = /^(m|l|xl|2xl|3xl|4xl|5xl|6xl|s|xs|xxl|xxxl|medium|large|small|double\s*xl|triple\s*xl)$/i.test(cleanedPart);
-                  if (!isSize && cleanedPart) {
-                    color = cleanedPart;
-                    break;
-                  }
-                }
-              }
-              
-              if (!grouped[groupKey]) {
-                grouped[groupKey] = {
-                  baseTitle: baseTitle,
-                  firstVariant: p,
-                  price: p.price,
-                  colors: new Set()
-                };
-              }
-              
-              if (color) {
-                grouped[groupKey].colors.add(color);
-              }
-            }
-
-            // Dispatch unique images with variations listed in caption
             if (settings.feature_media_cards !== 0) {
-              const uniqueGroups = Object.values(grouped).slice(0, 3); // Cap at 3 unique products
-              for (const g of uniqueGroups) {
-                const p = g.firstVariant;
+              // Send up to 5 individual variant images so customer can see all options
+              const displayProducts = catalogData.products.slice(0, 5);
+              for (const p of displayProducts) {
                 if (p.image_url) {
-                  let caption = `*${g.baseTitle}*\nPrice: Rs. ${g.price}`;
-                  if (g.colors.size > 0) {
-                    caption += `\nAvailable Colors: ${Array.from(g.colors).join(', ')}`;
-                  }
-                  caption += `\nSKU: ${p.sku}`;
-                  
+                  const caption = `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`;
                   bot.sendMessage(fromPhone, caption, false, p.image_url, 'image').catch(err => {
-                    console.error('Failed to send catalog image message:', err.message);
+                    console.error('Failed to send catalog variant image:', err.message);
                   });
                 }
               }
