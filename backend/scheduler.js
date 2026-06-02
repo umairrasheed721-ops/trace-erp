@@ -184,6 +184,17 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 10. Every day at 2:00 AM: Purge old media files from Google Drive and SQLite
+  cron.schedule('0 2 * * *', async () => {
+    console.log('🗑️ [CRON] Starting daily WhatsApp media purge cycle...');
+    try {
+      const { runPurge } = require('./scripts/purge_old_media');
+      await runPurge();
+    } catch (e) {
+      console.error('Media purge cron error:', e.message);
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

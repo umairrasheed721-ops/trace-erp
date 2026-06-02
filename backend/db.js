@@ -642,6 +642,7 @@ function runMigrations(db) {
     { table: 'orders', column: 'financial_status', type: "TEXT DEFAULT 'pending'" },
     { table: 'orders', column: 'fulfillment_status', type: "TEXT DEFAULT 'unfulfilled'" },
     { table: 'orders', column: 'total_price', type: "REAL DEFAULT 0" },
+    { table: 'whatsapp_messages', column: 'drive_file_id', type: 'TEXT DEFAULT NULL' },
   ];
 
   migrations.forEach(m => {

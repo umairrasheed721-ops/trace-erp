@@ -1523,10 +1523,15 @@ class WhatsAppBot {
 
           let mediaUrl = null;
           let mediaType = null;
+          let driveFileId = null;
           
           if (mediaDetails && downloadMediaMessage) {
             mediaType = mediaDetails.type;
-            mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+            const mediaResult = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+            if (mediaResult) {
+              mediaUrl = mediaResult.url;
+              driveFileId = mediaResult.id;
+            }
           }
 
           const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
@@ -1534,8 +1539,8 @@ class WhatsAppBot {
           const createdAt = new Date(timestampSec * 1000).toISOString().replace('T', ' ').substring(0, 19);
 
           db.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)
+            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, created_at, drive_file_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
           `).run(
             customer.store_id || 1,
             customer.order_id,
@@ -1545,7 +1550,8 @@ class WhatsAppBot {
             messageId,
             mediaUrl,
             mediaType,
-            createdAt
+            createdAt,
+            driveFileId
           );
 
           newMsgsCount++;

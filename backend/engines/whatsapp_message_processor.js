@@ -181,13 +181,8 @@ function getMessageText(msg) {
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
   try {
-    const { DB_DIR } = require('../db');
-    const mediaDir = require('path').join(DB_DIR || '/app/data', 'media');
-    if (!require('fs').existsSync(mediaDir)) {
-      require('fs').mkdirSync(mediaDir, { recursive: true });
-    }
-    const fsPromises = require('fs').promises;
     const crypto = require('crypto');
+    const { uploadBufferToDrive } = require('../services/googleDrive');
 
     const extMap = {
       'image/jpeg': 'jpg',
@@ -209,7 +204,6 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
 
     const uuid = crypto.randomUUID();
     const fileName = `${uuid}.${ext}`;
-    const filePath = path.join(mediaDir, fileName);
 
     console.log(`📥 Decrypting and downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
     const buffer = await downloadMediaMessage(
@@ -220,12 +214,17 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
     );
 
     if (buffer) {
-      await fsPromises.writeFile(filePath, buffer);
-      console.log(`💾 Saved proxy media to secure local storage: ${filePath}`);
-      return `/api/media/${fileName}`;
+      console.log(`💾 Offloading WhatsApp media directly to Google Drive: ${fileName}`);
+      const driveFile = await uploadBufferToDrive(buffer, fileName, mediaDetails.mimeType);
+      if (driveFile) {
+        console.log(`📡 Media successfully offloaded to Drive: ID=${driveFile.id}, URL=${driveFile.url}`);
+        return { url: driveFile.url, id: driveFile.id };
+      } else {
+        console.warn(`⚠️ Google Drive upload returned null for message ${msg.key.id}`);
+      }
     }
   } catch (e) {
-    console.warn(`⚠️ Failed to download media for message ${msg.key.id}:`, e.message);
+    console.warn(`⚠️ Failed to process/offload media for message ${msg.key.id}:`, e.message);
   }
   return null;
 }
@@ -1174,16 +1173,22 @@ async function processIncomingMessage(bot, msg, sock, db) {
   
   let mediaUrl = null;
   let mediaType = null;
+  let driveFileId = null;
   if (mediaDetails) {
-    const existingMsg = db.prepare(`SELECT media_url FROM whatsapp_messages WHERE message_id = ?`).get(msg.key.id);
+    const existingMsg = db.prepare(`SELECT media_url, drive_file_id FROM whatsapp_messages WHERE message_id = ?`).get(msg.key.id);
     if (existingMsg && existingMsg.media_url) {
       mediaUrl = existingMsg.media_url;
       mediaType = mediaDetails.type;
+      driveFileId = existingMsg.drive_file_id || null;
     } else {
       try {
         const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
         mediaType = mediaDetails.type;
-        mediaUrl = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+        const mediaResult = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
+        if (mediaResult) {
+          mediaUrl = mediaResult.url;
+          driveFileId = mediaResult.id;
+        }
       } catch (mediaErr) {
         console.error('⚠️ Media download error in messages.upsert:', mediaErr.message);
       }
@@ -1233,9 +1238,9 @@ async function processIncomingMessage(bot, msg, sock, db) {
       dbMessageId = existing.id;
     } else {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
-      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag);
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent, drive_file_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)
+      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag, driveFileId);
       dbMessageId = result.lastInsertRowid;
 
       if (order && order.shopify_order_id) {

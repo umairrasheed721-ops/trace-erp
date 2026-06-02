@@ -75,6 +75,7 @@ try {
     { name: 'media_url', stmt: `ALTER TABLE whatsapp_messages ADD COLUMN media_url TEXT` },
     { name: 'media_type', stmt: `ALTER TABLE whatsapp_messages ADD COLUMN media_type TEXT` },
     { name: 'message_id', stmt: `ALTER TABLE whatsapp_messages ADD COLUMN message_id TEXT` },
+    { name: 'drive_file_id', stmt: `ALTER TABLE whatsapp_messages ADD COLUMN drive_file_id TEXT DEFAULT NULL` },
   ];
 
   otherColumns.forEach(col => {
