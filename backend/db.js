@@ -3,6 +3,7 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 const tenantContext = require('./tenant-context');
+const { execSync } = require('child_process');
 
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
@@ -57,464 +58,400 @@ const db = new Proxy({}, {
   }
 });
 
+function checkDiskSpace() {
+  try {
+    const checkPath = isProduction ? '/app/data' : '.';
+    const stdout = execSync(`df -k "${checkPath}" 2>/dev/null`).toString();
+    const lines = stdout.trim().split('\n');
+    if (lines.length < 2) return null;
+    const parts = lines[1].split(/\s+/);
+    if (parts.length < 6) return null;
+    const totalKB = parseInt(parts[1], 10);
+    const availableKB = parseInt(parts[3], 10);
+    if (isNaN(availableKB) || isNaN(totalKB)) return null;
+    const availableMB = Math.round(availableKB / 1024);
+    const percentAvailable = (availableKB / totalKB) * 100;
+    return { availableMB, percentAvailable };
+  } catch (e) {
+    return null;
+  }
+}
 
 function initDb(db) {
-  // --- ⚡ PERFORMANCE PRAGMAs ---
-  db.exec(`PRAGMA journal_mode = WAL`);
-  db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
-  db.exec(`PRAGMA cache_size = -32000`);         // 32MB page cache
-  db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
-  db.exec(`PRAGMA mmap_size = 536870912`);       // 512MB memory-mapped I/O
-  db.exec(`PRAGMA foreign_keys = ON`);
-  db.exec(`PRAGMA busy_timeout = 15000`);         // Wait 15s instead of failing on lock
-  db.exec(`PRAGMA wal_autocheckpoint = 1000`);   // Checkpoint every 1000 pages
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS stores (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      shop_domain TEXT UNIQUE NOT NULL,
-      store_name TEXT NOT NULL DEFAULT 'My Store',
-      access_token TEXT NOT NULL,
-      shopify_client_id TEXT,
-      postex_token TEXT,
-      instaworld_key TEXT,
-      instaworld_key_backup TEXT,
-      postex_track_url TEXT DEFAULT 'https://api.postex.pk/services/integration/api/order/v1/track-order/',
-      instaworld_track_url TEXT DEFAULT 'https://one-be.instaworld.pk/logistics/v1/trackShipment',
-      last_synced_at TEXT,
-      sync_start_date TEXT,
-      sync_status TEXT DEFAULT 'idle',
-      sync_progress TEXT,
-      sync_total INTEGER DEFAULT 0,
-      sync_processed INTEGER DEFAULT 0,
-      meta_ad_account_id TEXT,
-      meta_access_token TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      shopify_order_id TEXT NOT NULL,
-      ref_number TEXT,
-      customer_name TEXT,
-      order_date TEXT,
-      phone TEXT,
-      address TEXT,
-      city TEXT,
-      price REAL,
-      tracking_number TEXT,
-      items_count INTEGER,
-      notes TEXT,
-      product_titles TEXT,
-      line_items TEXT, -- Store JSON data of items (title, qty, price, image)
-      delivery_status TEXT DEFAULT 'Pending',
-      payment_status TEXT DEFAULT 'Pending',
-      postex_weight REAL DEFAULT 0.5,
-      courier TEXT,
-      cost REAL DEFAULT 0,
-      packaging_cost REAL DEFAULT 0,
-      courier_fee REAL DEFAULT 0,
-      payment_ref TEXT,
-      paid_amount REAL DEFAULT 0,
-      payment_date TEXT,
-      return_status TEXT,
-      hold_reason TEXT,
-      status_date TEXT,
-      created_timestamp TEXT DEFAULT (datetime('now')),
-      order_source TEXT DEFAULT 'Direct / Web',
-      cost_locked INTEGER DEFAULT 0,
-      courier_fee_locked INTEGER DEFAULT 0,
-      confirmation_token TEXT,
-      cs_notes TEXT,
-      discount_amount REAL DEFAULT 0,
-      financial_status TEXT DEFAULT 'pending',
-      fulfillment_status TEXT DEFAULT 'unfulfilled',
-      total_price REAL DEFAULT 0,
-      UNIQUE(store_id, shopify_order_id)
-    );
-  `);
-
-  // --- 🔄 DATABASE MIGRATIONS (Add new columns to existing table) ---
-  try {
-    db.exec(`ALTER TABLE orders ADD COLUMN cs_notes TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN message_id TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN media_url TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN media_type TEXT`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN created_at TEXT DEFAULT (datetime('now', '+5 hours'))`);
-  } catch (e) { /* Column already exists */ }
-  try {
-    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_msgs_message_id ON whatsapp_messages(message_id)`);
-  } catch (e) { /* Index already exists */ }
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      shopify_product_id TEXT,
-      shopify_variant_id TEXT,
-      sku TEXT,
-      title TEXT,
-      image_url TEXT,
-      price REAL,
-      inventory_qty INTEGER DEFAULT 0,
-      product_url TEXT DEFAULT '',
-      updated_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, shopify_variant_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS blacklist (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      tracking_number TEXT NOT NULL,
-      date_added TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, tracking_number)
-    );
-
-    CREATE TABLE IF NOT EXISTS whatsapp_templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      content TEXT NOT NULL,
-      type TEXT DEFAULT 'custom', -- 'confirmation', 'address', 'shipping', 'custom'
-      is_default INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'active',
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS watchdog_results (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      tracking_number TEXT NOT NULL,
-      request_time TEXT,
-      latest_status TEXT,
-      verdict TEXT,
-      duration TEXT,
-      evidence TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, tracking_number)
-    );
-
-    CREATE TABLE IF NOT EXISTS daily_metrics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      date_string TEXT NOT NULL,
-      marketing_spend REAL DEFAULT 0,
-      tiktok_marketing REAL DEFAULT 0,
-      actual_exp REAL DEFAULT 0,
-      diff_correction REAL DEFAULT 0,
-      UNIQUE(store_id, date_string)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_orders_store    ON orders(store_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_tracking  ON orders(tracking_number);
-    CREATE INDEX IF NOT EXISTS idx_orders_status    ON orders(delivery_status);
-    CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status_date);
-    CREATE INDEX IF NOT EXISTS idx_orders_date      ON orders(order_date);
-    CREATE INDEX IF NOT EXISTS idx_orders_phone     ON orders(phone);
-    CREATE INDEX IF NOT EXISTS idx_orders_customer  ON orders(customer_name);
-    CREATE INDEX IF NOT EXISTS idx_orders_store_date ON orders(store_id, order_date DESC);
-    CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders(store_id, delivery_status);
-    CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders(store_id, created_timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_orders_status_lower ON orders(LOWER(delivery_status));
-    CREATE INDEX IF NOT EXISTS idx_orders_courier_lower ON orders(LOWER(courier));
-    CREATE INDEX IF NOT EXISTS idx_orders_store_status_lower ON orders(store_id, LOWER(delivery_status));
-    
-    CREATE TABLE IF NOT EXISTS sync_audit (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tracking_number TEXT,
-      message TEXT,
-      timestamp DATETIME DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      email TEXT,
-      role TEXT NOT NULL DEFAULT 'agent',
-      permissions TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS recon_sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      filename TEXT,
-      row_count INTEGER,
-      sync_to_shopify BOOLEAN,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS recon_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id INTEGER NOT NULL REFERENCES recon_sessions(id) ON DELETE CASCADE,
-      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      old_delivery_status TEXT,
-      old_payment_status TEXT,
-      old_courier_fee REAL,
-      old_paid_amount REAL,
-      old_payment_ref TEXT,
-      old_payment_date TEXT,
-      shopify_note_added TEXT -- The specific line we added to the Shopify note
-    );
-
-    CREATE TABLE IF NOT EXISTS saved_views (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      view_name TEXT NOT NULL,
-      column_config TEXT NOT NULL, -- JSON array of column IDs
-      is_locked BOOLEAN DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, view_name)
-    );
-
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER,
-      order_id INTEGER,
-      user_id INTEGER,
-      action TEXT NOT NULL,
-      details TEXT, -- JSON string
-      snapshot TEXT, -- Detailed state snapshot for debugging
-      level TEXT DEFAULT 'INFO', -- 'INFO', 'WARN', 'ERROR'
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS order_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      user_id INTEGER REFERENCES users(id),
-      change_type TEXT NOT NULL, -- 'STATUS', 'COST', 'ADDRESS', 'MANUAL_EDIT'
-      old_value TEXT, -- JSON
-      new_value TEXT, -- JSON
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS returns_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      tracking_number TEXT,
-      restocked_shopify INTEGER DEFAULT 0,
-      processed_by TEXT, 
-      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
-    );
-
-    CREATE TABLE IF NOT EXISTS cpr_settlements (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      courier TEXT NOT NULL,
-      cpr_reference TEXT NOT NULL,
-      settlement_date TEXT,
-      total_orders INTEGER DEFAULT 0,
-      total_cod REAL DEFAULT 0,
-      total_expense REAL DEFAULT 0,
-      net_payout REAL DEFAULT 0,
-      actual_bank_deposit REAL DEFAULT 0,
-      discrepancy_amount REAL DEFAULT 0,
-      discrepancy_reason TEXT,
-      audit_status TEXT DEFAULT 'CLEARED',
-      is_locked INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now', '+5 hours')),
-      UNIQUE(store_id, courier, cpr_reference)
-    );
-
-    CREATE TABLE IF NOT EXISTS cpr_settlement_orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      cpr_id INTEGER NOT NULL REFERENCES cpr_settlements(id) ON DELETE CASCADE,
-      order_ref TEXT,
-      tracking_number TEXT,
-      status TEXT,
-      amount_collected REAL DEFAULT 0,
-      total_expense REAL DEFAULT 0,
-      cpr_reference TEXT,
-      settlement_date TEXT
-    );
-  `);
-
-
-  runMigrations(db);
-
-  // Persistent system error log (survives restarts unlike in-memory logBuffer)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS system_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      level TEXT NOT NULL DEFAULT 'INFO',
-      message TEXT NOT NULL,
-      module TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_syslogs_level   ON system_logs(level);
-    CREATE INDEX IF NOT EXISTS idx_syslogs_created ON system_logs(created_at DESC);
-  `);
-
-  // WhatsApp session store — persists Baileys creds across Railway deployments
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS wa_session_store (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-    
-    CREATE TABLE IF NOT EXISTS wa_lid_mappings (
-      lid TEXT PRIMARY KEY,
-      phone TEXT NOT NULL
-    );
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS product_master_costs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-      shopify_variant_id TEXT,
-      parent_title TEXT NOT NULL,
-      variant_title TEXT NOT NULL DEFAULT '',
-      sku TEXT,
-      unit_cost REAL DEFAULT 0,
-      previous_unit_cost REAL DEFAULT 0,
-      packaging_cost REAL DEFAULT 0,
-      landed_cost REAL DEFAULT 0,
-      inventory_qty INTEGER DEFAULT 0,
-      shopify_cost REAL DEFAULT 0,
-      selling_price REAL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(store_id, parent_title, variant_title)
-    );
-    CREATE INDEX IF NOT EXISTS idx_master_variant_id ON product_master_costs(shopify_variant_id);
-  `);
-
-
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS courier_cities (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      courier TEXT,
-      city_name TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(courier, city_name)
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS city_mappings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      original_input TEXT NOT NULL UNIQUE,
-      corrected_name TEXT NOT NULL,
-      usage_count INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS role_permissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      role_name TEXT NOT NULL,
-      page_id TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(role_name, page_id)
-    )
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS whatsapp_quick_replies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      media_url TEXT,
-      media_type TEXT, -- 'image' or 'video'
-      caption TEXT,
-      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
-    );
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quick_replies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tenant_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      text TEXT NOT NULL,
-      category TEXT DEFAULT 'General',
-      shortcode TEXT DEFAULT NULL,
-      media_url TEXT DEFAULT NULL,
-      media_type TEXT DEFAULT NULL,
-      usage_count INTEGER DEFAULT 0,
-      buttons_mode TEXT DEFAULT 'native',
-      created_at TEXT DEFAULT (datetime('now', '+5 hours'))
-    );
-  `);
-
-  // Migration support for existing databases
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN category TEXT DEFAULT 'General'"); } catch (_) {}
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN shortcode TEXT DEFAULT NULL"); } catch (_) {}
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_url TEXT DEFAULT NULL"); } catch (_) {}
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN media_type TEXT DEFAULT NULL"); } catch (_) {}
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN usage_count INTEGER DEFAULT 0"); } catch (_) {}
-  try { db.exec("ALTER TABLE quick_replies ADD COLUMN buttons_mode TEXT DEFAULT 'native'"); } catch (_) {}
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS quick_reply_buttons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      quick_reply_id INTEGER NOT NULL REFERENCES quick_replies(id) ON DELETE CASCADE,
-      button_type TEXT NOT NULL CHECK(button_type IN ('reply', 'url')),
-      label TEXT NOT NULL,
-      value TEXT NOT NULL,
-      position INTEGER DEFAULT 0
-    );
-  `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      pill_text TEXT NOT NULL,
-      sort_order INTEGER DEFAULT 0
-    );
-  `);
-
-  // Seed default quick-reply pills if empty
-  try {
-    const pillCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_quick_pills').get().count;
-    if (pillCount === 0) {
-      const defaultPills = [
-        "👋 Sir, kindly confirm your nearest landmark for delivery.",
-        "📦 Aapka parcel PostEx ko hand over kar diya hai.",
-        "⚠️ Rider aapki location par hai, kindly phone attend karein.",
-        "✅ Order confirm karne ka shukriya!"
-      ];
-      const insertPill = db.prepare('INSERT INTO whatsapp_quick_pills (pill_text, sort_order) VALUES (?, ?)');
-      defaultPills.forEach((text, index) => {
-        insertPill.run(text, index);
-      });
-      console.log('💊 Seeded default WhatsApp quick-reply pills');
+  // Check disk availability first
+  const space = checkDiskSpace();
+  if (space) {
+    console.log(`💾 [Disk Space Check] ${space.availableMB} MB (${space.percentAvailable.toFixed(1)}%) available on disk.`);
+    if (space.availableMB < 20) {
+      console.warn(`⚠️ WARNING: Critical disk space limit reached! Only ${space.availableMB} MB remains.`);
+      console.warn(`⚠️ Skipping database schema initialization to prevent startup crash or corruption.`);
+      return;
     }
-  } catch (e) {
-    console.error('Failed to seed quick-reply pills:', e.message);
   }
 
-  // Initial Admin User
-  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-  if (userCount === 0) {
+  try {
+    // --- ⚡ PERFORMANCE PRAGMAs ---
+    db.exec(`PRAGMA journal_mode = WAL`);
+    db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
+    db.exec(`PRAGMA cache_size = -32000`);         // 32MB page cache
+    db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
+    db.exec(`PRAGMA mmap_size = 536870912`);       // 512MB memory-mapped I/O
+    db.exec(`PRAGMA foreign_keys = ON`);
+    db.exec(`PRAGMA busy_timeout = 15000`);         // Wait 15s instead of failing on lock
+    db.exec(`PRAGMA wal_autocheckpoint = 1000`);   // Checkpoint every 1000 pages
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS stores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop_domain TEXT UNIQUE NOT NULL,
+        store_name TEXT NOT NULL DEFAULT 'My Store',
+        access_token TEXT NOT NULL,
+        shopify_client_id TEXT,
+        postex_token TEXT,
+        instaworld_key TEXT,
+        instaworld_key_backup TEXT,
+        postex_track_url TEXT DEFAULT 'https://api.postex.pk/services/integration/api/order/v1/track-order/',
+        instaworld_track_url TEXT DEFAULT 'https://one-be.instaworld.pk/logistics/v1/trackShipment',
+        last_synced_at TEXT,
+        sync_start_date TEXT,
+        sync_status TEXT DEFAULT 'idle',
+        sync_progress TEXT,
+        sync_total INTEGER DEFAULT 0,
+        sync_processed INTEGER DEFAULT 0,
+        meta_ad_account_id TEXT,
+        meta_access_token TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        shopify_order_id TEXT NOT NULL,
+        ref_number TEXT,
+        customer_name TEXT,
+        order_date TEXT,
+        phone TEXT,
+        address TEXT,
+        city TEXT,
+        price REAL,
+        tracking_number TEXT,
+        items_count INTEGER,
+        notes TEXT,
+        product_titles TEXT,
+        line_items TEXT, -- Store JSON data of items (title, qty, price, image)
+        delivery_status TEXT DEFAULT 'Pending',
+        payment_status TEXT DEFAULT 'Pending',
+        postex_weight REAL DEFAULT 0.5,
+        courier TEXT,
+        cost REAL DEFAULT 0,
+        packaging_cost REAL DEFAULT 0,
+        courier_fee REAL DEFAULT 0,
+        payment_ref TEXT,
+        paid_amount REAL DEFAULT 0,
+        payment_date TEXT,
+        return_status TEXT,
+        hold_reason TEXT,
+        status_date TEXT,
+        created_timestamp TEXT DEFAULT (datetime('now')),
+        order_source TEXT DEFAULT 'Direct / Web',
+        cost_locked INTEGER DEFAULT 0,
+        courier_fee_locked INTEGER DEFAULT 0,
+        confirmation_token TEXT,
+        cs_notes TEXT,
+        discount_amount REAL DEFAULT 0,
+        wa_verification_status TEXT DEFAULT 'Pending',
+        wa_message_id TEXT,
+        wa_interaction_logs TEXT DEFAULT '[]',
+        address_quality_score INTEGER DEFAULT 100,
+        tracking_slug TEXT,
+        customer_gps_lat REAL,
+        customer_gps_lng REAL,
+        customer_dispatch_instructions TEXT,
+        rescue_submitted_at TEXT,
+        courier_ticket_id TEXT,
+        financial_status TEXT DEFAULT 'pending',
+        fulfillment_status TEXT DEFAULT 'unfulfilled',
+        total_price REAL DEFAULT 0,
+        tenant_id TEXT DEFAULT 'default'
+      );
+
+      CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        shopify_product_id TEXT,
+        shopify_variant_id TEXT,
+        sku TEXT,
+        title TEXT,
+        image_url TEXT,
+        price REAL,
+        inventory_qty INTEGER DEFAULT 0,
+        product_url TEXT DEFAULT '',
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(store_id, shopify_variant_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        phone TEXT UNIQUE NOT NULL,
+        reason TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS whatsapp_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT 'en',
+        category TEXT NOT NULL DEFAULT 'UTILITY',
+        status TEXT DEFAULT 'active',
+        components TEXT NOT NULL, -- JSON string of components
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(store_id, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS watchdog_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        checked_at TEXT DEFAULT (datetime('now')),
+        total_orders INTEGER DEFAULT 0,
+        unmapped_cities INTEGER DEFAULT 0,
+        stuck_orders INTEGER DEFAULT 0,
+        pending_reconcile INTEGER DEFAULT 0,
+        drift_count INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS daily_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        date TEXT NOT NULL, -- YYYY-MM-DD
+        revenue REAL DEFAULT 0,
+        orders_count INTEGER DEFAULT 0,
+        cod_collected REAL DEFAULT 0,
+        postex_revenue REAL DEFAULT 0,
+        instaworld_revenue REAL DEFAULT 0,
+        manual_payout REAL DEFAULT 0,
+        ad_spend REAL DEFAULT 0,
+        product_cost REAL DEFAULT 0,
+        courier_fees REAL DEFAULT 0,
+        packaging_cost REAL DEFAULT 0,
+        refunds_total REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(store_id, date)
+      );
+
+      CREATE TABLE IF NOT EXISTS sync_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER,
+        level TEXT DEFAULT 'INFO',
+        message TEXT NOT NULL,
+        timestamp TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level);
+
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'staff', -- admin, manager, staff, cs, warehouse, finance
+        can_override_erp_status INTEGER DEFAULT 0,
+        email TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS recon_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        courier TEXT NOT NULL, -- PostEx, Leopards, Instaworld
+        cpr_reference TEXT NOT NULL,
+        settlement_date TEXT,
+        total_orders INTEGER DEFAULT 0,
+        total_cod REAL DEFAULT 0,
+        total_expense REAL DEFAULT 0,
+        net_payout REAL DEFAULT 0,
+        actual_bank_deposit REAL DEFAULT 0,
+        discrepancy_amount REAL DEFAULT 0,
+        discrepancy_reason TEXT,
+        audit_status TEXT DEFAULT 'CLEARED',
+        is_locked INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now', '+5 hours')),
+        UNIQUE(store_id, courier, cpr_reference)
+      );
+
+      CREATE TABLE IF NOT EXISTS cpr_settlement_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cpr_id INTEGER NOT NULL REFERENCES cpr_settlements(id) ON DELETE CASCADE,
+        order_ref TEXT,
+        tracking_number TEXT,
+        status TEXT,
+        amount_collected REAL DEFAULT 0,
+        total_expense REAL DEFAULT 0,
+        cpr_reference TEXT,
+        settlement_date TEXT
+      );
+    `);
+
+    runMigrations(db);
+
+    // Persistent system error log (survives restarts unlike in-memory logBuffer)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        level TEXT NOT NULL DEFAULT 'INFO',
+        message TEXT NOT NULL,
+        module TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_syslogs_level   ON system_logs(level);
+      CREATE INDEX IF NOT EXISTS idx_syslogs_created ON system_logs(created_at DESC);
+    `);
+
+    // WhatsApp session store — persists Baileys creds across Railway deployments
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS wa_session_store (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+      
+      CREATE TABLE IF NOT EXISTS wa_lid_mappings (
+        lid TEXT PRIMARY KEY,
+        phone TEXT NOT NULL
+      );
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS product_master_costs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        shopify_variant_id TEXT,
+        parent_title TEXT NOT NULL,
+        variant_title TEXT NOT NULL DEFAULT '',
+        sku TEXT,
+        unit_cost REAL DEFAULT 0,
+        previous_unit_cost REAL DEFAULT 0,
+        packaging_cost REAL DEFAULT 0,
+        landed_cost REAL DEFAULT 0,
+        inventory_qty INTEGER DEFAULT 0,
+        shopify_cost REAL DEFAULT 0,
+        selling_price REAL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(store_id, parent_title, variant_title)
+      );
+      CREATE INDEX IF NOT EXISTS idx_master_variant_id ON product_master_costs(shopify_variant_id);
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS courier_cities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        courier TEXT,
+        city_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(courier, city_name)
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS city_mappings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_input TEXT NOT NULL UNIQUE,
+        corrected_name TEXT NOT NULL,
+        usage_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL UNIQUE,
+        permissions TEXT NOT NULL, -- JSON string of permission keys
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS whatsapp_quick_replies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL DEFAULT 'General',
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        media_url TEXT,
+        media_type TEXT, -- 'image', 'video', 'document', 'audio'
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS quick_replies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        category TEXT DEFAULT 'General',
+        shortcode TEXT DEFAULT NULL,
+        media_url TEXT DEFAULT NULL,
+        media_type TEXT DEFAULT NULL,
+        usage_count INTEGER DEFAULT 0,
+        buttons_mode TEXT DEFAULT 'native'
+      );
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS quick_reply_buttons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reply_id INTEGER NOT NULL REFERENCES quick_replies(id) ON DELETE CASCADE,
+        button_text TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS whatsapp_quick_pills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pill_text TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0
+      );
+    `);
+
+    // Seed default quick-reply pills if empty
     try {
-      const bcrypt = require('bcryptjs');
-      const salt = bcrypt.genSaltSync(10);
-      const hash = bcrypt.hashSync('admin123', salt);
-      db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')").run(hash);
-      console.log('👤 Created default admin user: admin / admin123');
-    } catch (e) { console.error('Failed to create default admin:', e.message); }
-  }
+      const pillCount = db.prepare('SELECT COUNT(*) as count FROM whatsapp_quick_pills').get().count;
+      if (pillCount === 0) {
+        const defaultPills = [
+          "👋 Sir, kindly confirm your nearest landmark for delivery.",
+          "📦 Aapka parcel PostEx ko hand over kar diya hai.",
+          "⚠️ Rider aapki location par hai, kindly phone attend karein.",
+          "✅ Order confirm karne ka shukriya!"
+        ];
+        const insertPill = db.prepare('INSERT INTO whatsapp_quick_pills (pill_text, sort_order) VALUES (?, ?)');
+        defaultPills.forEach((text, index) => {
+          insertPill.run(text, index);
+        });
+        console.log('💊 Seeded default WhatsApp quick-reply pills');
+      }
+    } catch (e) {
+      console.error('Failed to seed quick-reply pills:', e.message);
+    }
 
-  console.log('✅ Database initialized at', db.path || DB_PATH);
+    // Initial Admin User
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    if (userCount === 0) {
+      try {
+        const bcrypt = require('bcryptjs');
+        const salt = bcrypt.genSaltSync(10);
+        const hash = bcrypt.hashSync('admin123', salt);
+        db.prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')").run(hash);
+        console.log('👤 Created default admin user: admin / admin123');
+      } catch (e) { console.error('Failed to create default admin:', e.message); }
+    }
+
+    console.log('✅ Database initialized at', db.path || DB_PATH);
+  } catch (err) {
+    console.error('🛑 Database initialization failed:', err.message);
+    if (err.message.includes('full') || err.message.includes('disk')) {
+      console.warn('⚠️ Disk full error caught. Continuing boot without full schema initialization to prevent crash loop.');
+    } else {
+      throw err;
+    }
+  }
 }
 
 // Pre-initialize default tenant database
