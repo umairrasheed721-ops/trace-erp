@@ -447,7 +447,7 @@ async function processQueue(bot, sock, db) {
 
     const queueItem = activeQueue[0];
     const adaptedItem = adaptiveStrategy(queueItem.phone, queueItem, db, queueItem.isManual);
-    const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll } = adaptedItem;
+    const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend } = adaptedItem;
     let cleaned = phone.replace(/\D/g, '');
     if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
     else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -531,7 +531,10 @@ async function processQueue(bot, sock, db) {
     try {
       const jid = cleaned + '@s.whatsapp.net';
       
-      if (isManual) {
+      if (fastSend) {
+        console.log(`⚡ [FAST_SEND] Fast album dispatch to ${cleaned}. Delay: 800ms`);
+        await new Promise(r => setTimeout(r, 800));
+      } else if (isManual) {
         console.log(`⚡ [PRIORITY] Manual agent message to ${cleaned}. No anti-ban delay.`);
         await new Promise(r => setTimeout(r, 300));
       } else if (isActiveChatSession) {
@@ -576,9 +579,11 @@ async function processQueue(bot, sock, db) {
       const jitter = charDelay * jitterFraction;
       const typingCap = (isManual || isActiveChatSession) ? 3000 : 15000;
       const typingFloor = (isManual || isActiveChatSession) ? 500 : 1000;
-      const typingDelay = Math.max(typingFloor, Math.min(charDelay + jitter, typingCap));
-      console.log(`💬 [TYPING_SIM] ${isActiveChatSession ? 'Active' : 'Bulk'} | ${typingDelay}ms typing delay to ${cleaned}`);
-      await new Promise(r => setTimeout(r, typingDelay));
+      const typingDelay = fastSend ? 0 : Math.max(typingFloor, Math.min(charDelay + jitter, typingCap));
+      if (typingDelay > 0) {
+        console.log(`💬 [TYPING_SIM] ${isActiveChatSession ? 'Active' : 'Bulk'} | ${typingDelay}ms typing delay to ${cleaned}`);
+        await new Promise(r => setTimeout(r, typingDelay));
+      }
 
       try {
         await sock.sendPresenceUpdate('paused', jid);
@@ -1490,17 +1495,96 @@ async function processIncomingMessage(bot, msg, sock, db) {
         bot.sendMessage(fromPhone, textReply, false);
         bot.consecutiveBotReplies[fromPhone] = (bot.consecutiveBotReplies[fromPhone] || 0) + 1;
 
-        // If a structured catalog was fetched, send media cards for each variation
+        // If a structured catalog was fetched, send media cards in album format grouped by product
         if (catalogData && catalogData.products && catalogData.products.length > 0) {
           try {
             if (settings.feature_media_cards !== 0) {
-              // Send up to 5 individual variant images so customer can see all options
-              const displayProducts = catalogData.products.slice(0, 5);
-              for (const p of displayProducts) {
-                if (p.image_url) {
-                  const caption = `*${p.title}*\nPrice: Rs. ${p.price}\nSKU: ${p.sku}`;
-                  bot.sendMessage(fromPhone, caption, false, p.image_url, 'image').catch(err => {
-                    console.error('Failed to send catalog variant image:', err.message);
+              // Group products by base title
+              const grouped = {};
+              for (const p of catalogData.products) {
+                let title = p.title || '';
+                
+                // Extract variant parts
+                let variantPart = '';
+                const parenMatch = title.match(/\(([^)]+)\)/);
+                if (parenMatch) {
+                  variantPart = parenMatch[1];
+                } else {
+                  const hyphenIndex = title.indexOf(' - ');
+                  if (hyphenIndex !== -1) {
+                    variantPart = title.substring(hyphenIndex + 3).trim();
+                  }
+                }
+                
+                // Base title (e.g. Classic Oxford Shirt)
+                let baseTitle = title.replace(/\([^)]*\)/g, '').split(' - ')[0].trim();
+                const groupKey = baseTitle.toLowerCase();
+                
+                if (!grouped[groupKey]) {
+                  grouped[groupKey] = {
+                    baseTitle: baseTitle,
+                    variants: [],
+                    price: p.price,
+                    colors: new Set()
+                  };
+                }
+                grouped[groupKey].variants.push(p);
+                
+                // Extract color name
+                let color = '';
+                if (variantPart) {
+                  const parts = variantPart.split(/[\/,]/);
+                  for (const part of parts) {
+                    const cleanedPart = part.trim();
+                    const isSize = /^(m|l|xl|2xl|3xl|4xl|5xl|6xl|s|xs|xxl|xxxl|medium|large|small|double\s*xl|triple\s*xl)$/i.test(cleanedPart);
+                    if (!isSize && cleanedPart) {
+                      color = cleanedPart;
+                      break;
+                    }
+                  }
+                }
+                if (color) {
+                  grouped[groupKey].colors.add(color);
+                }
+              }
+
+              // Loop through groups and send album pictures back-to-back, followed by text tags
+              let totalImagesQueued = 0;
+              const maxTotalImages = 15; // Cap to prevent queue floods
+
+              for (const g of Object.values(grouped)) {
+                if (totalImagesQueued >= maxTotalImages) break;
+                
+                const variantsWithImages = g.variants.filter(v => v.image_url);
+                if (variantsWithImages.length === 0) continue;
+                
+                // Send all color variant images first (without captions to trigger WhatsApp native album)
+                for (const v of variantsWithImages) {
+                  if (totalImagesQueued >= maxTotalImages) break;
+                  bot.sendMessage(fromPhone, "", false, v.image_url, 'image', null, null, null, null, 'native', null, { fastSend: true }).catch(err => {
+                    console.error('Failed to send catalog album image:', err.message);
+                  });
+                  totalImagesQueued++;
+                }
+
+                // Immediately send a text card acting as the divider label / price tag for this album
+                let labelMsg = `*${g.baseTitle}*\nPrice: Rs. ${g.price}`;
+                if (g.colors.size > 0) {
+                  labelMsg += `\nAvailable Colors: ${Array.from(g.colors).join(', ')}`;
+                }
+                bot.sendMessage(fromPhone, labelMsg, false).catch(err => {
+                  console.error('Failed to send catalog product text tag:', err.message);
+                });
+              }
+
+              // If there are overall more than 5 products, follow up with a text link to the full collection
+              if (catalogData.products.length > 5) {
+                const uniqueUrls = Array.from(new Set(catalogData.products.map(p => p.product_url).filter(Boolean)));
+                if (uniqueUrls.length > 0) {
+                  const linksText = uniqueUrls.map(url => `🔗 ${url}`).join('\n');
+                  const followUpMsg = `Aap is link par visit kar ke baqi tamam colors aur available collection dekh sakte hain:\n\n${linksText}`;
+                  bot.sendMessage(fromPhone, followUpMsg, false).catch(err => {
+                    console.error('Failed to send catalog follow up links:', err.message);
                   });
                 }
               }

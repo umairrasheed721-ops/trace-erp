@@ -293,7 +293,8 @@ async function executeToolCall(name, args) {
                     sku: v.sku || '',
                     price: parseFloat(v.price || 0),
                     image_url: image.src || '',
-                    inventory_qty: v.inventory_quantity || 0
+                    inventory_qty: v.inventory_quantity || 0,
+                    product_url: store ? `https://${store.shop_domain}/products/${p.handle}` : ''
                   });
                 }
               });

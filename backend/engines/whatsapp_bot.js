@@ -1187,7 +1187,7 @@ class WhatsAppBot {
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
       const isActiveChatSession = this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend: options?.fastSend || false };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);
