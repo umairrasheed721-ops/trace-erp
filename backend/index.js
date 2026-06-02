@@ -1,4 +1,5 @@
 require('dotenv').config();
+console.log('🚀 Starting TracePK ERP - Storage cleared & Auto-Healer active');
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
