@@ -676,6 +676,12 @@ export default function OrderTable({
   const { addToast, user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
 
+  const [localFilters, setLocalFilters] = useState({})
+
+  useEffect(() => {
+    setLocalFilters(colFilters || {})
+  }, [colFilters])
+
   const tableRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
@@ -866,12 +872,29 @@ export default function OrderTable({
                     }}
                   >
                     {isFiltered && (
-                      <input 
-                        className="header-search-input"
-                        placeholder="Search..."
-                        value={colFilters[col.id] || ''}
-                        onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
-                      />
+                      ['ref_number', 'customer_name', 'phone', 'city', 'tracking_number', 'notes'].includes(col.id) ? (
+                        <input 
+                          className="header-search-input"
+                          placeholder="Search..."
+                          value={localFilters[col.id] || ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setLocalFilters(prev => ({ ...prev, [col.id]: val }));
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              setColFilters(prev => ({ ...prev, ...localFilters }));
+                            }
+                          }}
+                        />
+                      ) : (
+                        <input 
+                          className="header-search-input"
+                          placeholder="Search..."
+                          value={colFilters[col.id] || ''}
+                          onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
+                        />
+                      )
                     )}
                   </th>
                 )
