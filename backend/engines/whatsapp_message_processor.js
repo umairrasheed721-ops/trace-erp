@@ -2,6 +2,23 @@ const path = require('path');
 const fs = require('fs');
 const { transcodeToOpus, safeUnlink, TAG: FFMPEG_TAG } = require('./ffmpeg_transcode');
 
+// ─── Concurrency Limiter ──────────────────────────────────────────────────────
+// p-queue is an ESM-only package (v8+). We import it dynamically inside an
+// IIFE so the rest of this CommonJS module can still use it synchronously.
+let uploadQueue;
+(async () => {
+  try {
+    const { default: PQueue } = await import('p-queue');
+    // Max 3 simultaneous Cloudinary uploads → caps RAM usage under traffic spikes
+    uploadQueue = new PQueue({ concurrency: 3 });
+    console.log('✅ [MediaProcessor] Upload concurrency queue initialized (max 3 parallel).');
+  } catch (err) {
+    console.error('❌ [MediaProcessor] Failed to initialize p-queue:', err.message);
+    // Fallback: no-op queue that executes immediately
+    uploadQueue = { add: (fn) => fn() };
+  }
+})();
+
 function getSecureMediaPath(fileName) {
   const paths = [
     path.join('/app/data/media', fileName),
@@ -180,7 +197,7 @@ function getMessageText(msg) {
 }
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
-  console.log('📸 Media received, attempting Cloudinary upload...');
+  console.log('📸 [MediaProcessor] Media received, queuing Cloudinary upload...');
   try {
     const crypto = require('crypto');
     const { uploadToCloudinary } = require('../services/googleDrive');
@@ -206,39 +223,47 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
     const uuid = crypto.randomUUID();
     const fileName = `${uuid}.${ext}`;
 
-    console.log(`📥 Decrypting and downloading media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
-    let buffer;
+    // ─── Streaming Download ─────────────────────────────────────────────────
+    // Request a Readable stream instead of a Buffer. This means Baileys never
+    // allocates the full file in RAM; bytes flow directly from WhatsApp's
+    // encrypted socket into Cloudinary's upload socket with minimal memory.
+    console.log(`📥 [MediaProcessor] Streaming media for message ${msg.key.id} (${mediaDetails.mimeType})...`);
+    let mediaStream;
     try {
-      buffer = await downloadMediaMessage(
+      mediaStream = await downloadMediaMessage(
         msg,
-        'buffer',
+        'stream',  // ← zero-copy: returns a Readable, not a Buffer
         {},
         { logger: SILENT_LOGGER }
       );
     } catch (downloadErr) {
-      console.error('❌ Baileys media decryption failed:', downloadErr.message);
+      console.error('❌ [MediaProcessor] Baileys media decryption failed:', downloadErr.message);
       return null;
     }
 
-    if (buffer) {
-      console.log(`💾 Offloading WhatsApp media directly to Cloudinary: ${fileName}`);
-      
-      // Wrap the entire Cloudinary upload block in a robust try...catch
-      try {
-        const driveFile = await uploadToCloudinary(buffer, fileName);
-        if (driveFile) {
-          console.log('✅ Cloudinary upload successful');
-          console.log(`📡 Media successfully offloaded to Cloudinary: ID=${driveFile.id}, URL=${driveFile.url}`);
-          return { url: driveFile.url, id: driveFile.id };
-        } else {
-          console.warn(`⚠️ Cloudinary upload returned null for message ${msg.key.id}`);
-        }
-      } catch (uploadErr) {
-        console.error('❌ Cloudinary Upload Failed:', uploadErr.message);
-      }
+    if (!mediaStream) {
+      console.warn(`⚠️ [MediaProcessor] downloadMediaMessage returned null for ${msg.key.id}`);
+      return null;
+    }
+
+    // ─── Concurrency Queue ──────────────────────────────────────────────────
+    // Throttle to 3 simultaneous uploads to protect the 512 MB RAM ceiling.
+    // If the queue is not yet initialized (IIFE still running), fallback
+    // safely by executing immediately.
+    console.log(`💾 [MediaProcessor] Queueing Cloudinary upload: ${fileName}`);
+    const driveFile = await (uploadQueue
+      ? uploadQueue.add(() => uploadToCloudinary(mediaStream, fileName))
+      : uploadToCloudinary(mediaStream, fileName)
+    );
+
+    if (driveFile) {
+      console.log(`✅ [MediaProcessor] Cloudinary upload successful. ID=${driveFile.id}, URL=${driveFile.url}`);
+      return { url: driveFile.url, id: driveFile.id };
+    } else {
+      console.warn(`⚠️ [MediaProcessor] Cloudinary upload returned null for message ${msg.key.id}`);
     }
   } catch (error) {
-    console.error('❌ Cloudinary Upload Failed:', error.message);
+    console.error('❌ [MediaProcessor] Cloudinary Upload Failed:', error.message);
   }
   return null;
 }
