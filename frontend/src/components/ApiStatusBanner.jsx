@@ -25,14 +25,14 @@ export default function ApiStatusBanner() {
     return () => clearInterval(interval);
   }, []);
 
-  if (status === 'online' && (latency < 3000 || latency === null)) return null;
+  const isHidden = status === 'online' && (latency < 3000 || latency === null);
 
   return (
     <div className={`api-status-banner ${status}`} style={{
       padding: '8px 16px',
       fontSize: '0.75rem',
       fontWeight: 600,
-      display: 'flex',
+      display: isHidden ? 'none' : 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       gap: '10px',

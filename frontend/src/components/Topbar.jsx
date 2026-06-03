@@ -78,21 +78,20 @@ export default function Topbar() {
               }}
             >
               <span style={{ fontSize: '1.2rem' }}>🔔</span>
-              {hasErrors && (
-                <span style={{ 
-                  position: 'absolute', top: -2, right: -2, width: 12, height: 12, 
-                  background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)',
-                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)'
-                }}></span>
-              )}
+              <span style={{ 
+                position: 'absolute', top: -2, right: -2, width: 12, height: 12, 
+                background: 'var(--red)', borderRadius: '50%', border: '2px solid var(--bg-elevated)',
+                boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)',
+                display: hasErrors ? 'block' : 'none'
+              }}></span>
             </button>
 
-            {showNotifications && (
               <div style={{
                 position: 'absolute', top: '120%', right: 0, width: 320, 
                 background: 'var(--bg-elevated)', border: '1px solid var(--border)',
                 borderRadius: 12, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', zIndex: 1000,
-                maxHeight: 450, overflowY: 'auto', padding: 15
+                maxHeight: 450, overflowY: 'auto', padding: 15,
+                display: showNotifications ? 'block' : 'none'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' }}>
                   <h4 style={{ margin: 0, fontSize: '0.9rem' }}>Sync History (3d)</h4>
@@ -127,17 +126,15 @@ export default function Topbar() {
                   </div>
                 )}
               </div>
-            )}
           </div>
 
-          {isCommandCenter && (
             <button 
               onClick={toggleFocusMode} 
               className={`btn btn-sm ${isFocusMode ? 'btn-brand' : 'btn-secondary'}`}
               title={isFocusMode ? "Exit Focus Mode" : "Enter Focus Mode (Hide Filters & Stats)"}
               style={{ 
                 width: 38, height: 38, borderRadius: '50%', padding: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                display: isCommandCenter ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center',
                 background: isFocusMode ? 'var(--brand-glow)' : 'rgba(255,255,255,0.05)', 
                 border: isFocusMode ? '1px solid var(--brand)' : '1px solid var(--border)',
                 boxShadow: isFocusMode ? '0 0 15px rgba(99, 102, 241, 0.4)' : 'none'
@@ -145,7 +142,6 @@ export default function Topbar() {
             >
               <span style={{ fontSize: '1.2rem' }}>🎯</span>
             </button>
-          )}
 
           <button 
             onClick={toggleTheme} 
