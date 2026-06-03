@@ -404,14 +404,9 @@ router.post('/bulk-update', async (req, res) => {
     let auditCount = 0;
     let processedCount = 0;
 
-    // Use existing sessionId or create a new session
-    let sessionId = req.body.session_id;
-    if (!sessionId) {
-      const totalRows = Number(req.body.total_rows) || rows.length;
-      const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify, status, raw_data, processed_count, ghost_count, audit_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(store_id, req.body.filename || 'Manual Upload', totalRows, syncToShopify ? 1 : 0, 'Pending', req.body.raw_data || '', 0, 0, 0);
-      sessionId = sessionResult.lastInsertRowid;
-    }
+    // Start a Reconciliation Session
+    const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify) VALUES (?, ?, ?, ?)').run(store_id, req.body.filename || 'Manual Upload', rows.length, syncToShopify ? 1 : 0);
+    const sessionId = sessionResult.lastInsertRowid;
 
       // Group by Order to prevent race conditions and multiple Shopify calls for the same order
       const ordersToProcess = {};
@@ -538,30 +533,7 @@ router.post('/bulk-update', async (req, res) => {
         }
       }
 
-    // Increment cumulative counters on the session record
-    db.prepare('UPDATE recon_sessions SET processed_count = processed_count + ?, ghost_count = ghost_count + ?, audit_count = audit_count + ? WHERE id = ?')
-      .run(processedCount, ghostCount, auditCount, sessionId);
-
-    // Retrieve cumulative state of the session
-    const session = db.prepare('SELECT * FROM recon_sessions WHERE id = ?').get(sessionId);
-
-    // If total processed items >= total rows, mark Completed
-    const cumulativeProcessed = (session.processed_count || 0) + (session.ghost_count || 0) + (session.audit_count || 0);
-    if (cumulativeProcessed >= (session.row_count || 0)) {
-      db.prepare("UPDATE recon_sessions SET status = 'Completed' WHERE id = ?").run(sessionId);
-    }
-
-    res.json({ 
-      success: true, 
-      sessionId,
-      results, 
-      summary: { 
-        processedCount: session.processed_count || 0, 
-        ghostCount: session.ghost_count || 0, 
-        auditCount: session.audit_count || 0 
-      },
-      status: session.status || 'Pending'
-    });
+    res.json({ success: true, results, summary: { processedCount, ghostCount, auditCount } });
   } catch (err) {
     console.error('Finance Bulk Update Error:', err);
     res.status(500).json({ error: 'Internal Server Error: ' + err.message });
@@ -574,60 +546,6 @@ router.get('/reconciliation-history', (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   const history = db.prepare('SELECT * FROM recon_sessions WHERE store_id = ? ORDER BY created_at DESC LIMIT 50').all(store_id);
   res.json(history);
-});
-
-// GET /api/finance/session/active?store_id=1
-router.get('/session/active', (req, res) => {
-  const { store_id } = req.query;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-
-  try {
-    const session = db.prepare("SELECT * FROM recon_sessions WHERE store_id = ? AND status = 'Pending' ORDER BY id DESC LIMIT 1").get(Number(store_id));
-    if (!session) {
-      return res.json({ active: false });
-    }
-
-    const processedLogs = db.prepare(`
-      SELECT rl.order_id, o.tracking_number, o.shopify_order_id
-      FROM recon_logs rl
-      JOIN orders o ON rl.order_id = o.id
-      WHERE rl.session_id = ?
-    `).all(session.id);
-
-    res.json({
-      active: true,
-      session: {
-        id: session.id,
-        filename: session.filename,
-        raw_data: session.raw_data,
-        row_count: session.row_count,
-        sync_to_shopify: session.sync_to_shopify,
-        processed_count: session.processed_count,
-        ghost_count: session.ghost_count,
-        audit_count: session.audit_count,
-        created_at: session.created_at,
-        processed_records: processedLogs.map(l => ({
-          trackingNumber: l.tracking_number,
-          orderId: l.shopify_order_id
-        }))
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/finance/session/discard
-router.post('/session/discard', (req, res) => {
-  const { session_id } = req.body;
-  if (!session_id) return res.status(400).json({ error: 'session_id required' });
-
-  try {
-    db.prepare("UPDATE recon_sessions SET status = 'Discarded' WHERE id = ?").run(Number(session_id));
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // POST /api/finance/reconciliation-undo

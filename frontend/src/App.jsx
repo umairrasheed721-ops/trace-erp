@@ -4,6 +4,7 @@ import { useApp } from './context/AppContext'
 import AppProvider from './context/AppProvider'
 import { TenantProvider } from './context/TenantContext'
 import { QuoteDraftProvider } from './context/QuoteDraftContext'
+import { FinanceProvider } from './context/FinanceContext'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -112,9 +113,11 @@ export default function App() {
   return (
     <AppProvider>
       <TenantProvider>
-        <QuoteDraftProvider>
-          <AppContent />
-        </QuoteDraftProvider>
+        <FinanceProvider>
+          <QuoteDraftProvider>
+            <AppContent />
+          </QuoteDraftProvider>
+        </FinanceProvider>
       </TenantProvider>
     </AppProvider>
   )

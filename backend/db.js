@@ -938,11 +938,6 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE products ADD COLUMN inventory_qty INTEGER DEFAULT 0`); } catch(e){}
   try { db.exec(`ALTER TABLE products ADD COLUMN product_url TEXT DEFAULT ''`); } catch(e){}
   try { db.exec(`ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL`); } catch(e){}
-  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN status TEXT DEFAULT 'Pending'`); } catch(e){}
-  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN raw_data TEXT`); } catch(e){}
-  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN processed_count INTEGER DEFAULT 0`); } catch(e){}
-  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN ghost_count INTEGER DEFAULT 0`); } catch(e){}
-  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN audit_count INTEGER DEFAULT 0`); } catch(e){}
 
   // Gemini Bot Features Customization
   try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_check_stock INTEGER DEFAULT 1`); } catch(e){}

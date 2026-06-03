@@ -12,8 +12,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.3",
-    "recharts": "^3.8.1",
-    "zustand": "^5.0.14"
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
