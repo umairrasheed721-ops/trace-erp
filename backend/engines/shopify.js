@@ -574,16 +574,12 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
   if (!variantIds || !variantIds.length) return costMap;
 
   const uniqueIds = [...new Set(variantIds.map(id => String(id)))];
-  const variantToInventoryItem = {};
-  const inventoryItemIds = new Set();
+  console.log(`[CostSync] Fetching ${uniqueIds.length} variants via GraphQL with unit costs`);
 
-  console.log(`[CostSync] Fetching ${uniqueIds.length} variants via GraphQL`);
-
-  // Step 1: Get inventory_item_id for each variant via GraphQL
   const gqlChunkSize = 100;
   for (let i = 0; i < uniqueIds.length; i += gqlChunkSize) {
     const chunk = uniqueIds.slice(i, i + gqlChunkSize);
-    if (onProgress) onProgress(`Fetching variants ${i} to ${Math.min(i + gqlChunkSize, uniqueIds.length)}...`);
+    if (onProgress) onProgress(`Fetching variant costs ${i} to ${Math.min(i + gqlChunkSize, uniqueIds.length)}...`);
     const gidList = chunk.map(id => `"gid://shopify/ProductVariant/${id}"`).join(',');
     
     const query = `
@@ -592,7 +588,9 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
           ... on ProductVariant {
             id
             inventoryItem {
-              id
+              unitCost {
+                amount
+              }
             }
           }
         }
@@ -623,11 +621,10 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
         const nodes = result.data?.nodes || [];
         
         nodes.forEach(node => {
-          if (node && node.id && node.inventoryItem) {
+          if (node && node.id) {
             const vId = node.id.split('/').pop();
-            const iiId = node.inventoryItem.id.split('/').pop();
-            variantToInventoryItem[vId] = iiId;
-            inventoryItemIds.add(iiId);
+            const cost = node.inventoryItem?.unitCost?.amount ? parseFloat(node.inventoryItem.unitCost.amount) : 0;
+            costMap[vId] = cost;
           }
         });
         success = true;
@@ -638,46 +635,11 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
     }
   }
 
-  // Step 2: Get cost for each inventory_item_id (REST is fine here)
-  const inventoryItemIdsArray = Array.from(inventoryItemIds);
-  const inventoryItemToCost = {};
-  const REST_CHUNK = 50;
-
-  for (let i = 0; i < inventoryItemIdsArray.length; i += REST_CHUNK) {
-    const chunk = inventoryItemIdsArray.slice(i, i + REST_CHUNK);
-    if (onProgress) onProgress(`Fetching costs ${i} to ${Math.min(i + REST_CHUNK, inventoryItemIdsArray.length)}...`);
-    let success = false;
-    let attempts = 0;
-
-    while (!success && attempts < 3) {
-      try {
-        const res = await fetch(
-          `https://${shopDomain}/admin/api/2024-10/inventory_items.json?ids=${chunk.join(',')}`,
-          { headers: { 'X-Shopify-Access-Token': accessToken }, timeout: API_TIMEOUT }
-        );
-
-        if (res.status === 429) {
-          await sleep(2000);
-          attempts++;
-          continue;
-        }
-
-        const data = await res.json();
-        (data.inventory_items || []).forEach(item => {
-          inventoryItemToCost[String(item.id)] = parseFloat(item.cost || 0);
-        });
-        success = true;
-      } catch (e) {
-        attempts++;
-        await sleep(1000);
-      }
+  // Ensure all requested variantIds are key-mapped
+  uniqueIds.forEach(id => {
+    if (costMap[id] === undefined) {
+      costMap[id] = 0;
     }
-  }
-
-  // Step 3: Map back (always ensure all requested IDs are in the map)
-  uniqueIds.forEach(vId => {
-    const iiId = variantToInventoryItem[vId];
-    costMap[vId] = iiId ? (inventoryItemToCost[iiId] || 0) : 0;
   });
 
   return costMap;

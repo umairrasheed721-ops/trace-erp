@@ -20,7 +20,8 @@ export default function FinanceManager() {
     productCosts, setProductCosts,
     isScanning, isHealing,
     handleProcess, handleUndo, handleCreateGhost,
-    handleRepair, fetchMissingProducts, applyBulkCosts
+    handleRepair, fetchMissingProducts, applyBulkCosts,
+    syncTotal, syncProcessed, handleRemoveHistory
   } = useFinance()
 
 
@@ -133,6 +134,36 @@ export default function FinanceManager() {
               />
             </div>
 
+            {isProcessing ? (
+              <div style={{
+                padding: '10px 12px',
+                background: 'rgba(59, 130, 246, 0.1)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: 8,
+                color: '#60a5fa',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                marginBottom: 12,
+                textAlign: 'center'
+              }}>
+                ⏳ Reconciling session in progress...
+              </div>
+            ) : results.length > 0 ? (
+              <div style={{
+                padding: '10px 12px',
+                background: 'rgba(52, 211, 153, 0.1)',
+                border: '1px solid rgba(52, 211, 153, 0.2)',
+                borderRadius: 8,
+                color: '#34d399',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                marginBottom: 12,
+                textAlign: 'center'
+              }}>
+                🎉 Session completed! Ready for Next Upload.
+              </div>
+            ) : null}
+
             <button 
               className="btn btn-primary" 
               onClick={handleProcess} 
@@ -169,20 +200,38 @@ export default function FinanceManager() {
                         {session.sync_to_shopify ? ' • 🛒 Shopify Sync ON' : ''}
                       </span>
                     </div>
-                    <button 
-                      className="btn btn-sm" 
-                      onClick={() => handleUndo(session.id)}
-                      disabled={isProcessing}
-                      style={{ 
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)', 
-                        color: '#fca5a5', 
-                        border: '1px solid rgba(239, 68, 68, 0.2)',
-                        padding: '4px 12px',
-                        fontSize: '0.7rem'
-                      }}
-                    >
-                      ↩️ UNDO
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button 
+                        className="btn btn-sm" 
+                        onClick={() => handleUndo(session.id)}
+                        disabled={isProcessing}
+                        style={{ 
+                          backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                          color: '#fca5a5', 
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          padding: '4px 8px',
+                          fontSize: '0.65rem'
+                        }}
+                        title="Revert all financial updates of this session"
+                      >
+                        ↩️ Undo
+                      </button>
+                      <button 
+                        className="btn btn-sm" 
+                        onClick={() => handleRemoveHistory(session.id)}
+                        disabled={isProcessing}
+                        style={{ 
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+                          color: '#e5e7eb', 
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          padding: '4px 8px',
+                          fontSize: '0.65rem'
+                        }}
+                        title="Clear history log visually, keeping transaction records"
+                      >
+                        🗑️ Clear
+                      </button>
+                    </div>
                   </div>
                 ))}
              </div>
@@ -333,6 +382,33 @@ export default function FinanceManager() {
         </div>
 
         <div style={{ flex: 1 }}>
+          {currentTaskId && (
+            <div style={{
+              padding: 16,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 12,
+              marginBottom: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600 }}>
+                <span>⏳ Reconciling Orders (Task: {currentTaskId})</span>
+                <span>{syncProcessed} / {syncTotal} processed</span>
+              </div>
+              <div style={{ height: 6, background: 'rgba(255,255,255,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${syncTotal > 0 ? (syncProcessed / syncTotal) * 100 : 0}%`,
+                  background: 'var(--brand)',
+                  borderRadius: 3,
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
+          )}
+
           <div className="stat-card" style={{ height: '100%', minHeight: 500 }}>
             <h3 style={{ margin: '0 0 16px 0' }}>Detailed Results Log</h3>
             <div style={{ flex: 1, overflowY: 'auto' }}>

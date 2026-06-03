@@ -389,7 +389,7 @@ router.post('/returns', authenticateToken, async (req, res) => {
 // 💰 FINANCE & PAYMENTS HYBRID ENGINE
 // ==========================================
 router.post('/bulk-update', async (req, res) => {
-  const { store_id, rows, masterKey, syncToShopify } = req.body;
+  const { store_id, rows, masterKey, syncToShopify, session_id } = req.body;
   // rows expected format: { orderId, trackingNumber, type, codAmount, charges, ref, date }
   if (!store_id || !rows || !Array.isArray(rows)) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -404,9 +404,12 @@ router.post('/bulk-update', async (req, res) => {
     let auditCount = 0;
     let processedCount = 0;
 
-    // Start a Reconciliation Session
-    const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify) VALUES (?, ?, ?, ?)').run(store_id, req.body.filename || 'Manual Upload', rows.length, syncToShopify ? 1 : 0);
-    const sessionId = sessionResult.lastInsertRowid;
+    // Start or reuse a Reconciliation Session
+    let sessionId = session_id;
+    if (!sessionId) {
+      const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify) VALUES (?, ?, ?, ?)').run(store_id, req.body.filename || 'Manual Upload', req.body.total_rows || rows.length, syncToShopify ? 1 : 0);
+      sessionId = sessionResult.lastInsertRowid;
+    }
 
       // Group by Order to prevent race conditions and multiple Shopify calls for the same order
       const ordersToProcess = {};
@@ -533,7 +536,7 @@ router.post('/bulk-update', async (req, res) => {
         }
       }
 
-    res.json({ success: true, results, summary: { processedCount, ghostCount, auditCount } });
+    res.json({ success: true, sessionId, results, summary: { processedCount, ghostCount, auditCount } });
   } catch (err) {
     console.error('Finance Bulk Update Error:', err);
     res.status(500).json({ error: 'Internal Server Error: ' + err.message });
@@ -581,6 +584,20 @@ router.post('/reconciliation-undo', async (req, res) => {
 
     db.prepare('DELETE FROM recon_sessions WHERE id = ?').run(session_id);
     res.json({ success: true, count: logs.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/reconciliation-clear
+router.post('/reconciliation-clear', (req, res) => {
+  const { session_id } = req.body;
+  if (!session_id) return res.status(400).json({ error: 'session_id required' });
+
+  try {
+    db.prepare('DELETE FROM recon_logs WHERE session_id = ?').run(Number(session_id));
+    db.prepare('DELETE FROM recon_sessions WHERE id = ?').run(Number(session_id));
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

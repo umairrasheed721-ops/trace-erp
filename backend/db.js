@@ -259,7 +259,7 @@ function initDb(db) {
         created_at TEXT DEFAULT (datetime('now'))
       );
 
-      CREATE TABLE IF NOT EXISTS recon_sessions (
+      CREATE TABLE IF NOT EXISTS cpr_settlements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
         courier TEXT NOT NULL, -- PostEx, Leopards, Instaworld
@@ -276,6 +276,15 @@ function initDb(db) {
         is_locked INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now', '+5 hours')),
         UNIQUE(store_id, courier, cpr_reference)
+      );
+
+      CREATE TABLE IF NOT EXISTS recon_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        filename TEXT,
+        row_count INTEGER,
+        sync_to_shopify INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now', '+5 hours'))
       );
 
       CREATE TABLE IF NOT EXISTS cpr_settlement_orders (
@@ -931,6 +940,35 @@ function runMigrations(db) {
     created_at TEXT DEFAULT (datetime('now', '+5 hours'))
   )`); } catch(e){}
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_journal_store_type ON sync_journal(store_id, sync_type)`); } catch(e){}
+
+  // Ensure cpr_settlements table exists (for old databases where it was missing)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cpr_settlements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+        courier TEXT NOT NULL,
+        cpr_reference TEXT NOT NULL,
+        settlement_date TEXT,
+        total_orders INTEGER DEFAULT 0,
+        total_cod REAL DEFAULT 0,
+        total_expense REAL DEFAULT 0,
+        net_payout REAL DEFAULT 0,
+        actual_bank_deposit REAL DEFAULT 0,
+        discrepancy_amount REAL DEFAULT 0,
+        discrepancy_reason TEXT,
+        audit_status TEXT DEFAULT 'CLEARED',
+        is_locked INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now', '+5 hours')),
+        UNIQUE(store_id, courier, cpr_reference)
+      );
+    `);
+  } catch(e){}
+
+  // Ensure recon_sessions has the correct columns for payment reconciliation
+  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN filename TEXT`); } catch(e){}
+  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN row_count INTEGER`); } catch(e){}
+  try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN sync_to_shopify INTEGER DEFAULT 1`); } catch(e){}
 
   // Phase 4/5: Final Sweep Database Migrations
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}

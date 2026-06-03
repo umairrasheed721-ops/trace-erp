@@ -206,6 +206,44 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 12. Every day at 3:30 AM: Clean up reconciliation sessions older than 3 days
+  cron.schedule('30 3 * * *', async () => {
+    console.log('🗑️ [CRON] Reconciliation history auto-cleanup starting...');
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { DatabaseSync } = require('node:sqlite');
+      
+      const defaultDbPath = process.env.NODE_ENV === 'production' || 
+                           process.env.RAILWAY_ENVIRONMENT !== undefined ||
+                           process.env.BOT_ENABLED === 'true'
+        ? '/app/data/trace_erp.db' 
+        : path.join(__dirname, 'trace_erp.db');
+      const DB_PATH = path.resolve(process.env.DB_PATH || defaultDbPath);
+      const DB_DIR = path.dirname(DB_PATH);
+
+      if (fs.existsSync(DB_DIR)) {
+        const files = fs.readdirSync(DB_DIR);
+        for (const file of files) {
+          if (file.startsWith('trace_erp') && file.endsWith('.db')) {
+            const filePath = path.join(DB_DIR, file);
+            try {
+              const tempDb = new DatabaseSync(filePath);
+              tempDb.prepare("DELETE FROM recon_logs WHERE session_id IN (SELECT id FROM recon_sessions WHERE created_at < datetime('now', '+5 hours', '-3 days'))").run();
+              tempDb.prepare("DELETE FROM recon_sessions WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
+              tempDb.close();
+              console.log(`🧹 Cleaned up old reconciliation logs in ${file}`);
+            } catch (e) {
+              console.error(`Failed to clean up db ${file}:`, e.message);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Reconciliation history auto-cleanup cron error:', e.message);
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

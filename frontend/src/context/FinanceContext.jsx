@@ -15,6 +15,48 @@ export function FinanceProvider({ children }) {
   const [summary, setSummary] = useState(null)
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  
+  // Custom Sync Progress States for Persistence
+  const [syncTotal, setSyncTotal] = useState(0)
+  const [syncProcessed, setSyncProcessed] = useState(0)
+
+  // Load initial values from localStorage on mount
+  useEffect(() => {
+    const storedTaskId = localStorage.getItem('ActiveSyncTaskID')
+    if (storedTaskId) {
+      setCurrentTaskId(storedTaskId)
+      setIsProcessing(localStorage.getItem('sync_is_processing') === 'true')
+      setSyncProcessed(parseInt(localStorage.getItem('sync_processed') || '0', 10))
+      setSyncTotal(parseInt(localStorage.getItem('sync_total') || '0', 10))
+      try {
+        const storedResults = localStorage.getItem('sync_results')
+        if (storedResults) setResults(JSON.parse(storedResults))
+        const storedSummary = localStorage.getItem('sync_summary')
+        if (storedSummary) setSummary(JSON.parse(storedSummary))
+      } catch (e) {
+        console.error('Failed to parse sync state from localStorage:', e)
+      }
+    }
+  }, [])
+
+  // Persist sync state to localStorage when active
+  useEffect(() => {
+    if (currentTaskId) {
+      localStorage.setItem('ActiveSyncTaskID', currentTaskId)
+      localStorage.setItem('sync_is_processing', String(isProcessing))
+      localStorage.setItem('sync_processed', String(syncProcessed))
+      localStorage.setItem('sync_total', String(syncTotal))
+      localStorage.setItem('sync_results', JSON.stringify(results))
+      localStorage.setItem('sync_summary', JSON.stringify(summary))
+    } else {
+      localStorage.removeItem('ActiveSyncTaskID')
+      localStorage.removeItem('sync_is_processing')
+      localStorage.removeItem('sync_processed')
+      localStorage.removeItem('sync_total')
+      localStorage.removeItem('sync_results')
+      localStorage.removeItem('sync_summary')
+    }
+  }, [currentTaskId, isProcessing, syncProcessed, syncTotal, results, summary])
 
   // Legacy Repair State
   const [couriers, setCouriers] = useState([])
@@ -97,6 +139,8 @@ export function FinanceProvider({ children }) {
     setCurrentTaskId(taskId)
     setSummary(null)
     setResults([])
+    setSyncTotal(parsedRows.length)
+    setSyncProcessed(0)
 
     try {
       const CHUNK_SIZE = 10
@@ -107,18 +151,25 @@ export function FinanceProvider({ children }) {
 
       let allResults = []
       let finalSummary = { processedCount: 0, ghostCount: 0, auditCount: 0 }
+      let sessionId = null
 
       for (let i = 0; i < chunks.length; i++) {
+        const payload = {
+          store_id: activeStoreId,
+          rows: chunks[i],
+          masterKey,
+          syncToShopify,
+          filename: `Pasted Batch (${new Date().toLocaleTimeString()})`,
+          total_rows: parsedRows.length
+        }
+        if (sessionId) {
+          payload.session_id = sessionId
+        }
+
         const res = await fetch(`/api/finance/bulk-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_id: activeStoreId,
-            rows: chunks[i],
-            masterKey,
-            syncToShopify,
-            filename: `Pasted Batch (${new Date().toLocaleTimeString()})`
-          })
+          body: JSON.stringify(payload)
         })
         
         let data
@@ -129,6 +180,7 @@ export function FinanceProvider({ children }) {
         }
 
         if (data.success) {
+          sessionId = data.sessionId
           allResults = [...allResults, ...data.results]
           finalSummary.processedCount += data.summary.processedCount
           finalSummary.ghostCount += data.summary.ghostCount
@@ -136,6 +188,7 @@ export function FinanceProvider({ children }) {
           
           setResults([...allResults])
           setSummary({ ...finalSummary })
+          setSyncProcessed(allResults.length)
         } else {
           throw new Error(`Batch ${i+1}/${chunks.length} Error: ${data.error || 'Unknown'}`)
         }
@@ -149,6 +202,8 @@ export function FinanceProvider({ children }) {
     } finally {
       setIsProcessing(false)
       setCurrentTaskId(null)
+      setSyncTotal(0)
+      setSyncProcessed(0)
     }
   }
 
@@ -272,6 +327,26 @@ export function FinanceProvider({ children }) {
     }
   }
 
+  const handleRemoveHistory = async (sessionId) => {
+    if (!window.confirm('Are you sure you want to remove this session log? This will only remove the entry from this history list; all financial updates in the ledger remain completely intact.')) return
+    
+    try {
+      const res = await fetch(`/api/finance/reconciliation-clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        fetchHistory()
+      } else {
+        alert('Clear failed: ' + data.error)
+      }
+    } catch (e) {
+      alert('Network Error: ' + e.message)
+    }
+  }
+
   return (
     <FinanceContext.Provider value={{
       pasteData, setPasteData,
@@ -290,7 +365,10 @@ export function FinanceProvider({ children }) {
       productCosts, setProductCosts,
       isScanning, isHealing,
       handleProcess, handleUndo, handleCreateGhost,
-      handleRepair, fetchMissingProducts, applyBulkCosts
+      handleRepair, fetchMissingProducts, applyBulkCosts,
+      syncTotal, setSyncTotal,
+      syncProcessed, setSyncProcessed,
+      handleRemoveHistory
     }}>
       {children}
     </FinanceContext.Provider>
