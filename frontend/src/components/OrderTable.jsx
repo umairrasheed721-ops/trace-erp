@@ -8,7 +8,7 @@ import { TABLE_CONSTANTS } from '../config/uiConstants'
 
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
-  ref_number: 110,
+  ref_number: 160,
   order_date: 100,
   customer_name: 140,
   phone: 110,

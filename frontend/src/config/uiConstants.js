@@ -14,7 +14,7 @@ export const TABLE_CONSTANTS = {
   // Explicit column widths to ensure fixed layouts (prevents horizontal jittering)
   DEFAULT_COLUMN_WIDTH: 120,
   COLUMN_WIDTHS: {
-    ref_number: 110,
+    ref_number: 160,
     order_date: 100,
     customer_name: 140,
     phone: 110,
