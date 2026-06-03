@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { deleteFileFromDrive } = require('../services/googleDrive');
+const { deleteFromCloudinary } = require('../services/googleDrive');
 
 console.log('🗑️ --- DAILY WHATSAPP MEDIA PURGE CYCLE --- 🔍');
 
@@ -23,7 +23,7 @@ async function runPurge() {
   try {
     const db = new DatabaseSync(DB_PATH);
     
-    // Find all media files older than 30 days on Google Drive
+    // Find all media files older than 30 days on Cloudinary
     // Message created_at matches: YYYY-MM-DD HH:MM:SS (datetime('now', '+5 hours'))
     const oldMessages = db.prepare(`
       SELECT id, message_id, drive_file_id, media_url 
@@ -43,8 +43,8 @@ async function runPurge() {
     let deletedCount = 0;
     
     for (const msg of oldMessages) {
-      console.log(`🔄 Processing deletion for message ${msg.message_id} (Drive ID: ${msg.drive_file_id})...`);
-      const success = await deleteFileFromDrive(msg.drive_file_id);
+      console.log(`🔄 Processing deletion for message ${msg.message_id} (Cloudinary Public ID: ${msg.drive_file_id})...`);
+      const success = await deleteFromCloudinary(msg.drive_file_id);
       
       // Update database anyway to prevent repeating failed deletions in loop indefinitely
       db.prepare(`
@@ -60,7 +60,7 @@ async function runPurge() {
       }
     }
 
-    console.log(`✅ Google Drive cleanup completed. Successfully deleted ${deletedCount}/${oldMessages.length} files from Drive.`);
+    console.log(`✅ Cloudinary cleanup completed. Successfully deleted ${deletedCount}/${oldMessages.length} files from Cloudinary.`);
 
     // Run VACUUM to reclaim space
     console.log('🧹 Reclaiming database empty space via VACUUM...');

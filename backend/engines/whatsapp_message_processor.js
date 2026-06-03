@@ -180,10 +180,10 @@ function getMessageText(msg) {
 }
 
 async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
-  console.log('📸 Media received, attempting Drive upload...');
+  console.log('📸 Media received, attempting Cloudinary upload...');
   try {
     const crypto = require('crypto');
-    const { uploadBufferToDrive } = require('../services/googleDrive');
+    const { uploadToCloudinary } = require('../services/googleDrive');
 
     const extMap = {
       'image/jpeg': 'jpg',
@@ -221,24 +221,24 @@ async function saveMediaFile(msg, mediaDetails, downloadMediaMessage) {
     }
 
     if (buffer) {
-      console.log(`💾 Offloading WhatsApp media directly to Google Drive: ${fileName}`);
+      console.log(`💾 Offloading WhatsApp media directly to Cloudinary: ${fileName}`);
       
-      // Wrap the entire Drive upload block in a robust try...catch
+      // Wrap the entire Cloudinary upload block in a robust try...catch
       try {
-        const driveFile = await uploadBufferToDrive(buffer, fileName, mediaDetails.mimeType);
+        const driveFile = await uploadToCloudinary(buffer, fileName);
         if (driveFile) {
-          console.log('✅ Drive upload successful');
-          console.log(`📡 Media successfully offloaded to Drive: ID=${driveFile.id}, URL=${driveFile.url}`);
+          console.log('✅ Cloudinary upload successful');
+          console.log(`📡 Media successfully offloaded to Cloudinary: ID=${driveFile.id}, URL=${driveFile.url}`);
           return { url: driveFile.url, id: driveFile.id };
         } else {
-          console.warn(`⚠️ Google Drive upload returned null for message ${msg.key.id}`);
+          console.warn(`⚠️ Cloudinary upload returned null for message ${msg.key.id}`);
         }
       } catch (uploadErr) {
-        console.error('❌ Drive Upload Failed:', uploadErr.message);
+        console.error('❌ Cloudinary Upload Failed:', uploadErr.message);
       }
     }
   } catch (error) {
-    console.error('❌ Drive Upload Failed:', error.message);
+    console.error('❌ Cloudinary Upload Failed:', error.message);
   }
   return null;
 }
