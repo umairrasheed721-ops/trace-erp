@@ -20,6 +20,53 @@ function saveRawPayload(type, payload) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const CHUNK_SIZE = 50;
 
+class ShopifyRateLimiter {
+  constructor({ concurrency = 3, interval = 1000, maxRequests = 2 }) {
+    this.concurrency = concurrency;
+    this.interval = interval;
+    this.maxRequests = maxRequests;
+    this.queue = [];
+    this.running = 0;
+    this.requestTimestamps = [];
+  }
+
+  async add(fn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ fn, resolve, reject });
+      this.next();
+    });
+  }
+
+  async next() {
+    if (this.running >= this.concurrency || this.queue.length === 0) return;
+
+    const now = Date.now();
+    this.requestTimestamps = this.requestTimestamps.filter(t => now - t < this.interval);
+
+    if (this.requestTimestamps.length >= this.maxRequests) {
+      const timeToWait = this.interval - (now - this.requestTimestamps[0]);
+      setTimeout(() => this.next(), timeToWait);
+      return;
+    }
+
+    const task = this.queue.shift();
+    if (!task) return;
+
+    this.running++;
+    this.requestTimestamps.push(Date.now());
+
+    try {
+      const res = await task.fn();
+      task.resolve(res);
+    } catch (err) {
+      task.reject(err);
+    } finally {
+      this.running--;
+      this.next();
+    }
+  }
+}
+
 async function smokeTestShopify(shopDomain, accessToken) {
   try {
     const url = `https://${shopDomain}/admin/api/2024-10/shop.json`;
@@ -372,11 +419,18 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
   const syncCosts = options.syncCosts !== undefined ? options.syncCosts : (options.forceDeepSync ? true : false);
 
   try {
-    // If deep sync, use the store's sync_start_date (allows 2020+). 
-    // Otherwise, use 60 days for a fast refresh.
-    const dateMin = options.forceDeepSync 
-      ? (store.sync_start_date ? store.sync_start_date + 'T00:00:00Z' : getDaysAgo(730))
-      : getDaysAgo(60);
+    const storeDb = db.prepare('SELECT last_synced_at, sync_start_date FROM stores WHERE id = ?').get(storeId);
+    let dateMin;
+    if (options.forceDeepSync) {
+      dateMin = storeDb?.sync_start_date ? storeDb.sync_start_date + 'T00:00:00Z' : getDaysAgo(730);
+    } else if (storeDb?.last_synced_at) {
+      const lastSyncedStr = storeDb.last_synced_at.includes('Z') ? storeDb.last_synced_at : storeDb.last_synced_at.replace(' ', 'T') + 'Z';
+      const lastSynced = new Date(lastSyncedStr);
+      const safetyBufferTime = new Date(lastSynced.getTime() - 15 * 60 * 1000);
+      dateMin = safetyBufferTime.toISOString();
+    } else {
+      dateMin = getDaysAgo(60);
+    }
     let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
 
     let updatedOrders = [];
@@ -577,9 +631,15 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
   console.log(`[CostSync] Fetching ${uniqueIds.length} variants via GraphQL with unit costs`);
 
   const gqlChunkSize = 100;
+  const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += gqlChunkSize) {
-    const chunk = uniqueIds.slice(i, i + gqlChunkSize);
-    if (onProgress) onProgress(`Fetching variant costs ${i} to ${Math.min(i + gqlChunkSize, uniqueIds.length)}...`);
+    chunks.push(uniqueIds.slice(i, i + gqlChunkSize));
+  }
+
+  const limiter = new ShopifyRateLimiter({ concurrency: 3, interval: 1000, maxRequests: 2 });
+
+  const fetchChunk = async (chunk, index) => {
+    if (onProgress) onProgress(`Fetching variant costs chunk ${index + 1}/${chunks.length}...`);
     const gidList = chunk.map(id => `"gid://shopify/ProductVariant/${id}"`).join(',');
     
     const query = `
@@ -612,7 +672,8 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
         });
 
         if (res.status === 429) {
-          await sleep(2000);
+          const retryAfter = res.headers.get('Retry-After');
+          await sleep(retryAfter ? parseInt(retryAfter) * 1000 : 2000);
           attempts++;
           continue;
         }
@@ -633,7 +694,13 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
         await sleep(1000);
       }
     }
-  }
+  };
+
+  const tasks = chunks.map((chunk, index) => {
+    return limiter.add(() => fetchChunk(chunk, index));
+  });
+
+  await Promise.all(tasks);
 
   // Ensure all requested variantIds are key-mapped
   uniqueIds.forEach(id => {
