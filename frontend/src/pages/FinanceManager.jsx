@@ -1,259 +1,28 @@
-import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+import { useFinance } from '../context/FinanceContext'
 
 export default function FinanceManager() {
-  const { activeStoreId, addToast } = useApp()
-  const [pasteData, setPasteData] = useState('')
-  const [masterKey, setMasterKey] = useState('Match by Tracking Number')
-  const [syncToShopify, setSyncToShopify] = useState(true)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [results, setResults] = useState([])
-  const [summary, setSummary] = useState(null)
-  const [history, setHistory] = useState([])
-  const [loadingHistory, setLoadingHistory] = useState(false)
-  
-  // Repair Legacy State
-  const [couriers, setCouriers] = useState([])
-  const [selectedCourier, setSelectedCourier] = useState('All Inactive')
-  const [daysOld, setDaysOld] = useState(60)
-  const [isRepairing, setIsRepairing] = useState(false)
-  const [repairResult, setRepairResult] = useState(null);
-  const [forceUnpaidAsReturned, setForceUnpaidAsReturned] = useState(false);
-  const [ghostProducts, setGhostProducts] = useState([]);
-  const [productCosts, setProductCosts] = useState({});
-  const [isScanning, setIsScanning] = useState(false);
-  const [isHealing, setIsHealing] = useState(false);
+  const { activeStoreId } = useApp()
+  const {
+    pasteData, setPasteData,
+    masterKey, setMasterKey,
+    syncToShopify, setSyncToShopify,
+    isProcessing, currentTaskId,
+    results,
+    summary,
+    history,
+    loadingHistory,
+    couriers, selectedCourier, setSelectedCourier,
+    daysOld, setDaysOld,
+    isRepairing, repairResult,
+    forceUnpaidAsReturned, setForceUnpaidAsReturned,
+    ghostProducts, setGhostProducts,
+    productCosts, setProductCosts,
+    isScanning, isHealing,
+    handleProcess, handleUndo, handleCreateGhost,
+    handleRepair, fetchMissingProducts, applyBulkCosts
+  } = useFinance()
 
-  useEffect(() => {
-    if (activeStoreId) {
-      fetchHistory()
-      fetchCouriers()
-    }
-  }, [activeStoreId])
-
-  const fetchCouriers = async () => {
-    try {
-      const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
-      const data = await res.json()
-      if (Array.isArray(data)) setCouriers(data)
-      else {
-        console.error('Couriers response not an array:', data)
-        setCouriers([])
-      }
-    } catch (e) { console.error('Failed to fetch couriers', e); setCouriers([]) }
-  }
-
-  const handleRepair = async () => {
-    if (!activeStoreId) return;
-    setIsRepairing(true);
-    setRepairResult(null);
-    try {
-      const res = await fetch('/api/finance/repair-legacy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, courier: selectedCourier, daysOld, forceUnpaidAsReturned })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRepairResult(data);
-        addToast(`Repair complete! Healed ${data.count} orders.`, 'success');
-      } else {
-        addToast(data.error || 'Repair failed', 'error');
-      }
-    } catch (e) {
-      addToast('Repair failed: ' + e.message, 'error');
-    } finally {
-      setIsRepairing(false);
-    }
-  };
-
-  const fetchMissingProducts = async () => {
-    if (!activeStoreId) return;
-    setIsScanning(true);
-    try {
-      const res = await fetch(`/api/finance/missing-product-list?store_id=${activeStoreId}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setGhostProducts(data);
-        if (data.length === 0) addToast('No products with missing costs found!', 'info');
-      } else {
-        console.error('Ghost products response not an array:', data);
-        setGhostProducts([]);
-        addToast(data.error || 'Failed to scan products', 'error');
-      }
-    } catch (e) {
-      console.error('Failed to fetch missing products', e);
-      addToast('Failed to fetch product list', 'error');
-      setGhostProducts([]);
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const applyBulkCosts = async () => {
-    if (!activeStoreId || Object.keys(productCosts).length === 0) return;
-    setIsHealing(true);
-    try {
-      const res = await fetch('/api/finance/apply-bulk-product-costs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, mappings: productCosts })
-      });
-      const data = await res.json();
-      if (data.success) {
-        addToast(`Successfully healed ${data.count} orders!`, 'success');
-        setGhostProducts([]);
-        setProductCosts({});
-      } else {
-        addToast(data.error || 'Healing failed', 'error');
-      }
-    } catch (e) {
-      addToast('Healing error: ' + e.message, 'error');
-    } finally {
-      setIsHealing(false);
-    }
-  };
-
-  const fetchHistory = async () => {
-    setLoadingHistory(true)
-    try {
-      const res = await fetch(`/api/finance/reconciliation-history?store_id=${activeStoreId}`)
-      const data = await res.json()
-      setHistory(data)
-    } catch (e) { console.error('Failed to fetch history', e) }
-    finally { setLoadingHistory(false) }
-  }
-
-  const handleUndo = async (sessionId) => {
-    if (!window.confirm('🚨 Are you sure? This will revert all ERP changes for this upload and attempt to CLEAN UP any notes added to Shopify.')) return
-    
-    setIsProcessing(true)
-    try {
-      const res = await fetch(`/api/finance/reconciliation-undo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId })
-      })
-      const data = await res.json()
-      if (data.success) {
-        alert(`✅ Undo Successful! Reverted ${data.count} orders.`)
-        fetchHistory()
-      } else {
-        alert('❌ Undo Failed: ' + data.error)
-      }
-    } catch (e) { alert('Network Error: ' + e.message) }
-    finally { setIsProcessing(false) }
-  }
-
-  const handleCreateGhost = async (row) => {
-    try {
-      const res = await fetch(`/api/finance/create-ghost-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: activeStoreId,
-          tracking_number: row.trackingNumber,
-          order_id_ref: row.orderId,
-          amount: row.codAmount,
-          courier_fee: row.charges,
-          date: row.date
-        })
-      })
-      const data = await res.json()
-      if (data.success) {
-        alert('✅ Ghost Buster: Order created in ERP!')
-        setResults(prev => prev.map(r => r.trackingNumber === row.trackingNumber ? { ...r, status: '✅ Done (Ghost Recovered)' } : r))
-      } else {
-        alert('Error: ' + data.error)
-      }
-    } catch (e) { alert('Network Error: ' + e.message) }
-  }
-
-  const handleProcess = async () => {
-    if (!activeStoreId) return alert('No active store selected')
-    const lines = pasteData.split('\n').filter(l => l.trim())
-    if (lines.length === 0) return alert('No data pasted')
-
-    // Parse pasted Excel data (tab-separated usually)
-    const parsedRows = []
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split('\t')
-      // Simple heuristic: if row doesn't have at least 5 parts, or if it looks like a header, skip
-      if (parts.length < 5) continue
-      
-      const orderIdStr = String(parts[0] || '').toLowerCase()
-      if (orderIdStr.includes('order id') || orderIdStr.includes('tracking')) continue
-
-      parsedRows.push({
-        orderId: parts[0] ? parts[0].trim() : '',
-        trackingNumber: parts[1] ? parts[1].trim() : '',
-        type: parts[2] ? parts[2].trim().charAt(0).toUpperCase() : '', // 'D' or 'R'
-        codAmount: parseFloat(parts[3]) || 0,
-        charges: parseFloat(parts[4]) || 0,
-        ref: parts[5] ? parts[5].trim() : '',
-        date: parts[6] ? parts[6].trim() : ''
-      })
-    }
-
-    if (parsedRows.length === 0) return alert('Could not parse any valid rows. Please ensure you paste columns: Order ID, Tracking, Type (D/R), COD Amount, Charges, Ref, Date.')
-
-    setIsProcessing(true)
-    setSummary(null)
-    setResults([])
-
-    try {
-      // Chunking logic to prevent 503 timeouts and respect rate limits
-      const CHUNK_SIZE = 10
-      const chunks = []
-      for (let i = 0; i < parsedRows.length; i += CHUNK_SIZE) {
-        chunks.push(parsedRows.slice(i, i + CHUNK_SIZE))
-      }
-
-      let allResults = []
-      let finalSummary = { processedCount: 0, ghostCount: 0, auditCount: 0 }
-
-      for (let i = 0; i < chunks.length; i++) {
-        const res = await fetch(`/api/finance/bulk-update`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_id: activeStoreId,
-            rows: chunks[i],
-            masterKey,
-            syncToShopify,
-            filename: `Pasted Batch (${new Date().toLocaleTimeString()})`
-          })
-        })
-        
-        let data;
-        try {
-          data = await res.json()
-        } catch (e) {
-          throw new Error(`Batch ${i+1}/${chunks.length} failed: Invalid response (Status: ${res.status}).`)
-        }
-
-        if (data.success) {
-          allResults = [...allResults, ...data.results]
-          finalSummary.processedCount += data.summary.processedCount
-          finalSummary.ghostCount += data.summary.ghostCount
-          finalSummary.auditCount += data.summary.auditCount
-          
-          // Update partial results so user sees progress
-          setResults([...allResults])
-          setSummary({ ...finalSummary })
-        } else {
-          throw new Error(`Batch ${i+1}/${chunks.length} Error: ${data.error || 'Unknown'}`)
-        }
-      }
-
-      setPasteData('')
-      fetchHistory()
-    } catch (e) {
-      alert('Processing Error: ' + e.message)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
 
   return (
     <div className="page-container" style={{ maxWidth: 1400 }}>
@@ -370,7 +139,7 @@ export default function FinanceManager() {
               disabled={isProcessing}
               style={{ padding: '16px', fontSize: 16, fontWeight: 'bold', width: '100%' }}
             >
-              {isProcessing ? '⏳ Processing Payments...' : '🚀 Process Payments'}
+              {isProcessing ? `⏳ Processing (Task: ${currentTaskId || 'active'})` : '🚀 Process Payments'}
             </button>
           </div>
 
