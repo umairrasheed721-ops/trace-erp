@@ -91,8 +91,13 @@ export function FinanceProvider({ children }) {
     try {
       const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
       const data = await res.json()
-      if (Array.isArray(data)) setCouriers(data)
-      else setCouriers([])
+      if (data && data.success && Array.isArray(data.data)) {
+        setCouriers(data.data)
+      } else if (Array.isArray(data)) {
+        setCouriers(data)
+      } else {
+        setCouriers([])
+      }
     } catch (e) {
       console.error('Failed to fetch couriers', e)
       setCouriers([])
@@ -269,10 +274,11 @@ export function FinanceProvider({ children }) {
       })
       const data = await res.json()
       if (data.success) {
-        setRepairResult(data)
-        if (addToast) addToast(`Repair complete! Healed ${data.count} orders.`, 'success')
+        const repairData = data.data !== undefined ? data.data : data;
+        setRepairResult(repairData)
+        if (addToast) addToast(`Repair complete! Healed ${repairData.count || 0} orders.`, 'success')
       } else {
-        if (addToast) addToast(data.error || 'Repair failed', 'error')
+        if (addToast) addToast(data.message || data.error || 'Repair failed', 'error')
       }
     } catch (e) {
       if (addToast) addToast('Repair failed: ' + e.message, 'error')

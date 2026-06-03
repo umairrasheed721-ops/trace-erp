@@ -11,6 +11,8 @@ const {
   removeShopifyNoteLine
 } = require('../engines/shopify_finance');
 const { authenticateToken } = require('./auth');
+const FinanceService = require('../services/FinanceService');
+const asyncHandler = require('../middleware/async');
 
 function formatDate(dStr) {
   if (!dStr) return '';
@@ -23,83 +25,17 @@ function formatDate(dStr) {
 // ==========================================
 
 // GET /api/finance/couriers?store_id=1
-router.get('/couriers', (req, res) => {
+router.get('/couriers', asyncHandler(async (req, res) => {
   const { store_id } = req.query;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  try {
-    const couriers = db.prepare('SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ""').all(Number(store_id));
-    res.json(couriers.map(c => c.courier));
-  } catch (e) { 
-    console.error('❌ GET /api/finance/couriers error:', e);
-    res.status(500).json({ error: e.message }); 
-  }
-});
+  const couriers = FinanceService.getCouriers(store_id);
+  res.success(couriers, 'Couriers retrieved successfully');
+}));
 
 // POST /api/finance/repair-legacy
-router.post('/repair-legacy', async (req, res) => {
-  const { store_id, courier, daysOld, forceUnpaidAsReturned } = req.body;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-
-  try {
-    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
-    if (!store) return res.status(404).json({ error: 'Store not found' });
-
-    const dateLimit = new Date();
-    dateLimit.setDate(dateLimit.getDate() - (parseInt(daysOld) || 30));
-    const dateStr = dateLimit.toISOString().split('T')[0];
-
-    let query = `
-      SELECT id, shopify_order_id, delivery_status, payment_status 
-      FROM orders 
-      WHERE store_id = ? 
-      AND order_date <= ? 
-      AND delivery_status NOT IN ('Delivered', 'Cancelled', 'Returned', 'Return Received', 'RTO')
-    `;
-    const params = [Number(store_id), dateStr];
-
-    if (courier && courier !== 'All Inactive') {
-      query += " AND courier = ?";
-      params.push(courier);
-    }
-
-    const orders = db.prepare(query).all(...params);
-    if (orders.length === 0) return res.json({ success: true, count: 0, message: 'No legacy orders found matching criteria.' });
-
-    const { getShopifyOrderStatus } = require('../engines/shopify_finance');
-    
-    let healedCount = 0;
-    for (const order of orders) {
-      try {
-        const status = await getShopifyOrderStatus(store, order.shopify_order_id);
-        
-        let newDelivery = order.delivery_status;
-        let newPayment = order.payment_status;
-
-        if (status.is_cancelled) {
-          newDelivery = 'Cancelled';
-        } else if (status.financial_status === 'refunded' || status.tags?.toLowerCase().includes('returned')) {
-          newDelivery = 'Returned';
-        } else if (status.financial_status === 'paid') {
-          newDelivery = 'Delivered';
-          newPayment = 'Paid';
-        } else if (forceUnpaidAsReturned) {
-          newDelivery = 'Returned';
-        }
-
-        if (newDelivery !== order.delivery_status || newPayment !== order.payment_status) {
-          db.prepare('UPDATE orders SET delivery_status = ?, payment_status = ? WHERE id = ?').run(newDelivery, newPayment, order.id);
-          healedCount++;
-        }
-      } catch (e) {
-        console.error(`Repair failed for ${order.shopify_order_id}:`, e.message);
-      }
-    }
-
-    res.json({ success: true, count: healedCount, totalChecked: orders.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+router.post('/repair-legacy', asyncHandler(async (req, res) => {
+  const result = await FinanceService.repairLegacy(req.body);
+  res.success(result, 'Legacy data repaired successfully');
+}));
 
 // GET /api/finance/missing-product-list?store_id=1
 router.get('/missing-product-list', (req, res) => {

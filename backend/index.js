@@ -317,6 +317,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '2mb' }));
 
+const responseWrapper = require('./middleware/response');
+app.use(responseWrapper);
+
 // --- 🌐 MULTI-TENANT ISOLATION MIDDLEWARE ---
 const tenantMiddleware = require('./middleware/tenant');
 
@@ -628,6 +631,9 @@ app.get('/api/live', (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date().toISOString() }));
+
+const errorHandler = require('./middleware/error');
+app.use(errorHandler);
 
 // Catch-all route to serve the React app
 app.get('*', (req, res) => {
