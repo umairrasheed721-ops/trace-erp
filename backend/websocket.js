@@ -2,7 +2,11 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 
 let wss = null;
-const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET missing');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 function initWebSocket(server) {
   wss = new WebSocket.Server({ noServer: true });

@@ -319,10 +319,13 @@ app.use(express.json({ limit: '2mb' }));
 
 // --- 🌐 MULTI-TENANT ISOLATION MIDDLEWARE ---
 const tenantMiddleware = require('./middleware/tenant');
-app.use(tenantMiddleware);
 
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET missing');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // ─── Security: JWT Auth for API ───
 app.use((req, res, next) => {
@@ -379,6 +382,8 @@ app.use((req, res, next) => {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 });
+
+app.use(tenantMiddleware);
 
 // --- 📊 SYSTEM STATUS API — replaces needing Railway agent for debugging ---
 app.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));

@@ -6,7 +6,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const TRACEPK_SCOPES = 'read_orders,write_orders,read_locations,read_inventory,read_customers,read_products,read_all_orders';
-const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET missing');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware to authenticate JWT tokens
 const authenticateToken = (req, res, next) => {

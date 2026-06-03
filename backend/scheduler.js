@@ -195,6 +195,17 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 11. Every day at 3:00 AM: Clean up sync_journal and report files older than 3 days
+  cron.schedule('0 3 * * *', async () => {
+    console.log('🗑️ [CRON] Sync journal auto-cleanup starting...');
+    try {
+      const { runJournalCleanup } = require('./engines/shopify_sync');
+      await runJournalCleanup();
+    } catch (e) {
+      console.error('Sync journal cleanup cron error:', e.message);
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

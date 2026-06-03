@@ -129,7 +129,11 @@ export default function Topbar() {
             }}
           >
             <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🛒</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Shopify Sync</span>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+              {syncState?.sync_type === 'Shopify Sync' 
+                ? `Shopify Sync (${percent}%)` 
+                : 'Shopify Sync'}
+            </span>
           </button>
 
           <button 
@@ -142,7 +146,11 @@ export default function Topbar() {
             }}
           >
             <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🚚</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Courier Sync</span>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+              {syncState?.sync_type === 'Courier Sync' 
+                ? `Courier Sync (${percent}%)` 
+                : 'Courier Sync'}
+            </span>
           </button>
 
           <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 8px', opacity: 0.5 }}></div>
@@ -196,15 +204,13 @@ export default function Topbar() {
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8 }}>
                           ✅ {log.success} Success | {log.failed > 0 ? <span style={{ color: 'var(--red)' }}>❌ {log.failed} Failed</span> : '🎉 0 Failed'}
                         </div>
-                        {log.failed > 0 && (
-                          <button
-                            onClick={() => downloadAuditReport(log.id, log.type)}
-                            className="btn btn-primary btn-sm" 
-                            style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', cursor: 'pointer' }}
-                          >
-                            📊 Download Audit Report
-                          </button>
-                        )}
+                        <button
+                          onClick={() => downloadAuditReport(log.id, log.type)}
+                          className="btn btn-primary btn-sm" 
+                          style={{ width: '100%', fontSize: '0.7rem', padding: '4px 0', cursor: 'pointer', marginTop: 4 }}
+                        >
+                          📊 Download Report
+                        </button>
                       </div>
                     ))}
                   </div>

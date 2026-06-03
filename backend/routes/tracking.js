@@ -85,6 +85,22 @@ global.syncProgress = global.syncProgress || {};
 router.get('/progress', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  
+  try {
+    const row = db.prepare("SELECT sync_type, error_details FROM sync_journal WHERE store_id = ? AND order_id = 'METADATA' AND (status = 'ACTIVE' OR status = 'SYNCING') ORDER BY id DESC LIMIT 1").get(store_id);
+    if (row) {
+      const details = JSON.parse(row.error_details || '{}');
+      return res.json({
+        status: details.status || 'Syncing...',
+        processed: Number(details.processed) || 0,
+        total: Number(details.total) || 0,
+        sync_type: row.sync_type
+      });
+    }
+  } catch (err) {
+    console.error('Failed to get progress from sync_journal:', err.message);
+  }
+
   res.json(global.syncProgress[store_id] || { status: 'idle', total: 0, processed: 0 });
 });
 
@@ -93,12 +109,15 @@ router.post('/cancel-sync', (req, res) => {
   const { store_id } = req.body;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   
-  if (global.syncProgress && global.syncProgress[store_id]) {
-    global.syncProgress[store_id].abort = true;
-    res.json({ success: true, message: 'Cancellation signal sent.' });
-  } else {
-    res.json({ success: false, message: 'No active sync found.' });
-  }
+  global.syncProgress = global.syncProgress || {};
+  global.syncProgress[store_id] = global.syncProgress[store_id] || {};
+  global.syncProgress[store_id].abort = true;
+
+  try {
+    db.prepare("UPDATE sync_journal SET status = 'ABORTED' WHERE store_id = ? AND order_id = 'METADATA'").run(store_id);
+  } catch (e) {}
+  
+  res.json({ success: true, message: 'Cancellation signal sent.' });
 });
 
 // POST /api/tracking/sync-shopify - Shopify data only (new orders + refresh + costs)
@@ -108,31 +127,18 @@ router.post('/sync-shopify', async (req, res) => {
   const store = getStore(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0 };
-
-  const updateProgress = (stage, processed, total) => {
-    if (global.syncProgress[store_id]) {
-      const p = Number(processed) || 0;
-      const t = Number(total) || 0;
-      global.syncProgress[store_id] = { status: stage, processed: p, total: t };
-      broadcast('sync_progress', { storeId: store_id, status: stage, processed: p, total: t });
-    }
-  };
+  global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0, abort: false };
 
   res.json({ success: true, message: 'Shopify sync started in background' });
 
+  const { runShopifySyncWithJournal } = require('../engines/shopify_sync');
+
   (async () => {
     try {
-      const r1 = await fetchShopifyOrders(store, updateProgress);
-      updateProgress('Refreshing Shopify Data & Costs', 0, 100);
-      const r2 = await refreshShopifyUpdates(store, updateProgress);
-
-      updateProgress('Sync Complete', 100, 100);
-      saveSyncLog('Shopify Sync', (r1.total || 0), (r1.added || 0), (r1.failed || 0), [...(r1.logs || []), ...(r2.logs || [])]);
+      await runShopifySyncWithJournal(store);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
-      updateProgress(`Error: ${e.message}`, 0, 0);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
     }
   })();
@@ -145,31 +151,18 @@ router.post('/sync-couriers', async (req, res) => {
   const store = getStore(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0 };
-
-  const updateProgress = (stage, processed, total) => {
-    if (global.syncProgress[store_id]) {
-      global.syncProgress[store_id] = { status: stage, processed, total };
-      broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
-    }
-  };
+  global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
 
   res.json({ success: true, message: 'Courier sync started in background' });
 
+  const { runCourierSyncWithJournal } = require('../engines/courier_sync');
+
   (async () => {
     try {
-      updateProgress('Syncing PostEx Tracking', 0, 100);
-      const r1 = await syncPostEx(store, 'FULL', updateProgress);
-
-      updateProgress('Syncing Instaworld Tracking', 0, 100);
-      const r2 = await syncInstaworld(store, 'FULL', updateProgress);
-
-      updateProgress('Sync Complete', 100, 100);
-      saveSyncLog('Courier Sync', (r1.total || 0) + (r2.total || 0), (r1.updated || 0) + (r2.updated || 0), (r1.failed || 0) + (r2.failed || 0), [...(r1.logs || []), ...(r2.logs || [])]);
+      await runCourierSyncWithJournal(store);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
-      updateProgress(`Error: ${e.message}`, 0, 0);
       setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
     }
   })();

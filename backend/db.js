@@ -446,7 +446,7 @@ function initDb(db) {
 
     console.log('✅ Database initialized at', db.path || DB_PATH);
   } catch (err) {
-    console.error('🛑 Database initialization failed:', err.message);
+    console.error('🛑 Database initialization failed:', err.stack || err.message);
     if (err.message.includes('full') || err.message.includes('disk')) {
       console.warn('⚠️ Disk full error caught. Continuing boot without full schema initialization to prevent crash loop.');
     } else {
@@ -919,6 +919,18 @@ function runMigrations(db) {
     created_at TEXT DEFAULT (datetime('now', '+5 hours'))
   )`); } catch(e){}
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_gemini_usage_created ON gemini_usage_logs(created_at DESC)`); } catch(e){}
+
+  // Sync Journal Table (Reconstruct Sync Audit & Report Engine)
+  try { db.exec(`CREATE TABLE IF NOT EXISTS sync_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL,
+    sync_type TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_details TEXT,
+    created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+  )`); } catch(e){}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sync_journal_store_type ON sync_journal(store_id, sync_type)`); } catch(e){}
 
   // Phase 4/5: Final Sweep Database Migrations
   try { db.exec(`ALTER TABLE customer_profiles ADD COLUMN human_handoff_until TEXT DEFAULT NULL`); } catch(e){}

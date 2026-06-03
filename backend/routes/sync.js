@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { broadcast } = require('../sse');
+const fs = require('fs');
+const path = require('path');
 
 // Get sync history (last 3 days)
 router.get('/history', (req, res) => {
@@ -24,6 +26,15 @@ router.get('/history/:id/download', (req, res) => {
     const log = db.prepare('SELECT * FROM sync_history WHERE id = ?').get(req.params.id);
     if (!log) return res.status(404).send('Log not found');
 
+    // 1. Check if the generated CSV report file exists on disk
+    const reportPath = path.join(__dirname, '..', 'reports', `sync_report_${req.params.id}.csv`);
+    if (fs.existsSync(reportPath)) {
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=Sync_Audit_${(log.type || 'report').replace(/\s+/g, '_')}_${log.id}.csv`);
+      return res.sendFile(reportPath);
+    }
+
+    // 2. Fallback to generating CSV from JSON log_data
     let data = [];
     try {
       data = JSON.parse(log.log_data || '[]');

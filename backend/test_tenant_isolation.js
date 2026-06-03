@@ -5,7 +5,11 @@ require('dotenv').config();
 
 const { db } = require('./db');
 const tenantContext = require('./tenant-context');
-const JWT_SECRET = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET missing');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Initialize mock DB records
 async function setupMockData() {
@@ -14,7 +18,7 @@ async function setupMockData() {
   tenantContext.run('default', () => {
     // Clean up
     try { db.prepare('DELETE FROM orders WHERE id IN (99991, 99992)').run(); } catch(e){}
-    try { db.prepare('DELETE FROM whatsapp_messages WHERE id IN (99991, 99992)').run(); } catch(e){}
+    try { db.prepare('DELETE FROM whatsapp_messages WHERE order_id IN (99991, 99992) OR id IN (99991, 99992)').run(); } catch(e){}
     try { db.prepare('DELETE FROM stores WHERE id = 1').run(); } catch(e){}
     
     // Insert
@@ -35,7 +39,7 @@ async function setupMockData() {
   tenantContext.run('tenant_b', () => {
     // Clean up
     try { db.prepare('DELETE FROM orders WHERE id IN (99991, 99992)').run(); } catch(e){}
-    try { db.prepare('DELETE FROM whatsapp_messages WHERE id IN (99991, 99992)').run(); } catch(e){}
+    try { db.prepare('DELETE FROM whatsapp_messages WHERE order_id IN (99991, 99992) OR id IN (99991, 99992)').run(); } catch(e){}
     try { db.prepare('DELETE FROM stores WHERE id = 1').run(); } catch(e){}
     
     // Insert
@@ -66,10 +70,6 @@ async function runTests() {
   const app = express();
   app.use(express.json());
   
-  // Set tenant context
-  const tenantMiddleware = require('./middleware/tenant');
-  app.use(tenantMiddleware);
-
   // Authenticate token (simplified backend index.js logic)
   app.use((req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -82,6 +82,10 @@ async function runTests() {
       res.status(401).json({ error: 'Invalid token' });
     }
   });
+
+  // Set tenant context (runs after authentication so it can verify req.user.tenant_id)
+  const tenantMiddleware = require('./middleware/tenant');
+  app.use(tenantMiddleware);
 
   const governanceRouter = require('./routes/whatsapp-governance');
   app.use('/api/whatsapp-governance', governanceRouter);
@@ -168,13 +172,13 @@ async function runTests() {
     404
   );
 
-  // 3. GET /chat/:order_id - Tenant B tries to fetch Tenant A's order using tenant header bypass attempt (should 404)
+  // 3. GET /chat/:order_id - Tenant B tries to fetch Tenant A's order using tenant header bypass attempt (should 403)
   await checkRoute(
-    'GET /chat/99991 - Tenant B bypass attempt via header (404 expected)',
+    'GET /chat/99991 - Tenant B bypass attempt via header (403 expected)',
     '/chat/99991',
     tokenB,
     'default',
-    404
+    403
   );
 
   // 4. POST /chat/:order_id/send - Tenant A sending message to own order
