@@ -232,6 +232,9 @@ async function getShopifyInventoryCosts(store) {
               title
               sku
               price
+              image {
+                url
+              }
               product {
                 title
               }
@@ -307,10 +310,15 @@ async function getShopifyInventoryCosts(store) {
         variant_name: variantName, 
         shopify_cost: cost, 
         selling_price: sellingPrice,
-        qty: qty 
+        qty: qty,
+        image_url: node.image?.url || ''
       };
     } else {
       aggregated[key].qty += qty;
+      // Keep/update image if missing
+      if (!aggregated[key].image_url && node.image?.url) {
+        aggregated[key].image_url = node.image.url;
+      }
     }
   });
   

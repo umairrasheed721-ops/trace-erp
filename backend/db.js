@@ -335,6 +335,7 @@ function initDb(db) {
         inventory_qty INTEGER DEFAULT 0,
         shopify_cost REAL DEFAULT 0,
         selling_price REAL DEFAULT 0,
+        variant_image_url TEXT DEFAULT NULL,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         UNIQUE(store_id, parent_title, variant_title)
@@ -924,6 +925,7 @@ function runMigrations(db) {
   try { db.exec(`ALTER TABLE whatsapp_messages ADD COLUMN quote_context TEXT DEFAULT NULL`); } catch(e){}
   try { db.exec(`ALTER TABLE products ADD COLUMN inventory_qty INTEGER DEFAULT 0`); } catch(e){}
   try { db.exec(`ALTER TABLE products ADD COLUMN product_url TEXT DEFAULT ''`); } catch(e){}
+  try { db.exec(`ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL`); } catch(e){}
 
   // Gemini Bot Features Customization
   try { db.exec(`ALTER TABLE gemini_bot_settings ADD COLUMN tool_check_stock INTEGER DEFAULT 1`); } catch(e){}

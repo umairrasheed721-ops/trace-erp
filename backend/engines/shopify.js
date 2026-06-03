@@ -1066,6 +1066,8 @@ function syncShopifyProduct(db, storeId, shopDomain, p) {
     p.variants.forEach(v => {
       const image = p.images.find(img => img.id === v.image_id) || p.image || p.images[0] || {};
       const productUrl = `https://${shopDomain}/products/${p.handle}`;
+      const imageUrl = image.src || '';
+
       db.prepare(`
         INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price, inventory_qty, product_url, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
@@ -1075,11 +1077,33 @@ function syncShopifyProduct(db, storeId, shopDomain, p) {
         String(v.id),
         v.sku || '',
         `${p.title} (${v.title})`,
-        image.src || '',
+        imageUrl,
         parseFloat(v.price || 0),
         v.inventory_quantity || 0,
         productUrl
       );
+
+      // Real-time update for Master Costing Registry
+      try {
+        db.prepare(`
+          UPDATE product_master_costs
+          SET variant_image_url = ?, updated_at = datetime('now')
+          WHERE store_id = ? AND (
+            shopify_variant_id = ? OR
+            shopify_variant_id = ? OR
+            (parent_title = ? AND variant_title = ?)
+          )
+        `).run(
+          imageUrl || null,
+          storeId,
+          `gid://shopify/ProductVariant/${v.id}`,
+          String(v.id),
+          p.title,
+          v.title === 'Default Title' ? '' : v.title
+        );
+      } catch (masterCostErr) {
+        console.error(`[Shopify Webhook] Failed to update master costing image for variant ${v.id}:`, masterCostErr.message);
+      }
     });
   } catch (err) {
     console.error('Error syncing Shopify product to local DB:', err.message);

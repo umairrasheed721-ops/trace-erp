@@ -417,12 +417,32 @@ export default function CostManager() {
                         />
                       </td>
                       <td style={{ padding: 15, fontWeight: 'bold', color: 'var(--text-primary)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ color: 'var(--text-primary)' }}>{expandedParents.has(p.name) ? '▼' : '▶'} {p.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span style={{ color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.9rem' }}>
+                            {expandedParents.has(p.name) ? '▼' : '▶'}
+                          </span>
+                          
+                          {/* Representative Image Thumbnail */}
+                          {(() => {
+                            const firstImage = p.variants.find(v => v.variant_image_url)?.variant_image_url;
+                            return firstImage ? (
+                              <img 
+                                src={firstImage} 
+                                alt={p.name} 
+                                style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} 
+                              />
+                            ) : (
+                              <div style={{ width: 36, height: 36, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '1.1rem' }}>
+                                📦
+                              </div>
+                            );
+                          })()}
+
+                          <span style={{ color: 'var(--text-primary)' }}>{p.name}</span>
                           {p.hasCost && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
                           {p.hasDrift && <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
                         </div>
-                        <div style={{ fontSize: '0.7rem', marginTop: 4, opacity: 0.6, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
+                        <div style={{ fontSize: '0.7rem', marginTop: 4, marginLeft: 52, opacity: 0.6, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
                           {(() => {
                             const costs = Array.from(p.uniqueCosts).sort((a,b) => a-b)
                             const hasZero = costs.includes(0)
@@ -449,16 +469,31 @@ export default function CostManager() {
                         backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
                       }}>
                         <td></td>
-                        <td style={{ padding: '12px 15px 12px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              {v.variant_title || 'Default'}
-                              {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
-                              {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                                <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
-                              )}
+                        <td style={{ padding: '10px 15px 10px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            {/* Variant Specific Image */}
+                            {v.variant_image_url ? (
+                              <img 
+                                src={v.variant_image_url} 
+                                alt={v.variant_title || 'Default'} 
+                                style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', border: '1px solid var(--border)' }} 
+                              />
+                            ) : (
+                              <div style={{ width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '0.8rem' }}>
+                                📷
+                              </div>
+                            )}
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {v.variant_title || 'Default'}
+                                {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
+                                {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                  <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
+                                )}
+                              </div>
+                              {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}
                             </div>
-                            {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}
                           </div>
                         </td>
                         <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
