@@ -6,10 +6,8 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
   const { activeStore, addToast } = useApp()
   const { status, syncState } = useSyncStream()
 
-  if (!syncState) return null
-
-  const processed = syncState.processed || 0
-  const total = syncState.total || 0
+  const processed = syncState?.processed || 0
+  const total = syncState?.total || 0
   const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
   const percent = Math.min(rawPercent, 100)
 
@@ -35,7 +33,7 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
   return (
     <>
       <div className="sync-capsule" style={{
-        display: 'flex', alignItems: 'center', gap: 10,
+        display: syncState ? 'flex' : 'none', alignItems: 'center', gap: 10,
         background: isReconnecting ? 'rgba(245, 158, 11, 0.1)' : 'rgba(99, 102, 241, 0.1)', 
         border: isReconnecting ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(99, 102, 241, 0.3)',
         borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, 
@@ -48,7 +46,7 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
           <span className="loading-spinner" style={{ width: 12, height: 12, borderWidth: '2px' }}></span>
         )}
         <span style={{ whiteSpace: 'nowrap' }}>
-          {isReconnecting ? 'Waiting for Reconnect...' : syncState.status}
+          {isReconnecting ? 'Waiting for Reconnect...' : (syncState?.status || '')}
         </span>
         <span style={{ color: 'var(--text-muted)', fontWeight: 400, whiteSpace: 'nowrap' }}>
           {processed} / {Math.max(processed, total)} ({percent}%)
@@ -69,7 +67,8 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
       {/* 📏 GLOBAL PROGRESS RAIL */}
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
-        background: 'rgba(255,255,255,0.1)', overflow: 'hidden', zIndex: 10
+        background: 'rgba(255,255,255,0.1)', overflow: 'hidden', zIndex: 10,
+        display: syncState ? 'block' : 'none'
       }}>
         <div style={{
           height: '100%', 
