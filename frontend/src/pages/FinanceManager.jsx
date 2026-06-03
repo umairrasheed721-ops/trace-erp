@@ -1,8 +1,10 @@
+import { useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { useFinance } from '../context/FinanceContext'
+import { useFinanceStore } from '../store/useFinanceStore'
+import InlineTaskMonitor from '../components/InlineTaskMonitor'
 
 export default function FinanceManager() {
-  const { activeStoreId } = useApp()
+  const { activeStoreId, addToast } = useApp()
   const {
     pasteData, setPasteData,
     masterKey, setMasterKey,
@@ -20,8 +22,17 @@ export default function FinanceManager() {
     productCosts, setProductCosts,
     isScanning, isHealing,
     handleProcess, handleUndo, handleCreateGhost,
-    handleRepair, fetchMissingProducts, applyBulkCosts
-  } = useFinance()
+    handleRepair, fetchMissingProducts, applyBulkCosts,
+    checkInterruptedSession, fetchHistory, fetchCouriers
+  } = useFinanceStore()
+
+  useEffect(() => {
+    if (activeStoreId) {
+      fetchHistory(activeStoreId)
+      fetchCouriers(activeStoreId)
+      checkInterruptedSession(activeStoreId)
+    }
+  }, [activeStoreId, fetchHistory, fetchCouriers, checkInterruptedSession])
 
 
   return (
@@ -135,7 +146,7 @@ export default function FinanceManager() {
 
             <button 
               className="btn btn-primary" 
-              onClick={handleProcess} 
+              onClick={() => handleProcess(activeStoreId, addToast)} 
               disabled={isProcessing}
               style={{ padding: '16px', fontSize: 16, fontWeight: 'bold', width: '100%' }}
             >
@@ -171,7 +182,7 @@ export default function FinanceManager() {
                     </div>
                     <button 
                       className="btn btn-sm" 
-                      onClick={() => handleUndo(session.id)}
+                      onClick={() => handleUndo(session.id, activeStoreId)}
                       disabled={isProcessing}
                       style={{ 
                         backgroundColor: 'rgba(239, 68, 68, 0.1)', 
@@ -238,7 +249,7 @@ export default function FinanceManager() {
 
                 <button 
                   className="btn" 
-                  onClick={handleRepair} 
+                  onClick={() => handleRepair(activeStoreId, addToast)} 
                   disabled={isRepairing || isProcessing}
                   style={{ 
                     width: '100%', 
@@ -275,7 +286,7 @@ export default function FinanceManager() {
             {ghostProducts.length === 0 ? (
               <button 
                 className="btn" 
-                onClick={fetchMissingProducts} 
+                onClick={() => fetchMissingProducts(activeStoreId, addToast)} 
                 disabled={isScanning || isProcessing}
                 style={{ width: '100%', padding: '12px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontWeight: 700 }}
               >
@@ -320,7 +331,7 @@ export default function FinanceManager() {
                   <button className="btn btn-secondary" onClick={() => setGhostProducts([])} style={{ flex: 1 }}>Cancel</button>
                   <button 
                     className="btn btn-primary" 
-                    onClick={applyBulkCosts} 
+                    onClick={() => applyBulkCosts(activeStoreId, addToast)} 
                     disabled={isHealing || Object.keys(productCosts).length === 0}
                     style={{ flex: 2, background: '#10b981', color: 'white', border: 'none', fontWeight: 700 }}
                   >
@@ -333,6 +344,7 @@ export default function FinanceManager() {
         </div>
 
         <div style={{ flex: 1 }}>
+          <InlineTaskMonitor />
           <div className="stat-card" style={{ height: '100%', minHeight: 500 }}>
             <h3 style={{ margin: '0 0 16px 0' }}>Detailed Results Log</h3>
             <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -376,7 +388,7 @@ export default function FinanceManager() {
                           </span>
                           {r.status.includes('GHOST') && (
                             <button 
-                              onClick={() => handleCreateGhost(r)}
+                              onClick={() => handleCreateGhost(r, activeStoreId)}
                               className="btn btn-sm"
                               style={{ marginLeft: 8, padding: '2px 8px', fontSize: '0.65rem', backgroundColor: 'rgba(96, 165, 250, 0.2)', color: '#60a5fa', border: '1px solid #60a5fa' }}
                             >
