@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './OrderCells'
 import { useApp } from '../context/AppContext'
+import { TABLE_CONSTANTS } from '../config/uiConstants'
 
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
@@ -828,27 +829,51 @@ export default function OrderTable({
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  <div className="flex items-center gap-1">
-                    {col.id === 'cost' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {col.label}
-                      <span style={{ fontSize: '0.6rem', opacity: 0.5 }}>ℹ️</span>
-                    </div>
-                  ) : col.label}
-                    {sortKey === col.id && (
-                      <span style={{ fontSize: '0.65rem', color: 'var(--brand)' }}>
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                    {col.id === 'customer_name' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', marginLeft: 4, opacity: 0.5 }}
-                        title="Edit Name Rules"
-                      >
-                        🖊️
-                      </button>
-                    )}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    minWidth: 0,
+                    position: 'relative'
+                  }}>
+                    <span style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flexGrow: 1,
+                      minWidth: 0
+                    }}>
+                      {col.id === 'cost' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {col.label}
+                          <span style={{ fontSize: '0.65rem', opacity: 0.5, flexShrink: 0 }}>ℹ️</span>
+                        </span>
+                      ) : col.label}
+                    </span>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      flexShrink: 0,
+                      marginLeft: 6,
+                      zIndex: TABLE_CONSTANTS.Z_INDEX.TABLE_HEADER
+                    }}>
+                      {sortKey === col.id && (
+                        <span style={{ fontSize: '0.65rem', color: 'var(--brand)', flexShrink: 0 }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                      {col.id === 'customer_name' && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', opacity: 0.6, flexShrink: 0, padding: 0 }}
+                          title="Edit Name Rules"
+                        >
+                          🖊️
+                        </button>
+                      )}
+                    </span>
                   </div>
                 </th>
               ))}
