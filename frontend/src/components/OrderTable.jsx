@@ -769,10 +769,6 @@ export default function OrderTable({
     return <div className="loading-overlay"><span className="loading-spinner"></span> Searching...</div>
   }
 
-  if (filteredOrders.length === 0) {
-    return <div className="empty-state"><div className="empty-icon">🔍</div><h3>No Results</h3><p>Adjust your filters and try again</p></div>
-  }
-
   return (
     <>
       <div className="table-wrapper" style={{ minWidth: '100%', width: '100%', overflowX: 'auto' }}>
@@ -902,6 +898,17 @@ export default function OrderTable({
             </tr>
           </thead>
           <tbody>
+            {filteredOrders.length === 0 && (
+              <tr>
+                <td colSpan={cols.length + 1} style={{ padding: 0 }}>
+                  <div className="empty-state">
+                    <div className="empty-icon">🔍</div>
+                    <h3>No Results</h3>
+                    <p>Adjust your filters and try again</p>
+                  </div>
+                </td>
+              </tr>
+            )}
             {topPadding > 0 && (
               <tr style={{ height: topPadding }}>
                 <td colSpan={cols.length + 1} style={{ padding: 0, height: topPadding, border: 'none' }} />
