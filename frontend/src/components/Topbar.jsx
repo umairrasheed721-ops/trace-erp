@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import SyncProgressCapsule from './SyncProgressCapsule'
+import SyncButtons from './SyncButtons'
 
 export default function Topbar() {
   const { 
     activeStore, activeStoreId, addToast, theme, toggleTheme,
-    syncState, syncHistory, fetchSyncHistory,
+    syncHistory, fetchSyncHistory,
     isFocusMode, toggleFocusMode
   } = useApp()
   const location = useLocation()
@@ -25,42 +27,6 @@ export default function Topbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleSync = async (type) => {
-    if (!activeStoreId || syncState) return
-    const endpoint = type === 'shopify' ? '/api/tracking/sync-shopify' : '/api/tracking/sync-couriers'
-    addToast(`${type === 'shopify' ? '🛒' : '🚚'} Sync started...`, 'info')
-    try {
-      await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId })
-      })
-    } catch (e) {
-      addToast('❌ Sync failed to start', 'error')
-    }
-  }
-
-  const processed = syncState?.processed || 0
-  const total = syncState?.total || 0
-  const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
-  const percent = Math.min(rawPercent, 100)
-  
-  const handleCancelSync = async () => {
-    if (!activeStore?.id) return;
-    try {
-      const token = localStorage.getItem('trace_token') || '';
-      const res = await fetch('/api/tracking/cancel-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ store_id: activeStore.id })
-      });
-      if (res.ok) {
-        addToast('🛑 Stopping sync...', 'info');
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
   const downloadAuditReport = async (logId, logType) => {
     try {
       const token = localStorage.getItem('trace_token') || '';
@@ -91,67 +57,12 @@ export default function Topbar() {
           </div>
           
           {/* 💊 SYNC CAPSULE (Global Progress) */}
-          {syncState && (
-            <div className="sync-capsule" style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: 20, padding: '4px 12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--brand)',
-              animation: 'pulse-glow 2s infinite'
-            }}>
-              <span className="loading-spinner" style={{ width: 12, height: 12, borderWeight: '2px' }}></span>
-              <span style={{ whiteSpace: 'nowrap' }}>{syncState.status}</span>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 400, whiteSpace: 'nowrap' }}>
-                {processed} / {Math.max(processed, total)} ({percent}%)
-              </span>
-              <button 
-                onClick={handleCancelSync}
-                title="Stop Sync"
-                style={{
-                  background: 'var(--red)', border: 'none', color: 'white', borderRadius: '50%',
-                  width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', marginLeft: 8, padding: 0, fontSize: '0.6rem', lineHeight: 1
-                }}
-              >
-                ✖
-              </button>
-            </div>
-          )}
+          {/* 💊 SYNC CAPSULE (Global Progress) */}
+          <SyncProgressCapsule />
         </div>
 
         <div className="topbar-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button 
-            onClick={() => handleSync('shopify')} 
-            disabled={!!syncState} 
-            className="btn btn-secondary btn-sm"
-            style={{ 
-              display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', height: 38,
-              borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
-            }}
-          >
-            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🛒</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {syncState?.sync_type === 'Shopify Sync' 
-                ? `Shopify Sync (${percent}%)` 
-                : 'Shopify Sync'}
-            </span>
-          </button>
-
-          <button 
-            onClick={() => handleSync('courier')} 
-            disabled={!!syncState} 
-            className="btn btn-secondary btn-sm"
-            style={{ 
-              display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px', height: 38,
-              borderRadius: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)'
-            }}
-          >
-            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🚚</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {syncState?.sync_type === 'Courier Sync' 
-                ? `Courier Sync (${percent}%)` 
-                : 'Courier Sync'}
-            </span>
-          </button>
+          <SyncButtons />
 
           <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 8px', opacity: 0.5 }}></div>
 
@@ -249,19 +160,6 @@ export default function Topbar() {
           </button>
         </div>
       </div>
-
-      {/* 📏 GLOBAL PROGRESS RAIL */}
-      {syncState && (
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: 2,
-          background: 'rgba(255,255,255,0.1)', overflow: 'hidden'
-        }}>
-          <div style={{
-            height: '100%', background: 'var(--brand)', 
-            width: `${percent}%`, transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-          }}></div>
-        </div>
-      )}
 
       <style>{`
         @keyframes pulse-glow {

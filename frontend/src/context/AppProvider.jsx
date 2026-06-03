@@ -14,7 +14,6 @@ export default function AppProvider({ children }) {
     try { return JSON.parse(localStorage.getItem('trace_user')) } catch(e) { return null }
   })
   const [permissions, setPermissions] = useState([])
-  const [syncState, setSyncState] = useState(null)
   const [syncHistory, setSyncHistory] = useState([])
   const [isFocusMode, setIsFocusMode] = useState(() => localStorage.getItem('trace_focus_mode') === 'true')
 
@@ -92,43 +91,9 @@ export default function AppProvider({ children }) {
 
   useEffect(() => {
     if (!token || !activeStoreId) return
-    
-    // Check if there is an active sync already running on the server
-    fetch(`/api/tracking/progress?store_id=${activeStoreId}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.status !== 'idle' && data.status !== 'Sync Complete') {
-          setSyncState(data)
-        }
-      })
-      .catch(() => {})
 
     // Connect to global SSE stream
     const eventSource = new EventSource('/api/public/sse')
-    
-    let lastProgressUpdate = 0
-    eventSource.addEventListener('sync_progress', (e) => {
-      try {
-        const data = JSON.parse(e.data)
-        // Only show progress if it's for the current store
-        if (String(data.storeId) === String(activeStoreId)) {
-          const now = Date.now()
-          const isComplete = data.status === 'Sync Complete' || (data.processed >= data.total && data.total > 0)
-          
-          if (isComplete || now - lastProgressUpdate > 1500) {
-            setSyncState(data)
-            lastProgressUpdate = now
-            if (isComplete) {
-              setTimeout(() => setSyncState(null), 5000)
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to parse sync progress data', err)
-      }
-    })
 
     eventSource.addEventListener('sync_history_updated', () => {
       fetchSyncHistory()
@@ -211,7 +176,7 @@ export default function AppProvider({ children }) {
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
     permissions, setPermissions, fetchPermissions,
-    syncState, syncHistory, fetchSyncHistory,
+    syncHistory, fetchSyncHistory,
     isFocusMode, toggleFocusMode
   }
 

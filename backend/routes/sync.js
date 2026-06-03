@@ -74,6 +74,37 @@ router.get('/history/:id/download', (req, res) => {
   }
 });
 
+const { addTenantClient } = require('../sse');
+
+// SSE stream endpoint for active sync progress
+router.get('/stream', (req, res) => {
+  const tenantId = req.tenantId || 'default';
+  
+  // Register client stream
+  addTenantClient(tenantId, req, res);
+
+  // Push immediate current state from journal if store_id provided
+  const { store_id } = req.query;
+  if (store_id) {
+    try {
+      const row = db.prepare("SELECT sync_type, error_details FROM sync_journal WHERE store_id = ? AND order_id = 'METADATA' AND (status = 'ACTIVE' OR status = 'SYNCING') ORDER BY id DESC LIMIT 1").get(store_id);
+      if (row) {
+        const details = JSON.parse(row.error_details || '{}');
+        const payload = {
+          storeId: Number(store_id),
+          status: details.status || 'Syncing...',
+          processed: Number(details.processed) || 0,
+          total: Number(details.total) || 0,
+          sync_type: row.sync_type
+        };
+        res.write(`event: sync_progress\ndata: ${JSON.stringify(payload)}\n\n`);
+      }
+    } catch (e) {
+      console.error('Failed to stream initial sync progress:', e.message);
+    }
+  }
+});
+
 // Helper function to save sync session
 router.post('/save-log', (req, res) => {
   const { type, total, success, failed, log_data } = req.body;
@@ -92,3 +123,4 @@ router.post('/save-log', (req, res) => {
 });
 
 module.exports = router;
+

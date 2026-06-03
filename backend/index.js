@@ -354,7 +354,7 @@ app.use((req, res, next) => {
   if (req.path === '/api/system/storage-audit') return next();
   
   // Live SSE Endpoint handles its own token from query
-  if (req.path === '/api/live') {
+  if (req.path === '/api/live' || req.path === '/api/sync/stream') {
     const token = req.query.token;
     if (!token) return res.status(401).json({ error: 'Token missing' });
     try {
