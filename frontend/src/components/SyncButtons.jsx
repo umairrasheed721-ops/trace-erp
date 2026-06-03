@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import useSyncStream from '../hooks/useSyncStream'
 
 export const SyncButtons = React.memo(function SyncButtons() {
-  const { activeStoreId, addToast } = useApp()
+  const { token, activeStoreId, addToast } = useApp()
   const { syncState } = useSyncStream()
 
   const handleSync = async (type) => {
@@ -11,11 +11,17 @@ export const SyncButtons = React.memo(function SyncButtons() {
     const endpoint = type === 'shopify' ? '/api/tracking/sync-shopify' : '/api/tracking/sync-couriers'
     addToast(`${type === 'shopify' ? '🛒' : '🚚'} Sync started...`, 'info')
     try {
-      await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ store_id: activeStoreId })
       })
+      if (!res.ok) {
+        throw new Error('Sync failed to start')
+      }
     } catch (e) {
       addToast('❌ Sync failed to start', 'error')
     }
