@@ -12,10 +12,15 @@ export default function CustomerHistoryModal({ phone, email, name, onClose }) {
       if (email) params.append('email', email)
       if (name) params.append('name', name)
 
-      fetch(`/api/orders/history-search?${params.toString()}`)
+      fetch(`/api/orders/history-search?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+        }
+      })
         .then(res => res.json())
         .then(data => {
-          const list = Array.isArray(data) ? data : (data.orders || [])
+          console.log('CustomerHistoryModal API returned data:', data)
+          const list = data && (Array.isArray(data) ? data : (data.orders || [])) || []
           setOrders(list)
           setLoading(false)
         })
