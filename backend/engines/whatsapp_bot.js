@@ -31,90 +31,10 @@ const {
   adaptiveStrategy
 } = require('./whatsapp_message_processor');
 
-// No hard limit on reconnects — we retry forever with backoff.
-// Only a manual resetSession() or WhatsApp loggedOut (401) clears the session.
-const MAX_RECONNECT_DELAY_MS = 30000; // cap backoff at 30s
-
-/**
- * DB-backed auth state — stores Baileys creds in SQLite wa_session_store.
- * This survives Railway container restarts and redeployments.
- * Falls back to file system only if DB is unavailable.
- */
-async function useDbAuthState(initAuthCreds, BufferJSON) {
-  function readKey(key) {
-    try {
-      const row = db.prepare('SELECT value FROM wa_session_store WHERE key = ?').get(key);
-      return row ? JSON.parse(row.value, BufferJSON.reviver) : null;
-    } catch (e) { return null; }
-  }
-
-  function writeKey(key, value) {
-    try {
-      db.prepare(`
-        INSERT INTO wa_session_store (key, value, updated_at)
-        VALUES (?, ?, datetime('now'))
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-      `).run(key, JSON.stringify(value, BufferJSON.replacer));
-    } catch (e) { console.error('[WA-DB] Write failed:', e.message); }
-  }
-
-  function deleteKey(key) {
-    try { db.prepare('DELETE FROM wa_session_store WHERE key = ?').run(key); } catch (e) {}
-  }
-
-  let creds = readKey('creds');
-  if (!creds) {
-    creds = initAuthCreds();
-    writeKey('creds', creds);
-    console.log('[WA-DB] ✨ Fresh credentials created and stored in DB');
-  } else {
-    console.log('[WA-DB] ✅ Loaded existing session from DB — no QR scan needed');
-  }
-
-  const state = {
-    creds,
-    keys: {
-      get(type, ids) {
-        const data = {};
-        for (const id of ids) {
-          const val = readKey(`key:${type}:${id}`);
-          if (val) data[id] = val;
-        }
-        return data;
-      },
-      set(data) {
-        for (const category of Object.keys(data)) {
-          for (const id of Object.keys(data[category])) {
-            const value = data[category][id];
-            if (value) writeKey(`key:${category}:${id}`, value);
-            else deleteKey(`key:${category}:${id}`);
-          }
-        }
-      }
-    }
-  };
-
-  const saveCreds = () => {
-    writeKey('creds', state.creds);
-  };
-
-  return { state, saveCreds };
-}
-
-function clearDbSession() {
-  try {
-    db.prepare('DELETE FROM wa_session_store').run();
-    console.log('[WA-DB] ✅ Session cleared from DB');
-  } catch (e) { console.error('[WA-DB] Clear failed:', e.message); }
-}
-
-// Silence Baileys logger
-const SILENT_LOGGER = {
-  level: 'silent',
-  trace: () => {}, debug: () => {}, info: () => {},
-  warn: () => {}, error: () => {}, fatal: () => {},
-  child() { return SILENT_LOGGER; },
-};
+// Extracted modules
+const sessionManager = require('./bot/sessionManager');
+const eventRouter = require('./bot/eventRouter');
+const groupHandler = require('./bot/groupHandler');
 
 class WhatsAppBot {
   constructor(tenantId) {
@@ -185,447 +105,23 @@ class WhatsAppBot {
   }
 
   getSessionPath() {
-    const sessionDir = this.tenantId === 'default'
-      ? path.join(dbDir, 'wa_session')
-      : path.join(dbDir, 'sessions', this.tenantId);
-    
-    try {
-      if (!fs.existsSync(sessionDir)) {
-        fs.mkdirSync(sessionDir, { recursive: true });
-        console.log(`📁 Created session directory for tenant [${this.tenantId}]: ${sessionDir}`);
-      }
-    } catch (e) {
-      console.error(`⚠️ Failed to create session directory ${sessionDir}:`, e.message);
-    }
-    return sessionDir;
+    return sessionManager.getSessionPath(this);
   }
 
   _scheduleReconnect() {
-    const delay = Math.min(3000 + this.reconnectAttempts * 2000, MAX_RECONNECT_DELAY_MS);
-    console.log(`🔄 Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts + 1})...`);
-    this.reconnectAttempts++;
-    setTimeout(() => {
-      this.isConnecting = false;
-      this._connect();
-    }, delay);
+    return sessionManager._scheduleReconnect(this);
   }
 
   async _connect() {
-    if (this.isConnecting) return;
-    if (this._isLoggedOut) {
-      console.log('📵 Session was logged out. Waiting for manual QR scan or resetSession().');
-      return;
-    }
-    this.isConnecting = true;
-
-    console.log(`🚀 WhatsApp Bot connecting (attempt ${this.reconnectAttempts + 1})...`);
-    this.status = 'CONNECTING';
-
-    try {
-      const {
-        default: makeWASocket,
-        useMultiFileAuthState,
-        initAuthCreds,
-        BufferJSON,
-        DisconnectReason,
-        fetchLatestBaileysVersion,
-      } = await import('@whiskeysockets/baileys');
-      const { Boom } = await import('@hapi/boom');
-
-      if (!this.store) {
-        this.store = { messages: {} };
-        const storePath = path.join(dbDir, 'wa_store.json');
-        try { 
-          if (fs.existsSync(storePath)) {
-            const data = JSON.parse(fs.readFileSync(storePath, 'utf8'));
-            if (data?.messages) this.store.messages = data.messages;
-          } 
-        } catch (e) {}
-        setInterval(() => {
-          try {
-            // 1. AUTO-PURGE: Prevent RAM explosion by keeping only the latest 35 messages per chat
-            for (const jid in this.store.messages) {
-              if (this.store.messages[jid].length > 35) {
-                this.store.messages[jid] = this.store.messages[jid].slice(-35);
-              }
-            }
-            // 2. I/O OPTIMIZATION: Write to disk every 60 seconds (instead of 10s) to free up the Event Loop
-            fs.writeFileSync(storePath, JSON.stringify(this.store), 'utf8');
-          } catch (e) {
-            console.error('[MEMORY_MANAGER] Auto-purge failed:', e.message);
-          }
-        }, 60000);
-      }
-
-      let authState;
-      if (process.env.REDIS_URL) {
-        const { useRedisAuthState } = require('./redis_auth');
-        const redisAuth = await useRedisAuthState(this.tenantId, initAuthCreds, BufferJSON, process.env.REDIS_URL);
-        authState = { state: redisAuth.state, saveCreds: redisAuth.saveCreds };
-        this.wipeRedisSession = redisAuth.wipeSession;
-      } else {
-        authState = await useDbAuthState(initAuthCreds, BufferJSON);
-      }
-      const { state, saveCreds } = authState;
-
-      let version;
-      try {
-        const result = await fetchLatestBaileysVersion();
-        version = result.version;
-        console.log(`📦 WA version: ${version.join('.')}`);
-      } catch (_) {
-        version = [2, 3000, 1023209842];
-        console.warn('⚠️ Could not fetch latest WA version, using fallback');
-      }
-
-      this.sock = makeWASocket({
-        version,
-        auth: state,
-        logger: SILENT_LOGGER,
-        printQRInTerminal: false,
-        browser: ['TRACE ERP', 'Chrome', '120.0'],
-        connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 10000,
-        getMessage: async () => ({ conversation: '' }),
-      });
-
-      this.sock.ev.on('creds.update', saveCreds);
-
-      this.sock.ev.on('presence.update', (update) => {
-        const { id, presences } = update;
-        if (!presences) return;
-        for (const key of Object.keys(presences)) {
-          const presence = presences[key];
-          const cleanJid = key.split('@')[0];
-          let phone = cleanJid;
-          if (key.endsWith('@lid')) {
-            try {
-              const { db } = require('../db');
-              const row = db.prepare('SELECT phone FROM wa_lid_mappings WHERE lid = ?').get(cleanJid);
-              if (row) phone = row.phone;
-            } catch (e) {}
-          }
-          const isTyping = presence.lastKnownPresence === 'composing' || presence.lastKnownPresence === 'recording';
-          
-          try {
-            const { broadcast } = require('../websocket');
-            broadcast('typing', { phone, isTyping });
-          } catch (e) {}
-        }
-      });
-
-      this.sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-          console.log('📸 QR Code ready — scan with WhatsApp');
-          try {
-            this.qrCode = await qrcode.toDataURL(qr);
-            this.status = 'QR_READY';
-          } catch (e) {
-            console.error('QR generation error:', e.message);
-          }
-          return;
-        }
-
-        if (connection === 'open') {
-          console.log('✅ WhatsApp CONNECTED!');
-          this.status = 'CONNECTED';
-          this.qrCode = null;
-          this.reconnectAttempts = 0;
-          this.isConnecting = false;
-
-          try {
-            const rawId = this.sock?.user?.id || '';
-            const digits = rawId.split(':')[0].split('@')[0];
-            this.activeNumber = digits ? `+${digits}` : null;
-            if (this.activeNumber) console.log(`📱 Active WA number: ${this.activeNumber}`);
-          } catch (_) {
-            this.activeNumber = null;
-          }
-
-          setTimeout(() => {
-            this.syncDeepHistory().catch(err => console.error('❌ Deep History Sync error:', err.message));
-          }, 8000);
-
-          return;
-        }
-
-        if (connection === 'close') {
-          this.isConnecting = false;
-          const err = lastDisconnect?.error;
-          const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
-
-          console.warn(`🔌 Connection closed. Code: ${statusCode}`);
-          this.status = 'DISCONNECTED';
-
-          if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403) {
-            console.log('📵 Logged out from phone — clearing session. Rescan QR to reconnect.');
-            this._isLoggedOut = true;
-            this._wipeCreds();
-            clearDbSession();
-            this.reconnectAttempts = 0;
-          } else {
-            this._scheduleReconnect();
-          }
-        }
-      });
-
-      this.sock.ev.on('messaging-history.set', async ({ chats, messages, isLatest }) => {
-        console.log(`📦 WhatsApp History Sync received: ${chats?.length || 0} chats, ${messages?.length || 0} messages`);
-        if (messages) {
-          const { db } = require('../db');
-          const cutoffTimestamp = (Date.now() / 1000) - (14 * 24 * 60 * 60); // 14 days ago
-          
-          for (let i = 0; i < messages.length; i++) {
-            const msg = messages[i];
-            try {
-              if (i % 500 === 0) await new Promise(r => setTimeout(r, 10));
-
-              if (!msg.message) continue;
-              const msgTimestamp = Number(msg.messageTimestamp);
-              if (msgTimestamp && msgTimestamp < cutoffTimestamp) continue;
-
-              const remoteJid = msg.key?.remoteJid;
-              if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.endsWith('@broadcast') || remoteJid.endsWith('@newsletter')) continue;
-              
-              if (!this.store.messages[remoteJid]) this.store.messages[remoteJid] = [];
-              this.store.messages[remoteJid].push(msg);
-
-              const fromPhone = getPhoneFromJid(msg, db);
-              const text = getMessageText(msg);
-              const mediaDetails = getMessageMediaDetails(msg);
-              if (!text && !mediaDetails) continue;
-
-              const isOutgoing = msg.key.fromMe;
-              let mediaType = mediaDetails ? mediaDetails.type : null;
-              const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
-
-              const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
-              if (order) {
-                db.prepare(`
-                  INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
-                  VALUES (?, ?, ?, ?, ?, ?, null, ?, 'sent')
-                  ON CONFLICT(message_id) DO NOTHING
-                `).run(order.store_id, order.id, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaType);
-              }
-            } catch (err) {
-              // Ignore individual errors
-            }
-          }
-          console.log(`✅ WhatsApp History Sync processed successfully.`);
-        }
-      });
-
-      try {
-        this.sock.ev.removeAllListeners('messages.update');
-      } catch (e) {}
-      this.sock.ev.on('messages.update', async (updates) => {
-        const { db } = require('../db');
-        for (const { key, update } of updates) {
-          const messageId = key.id;
-          const statusVal = update.status;
-          
-          if (messageId && statusVal >= 2) {
-            let statusStr = 'delivered';
-            if (statusVal === 2) statusStr = 'sent';
-            else if (statusVal === 3) statusStr = 'delivered';
-            else if (statusVal >= 4) statusStr = 'read';
-
-            try {
-              db.prepare("UPDATE whatsapp_messages SET status = ? WHERE message_id = ?").run(statusStr, messageId);
-            } catch (e) {}
-
-            try {
-              const { broadcast } = require('../websocket');
-              broadcast('messages.update', { id: messageId, status: statusStr });
-            } catch (e) {}
-            
-            const pendingAckDir = path.resolve(__dirname, '..', 'pending_ack');
-            if (fs.existsSync(pendingAckDir)) {
-              try {
-                const files = fs.readdirSync(pendingAckDir);
-                for (const file of files) {
-                  if (file.startsWith(messageId)) {
-                    const filePath = path.join(pendingAckDir, file);
-                    if (fs.existsSync(filePath)) {
-                      fs.unlinkSync(filePath);
-                      console.log(`🗑️ [PENDING_ACK] Unlinked file upon delivery confirmation: ${filePath}`);
-                    }
-                  }
-                }
-              } catch (err) {
-                console.error(`⚠️ Failed to cleanup pending_ack file for message ${messageId}:`, err.message);
-              }
-            }
-          }
-
-          if (update.pollUpdates && key.remoteJid && !key.remoteJid.includes('@g.us')) {
-            try {
-              const remoteJid = key.remoteJid;
-              const fromPhone = remoteJid.split('@')[0];
-              
-              const pollMsg = this.store.messages[remoteJid]?.find(m => m.key.id === key.id);
-              if (pollMsg && pollMsg.message) {
-                const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
-                const votes = getAggregateVotesInPollMessage({
-                  message: pollMsg.message,
-                  pollUpdates: update.pollUpdates,
-                });
-                
-                let selectedOption = null;
-                for (const option of votes) {
-                  if (option.voters && option.voters.includes(remoteJid)) {
-                    selectedOption = option.name;
-                    break;
-                  }
-                }
-                
-                if (selectedOption) {
-                  console.log(`🗳️ [POLL_VOTE] Customer +${fromPhone} voted: "${selectedOption}" in poll: ${key.id}`);
-                  const cleanPhone = fromPhone.replace(/\D/g, '');
-                  
-                  const pendingCOD = db.prepare(
-                    `SELECT * FROM cod_pending_verifications WHERE phone = ? AND status = 'pending'
-                     AND expires_at > datetime('now', '+5 hours') ORDER BY id DESC LIMIT 1`
-                  ).get(cleanPhone);
-                  
-                  if (pendingCOD) {
-                    const isConfirm = selectedOption.toLowerCase().includes('confirm') || selectedOption.includes('✅');
-                    const isCancel = selectedOption.toLowerCase().includes('cancel') || selectedOption.includes('❌');
-                    
-                    if (isConfirm || isCancel) {
-                      const newStatus = isConfirm ? 'confirmed' : 'cancelled';
-                      db.prepare(`UPDATE cod_pending_verifications SET status = ?, replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(newStatus, pendingCOD.id);
-                      
-                      try {
-                        const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                        const storeId = order ? order.store_id : 1;
-                        db.prepare(`
-                          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-                          VALUES (?, ?, ?, 'incoming', ?)
-                        `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
-                        
-                        const { broadcast } = require('../websocket');
-                        broadcast('message', {
-                          order_id: pendingCOD.order_id,
-                          message: {
-                            store_id: storeId,
-                            order_id: pendingCOD.order_id,
-                            phone: cleanPhone,
-                            direction: 'incoming',
-                            message: `🗳️ Selected: ${selectedOption}`,
-                            created_at: new Date().toISOString()
-                          }
-                        });
-                      } catch (e) {}
-
-                      if (isConfirm) {
-                        db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed', delivery_status = 'confirmed' WHERE id = ?`).run(pendingCOD.order_id);
-                        const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                        if (order) {
-                          const { broadcast } = require('../sse');
-                          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-                        }
-                        await this.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, false);
-                        console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
-                      } else {
-                        db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
-                        const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                        if (order) {
-                          const { broadcast } = require('../sse');
-                          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-                        }
-                        await this.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, false);
-                        console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
-                      }
-                    }
-                  }
-                }
-              }
-            } catch (pollErr) {
-              console.error('⚠️ Poll vote handling failed:', pollErr.message);
-            }
-          }
-        }
-      });
-
-      this.sock.ev.removeAllListeners('messages.upsert');
-
-      this.sock.ev.on('messages.upsert', (m) => {
-        const { messages, type } = m;
-        if (type !== 'notify' && type !== 'append') return;
-        for (const msg of messages) {
-          // Process message asynchronously in setImmediate so Baileys main event loop is never blocked
-          setImmediate(() => {
-            tenantContext.run(this.tenantId, async () => {
-              try {
-                const port = process.env.PORT || 3001;
-                const url = `http://localhost:${port}/api/webhooks/whatsapp/portal-hook?tenant_id=${encodeURIComponent(this.tenantId)}`;
-                const response = await fetch(url, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'X-Tenant-Id': this.tenantId,
-                    'auth': 'tracepk'
-                  },
-                  body: JSON.stringify({ msg })
-                });
-                if (!response.ok) {
-                  const errText = await response.text();
-                  console.error(`[Portal Hook Router] API call failed: status=${response.status}, body=${errText}`);
-                  try {
-                    await processIncomingMessage(this, msg, this.sock, db);
-                  } catch (localErr) {
-                    console.error('[Local Process Error]', localErr.message);
-                  }
-                }
-              } catch (err) {
-                console.error(`[Portal Hook Router] Failed to route via API, falling back to local:`, err.message);
-                try {
-                  await processIncomingMessage(this, msg, this.sock, db);
-                } catch (localErr) {
-                  console.error('[Local Process Error]', localErr.message);
-                }
-              }
-            });
-          });
-        }
-      });
-
-    } catch (err) {
-      console.error('❌ _connect() error:', err.message);
-      this.status = 'FAILURE';
-      this._scheduleReconnect();
-    }
+    return sessionManager.connectBot(this);
   }
 
   async _clearSessionStore() {
-    try {
-      if (process.env.REDIS_URL && typeof this.wipeRedisSession === 'function') {
-        await this.wipeRedisSession();
-      }
-    } catch (e) {
-      console.error('⚠️ Redis session wipe failed:', e.message);
-    }
-    try {
-      clearDbSession();
-    } catch (e) {
-      console.error('⚠️ DB session clear failed:', e.message);
-    }
-    try {
-      const sessionPath = this.getSessionPath();
-      if (fs.existsSync(sessionPath)) {
-        fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log(`✅ Session directory cleared for tenant [${this.tenantId}]`);
-      }
-    } catch (e) {
-      console.error('⚠️ File session clear failed:', e.message);
-    }
+    return sessionManager._clearSessionStore(this);
   }
 
   async _wipeCreds() {
-    await this._clearSessionStore();
+    return sessionManager._wipeCreds(this);
   }
 
   variateTemplateMessage(text) {
@@ -697,8 +193,6 @@ class WhatsAppBot {
     buttons = adapted.buttons;
     buttonsMode = adapted.buttonsMode;
     poll = adapted.poll;
-
-
 
     if (!isManual && finalMessage && !adapted.hasComplained) {
       finalMessage = this.variateTemplateMessage(finalMessage);
@@ -825,7 +319,6 @@ class WhatsAppBot {
               caption: finalMessage || '' 
             };
           } else if (finalMediaType === 'audio' || finalMediaType === 'voice') {
-            const { transcodeToOpus, safeUnlink, TAG: FFMPEG_TAG } = require('./ffmpeg_transcode');
             const getSecureMediaPath = (fname) => {
               const paths = [
                 path.join('/app/data/media', fname),
@@ -933,8 +426,6 @@ class WhatsAppBot {
       let attempt = 0;
       let sentMsg;
 
-      // Track this ID before sending to prevent a race condition where the outgoing echo event 
-      // is processed by the incoming message handler before sock.sendMessage resolves.
       this._botSentIds.add(uuid);
       const deleteTimeout = setTimeout(() => this._botSentIds.delete(uuid), 30000);
 
@@ -1343,228 +834,27 @@ class WhatsAppBot {
   }
 
   async resetSession() {
-    console.log(`🗑️ Manual session reset by admin for tenant [${this.tenantId}]...`);
-    this.status = 'DISCONNECTED';
-    this.qrCode = null;
-    this.reconnectAttempts = 0;
-    this.isConnecting = false;
-    this._isLoggedOut = false;
-
-    const oldSock = this.sock;
-    this.sock = null;
-    if (oldSock) {
-      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
-      try { oldSock.logout(); } catch (_) {}
-      try { oldSock.end(new Error('reset')); } catch (_) {}
-      try { oldSock.ws?.close(); } catch (_) {}
-    }
-
-    await this._clearSessionStore();
-
-    setTimeout(() => this._connect(), 2000);
-    return true;
+    return sessionManager.resetSession(this);
   }
 
   async logoutSession() {
-    this._isLoggedOut = true;
-    this.status = 'DISCONNECTED';
-    this.qrCode = null;
-    this.reconnectAttempts = 0;
-    this.isConnecting = false;
-
-    const oldSock = this.sock;
-    this.sock = null;
-    if (oldSock) {
-      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
-      try { await oldSock.logout(); } catch (_) {}
-      try { oldSock.end(new Error('logout')); } catch (_) {}
-      try { oldSock.ws?.close(); } catch (_) {}
-    }
-
-    await this._clearSessionStore();
-    return true;
+    return sessionManager.logoutSession(this);
   }
 
   async softReconnect() {
-    if (this.isConnecting) return;
-    console.log(`🔄 [Soft Reconnect] Re-initializing Baileys session for tenant: [${this.tenantId}]`);
-
-    const oldSock = this.sock;
-    this.sock = null;
-    if (oldSock) {
-      try { oldSock.ev.removeAllListeners('connection.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('creds.update'); } catch (_) {}
-      try { oldSock.ev.removeAllListeners('messages.upsert'); } catch (_) {}
-      try { oldSock.logout(); } catch (_) {}
-      try { oldSock.end(new Error('soft_reconnect')); } catch (_) {}
-      try { oldSock.ws?.close(); } catch (_) {}
-    }
-
-    this.status = 'DISCONNECTED';
-    this.isConnecting = false;
-
-    await this._connect();
+    return sessionManager.softReconnect(this);
   }
 
   getChatHistory(phone) {
-    if (!this.store || !this.store.messages) return [];
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-    const jid = cleaned + '@s.whatsapp.net';
-    
-    const msgs = this.store.messages[jid] || [];
-    return msgs.map(m => {
-      const text = getMessageText(m);
-      const mediaDetails = getMessageMediaDetails(m);
-      if (!text && !mediaDetails) return null;
-      let mediaType = mediaDetails ? mediaDetails.type : null;
-      const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
-
-      return {
-        id: m.key.id,
-        phone: cleaned,
-        direction: m.key.fromMe ? 'outgoing' : 'incoming',
-        message: finalMessage,
-        media_type: mediaType,
-        status: m.key.fromMe ? (m.status === 3 ? 'delivered' : 'sent') : 'received',
-        created_at: new Date((Number(m.messageTimestamp) || Date.now()/1000) * 1000).toISOString()
-      };
-    }).filter(Boolean);
+    return eventRouter.getChatHistory(this, phone);
   }
 
   async fetchHistoryForPhone(phone) {
-    if (!this.sock) return { success: false, error: 'Bot not connected' };
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-    const jid = cleaned + '@s.whatsapp.net';
-
-    try {
-      console.log(`📂 Fetching older message chunks from WhatsApp for ${cleaned}...`);
-      let fetched = [];
-      if (typeof this.sock.fetchMessagesFromWA === 'function') {
-        try {
-          fetched = await this.sock.fetchMessagesFromWA(jid, 50) || [];
-          for (const msg of fetched) {
-            if (!msg.message) continue;
-            if (!this.store.messages[jid]) this.store.messages[jid] = [];
-            if (!this.store.messages[jid].some(m => m.key.id === msg.key.id)) {
-              this.store.messages[jid].push(msg);
-            }
-          }
-        } catch (e) {
-          console.warn('⚠️ fetchMessagesFromWA error:', e.message);
-        }
-      }
-      return { success: true, count: fetched.length, messages: this.getChatHistory(cleaned) };
-    } catch (err) {
-      console.error('❌ fetchHistory error:', err.message);
-      return { success: false, error: err.message };
-    }
+    return eventRouter.fetchHistoryForPhone(this, phone);
   }
 
   async syncDeepHistory() {
-    if (!this.sock) return;
-    console.log('🔄 Starting Deep History Sync for active customers...');
-    
-    const { db } = require('../db');
-    let downloadMediaMessage;
-    try {
-      const baileys = await import('@whiskeysockets/baileys');
-      downloadMediaMessage = baileys.downloadMediaMessage;
-    } catch (err) {
-      console.error('⚠️ Failed to load downloadMediaMessage from Baileys:', err.message);
-    }
-    
-    const activeCustomers = db.prepare(`
-      SELECT DISTINCT phone, id as order_id, store_id 
-      FROM orders 
-      WHERE phone IS NOT NULL AND phone != ''
-      ORDER BY id DESC 
-      LIMIT 50
-    `).all();
-
-    console.log(`📱 Found ${activeCustomers.length} active customers to sync.`);
-
-    for (const customer of activeCustomers) {
-      let cleaned = customer.phone.replace(/\D/g, '');
-      if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-      else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-      const jid = cleaned + '@s.whatsapp.net';
-
-      try {
-        console.log(`📥 Syncing history for +${cleaned}...`);
-        await new Promise(r => setTimeout(r, 600));
-
-        let fetched = [];
-        if (typeof this.sock.fetchMessagesFromWA === 'function') {
-          fetched = await this.sock.fetchMessagesFromWA(jid, 50) || [];
-        } else {
-          console.warn('⚠️ fetchMessagesFromWA is not a function on this.sock');
-          break;
-        }
-
-        let newMsgsCount = 0;
-        for (const msg of fetched) {
-          if (!msg.message) continue;
-          
-          const messageId = msg.key.id;
-          const exists = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(messageId);
-          if (exists) continue;
-
-          const isOutgoing = msg.key.fromMe;
-          const text = getMessageText(msg);
-          const mediaDetails = getMessageMediaDetails(msg);
-
-          let mediaUrl = null;
-          let mediaType = null;
-          let driveFileId = null;
-          
-          if (mediaDetails && downloadMediaMessage) {
-            mediaType = mediaDetails.type;
-            const mediaResult = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
-            if (mediaResult) {
-              mediaUrl = mediaResult.url;
-              driveFileId = mediaResult.id;
-            }
-          }
-
-          const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
-          const timestampSec = Number(msg.messageTimestamp) || Date.now() / 1000;
-          const createdAt = new Date(timestampSec * 1000).toISOString().replace('T', ' ').substring(0, 19);
-
-          db.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, created_at, drive_file_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
-          `).run(
-            customer.store_id || 1,
-            customer.order_id,
-            cleaned,
-            isOutgoing ? 'outgoing' : 'incoming',
-            finalMessage,
-            messageId,
-            mediaUrl,
-            mediaType,
-            createdAt,
-            driveFileId
-          );
-
-          newMsgsCount++;
-        }
-        
-        if (newMsgsCount > 0) {
-          console.log(`✅ Synced ${newMsgsCount} new messages for +${cleaned}`);
-        }
-      } catch (err) {
-        console.error(`❌ Error syncing history for +${cleaned}:`, err.message);
-      }
-    }
-    console.log('🔄 Deep History Sync completed!');
+    return eventRouter.syncDeepHistory(this);
   }
 
   isOnline() {

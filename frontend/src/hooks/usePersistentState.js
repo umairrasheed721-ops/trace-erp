@@ -1,19 +1,39 @@
 import { useState, useEffect } from 'react';
 
-export default function usePersistentState(key, defaultValue) {
+/**
+ * usePersistentState
+ *
+ * A custom React hook that mimics useState but persists state in sessionStorage.
+ *
+ * @param {string} key - Unique key for sessionStorage
+ * @param {*} initialValue - The fallback initial value if not found in storage
+ * @returns {[*, Function]} - State value and setter function
+ */
+export default function usePersistentState(key, initialValue, options = {}) {
   const [state, setState] = useState(() => {
     try {
-      const cached = sessionStorage.getItem(key);
-      return cached !== null ? JSON.parse(cached) : defaultValue;
-    } catch (_) {
-      return defaultValue;
+      if (options.override) {
+        sessionStorage.setItem(key, JSON.stringify(initialValue));
+        return initialValue;
+      }
+      const saved = sessionStorage.getItem(key);
+      return saved !== null ? JSON.parse(saved) : initialValue;
+    } catch (e) {
+      console.warn(`Failed to load persistent state for key "${key}":`, e);
+      return initialValue;
     }
   });
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(key, JSON.stringify(state));
-    } catch (_) {}
+      if (state === undefined) {
+        sessionStorage.removeItem(key);
+      } else {
+        sessionStorage.setItem(key, JSON.stringify(state));
+      }
+    } catch (e) {
+      console.warn(`Failed to save persistent state for key "${key}":`, e);
+    }
   }, [key, state]);
 
   return [state, setState];

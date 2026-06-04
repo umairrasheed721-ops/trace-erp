@@ -1,0 +1,148 @@
+import React from 'react'
+
+export default function TableHeader({
+  cols,
+  filteredOrders,
+  selectedIds,
+  setSelectedIds,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  handleHeaderSort,
+  sortKey,
+  sortDir,
+  setShowNameDialog,
+  localFilters,
+  setLocalFilters,
+  colFilters,
+  setColFilters,
+  COLUMN_WIDTHS,
+  TABLE_CONSTANTS
+}) {
+  return (
+    <thead>
+      <tr>
+        <th style={{ width: 40, minWidth: 40, maxWidth: 40, textAlign: 'center' }}>
+          <input 
+            type="checkbox" 
+            checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
+            onChange={(e) => {
+              if (e.target.checked) setSelectedIds(filteredOrders.map(o => o.id))
+              else setSelectedIds([])
+            }}
+          />
+        </th>
+        {cols.map((col, idx) => (
+          <th 
+            key={col.id}
+            draggable
+            onDragStart={() => onDragStart(idx)}
+            onDragOver={onDragOver}
+            onDrop={() => onDrop(idx)}
+            onClick={() => handleHeaderSort(col.id)}
+            style={{ 
+              cursor: 'pointer', 
+              userSelect: 'none',
+              width: COLUMN_WIDTHS[col.id] || 120,
+              minWidth: COLUMN_WIDTHS[col.id] || 120,
+              maxWidth: COLUMN_WIDTHS[col.id] || 120,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              minWidth: 0,
+              position: 'relative'
+            }}>
+              <span style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flexGrow: 1,
+                minWidth: 0
+              }}>
+                {col.id === 'cost' ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {col.label}
+                    <span style={{ fontSize: '0.65rem', opacity: 0.5, flexShrink: 0 }}>ℹ️</span>
+                  </span>
+                ) : col.label}
+              </span>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                flexShrink: 0,
+                marginLeft: 6,
+                zIndex: TABLE_CONSTANTS.Z_INDEX.TABLE_HEADER
+              }}>
+                {sortKey === col.id && (
+                  <span style={{ fontSize: '0.65rem', color: 'var(--brand)', flexShrink: 0 }}>
+                    {sortDir === 'asc' ? '▲' : '▼'}
+                  </span>
+                )}
+                {col.id === 'customer_name' && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowNameDialog(true); }} 
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem', opacity: 0.6, flexShrink: 0, padding: 0 }}
+                    title="Edit Name Rules"
+                  >
+                    🖊️
+                  </button>
+                )}
+              </span>
+            </div>
+          </th>
+        ))}
+      </tr>
+      <tr className="header-search-row">
+        <th style={{ width: 40, minWidth: 40, maxWidth: 40, padding: '4px 8px' }}></th>
+        {cols.map(col => {
+          const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
+          return (
+            <th 
+              key={col.id} 
+              style={{ 
+                padding: '4px 8px',
+                width: COLUMN_WIDTHS[col.id] || 120,
+                minWidth: COLUMN_WIDTHS[col.id] || 120,
+                maxWidth: COLUMN_WIDTHS[col.id] || 120,
+              }}
+            >
+              {isFiltered && (
+                ['ref_number', 'customer_name', 'phone', 'city', 'tracking_number', 'notes'].includes(col.id) ? (
+                  <input 
+                    className="header-search-input"
+                    placeholder="Search..."
+                    value={localFilters[col.id] || ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setLocalFilters(prev => ({ ...prev, [col.id]: val }));
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setColFilters(prev => ({ ...prev, ...localFilters }));
+                      }
+                    }}
+                  />
+                ) : (
+                  <input 
+                    className="header-search-input"
+                    placeholder="Search..."
+                    value={colFilters[col.id] || ''}
+                    onChange={e => setColFilters(prev => ({ ...prev, [col.id]: e.target.value }))}
+                  />
+                )
+              )}
+            </th>
+          )
+        })}
+      </tr>
+    </thead>
+  )
+}

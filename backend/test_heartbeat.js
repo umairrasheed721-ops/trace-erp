@@ -3,8 +3,20 @@ const db = require('./db');
 const bot = require('./engines/whatsapp_bot');
 const statusRoutes = require('./routes/whatsapp-governance');
 
-// Find the handler for GET /status
-const statusHandler = statusRoutes.stack.find(layer => layer.route && layer.route.path === '/status' && layer.route.methods.get).route.stack[0].handle;
+// Find the handler for GET /status (supports nested sub-routers)
+function findHandler(router, path, method) {
+  for (const layer of router.stack) {
+    if (layer.route && layer.route.path === path && layer.route.methods[method]) {
+      return layer.route.stack[0].handle;
+    }
+    if (layer.name === 'router' && layer.handle && layer.handle.stack) {
+      const handler = findHandler(layer.handle, path, method);
+      if (handler) return handler;
+    }
+  }
+  return null;
+}
+const statusHandler = findHandler(statusRoutes, '/status', 'get');
 
 async function testHeartbeat() {
   console.log('🧪 Starting Heartbeat Engine Verification...');

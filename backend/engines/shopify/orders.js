@@ -1,0 +1,736 @@
+const fetch = require('node-fetch');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const db = require('../../db');
+const { smokeTestShopify, getLiveShopifyCosts, fetchVariantImagesGraphQL } = require('./products');
+
+const API_TIMEOUT = 15000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function saveRawPayload(type, payload) {
+  try {
+    const filename = `${type}-${Date.now()}.json`;
+    const filepath = path.join(__dirname, '../../debug_storage', filename);
+    fs.writeFileSync(filepath, JSON.stringify(payload, null, 2));
+    console.log(`💾 [DebugStorage] Saved raw payload: ${filename}`);
+  } catch (err) {
+    console.error('Failed to save raw payload:', err.message);
+  }
+}
+
+function logAudit(storeId, level, message, trackingNumber = null) {
+  try {
+    db.prepare('INSERT INTO sync_audit (store_id, level, message, tracking_number) VALUES (?, ?, ?, ?)').run(storeId, level, message, trackingNumber);
+  } catch (e) { console.error('Audit Log Error:', e.message); }
+}
+
+function getDaysAgo(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+function detectCourier(tracking, tags = '', shopifyCarrier = '') {
+  const pvtTag = (tags || '').split(',').find(t => t.trim().toUpperCase().startsWith('PVT:'));
+  if (pvtTag) return pvtTag.split(':')[1].trim();
+  if (!tracking) return shopifyCarrier === 'Other' ? '' : shopifyCarrier;
+  if (tracking.startsWith('28') || tracking.startsWith('21')) return 'PostEx';
+  if (tracking.startsWith('LE')) return 'Leopards';
+  if (tracking.startsWith('1730')) return 'TCS';
+  if (tracking.startsWith('PVT')) return 'Private Rider';
+  return shopifyCarrier === 'Other' ? '' : shopifyCarrier;
+}
+
+function detectOrderSource(order) {
+  if (order.landing_site) {
+    const ls = order.landing_site.toLowerCase();
+    if (ls.includes('utm_source=tiktok')) return 'TikTok Ads';
+    if (ls.includes('utm_source=facebook') || ls.includes('utm_source=fb')) return 'Facebook Ads';
+    if (ls.includes('utm_source=ig') || ls.includes('utm_source=instagram')) return 'Instagram Ads';
+  }
+  if (order.referring_site) {
+    const ref = order.referring_site.toLowerCase();
+    if (ref.includes('instagram.com')) return 'Instagram Organic';
+    if (ref.includes('facebook.com')) return 'Facebook Organic';
+    if (ref.includes('tiktok.com')) return 'TikTok Organic';
+  }
+  return order.source_name || 'Direct / Web';
+}
+
+const registryLookupStmt = db.prepare(`
+  SELECT landed_cost, shopify_cost FROM product_master_costs 
+  WHERE store_id = ? 
+  AND (
+    shopify_variant_id = ? 
+    OR shopify_variant_id = ? 
+    OR (sku = ? AND sku != '')
+  )
+  ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+           (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+  LIMIT 1
+`);
+
+function calculateOrderCost(storeId, lineItems, costMap) {
+  let totalCost = 0;
+  let activeCount = 0;
+  let productTitles = [];
+
+  for (const item of lineItems) {
+    const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+    if (qty === 0) continue;
+
+    const variantId = item.variant_id ? String(item.variant_id) : '';
+    const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+    const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+    const sku = item.sku ? String(item.sku).trim() : '';
+
+    const queryVariantId1 = numericVariantId || '__NONE__';
+    const queryVariantId2 = gidVariantId || '__NONE__';
+    const querySku = sku || '__NONE__';
+
+    let unitCost = 0;
+    const shopifyCost = costMap[variantId] || 0;
+
+    const registry = registryLookupStmt.get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+    
+    if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
+      unitCost = registry.landed_cost || registry.shopify_cost || 0;
+      
+      if (shopifyCost > 0 && Math.abs(shopifyCost - unitCost) > (unitCost * 0.05)) {
+        logAudit(storeId, 'WARN', `Cost Drift: ${item.name} registry cost is ${unitCost} but Shopify says ${shopifyCost}. Difference: ${Math.round(Math.abs(shopifyCost - unitCost))}`);
+      }
+    } else {
+      unitCost = shopifyCost;
+    }
+
+    totalCost += unitCost * qty;
+    productTitles.push(`${item.name} (x${qty})`);
+    activeCount++;
+  }
+
+  return { totalCost, productTitles: productTitles.join(', '), activeCount };
+}
+
+async function fetchShopifyOrders(store, onProgress, options = {}) {
+  const { id: storeId, shop_domain, access_token, sync_start_date } = store;
+  if (!access_token || access_token === 'PENDING') return { added: 0 };
+
+  const auditLogs = [];
+  const isHealthy = await smokeTestShopify(shop_domain, access_token);
+  if (!isHealthy) {
+    const errorMsg = `🛑 [Sync Aborted] Shopify API unreachable or unauthorized.`;
+    auditLogs.push({ id: 'API', status: 'FAILED', message: 'Connectivity check failed', details: shop_domain });
+    console.error(errorMsg);
+    if (onProgress) onProgress(errorMsg);
+    logAudit(storeId, 'CRITICAL', errorMsg);
+    return { added: 0, logs: auditLogs, failed: 1 };
+  }
+
+  const updateStatus = (status, progress, processed = 0, total = 0) => {
+    try {
+      db.prepare('UPDATE stores SET sync_status = ?, sync_progress = ?, sync_processed = ?, sync_total = ? WHERE id = ?')
+        .run(status, progress, processed, total, storeId);
+    } catch (e) { console.error('Status Error:', e.message); }
+    if (onProgress) onProgress(status, progress, processed, total);
+  };
+
+  const insertOrder = db.prepare(`
+    INSERT OR IGNORE INTO orders (
+      store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
+      address, city, price, tracking_number, items_count, notes, product_titles,
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+  `);
+
+  const insertChunk = db.transaction((orders, costMap) => {
+    let count = 0;
+    for (const order of orders) {
+      try {
+        const addr = order.shipping_address || {};
+        const customer = order.customer || {};
+        const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+
+        const { totalCost, productTitles, activeCount } = calculateOrderCost(storeId, order.line_items, costMap);
+
+        const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+        const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+        const tracking = ful?.tracking_number || '';
+        const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
+        const source = detectOrderSource(order);
+        const status = mapShopifyStatus(order);
+        const token = crypto.randomBytes(16).toString('hex');
+
+        const firstName = (addr.first_name || '').trim();
+        const lastName = (addr.last_name || '').trim();
+        const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim()) || (customer.first_name || '');
+
+        const addressStr = [addr.address1, addr.address2].filter(Boolean).join(' ').trim();
+
+        const rawCity = addr.city || '';
+        const { getCorrectedCity } = require('../../routes/cities');
+        const cleanCity = getCorrectedCity(rawCity);
+
+        insertOrder.run(
+          storeId, String(order.id), order.name,
+          fullName,
+          (order.created_at || '').split('T')[0],
+          addr.phone || customer.phone || '',
+          addressStr || '—',
+          cleanCity,
+          finalPrice, tracking, activeCount, order.note || '',
+          productTitles,
+          status,
+          order.financial_status === 'paid' ? 'Paid' : 
+          (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
+          0.5, courier, totalCost, source, token
+        );
+
+        if (status === 'Pending' && (addr.phone || customer.phone)) {
+          try {
+            const settings = db.prepare('SELECT cod_verification_enabled FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+            if (settings.cod_verification_enabled !== 0) {
+              const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
+              if (insertedOrder) {
+                const { dispatchCODVerification } = require('../cod_verifier');
+                const tenantId = require('../../tenant-context').getStore() || 'default';
+                setImmediate(() => {
+                  require('../../tenant-context').run(tenantId, () => {
+                    dispatchCODVerification(insertedOrder).catch(err => console.error('Failed to dispatch auto COD verification:', err));
+                  });
+                });
+              }
+            }
+          } catch (err) {
+            console.error('Failed to trigger COD verification in batch sync:', err.message);
+          }
+        }
+
+        count++;
+      } catch (e) {
+        auditLogs.push({ id: order.name || order.id, status: 'SKIPPED', message: e.message, details: 'Order Processing Error' });
+        console.error(`Skip order ${order.id}: ${e.message}`);
+      }
+    }
+    return count;
+  });
+
+  try {
+    const traceId = `SYNC-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    updateStatus('syncing', 'Initializing sync...');
+    console.log(`🆔 [TraceID: ${traceId}] Sync started.`);
+    const { forceDeepSync = false } = options;
+    const dateMin = forceDeepSync ? '2010-01-01T00:00:00Z' : (sync_start_date ? new Date(sync_start_date).toISOString() : getDaysAgo(70));
+    let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=created_at+desc&created_at_min=${dateMin}`;
+
+    console.log(`🚀 [ShopifySync] Starting sync for ${shop_domain}`);
+    console.log(`📅 [ShopifySync] Min Date: ${dateMin}, forceDeepSync: ${forceDeepSync}`);
+    console.log(`🔗 [ShopifySync] Initial URL: ${nextUrl}`);
+
+    const existingRows = db.prepare('SELECT shopify_order_id FROM orders WHERE store_id = ?').all(storeId);
+    const existingIds = new Set(existingRows.map(r => String(r.shopify_order_id)));
+
+    let totalAdded = 0;
+    let totalScanned = 0;
+
+    while (nextUrl) {
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Shopify Fetch Sync aborted by user`);
+        auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Added ${totalAdded}/${totalScanned}` });
+        break;
+      }
+
+      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
+
+      const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
+      if (rateLimit) {
+        const [used, total] = rateLimit.split('/').map(Number);
+        if (used >= total - 5) await sleep(2000);
+      }
+
+      const data = await res.json();
+      const batch = data.orders || [];
+      console.log(`📦 [ShopifySync] Batch received: ${batch.length} orders.`);
+      
+      if (!batch.length && totalScanned === 0) {
+        console.warn(`⚠️ [ShopifySync] ZERO orders found for ${shop_domain}. Check API scopes!`);
+        break;
+      }
+      if (!batch.length) break;
+
+      totalScanned += batch.length;
+      
+      const newlyFoundInBatch = batch.filter(o => !existingIds.has(String(o.id)));
+      
+      if (newlyFoundInBatch.length > 0) {
+        updateStatus('syncing', `Processing batch... ${totalScanned} scanned, ${totalAdded + newlyFoundInBatch.length} saved.`, totalAdded, totalAdded + 500);
+
+        const batchVariantIds = [...new Set(
+          newlyFoundInBatch.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
+        )];
+
+        const costMap = await getLiveShopifyCosts(
+          shop_domain, access_token, batchVariantIds,
+          (msg) => updateStatus('syncing', `Batch Progress: ${msg}`, totalAdded, totalAdded + 500)
+        );
+
+        const added = insertChunk(newlyFoundInBatch.reverse(), costMap);
+        totalAdded += added;
+        
+        newlyFoundInBatch.forEach(o => existingIds.add(String(o.id)));
+        
+        db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
+        console.log(`✅ [ShopifySync] Batch processed: ${added} added. Total so far: ${totalAdded}`);
+      }
+
+      if (!forceDeepSync && newlyFoundInBatch.length < batch.length) {
+        console.log(`🛑 [ShopifySync] Reached overlap with existing data. Stopping.`);
+        break;
+      }
+
+      const linkHeader = res.headers.get('Link') || '';
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      nextUrl = nextMatch ? nextMatch[1] : null;
+    }
+
+    console.log(`✅ Shopify Fetch [${shop_domain}]: Finished. Total added: ${totalAdded}`);
+    updateStatus('idle', `Finished. Added ${totalAdded} orders.`);
+    return { added: totalAdded, logs: auditLogs, total: totalScanned, failed: auditLogs.length };
+  } catch (err) {
+    auditLogs.push({ id: 'CRITICAL', status: 'FAILED', message: err.message, details: 'Fatal Sync Error' });
+    console.error(`Sync error for ${shop_domain}:`, err.message);
+    updateStatus('error', `Sync failed: ${err.message}`);
+    return { added: totalAdded || 0, logs: auditLogs, total: totalScanned || 0, failed: auditLogs.length };
+  }
+}
+
+async function refreshShopifyUpdates(store, onProgress, options = {}) {
+  const { id: storeId, shop_domain, access_token } = store;
+  const updateStatus = (status, progress, processed = 0, total = 0) => {
+    try {
+      db.prepare('UPDATE stores SET sync_status = ?, sync_progress = ?, sync_processed = ?, sync_total = ? WHERE id = ?')
+        .run(status, progress, processed, total, storeId);
+    } catch (e) { console.error('Status Error:', e.message); }
+    if (onProgress) onProgress(status, progress, processed, total);
+  };
+
+  if (!access_token || access_token === 'PENDING') return { updated: 0 };
+  
+  const syncStatus = options.syncStatus !== undefined ? options.syncStatus : true;
+  const syncCosts = options.syncCosts !== undefined ? options.syncCosts : (options.forceDeepSync ? true : false);
+
+  try {
+    const storeDb = db.prepare('SELECT last_synced_at, sync_start_date FROM stores WHERE id = ?').get(storeId);
+    let dateMin;
+    if (options.forceDeepSync) {
+      dateMin = storeDb?.sync_start_date ? storeDb.sync_start_date + 'T00:00:00Z' : getDaysAgo(730);
+    } else if (storeDb?.last_synced_at) {
+      const lastSyncedStr = storeDb.last_synced_at.includes('Z') ? storeDb.last_synced_at : storeDb.last_synced_at.replace(' ', 'T') + 'Z';
+      const lastSynced = new Date(lastSyncedStr);
+      const safetyBufferTime = new Date(lastSynced.getTime() - 15 * 60 * 1000);
+      dateMin = safetyBufferTime.toISOString();
+    } else {
+      dateMin = getDaysAgo(60);
+    }
+    let nextUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?status=any&limit=250&order=updated_at+desc&updated_at_min=${dateMin}`;
+
+    let updatedOrders = [];
+
+    while (nextUrl) {
+      if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
+        console.log(`🛑 Shopify Refresh Sync aborted by user`);
+        break;
+      }
+
+      const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
+      const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
+      if (rateLimit) {
+        const [used, total] = rateLimit.split('/').map(Number);
+        if (used >= total - 5) await sleep(2000);
+      }
+
+      const data = await res.json();
+      const batch = data.orders || [];
+      if (!batch.length) break;
+      updatedOrders = updatedOrders.concat(batch);
+      updateStatus('syncing', `Scanning updates... Found ${updatedOrders.length}`, updatedOrders.length, updatedOrders.length + 100);
+
+      const linkHeader = res.headers.get('Link') || '';
+      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+      nextUrl = nextMatch ? nextMatch[1] : null;
+    }
+
+    if (!updatedOrders.length) {
+      updateStatus('idle', 'Finished. No updates found.');
+      return { updated: 0 };
+    }
+
+    const shopifyMap = {};
+    const allVariantIds = [];
+    
+    const existingOrders = db.prepare('SELECT shopify_order_id, delivery_status FROM orders WHERE store_id = ?').all(storeId);
+    const statusMap = {};
+    existingOrders.forEach(o => { statusMap[String(o.shopify_order_id)] = o.delivery_status; });
+
+    updatedOrders.forEach(o => {
+      const oId = String(o.id);
+      shopifyMap[oId] = o;
+      const currentStatus = statusMap[oId] || 'Pending';
+      const isCancelled = o.cancelled_at !== null;
+      const isReturned = currentStatus === 'Returned' || currentStatus === 'RTO' || currentStatus === 'Returned to Origin';
+      if (!isCancelled && !isReturned) {
+        o.line_items.forEach(i => { if (i.variant_id) allVariantIds.push(i.variant_id); });
+      }
+    });
+
+    let costMap = {};
+    if (syncCosts) {
+      updateStatus('syncing', `Fetching costs for ${[...new Set(allVariantIds)].length} variants...`, 0, 0);
+      costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(allVariantIds)], (msg) => {
+        updateStatus('syncing', msg, 50, 100);
+      });
+    } else {
+      updateStatus('syncing', 'Skipping costs (Status Only mode)...', 0, 0);
+    }
+
+    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
+
+    let count = 0;
+    const updateStmt = db.prepare(`
+      UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
+      payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?
+      WHERE id=?
+    `);
+
+    const updateMany = db.transaction(rows => {
+      for (const row of rows) {
+        const fresh = shopifyMap[String(row.shopify_order_id)];
+        if (!fresh) continue;
+
+        const currentStatus = (row.delivery_status || '').trim().toLowerCase();
+        const isProtected = currentStatus === 'return received' || currentStatus === 'delivered';
+
+        const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
+        let totalCost = 0, productTitles = [], activeCount = 0;
+
+        const isCancelled = fresh.cancelled_at !== null;
+        const dbStatus = (row.delivery_status || '').trim().toLowerCase();
+        const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
+
+        if (!isCancelled && !isReturned) {
+          for (const item of fresh.line_items) {
+            const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+            if (qty === 0) continue;
+            
+            let unitCost = costMap[String(item.variant_id)] || 0;
+            
+            if (unitCost === 0) {
+              const variantId = item.variant_id ? String(item.variant_id) : '';
+              const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+              const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+              const sku = item.sku ? String(item.sku).trim() : '';
+
+              const queryVariantId1 = numericVariantId || '__NONE__';
+              const queryVariantId2 = gidVariantId || '__NONE__';
+              const querySku = sku || '__NONE__';
+
+              const registry = db.prepare(`
+                SELECT landed_cost, shopify_cost FROM product_master_costs 
+                WHERE store_id = ? 
+                AND (
+                  shopify_variant_id = ? 
+                  OR shopify_variant_id = ? 
+                  OR (sku = ? AND sku != '')
+                )
+                ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+                         (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+                LIMIT 1
+              `).get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+              
+              if (registry) unitCost = registry.landed_cost || registry.shopify_cost || 0;
+            }
+
+            totalCost += unitCost * qty;
+            productTitles.push(`${item.name} (x${qty})`);
+            activeCount++;
+          }
+        }
+
+        const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
+        const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+        const tracking = ful?.tracking_number || '';
+        const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
+
+        let newDeliveryStatus = row.delivery_status;
+        const mappedStatus = mapShopifyStatus(fresh);
+        
+        if (isProtected) {
+          // Stay protected
+        } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
+          newDeliveryStatus = mappedStatus;
+        } else if (fresh.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
+          newDeliveryStatus = 'Booked';
+        }
+
+        updateStmt.run(
+          finalPrice, activeCount, fresh.note || '',
+          productTitles.join(', '),
+          fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
+          row.cost_locked ? row.cost : (totalCost > 0 ? totalCost : (row.cost || 0)),
+          tracking, 
+          row.courier_fee_locked ? row.courier_fee : courier, 
+          newDeliveryStatus, 
+          row.id
+        );
+        count++;
+      }
+      return count;
+    });
+
+    updateMany(sheetOrders);
+    db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
+    console.log(`✅ Shopify Refresh [${shop_domain}]: Synced ${count} orders`);
+    updateStatus('idle', `Finished. Refreshed ${count} orders.`);
+    return { updated: count };
+  } catch (err) {
+    updateStatus('error', `Refresh failed: ${err.message}`);
+    throw err;
+  }
+}
+
+function mapShopifyStatus(order) {
+  if (order.cancelled_at) return 'Cancelled';
+  if (order.financial_status === 'voided') return 'Voided';
+  
+  if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') {
+    return 'Returned';
+  }
+  
+  if (order.fulfillment_status === 'fulfilled' && order.financial_status === 'paid') {
+    return 'Delivered';
+  }
+
+  const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+  const lastFul = fulfillments[fulfillments.length - 1];
+  if (lastFul?.shipment_status === 'delivered') return 'Delivered';
+
+  if (order.fulfillment_status === 'fulfilled') return 'Booked';
+  return 'Pending';
+}
+
+async function syncSingleShopifyOrder(store, shopifyOrderId) {
+  const { id: storeId, shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') return null;
+
+  try {
+    const res = await fetch(`https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`, {
+      headers: { 'X-Shopify-Access-Token': access_token },
+      timeout: API_TIMEOUT
+    });
+    if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
+    const data = await res.json();
+    const order = data.order;
+    if (!order) return null;
+
+    const variantIds = [];
+    order.line_items.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
+    const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
+
+    const addr = order.shipping_address || {};
+    const customer = order.customer || {};
+    const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+
+    let totalCost = 0, productTitles = [], activeCount = 0;
+    const isCancelled = order.cancelled_at !== null;
+    
+    const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
+    const dbStatus = (existing?.delivery_status || '').trim().toLowerCase();
+    const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
+    const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
+
+    if (!isCancelled && !isReturned) {
+      const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, order.line_items, costMap);
+      totalCost = tc;
+      productTitles = titles;
+      activeCount = count;
+    }
+
+    const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+    const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+    const tracking = ful?.tracking_number || '';
+    const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
+    const source = detectOrderSource(order);
+
+    let newDeliveryStatus = existing ? existing.delivery_status : 'Pending';
+    const mappedStatus = mapShopifyStatus(order);
+
+    if (isProtected) {
+      // Stay protected
+    } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
+      newDeliveryStatus = mappedStatus;
+    } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
+      newDeliveryStatus = 'Booked';
+    }
+
+    const vIds = order.line_items.map(li => li.variant_id);
+    const imageMap = await fetchVariantImagesGraphQL(shop_domain, access_token, vIds);
+    const lineItemsJson = JSON.stringify(order.line_items.map(li => ({
+      id: li.id,
+      variant_id: li.variant_id,
+      title: li.title,
+      variant_title: li.variant_title,
+      sku: li.sku,
+      quantity: li.quantity,
+      price: li.price,
+      image_url: imageMap[String(li.variant_id)] || null
+    })));
+
+    if (existing) {
+      db.prepare(`
+        UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
+        payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, 
+        line_items=?, status_date=datetime('now')
+        WHERE id=?
+      `).run(
+        finalPrice, activeCount, order.note || '', productTitles,
+        order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
+        existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
+        tracking, courier, newDeliveryStatus, lineItemsJson, existing.id
+      );
+      console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
+      try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
+    } else {
+      const token = crypto.randomBytes(16).toString('hex');
+      const fullName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || '');
+      
+      const rawCity = addr.city || '';
+      const { getCorrectedCity } = require('../../routes/cities');
+      const cleanCity = getCorrectedCity(rawCity);
+      
+      db.prepare(`
+        INSERT INTO orders (
+          store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
+          address, city, price, tracking_number, items_count, notes, product_titles,
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+      `).run(
+        storeId, String(order.id), order.name,
+        fullName,
+        (order.created_at || '').split('T')[0],
+        addr.phone || customer.phone || '',
+        `${addr.address1 || ''} ${cleanCity}`.trim(),
+        cleanCity,
+        finalPrice, tracking, activeCount, order.note || '', productTitles,
+        lineItemsJson,
+        newDeliveryStatus,
+        order.financial_status === 'paid' ? 'Paid' : 'Pending',
+        0.5, courier, totalCost, source, token
+      );
+
+      if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
+        try {
+          const settings = db.prepare('SELECT cod_verification_enabled FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+          if (settings.cod_verification_enabled !== 0) {
+            const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
+            if (insertedOrder) {
+              const { dispatchCODVerification } = require('../cod_verifier');
+              const tenantId = require('../../tenant-context').getStore() || 'default';
+              setImmediate(() => {
+                require('../../tenant-context').run(tenantId, () => {
+                  dispatchCODVerification(insertedOrder).catch(err => console.error('Failed to dispatch auto COD verification:', err));
+                });
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to trigger COD verification in single sync:', err.message);
+        }
+      }
+
+      console.log(`⚡ [Hybrid Sync] Inserted new order ${shopifyOrderId}`);
+      try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
+    }
+    return true;
+  } catch (err) {
+    console.error(`Hybrid Sync Error for ${shopifyOrderId}:`, err.message);
+    return false;
+  }
+}
+
+async function syncOrderByNumber(store, orderName) {
+  const { shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') return null;
+
+  try {
+    const searchUrl = `https://${shop_domain}/admin/api/2024-10/orders.json?name=${encodeURIComponent(orderName)}&status=any`;
+    const res = await fetch(searchUrl, {
+      headers: { 'X-Shopify-Access-Token': access_token }
+    });
+    const data = await res.json();
+    const order = data.orders?.[0];
+    if (!order) throw new Error(`Order ${orderName} not found in Shopify`);
+
+    return await syncSingleShopifyOrder(store, order.id);
+  } catch (err) {
+    console.error(`Error syncing order by number ${orderName}:`, err.message);
+    throw err;
+  }
+}
+
+async function syncSpecificOrders(store, shopifyIds) {
+  const { shop_domain, access_token } = store;
+  if (!shopifyIds.length) return 0;
+  
+  let updatedCount = 0;
+  const idsParam = shopifyIds.join(',');
+  const url = `https://${shop_domain}/admin/api/2024-10/orders.json?ids=${idsParam}&status=any`;
+
+  try {
+    const res = await fetch(url, { headers: { 'X-Shopify-Access-Token': access_token } });
+    const data = await res.json();
+    const shopifyOrders = data.orders || [];
+
+    const updateStmt = db.prepare(`
+      UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
+      payment_status=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
+      WHERE shopify_order_id=? AND store_id=?
+    `);
+
+    for (const fresh of shopifyOrders) {
+      const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
+      let productTitles = [];
+      fresh.line_items.forEach(item => {
+        const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+        if (qty > 0) productTitles.push(`${item.name} (x${qty})`);
+      });
+
+      const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
+      const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+      const tracking = ful?.tracking_number || '';
+      const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
+
+      let newStatus = mapShopifyStatus(fresh);
+
+      updateStmt.run(
+        finalPrice, fresh.line_items.length, fresh.note || '',
+        productTitles.join(', '),
+        fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
+        tracking, courier, newStatus,
+        String(fresh.id), store.id
+      );
+      updatedCount++;
+    }
+  } catch (e) {
+    console.error('Bulk Specific Sync Error:', e.message);
+  }
+  return updatedCount;
+}
+
+module.exports = {
+  fetchShopifyOrders,
+  refreshShopifyUpdates,
+  syncSingleShopifyOrder,
+  syncOrderByNumber,
+  syncSpecificOrders,
+  mapShopifyStatus
+};

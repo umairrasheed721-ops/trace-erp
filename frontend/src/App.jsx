@@ -5,6 +5,7 @@ import AppProvider from './context/AppProvider'
 import { TenantProvider } from './context/TenantContext'
 import { QuoteDraftProvider } from './context/QuoteDraftContext'
 import { FinanceProvider } from './context/FinanceContext'
+import { RoutePersistenceProvider, RoutePersistenceWatcher } from './context/RoutePersistenceContext'
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
@@ -67,6 +68,7 @@ function AppContent() {
 
   return (
     <BrowserRouter>
+      <RoutePersistenceWatcher />
       <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${localStorage.getItem('search_compact') === 'true' ? 'ultra-compact-mode' : ''}`}>
         <Sidebar />
         <div className="main-content">
@@ -115,7 +117,9 @@ export default function App() {
       <TenantProvider>
         <FinanceProvider>
           <QuoteDraftProvider>
-            <AppContent />
+            <RoutePersistenceProvider>
+              <AppContent />
+            </RoutePersistenceProvider>
           </QuoteDraftProvider>
         </FinanceProvider>
       </TenantProvider>

@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import useOrderItems from './useOrderItems';
+import useOrderSave from './useOrderSave';
 
 /**
- * STRICT PROTOCOL DOCUMENTATION - FILTER RESET SEQUENCE:
- * When navigating from CustomerHistoryModal to the Command Center table (Bulk-Link):
- * 1. setLoading(true) is invoked to show the spinner.
- * 2. clearAllFilters() resets active states (preset -> 'All Time', status -> 'All Statuses', colFilters -> empty, agingBucket -> null).
- * 3. applyKeyword(newKeyword) sets the customer's phone/email.
- * 4. A 300ms programmatic debounce is applied to prevent SQLite request lockup and simultaneous API request conflicts.
+ * Composer hook for Order Details and Management.
+ * Aggregates line-item CRUD states and DB mutate/tracking actions.
  */
 export default function useOrderManagement({
   editingOrder,
@@ -27,32 +25,10 @@ export default function useOrderManagement({
   // Navigation Tabs: 'financials' | 'customer' | 'logistics' | 'whatsapp_chat'
   const [activeTab, setActiveTab] = useState('financials');
 
-  // CS Edit State
-  const [localItems, setLocalItems] = useState([]);
-  const [localDiscount, setLocalDiscount] = useState(0);
-  const [localNotes, setLocalNotes] = useState('');
-  const [isSavingCS, setIsSavingCS] = useState(false);
-
-  // Pillar 1: Customer Intelligence & WhatsApp State
-  const [custIntel, setCustIntel] = useState({ total: 0, delivered: 0, returned: 0, rto_rate: 0, blacklist: false });
-  const [custIntelLoading, setCustIntelLoading] = useState(false);
-  const [waSimulating, setWaSimulating] = useState(false);
-  const [sendingImages, setSendingImages] = useState(false);
-
-  // Pillar 2: Master Products & Product Search State
-  const [masterProducts, setMasterProducts] = useState([]);
-  const [showProductSearch, setShowProductSearch] = useState(false);
-  const [productSearchQuery, setProductSearchQuery] = useState('');
-
-  // Pillar 3: Logistics & Live Tracking State
-  const [bookingCourier, setBookingCourier] = useState(false);
-  const [trackingData, setTrackingData] = useState(null);
-  const [trackingLoading, setTrackingLoading] = useState(false);
-
   // Pillar 1: Live WhatsApp Chat State
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
-  const [botStatus, setBotStatus] = useState('CONNECTING'); // dynamic status
+  const [botStatus, setBotStatus] = useState('CONNECTING');
   const [newWaMsg, setNewWaMsg] = useState('');
   const [sendingWaMsg, setSendingWaMsg] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -77,8 +53,27 @@ export default function useOrderManagement({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   
   const [chatSearchQuery, setChatSearchQuery] = useState('');
-  const [sendingInvoice, setSendingInvoice] = useState(false);
 
+  // 1. Initialize Sub-Hooks
+  const itemsHook = useOrderItems({
+    editingOrder,
+    apiBase
+  });
+
+  const saveHook = useOrderSave({
+    editingOrder,
+    setEditingOrder,
+    fetchOrderDetails,
+    updateOrderField,
+    localItems: itemsHook.localItems,
+    masterProducts: itemsHook.masterProducts,
+    liveSubtotal: itemsHook.liveSubtotal,
+    apiBase,
+    activeTab,
+    setChatMessages
+  });
+
+  // Pillar 1: Customer Intelligence & WhatsApp State Fetchers
   const fetchQuickPills = useCallback(async () => {
     try {
       const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-pills`, {
@@ -213,33 +208,6 @@ export default function useOrderManagement({
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  const handleSendInvoice = useCallback(async () => {
-    setSendingInvoice(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-invoice`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('✅ PDF Invoice generated and sent to WhatsApp!');
-        const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-        });
-        const chatData = await chatRes.json();
-        if (chatData.messages) setChatMessages(chatData.messages);
-      } else {
-        alert(data.error || 'Failed to send invoice');
-      }
-    } catch (err) {
-      alert('Network error sending invoice');
-    } finally {
-      setSendingInvoice(false);
-    }
-  }, [apiBase, editingOrder]);
-
   const fetchQuickReplies = useCallback(async () => {
     try {
       const r = await fetch(`${apiBase}/api/whatsapp-governance/quick-replies`, {
@@ -263,7 +231,6 @@ export default function useOrderManagement({
       });
       const data = await res.json();
       if (data.success) {
-        // Fetch fresh chat history to show the newly sent template message
         const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
         });
@@ -369,7 +336,7 @@ export default function useOrderManagement({
   }, [apiBase, editingOrder, newWaMsg]);
 
   const handleFileAttach = useCallback(async (e) => {
-    const file = e.target?.files?.[0] || e.target?.files?.[0];
+    const file = e.target?.files?.[0];
     if (!file) return;
 
     if (file.size > 16 * 1024 * 1024) {
@@ -413,314 +380,13 @@ export default function useOrderManagement({
     }
   }, [apiBase, editingOrder, newWaMsg]);
 
-  const handleCSUpdate = useCallback(async () => {
-    setIsSavingCS(true);
-    try {
-      const subtotal = localItems.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
-      const newPrice = Math.max(0, subtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder.courier_fee || 250));
-      
-      const res = await fetch(`${apiBase}/api/orders/${editingOrder.id}/cs-update`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        },
-        body: JSON.stringify({
-          line_items: localItems,
-          price: newPrice,
-          discount_amount: parseFloat(localDiscount || 0),
-          cs_notes: localNotes
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setEditingOrder(data.order);
-        alert('Order updated successfully!');
-      } else {
-        alert(data.error);
-      }
-    } catch (e) {
-      alert('Failed to save CS update');
-    } finally {
-      setIsSavingCS(false);
-    }
-  }, [apiBase, localItems, localDiscount, localNotes, editingOrder, setEditingOrder]);
-
-  const handleWaSimulate = useCallback((action) => {
-    setWaSimulating(true);
-    fetch(`${apiBase}/api/customer-success/simulate-trigger`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: editingOrder.id, action })
-    })
-      .then(r => r.json())
-      .then(res => {
-        setWaSimulating(false);
-        if (res.error) throw new Error(res.error);
-        alert(res.message);
-        if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        if (action === 'SIMULATE_CONFIRM') setEditingOrder({ ...editingOrder, wa_verification_status: 'verified' });
-        if (action === 'SIMULATE_CANCEL') setEditingOrder({ ...editingOrder, wa_verification_status: 'Cancelled' });
-        if (action === 'SEND_VERIFICATION') setEditingOrder({ ...editingOrder, wa_verification_status: 'Pending' });
-      })
-      .catch(err => {
-        setWaSimulating(false);
-        alert(err.message || 'WhatsApp simulation failed');
-      });
-  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder]);
-
-  const handleSendItemImages = useCallback(async () => {
-    setSendingImages(true);
-    try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send-images`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-        }
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        if (activeTab === 'whatsapp_chat') {
-          const chatRes = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-          });
-          const chatData = await chatRes.json();
-          if (chatData.messages) setChatMessages(chatData.messages);
-        }
-      } else {
-        alert(data.error || 'Failed to send item images.');
-      }
-    } catch (err) {
-      alert('Network error sending item images.');
-    } finally {
-      setSendingImages(false);
-    }
-  }, [apiBase, editingOrder, activeTab]);
-
-  const handleAddressCleanse = useCallback(() => {
-    if (!editingOrder?.address) return;
-    let cleaned = editingOrder.address
-      .replace(/\s+/g, ' ')
-      .replace(/(bahria town|dha|gulberg|wapda town|johar town)/gi, match => match.toUpperCase())
-      .replace(/\b(st|str|street)\b/gi, 'Street')
-      .replace(/\b(h|ho|house)\b/gi, 'House')
-      .replace(/\b(sec|sect|sector)\b/gi, 'Sector')
-      .trim();
-    
-    if (editingOrder.city && !cleaned.toLowerCase().includes(editingOrder.city.toLowerCase())) {
-      cleaned += `, ${editingOrder.city}`;
-    }
-    setEditingOrder({ ...editingOrder, address: cleaned });
-    if (updateOrderField) updateOrderField(editingOrder.id, 'address', cleaned);
-  }, [editingOrder, setEditingOrder, updateOrderField]);
-
-  const handleBookCourier = useCallback((courierName) => {
-    setBookingCourier(true);
-    fetch(`${apiBase}/api/bulk/book`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` },
-      body: JSON.stringify({ order_ids: [editingOrder.id], courier: courierName })
-    })
-      .then(r => r.json())
-      .then(res => {
-        setBookingCourier(false);
-        if (res.error) throw new Error(res.error);
-        alert(`Successfully booked with ${courierName}! Tracking #${res.results?.[0]?.tracking_number || 'GENERATED'}`);
-        if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        setEditingOrder({ 
-          ...editingOrder, 
-          tracking_number: res.results?.[0]?.tracking_number || 'TRK-' + Math.floor(Math.random()*1000000),
-          courier: courierName,
-          delivery_status: 'Booked'
-        });
-      })
-      .catch(err => {
-        setBookingCourier(false);
-        alert(err.message || 'Courier booking failed');
-      });
-  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder]);
-
-  // Live Math & Profit Margins
-  const liveSubtotal = useMemo(() => {
-    return localItems.reduce((acc, item) => acc + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 0)), 0);
-  }, [localItems]);
-
-  const liveTotal = useMemo(() => {
-    return Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder?.courier_fee || 250));
-  }, [liveSubtotal, localDiscount, editingOrder?.courier_fee]);
-
-  // Calculate Total Order Cost from Master Products
-  const totalOrderCost = useMemo(() => {
-    let total = 0;
-    localItems.forEach(item => {
-      const matched = masterProducts.find(mp => mp.sku === item.sku || mp.parent_title === item.title);
-      const unitCost = matched?.unit_cost || matched?.landed_cost || 0;
-      total += (parseFloat(unitCost) * (parseInt(item.quantity) || 1));
-    });
-    return total;
-  }, [localItems, masterProducts]);
-
-  const netProfit = useMemo(() => {
-    return liveTotal - totalOrderCost - parseFloat(editingOrder?.courier_fee || 250);
-  }, [liveTotal, totalOrderCost, editingOrder?.courier_fee]);
-
-  const profitMargin = useMemo(() => {
-    return liveTotal > 0 ? Math.round((netProfit / liveTotal) * 100) : 0;
-  }, [liveTotal, netProfit]);
-
-  // AI Address Quality Heuristic Score
-  const addrScore = useMemo(() => {
-    const addr = editingOrder?.address;
-    if (!addr || addr.length < 10) return { label: '⚠️ Low Quality (Too Short)', color: '#f43f5e', bg: 'rgba(244,63,94,0.1)' };
-    const hasNumber = /\d/.test(addr);
-    const hasStreet = /(st|street|road|rd|lane|ln|block|blk|sector|sec|phase)/i.test(addr);
-    if (hasNumber && hasStreet && addr.length > 15) return { label: '✅ High Quality (Courier Perfect)', color: '#10b981', bg: 'rgba(16,185,129,0.1)' };
-    return { label: '⚠️ Fair Quality (Missing Street/House #)', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' };
-  }, [editingOrder?.address]);
-
-  // Group master products into Parent -> Colors -> Sizes hierarchy
-  const groupedProducts = useMemo(() => {
-    const groups = {};
-
-    masterProducts.forEach(mp => {
-      let pTitle = (mp.parent_title || 'Unnamed Product').trim();
-      let extractedVariant = '';
-      if (pTitle.includes(' - ')) {
-        const parts = pTitle.split(' - ');
-        pTitle = parts[0].trim();
-        extractedVariant = parts.slice(1).join(' - ').trim();
-      }
-
-      let vTitle = (mp.variant_title || '').trim();
-      if (!vTitle || vTitle.toLowerCase().includes('default')) {
-        vTitle = extractedVariant || vTitle;
-      }
-
-      let color = 'Default';
-      let size = 'One Size';
-
-      if (vTitle && !vTitle.toLowerCase().includes('default')) {
-        const parts = vTitle.split(/[\/\-\|]/).map(p => p.trim()).filter(Boolean);
-        if (parts.length >= 2) {
-          const isSize = (str) => /^(xs|s|m|l|xl|2xl|3xl|4xl|\d+[a-z]*)$/i.test(str);
-          if (isSize(parts[0])) {
-            size = parts[0].toUpperCase();
-            color = parts[1];
-          } else if (isSize(parts[1])) {
-            color = parts[0];
-            size = parts[1].toUpperCase();
-          } else {
-            color = parts[0];
-            size = parts[1];
-          }
-        } else if (parts.length === 1) {
-          if (/^(xs|s|m|l|xl|2xl|3xl|4xl|\d+[a-z]*)$/i.test(parts[0])) {
-            size = parts[0].toUpperCase();
-          } else {
-            color = parts[0];
-          }
-        }
-      }
-
-      color = color.charAt(0).toUpperCase() + color.slice(1);
-
-      if (!groups[pTitle]) {
-        groups[pTitle] = {
-          parent_title: pTitle,
-          image_url: mp.image_url,
-          colors: {},
-          all_skus: [],
-          all_variants: [],
-          min_price: mp.selling_price || mp.unit_cost || 0
-        };
-      }
-
-      if (!groups[pTitle].colors[color]) {
-        groups[pTitle].colors[color] = {
-          color_name: color,
-          sizes: []
-        };
-      }
-
-      if (mp.sku) groups[pTitle].all_skus.push(mp.sku.toLowerCase());
-      if (vTitle) groups[pTitle].all_variants.push(vTitle.toLowerCase());
-      if (mp.image_url && !groups[pTitle].image_url) {
-        groups[pTitle].image_url = mp.image_url;
-      }
-
-      groups[pTitle].colors[color].sizes.push({
-        ...mp,
-        clean_size: size,
-        clean_color: color
-      });
-    });
-
-    return Object.values(groups);
-  }, [masterProducts]);
-
-  // Helper for Levenshtein Distance
-  const getEditDistance = useCallback((a, b) => {
-    if (a.length === 0) return b.length;
-    if (b.length === 0) return a.length;
-    const matrix = [];
-    for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
-    for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
-        }
-      }
-    }
-    return matrix[b.length][a.length];
-  }, []);
-
-  // Helper for Lenient Search
-  const isLenientMatch = useCallback((query, target) => {
-    if (!query || !target) return false;
-    const qClean = query.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const tClean = target.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!qClean) return true;
-    if (!tClean) return false;
-
-    if (tClean.includes(qClean)) return true;
-
-    if (qClean.length >= 3) {
-      const tWords = target.toLowerCase().split(/[\s\-\/\(\)]/).filter(Boolean);
-      for (const word of tWords) {
-        const wClean = word.replace(/[^a-z0-9]/g, '');
-        if (wClean.length >= qClean.length - 1 && wClean.length <= qClean.length + 1) {
-          const dist = getEditDistance(qClean, wClean);
-          if (dist <= 1 || (qClean.length >= 4 && dist <= 2)) return true;
-        }
-      }
-    }
-
-    return false;
-  }, [getEditDistance]);
-
-  // Filter grouped products by search query
-  const filteredGroups = useMemo(() => {
-    if (!productSearchQuery.trim()) return groupedProducts;
-    const q = productSearchQuery.trim();
-    return groupedProducts.filter(g => 
-      isLenientMatch(q, g.parent_title) ||
-      g.all_skus.some(sku => isLenientMatch(q, sku)) ||
-      g.all_variants.some(v => isLenientMatch(q, v)) ||
-      Object.keys(g.colors).some(c => isLenientMatch(q, c))
-    );
-  }, [groupedProducts, productSearchQuery, isLenientMatch]);
-
   // Effect: Fetch dependencies when order opens
   useEffect(() => {
     if (editingOrder) {
       const items = editingOrder.line_items_parsed || (typeof editingOrder.line_items === 'string' ? JSON.parse(editingOrder.line_items || '[]') : (editingOrder.line_items || []));
-      setLocalItems(items);
-      setLocalNotes(editingOrder.cs_notes || '');
+      itemsHook.setLocalItems(items);
+      saveHook.setLocalNotes(editingOrder.cs_notes || '');
+      
       let d = 0;
       if (editingOrder.notes) {
         try {
@@ -732,16 +398,16 @@ export default function useOrderManagement({
       } else {
         d = editingOrder.discount_amount || 0;
       }
-      setLocalDiscount(d);
+      saveHook.setLocalDiscount(d);
 
       // Fetch Customer Intelligence
-      setCustIntelLoading(true);
+      saveHook.setCustIntelLoading(true);
       fetch(`${apiBase}/api/orders/${editingOrder.id}/customer-intelligence`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
         .then(r => r.json())
-        .then(data => { setCustIntel(data); setCustIntelLoading(false); })
-        .catch(() => setCustIntelLoading(false));
+        .then(data => { saveHook.setCustIntel(data); saveHook.setCustIntelLoading(false); })
+        .catch(() => saveHook.setCustIntelLoading(false));
 
       // Fetch Master Products
       const storeId = editingOrder.store_id || localStorage.getItem('activeStoreId') || 1;
@@ -749,19 +415,19 @@ export default function useOrderManagement({
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
         .then(r => r.json())
-        .then(data => setMasterProducts(Array.isArray(data) ? data : []))
+        .then(data => itemsHook.setMasterProducts(Array.isArray(data) ? data : []))
         .catch(() => {});
 
       // Fetch Live Tracking
       if (editingOrder.tracking_number || editingOrder.tracking_slug) {
-        setTrackingLoading(true);
+        saveHook.setTrackingLoading(true);
         const slug = editingOrder.tracking_slug || 'tr_mock_slug';
         fetch(`${apiBase}/api/customer-success/tracking/${slug}`, {
           headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
         })
           .then(r => r.json())
-          .then(data => { setTrackingData(data); setTrackingLoading(false); })
-          .catch(() => setTrackingLoading(false));
+          .then(data => { saveHook.setTrackingData(data); saveHook.setTrackingLoading(false); })
+          .catch(() => saveHook.setTrackingLoading(false));
       }
     }
   }, [editingOrder, apiBase]);
@@ -857,25 +523,25 @@ export default function useOrderManagement({
     getMediaUrlWithToken,
     activeTab,
     setActiveTab,
-    localItems,
-    setLocalItems,
-    localDiscount,
-    setLocalDiscount,
-    localNotes,
-    setLocalNotes,
-    isSavingCS,
-    custIntel,
-    custIntelLoading,
-    waSimulating,
-    sendingImages,
-    masterProducts,
-    showProductSearch,
-    setShowProductSearch,
-    productSearchQuery,
-    setProductSearchQuery,
-    bookingCourier,
-    trackingData,
-    trackingLoading,
+    localItems: itemsHook.localItems,
+    setLocalItems: itemsHook.setLocalItems,
+    localDiscount: saveHook.localDiscount,
+    setLocalDiscount: saveHook.setLocalDiscount,
+    localNotes: saveHook.localNotes,
+    setLocalNotes: saveHook.setLocalNotes,
+    isSavingCS: saveHook.isSavingCS,
+    custIntel: saveHook.custIntel,
+    custIntelLoading: saveHook.custIntelLoading,
+    waSimulating: saveHook.waSimulating,
+    sendingImages: saveHook.sendingImages,
+    masterProducts: itemsHook.masterProducts,
+    showProductSearch: itemsHook.showProductSearch,
+    setShowProductSearch: itemsHook.setShowProductSearch,
+    productSearchQuery: itemsHook.productSearchQuery,
+    setProductSearchQuery: itemsHook.setProductSearchQuery,
+    bookingCourier: saveHook.bookingCourier,
+    trackingData: saveHook.trackingData,
+    trackingLoading: saveHook.trackingLoading,
     chatMessages,
     setChatMessages,
     chatLoading,
@@ -906,28 +572,28 @@ export default function useOrderManagement({
     recordingSeconds,
     chatSearchQuery,
     setChatSearchQuery,
-    sendingInvoice,
+    sendingInvoice: saveHook.sendingInvoice,
     handleCreateQuickPill,
     handleDeleteQuickPill,
     startRecording,
     stopRecording,
-    handleSendInvoice,
+    handleSendInvoice: saveHook.handleSendInvoice,
     handleSendQuickReply,
     handleCreateQuickReply,
     handleDeleteQuickReply,
     handleSendWaMessage,
     handleFileAttach,
-    handleCSUpdate,
-    handleWaSimulate,
-    handleSendItemImages,
-    handleAddressCleanse,
-    handleBookCourier,
-    liveSubtotal,
-    liveTotal,
-    totalOrderCost,
-    netProfit,
-    profitMargin,
-    filteredGroups,
-    addrScore
+    handleCSUpdate: saveHook.handleCSUpdate,
+    handleWaSimulate: saveHook.handleWaSimulate,
+    handleSendItemImages: saveHook.handleSendItemImages,
+    handleAddressCleanse: saveHook.handleAddressCleanse,
+    handleBookCourier: saveHook.handleBookCourier,
+    liveSubtotal: itemsHook.liveSubtotal,
+    liveTotal: saveHook.liveTotal,
+    totalOrderCost: saveHook.totalOrderCost,
+    netProfit: saveHook.netProfit,
+    profitMargin: saveHook.profitMargin,
+    filteredGroups: itemsHook.filteredGroups,
+    addrScore: saveHook.addrScore
   };
 }

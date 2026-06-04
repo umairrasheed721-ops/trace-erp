@@ -14,6 +14,9 @@ import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
 import CommandCenterHeader from '../components/CommandCenter/Layout/CommandCenterHeader'
 import CommandCenterFilters from '../components/CommandCenter/Layout/CommandCenterFilters'
+import useCommandCenterModals from '../hooks/useCommandCenterModals'
+import useCommandCenterBulkActions from '../hooks/useCommandCenterBulkActions'
+import usePersistentState from '../hooks/usePersistentState'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -179,7 +182,6 @@ export default function SearchTool() {
   const [limit, setLimit] = useState(() => parseInt(localStorage.getItem('trace_search_limit')) || 50)
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, loading: false })
 
   // Explicit search trigger (mostly for the 'Run Search' button)
   const runSearch = useCallback(() => {
@@ -187,11 +189,12 @@ export default function SearchTool() {
     setPage(1);
   }, [])
 
-  const [preset, setPreset] = useState(location.state?.preset || 'This Month')
-  const [customStart, setCustomStart] = useState(location.state?.customStart || '')
-  const [customEnd, setCustomEnd] = useState(location.state?.customEnd || '')
-  const [status, setStatus] = useState(location.state?.status || 'Pending')
-  const [keyword, setKeyword] = useState(location.state?.keyword || '')
+  const hasState = !!(location.state && Object.keys(location.state).length > 0);
+  const [preset, setPreset] = usePersistentState('command_center_filters_v1_preset', location.state?.preset || 'This Month', { override: hasState })
+  const [customStart, setCustomStart] = usePersistentState('command_center_filters_v1_custom_start', location.state?.customStart || '', { override: hasState })
+  const [customEnd, setCustomEnd] = usePersistentState('command_center_filters_v1_custom_end', location.state?.customEnd || '', { override: hasState })
+  const [status, setStatus] = usePersistentState('command_center_filters_v1_status', location.state?.status || 'Pending', { override: hasState })
+  const [keyword, setKeyword] = usePersistentState('command_center_filters_v1_keyword', location.state?.keyword || '', { override: hasState })
   const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('sort_key') || 'order_date')
@@ -332,63 +335,58 @@ export default function SearchTool() {
     localStorage.setItem('search_show_kpis', !prev)
     return !prev
   })
-  const [editingOrder, setEditingOrder] = useState(null)
-  const [editorLoading, setEditorLoading] = useState(false)
   const [bookingId, setBookingId] = useState(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
-  const [validCities, setValidCities] = useState([])
   const [selectedIds, setSelectedIds] = useState([])
-  const [bulkActionLoading, setBulkActionLoading] = useState(false)
-  const [customerHistoryPhone, setCustomerHistoryPhone] = useState(null)
-  const [showWAQueue, setShowWAQueue] = useState(false)
-  const [waQueueIndex, setWAQueueIndex] = useState(0)
-  const [waQueueTemplate, setWAQueueTemplate] = useState('')
-  const [waTemplates, setWATemplates] = useState([])
-  const [historyOrder, setHistoryOrder] = useState(null)
 
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
+  const {
+    editingOrder, setEditingOrder,
+    editorLoading,
+    isCityValid,
+    fetchOrderDetails,
+    customerHistoryPhone, setCustomerHistoryPhone,
+    showWAQueue, setShowWAQueue,
+    waQueueIndex, setWAQueueIndex,
+    waQueueTemplate, setWAQueueTemplate,
+    waTemplates,
+    historyOrder, setHistoryOrder,
+    showNameDialog, setShowNameDialog,
+    nameSettings, setNameSettings,
+    saveNameSettings,
+    showColPicker, setShowColPicker,
+    showSaveDialog, setShowSaveDialog,
+    viewName, setViewName,
+    isViewLocked, setIsViewLocked,
+    showAgingConfig, setShowAgingConfig,
+  } = useCommandCenterModals()
 
-  const fetchTemplates = async () => {
-    try {
-      const res = await fetch('/api/templates', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-      })
-      const data = await res.json()
-      const activeTemplates = data.filter(t => t.status === 'active')
-      setWATemplates(activeTemplates)
-      if (activeTemplates.length > 0) setWAQueueTemplate(activeTemplates[0].id)
-    } catch (err) {
-      console.error('Failed to fetch templates', err)
-    }
-  }
-  useEffect(() => {
-    if (editingOrder) {
-      fetch(`/api/orders/logistics/cities?courier=PostEx`)
-        .then(res => res.json())
-        .then(setValidCities)
-        .catch(console.error)
-    }
-  }, [editingOrder])
-
-  const isCityValid = editingOrder && validCities.length > 0 
-    ? validCities.some(v => v.toLowerCase() === (editingOrder.city || '').toLowerCase())
-    : true
-
-  const fetchOrderDetails = async (orderId) => {
-    setEditorLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/${orderId}/details`)
-      const data = await res.json()
-      setEditingOrder(data)
-    } catch (e) {
-      addToast('Failed to fetch order details', 'error')
-    } finally {
-      setEditorLoading(false)
-    }
-  }
+  const {
+    bulkActionLoading,
+    confirmDialog, setConfirmDialog,
+    handleBulkUpdateStatus,
+    handleBulkConfirm,
+    handleBulkRevert,
+    handleBulkSyncCourier,
+    handleBulkSyncStatus,
+    handleExportTracking,
+    handleBulkBookPostEx,
+    handleBulkBookInstaworld,
+    handleBulkCancel,
+    handleSelectAllMatching,
+  } = useCommandCenterBulkActions({
+    allOrders,
+    setAllOrders,
+    selectedIds,
+    setSelectedIds,
+    runSearch,
+    preset,
+    customStart,
+    customEnd,
+    status,
+    keyword,
+    colFilters,
+    activeStoreId,
+  })
 
   const handleConfirmOrder = async (orderId) => {
     const order = allOrders.find(o => o.id === orderId)
@@ -511,296 +509,7 @@ export default function SearchTool() {
     }
   }
 
-  const handleBulkUpdateStatus = async (newStatus) => {
-    if (selectedIds.length === 0 || !newStatus) return
-    
-    // Zero Cost Check for dangerous statuses
-    const dangerous = ['confirmed', 'booked', 'dispatched', 'delivered']
-    if (dangerous.includes(newStatus.toLowerCase())) {
-      const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
-      if (blocked.length > 0) {
-        addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost and cannot be moved to ${newStatus}`, 'error')
-        return
-      }
-    }
 
-    setConfirmDialog({
-      isOpen: true,
-      title: '📦 Update Status',
-      message: `Mark ${selectedIds.length} orders as "${newStatus}"?`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/orders/bulk-update-status`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: selectedIds, status: newStatus })
-          })
-          if (res.ok) {
-            addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
-            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
-            setSelectedIds([])
-          }
-        } catch { addToast('Status update failed', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
-
-  const handleBulkConfirm = async () => {
-    if (selectedIds.length === 0) return
-    
-    // Zero Cost Check
-    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
-    if (blocked.length > 0) {
-      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
-      return
-    }
-
-    setConfirmDialog({
-      isOpen: true,
-      title: '✅ Confirm Orders',
-      message: `Confirm ${selectedIds.length} orders?`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/orders/bulk-confirm`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: selectedIds })
-          })
-          if (res.ok) {
-            addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
-            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
-            setSelectedIds([])
-          }
-        } catch { addToast('Bulk error', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
-
-  const handleBulkRevert = async () => {
-    if (selectedIds.length === 0) return
-    setConfirmDialog({
-      isOpen: true,
-      title: '↩️ Revert to Pending',
-      message: `Revert ${selectedIds.length} orders to Pending?`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/bulk/revert`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-            },
-            body: JSON.stringify({ ids: selectedIds })
-          })
-          if (res.ok) {
-            addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
-            setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
-            setSelectedIds([])
-          }
-        } catch { addToast('Bulk error', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
-
-  const handleBulkSyncCourier = async () => {
-    if (selectedIds.length === 0) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-sync-courier`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addToast(`✅ Courier Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
-        setSelectedIds([])
-        runSearch()
-      } else {
-        addToast(`❌ Sync Failed: ${data.error}`, 'error')
-      }
-    } catch { addToast('Network error', 'error') }
-    finally { setBulkActionLoading(false) }
-  }
-
-  const handleBulkSyncStatus = async () => {
-    if (selectedIds.length === 0) return
-    setBulkActionLoading(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || '';
-      const res = await fetch(`${apiUrl}/api/orders/bulk-sync-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedIds })
-      })
-      const data = await res.json()
-      if (res.ok) {
-        addToast(`✅ Sync complete! ${data.count} orders updated. Refreshing...`, 'success')
-        setSelectedIds([])
-        runSearch()
-      } else {
-        addToast(`❌ Sync Failed: ${data.error}`, 'error')
-      }
-    } catch { addToast('Network error', 'error') }
-  }
-
-  const handleExportTracking = () => {
-    // If we have selections, export only those. Otherwise export all filtered orders.
-    const targetOrders = selectedIds.length > 0 
-      ? allOrders.filter(o => selectedIds.includes(o.id))
-      : filteredOrders;
-
-    if (targetOrders.length === 0) {
-      addToast('No orders selected or found to export', 'warning');
-      return;
-    }
-
-    // Define CSV Headers
-    const headers = [
-      'Shopify ID', 'Ref Number', 'Date', 'Customer', 'Phone', 
-      'City', 'Address', 'Tracking Number', 'Courier', 
-      'Status', 'Price', 'Payment Status'
-    ];
-
-    // Map data to rows
-    const rows = targetOrders.map(o => [
-      o.shopify_order_id || '',
-      o.ref_number || '',
-      o.created_at ? new Date(o.created_at).toLocaleDateString() : '',
-      o.customer_name || '',
-      o.phone || '',
-      o.city || '',
-      `"${(o.address || '').replace(/"/g, '""')}"`, // Wrap address in quotes to handle commas
-      o.tracking_number || '',
-      o.courier || '',
-      o.delivery_status || '',
-      o.price || '',
-      o.payment_status || ''
-    ]);
-
-    // Build CSV Content
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(r => r.join(','))
-    ].join('\n');
-
-    // Trigger Download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Trace_ERP_Export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    addToast(`📊 Exported ${targetOrders.length} orders to CSV!`, 'success');
-  };
-
-  const handleBulkBookPostEx = async () => {
-    if (selectedIds.length === 0) return
-
-    // Zero Cost Check
-    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
-    if (blocked.length > 0) {
-      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
-      return
-    }
-
-    setConfirmDialog({
-      isOpen: true,
-      title: '🚀 PostEx Booking',
-      message: `Book ${selectedIds.length} orders with PostEx in background?`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/bulk/book`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-            },
-            body: JSON.stringify({ ids: selectedIds, courier: 'PostEx' })
-          })
-          addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
-          setSelectedIds([])
-        } catch { addToast('Bulk booking error', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
-
-  const handleBulkBookInstaworld = async (courier) => {
-    if (selectedIds.length === 0) return
-
-    // Zero Cost Check
-    const blocked = allOrders.filter(o => selectedIds.includes(o.id) && (!o.cost || parseFloat(o.cost) <= 0))
-    if (blocked.length > 0) {
-      addToast(`🛑 Blocked: ${blocked.length} orders have $0 cost. Heal them first.`, 'error')
-      return
-    }
-
-    setConfirmDialog({
-      isOpen: true,
-      title: `🌐 ${courier} Booking`,
-      message: `Book ${selectedIds.length} orders with ${courier} in background?`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/bulk/book`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-            },
-            body: JSON.stringify({ ids: selectedIds, courier })
-          })
-          addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
-          setSelectedIds([])
-        } catch { addToast('Bulk booking error', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
-
-  const handleBulkCancel = async () => {
-    if (selectedIds.length === 0) return
-    setConfirmDialog({
-      isOpen: true,
-      title: '🛑 Cancel Booking',
-      message: `Cancel ${selectedIds.length} bookings? This will attempt to void them in the courier portals.`,
-      onConfirm: async () => {
-        setBulkActionLoading(true)
-        try {
-          const apiUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${apiUrl}/api/bulk/cancel`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
-            },
-            body: JSON.stringify({ ids: selectedIds })
-          })
-          addToast(`🛑 Cancellation sequence started.`, 'info')
-          setSelectedIds([])
-        } catch { addToast('Bulk cancel error', 'error') }
-        finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
-      }
-    })
-  }
 
   const handleCancelBooking = async (orderId) => {
     if (!confirm('🛑 Cancel this courier booking?')) return
@@ -973,18 +682,7 @@ export default function SearchTool() {
     }
   }
 
-  // ─── Name Cleaning Logic ─────────────────
-  const [nameSettings, setNameSettings] = useState(() => {
-    const saved = localStorage.getItem('trace_name_settings')
-    return saved ? JSON.parse(saved) : { shorten: true, stripWords: 'Mr, Ms, Dr, Malik, M.' }
-  })
-  const [showNameDialog, setShowNameDialog] = useState(false)
 
-  const saveNameSettings = (newSettings) => {
-    setNameSettings(newSettings)
-    localStorage.setItem('trace_name_settings', JSON.stringify(newSettings))
-    setShowNameDialog(false)
-  }
 
   const formatCustomerName = (name) => {
     if (!name) return '—'
@@ -1023,7 +721,7 @@ export default function SearchTool() {
   })
   const [syncProgress, setSyncProgress] = useState(null) // { current, total, message }
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
-  const [showAgingConfig, setShowAgingConfig] = useState(false)
+
 
   const getAgingBuckets = () => {
     const { criticalLevel, span } = agingConfig
@@ -1242,10 +940,6 @@ export default function SearchTool() {
 
   const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')
-  const [viewName, setViewName] = useState('')
-  const [isViewLocked, setIsViewLocked] = useState(false)
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  const [showColPicker, setShowColPicker] = useState(false)
 
   const fetchViews = async () => {
     if (!activeStoreId) return
@@ -1663,32 +1357,7 @@ export default function SearchTool() {
     }
   }
 
-  const handleSelectAllMatching = async () => {
-    setBulkActionLoading(true)
-    try {
-      const dateRange = getDateRange(preset, customStart, customEnd)
-      const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
-      const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
-      const queryStatus = status === 'All Statuses' ? '' : status
-      const kw = keyword ? keyword.trim().replace(/^#/, '') : ''
-      
-      const colFilterParams = Object.entries(colFilters)
-        .filter(([_, v]) => v && v.trim())
-        .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
-        .join('')
 
-      const res = await fetch(`/api/orders/all-ids?store_id=${activeStoreId}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}${colFilterParams}`)
-      const data = await res.json()
-      if (res.ok && data.ids) {
-        setSelectedIds(data.ids)
-        addToast(`✅ Selected all ${data.ids.length} matching orders`, 'success')
-      }
-    } catch (e) {
-      addToast('Failed to select all orders', 'error')
-    } finally {
-      setBulkActionLoading(false)
-    }
-  }
 
   const deliveryRate = kpi.total > 0 ? ((kpi.delivered / kpi.total) * 100).toFixed(1) : 0
   return (
