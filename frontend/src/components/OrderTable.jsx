@@ -326,23 +326,55 @@ const OrderRow = React.memo(({
                     )
                     if (col.id === 'customer_name') {
                       const hasIdentifier = o.phone || o.email;
+                      const count = getCustomerOrderCount(o.phone, o.email);
                       return (
                         <td 
                           key={col.id} 
                           title={o.customer_name}
-                          onClick={hasIdentifier ? (e) => {
-                            e.stopPropagation();
-                            setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
-                          } : undefined}
-                          style={hasIdentifier ? { 
-                            cursor: 'pointer', 
-                            color: 'var(--brand)', 
-                            fontWeight: 600,
-                            textDecoration: 'underline',
-                            textDecorationStyle: 'dotted'
-                          } : {}}
+                          style={{ verticalAlign: 'middle' }}
                         >
-                          {formatCustomerName(o.customer_name)}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+                            <span
+                              onClick={hasIdentifier ? (e) => {
+                                e.stopPropagation();
+                                setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
+                              } : undefined}
+                              style={hasIdentifier ? { 
+                                cursor: 'pointer', 
+                                color: 'var(--brand)', 
+                                fontWeight: 600,
+                                textDecoration: 'underline',
+                                textDecorationStyle: 'dotted'
+                              } : {}}
+                            >
+                              {formatCustomerName(o.customer_name)}
+                            </span>
+                            {count > 0 && (
+                              <span
+                                onClick={hasIdentifier ? (e) => {
+                                  e.stopPropagation();
+                                  setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
+                                } : undefined}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  background: 'var(--green-dim)',
+                                  color: 'var(--green)',
+                                  fontSize: '0.58rem',
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: 10,
+                                  cursor: hasIdentifier ? 'pointer' : 'default',
+                                  border: '1px solid var(--green)',
+                                  userSelect: 'none',
+                                  marginTop: '2px'
+                                }}
+                                title="View customer order history"
+                              >
+                                {count} {count === 1 ? 'order' : 'orders'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                       )
                     }
