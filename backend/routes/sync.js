@@ -122,5 +122,73 @@ router.post('/save-log', (req, res) => {
   }
 });
 
+// GET /api/sync/reconciliation/stats
+router.get('/reconciliation/stats', (req, res) => {
+  try {
+    // 1. Pending Syncs: Fulfilled orders without tracking numbers, not in failed list
+    const pendingQuery = db.prepare(`
+      SELECT COUNT(*) as count FROM orders
+      WHERE LOWER(delivery_status) = 'fulfilled'
+        AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
+        AND id NOT IN (SELECT order_id FROM tracking_reconciliation_logs WHERE status = 'failed')
+    `);
+    const pending = pendingQuery.get().count;
+
+    // 2. Failed Syncs: Fulfilled orders without tracking numbers, in failed list
+    const failedQuery = db.prepare(`
+      SELECT COUNT(*) as count FROM orders
+      WHERE LOWER(delivery_status) = 'fulfilled'
+        AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
+        AND id IN (SELECT order_id FROM tracking_reconciliation_logs WHERE status = 'failed')
+    `);
+    const failed = failedQuery.get().count;
+
+    // 3. Successfully Resolved: logs with status = 'resolved'
+    const resolvedQuery = db.prepare(`
+      SELECT COUNT(*) as count FROM tracking_reconciliation_logs
+      WHERE status = 'resolved'
+    `);
+    const resolved = resolvedQuery.get().count;
+
+    // 4. Orphaned List: failed attempts
+    const orphanedList = db.prepare(`
+      SELECT r.order_id, r.order_ref, r.error_message, r.last_attempted_at
+      FROM tracking_reconciliation_logs r
+      JOIN orders o ON r.order_id = o.id
+      WHERE r.status = 'failed'
+        AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')
+      ORDER BY r.last_attempted_at DESC
+      LIMIT 100
+    `).all();
+
+    res.json({
+      success: true,
+      metrics: {
+        pending,
+        resolved,
+        failed
+      },
+      orphanedList
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/sync/reconciliation/run
+router.post('/reconciliation/run', async (req, res) => {
+  try {
+    const { runReconciliation } = require('../scripts/trackingReconciler');
+    const results = await runReconciliation();
+    res.json({
+      success: true,
+      message: 'Reconciliation completed',
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
 

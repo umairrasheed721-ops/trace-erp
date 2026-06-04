@@ -969,6 +969,22 @@ function runMigrations(db) {
     `);
   } catch(e){}
 
+
+  // Tracking Reconciler logs
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS tracking_reconciliation_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+        order_ref TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error_message TEXT,
+        last_attempted_at TEXT DEFAULT (datetime('now', '+5 hours')),
+        resolved_at TEXT
+      );
+    `);
+  } catch(e){}
+
   // Ensure recon_sessions has the correct columns for payment reconciliation
   try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN filename TEXT`); } catch(e){}
   try { db.exec(`ALTER TABLE recon_sessions ADD COLUMN row_count INTEGER`); } catch(e){}

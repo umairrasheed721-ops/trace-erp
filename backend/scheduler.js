@@ -141,6 +141,17 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 5b. Every 4 hours: Run tracking reconciler script
+  cron.schedule('0 */4 * * *', async () => {
+    console.log('🔄 [CRON] Starting 4-hour tracking reconciliation...');
+    try {
+      const { runReconciliation } = require('./scripts/trackingReconciler');
+      await runReconciliation();
+    } catch (e) {
+      console.error('Reconciliation cron error:', e.message);
+    }
+  });
+
   // 6. Every 2 hours: Stuck Parcel Sniper — auto-alert customers with stuck parcels
   cron.schedule('0 */2 * * *', async () => {
     console.log('🎯 [CRON] Stuck Parcel Sniper scan starting...');

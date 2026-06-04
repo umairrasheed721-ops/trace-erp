@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
 import SearchFilters from '../components/SearchFilters'
 import OrderTable from '../components/OrderTable'
@@ -12,6 +13,7 @@ import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from 
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
+import SyncDashboard from '../components/CommandCenter/SyncDashboard'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -234,8 +236,94 @@ export default function SearchTool() {
   })
   const debouncedColFilters = useDebounce(colFilters, 500)
 
-  // Reset page to 1 when filters change
+  // ─── Route Persistence ───────────────────────────────────────────
+  const { registerModule, unregisterModule, persistModuleState, getModuleState } = useRoutePersistence()
+  const pendingScrollRestoreRef = useRef(null)
+  const ignoreFilterChangesRef = useRef(true)
+
+  const saveState = useCallback(() => {
+    const scrollY = window.scrollY || 0
+    const tableWrapper = document.querySelector('.table-wrapper')
+    const scrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0
+
+    persistModuleState('CommandCenter', {
+      preset,
+      customStart,
+      customEnd,
+      status,
+      keyword,
+      colFilters,
+      page,
+      sort,
+      sortKey,
+      sortDir,
+      sortMode,
+      scrollY,
+      scrollLeft
+    })
+  }, [persistModuleState, preset, customStart, customEnd, status, keyword, colFilters, page, sort, sortKey, sortDir, sortMode])
+
+  const restoreState = useCallback(() => {
+    // If location.state is present, we are performing a drill-down. Skip restoring CommandCenter's cached state.
+    if (location.state && Object.keys(location.state).length > 0) {
+      ignoreFilterChangesRef.current = false
+      return
+    }
+    const state = getModuleState('CommandCenter')
+    if (state) {
+      if (state.preset !== undefined) setPreset(state.preset)
+      if (state.customStart !== undefined) setCustomStart(state.customStart)
+      if (state.customEnd !== undefined) setCustomEnd(state.customEnd)
+      if (state.status !== undefined) setStatus(state.status)
+      if (state.keyword !== undefined) setKeyword(state.keyword)
+      if (state.colFilters !== undefined) setColFilters(state.colFilters)
+      if (state.page !== undefined) setPage(state.page)
+      if (state.sort !== undefined) setSort(state.sort)
+      if (state.sortKey !== undefined) setSortKey(state.sortKey)
+      if (state.sortDir !== undefined) setSortDir(state.sortDir)
+      if (state.sortMode !== undefined) setSortMode(state.sortMode)
+
+      pendingScrollRestoreRef.current = {
+        scrollY: state.scrollY || 0,
+        scrollLeft: state.scrollLeft || 0
+      }
+    }
+  }, [getModuleState, location.state])
+
+  // Register callbacks on mount/state updates
   useEffect(() => {
+    registerModule('CommandCenter', { saveState, restoreState })
+    return () => unregisterModule('CommandCenter')
+  }, [registerModule, unregisterModule, saveState, restoreState])
+
+  // Hydrate state from cache exactly once on initial mount
+  useEffect(() => {
+    restoreState()
+  }, [])
+
+  // Restore scroll positions once data loading is complete and component is rendered
+  useEffect(() => {
+    if (!loading) {
+      ignoreFilterChangesRef.current = false
+
+      if (pendingScrollRestoreRef.current) {
+        const { scrollY, scrollLeft } = pendingScrollRestoreRef.current
+        const timer = setTimeout(() => {
+          window.scrollTo(0, scrollY)
+          const tableWrapper = document.querySelector('.table-wrapper')
+          if (tableWrapper) {
+            tableWrapper.scrollLeft = scrollLeft
+          }
+        }, 50)
+        pendingScrollRestoreRef.current = null
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [loading])
+
+  // Reset page to 1 when filters change, but skip during initial cache restoration
+  useEffect(() => {
+    if (ignoreFilterChangesRef.current) return
     setPage(1)
   }, [debouncedKeyword, debouncedColFilters, status, preset, customStart, customEnd])
   const [compactMode, setCompactMode] = useState(() => localStorage.getItem('search_compact') === 'true')
@@ -731,6 +819,38 @@ export default function SearchTool() {
     } catch (err) {
       setAllOrders(previousOrders)
       addToast(`❌ Cancel Failed: ${err.message}`, 'error')
+    } finally {
+      setBookingId(null)
+    }
+  }
+
+  const handleForceResync = async (orderId) => {
+    setBookingId(orderId)
+    try {
+      const token = localStorage.getItem('trace_token');
+      const res = await fetch(`/api/orders/${orderId}/resync`, { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        try {
+          const orderRes = await fetch(`/api/orders/${orderId}/details`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (orderRes.ok) {
+            const updatedOrder = await orderRes.json();
+            setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedOrder } : o));
+          }
+        } catch (fetchErr) {
+          console.warn('Silent refetch failed, relying on SSE:', fetchErr.message);
+        }
+        addToast('✅ Order synced successfully from Shopify', 'success')
+      } else {
+        throw new Error(data.error || 'Failed to resync order')
+      }
+    } catch (err) {
+      addToast(`❌ Resync Failed: ${err.message}`, 'error')
     } finally {
       setBookingId(null)
     }
@@ -1588,6 +1708,8 @@ export default function SearchTool() {
             </div>
           </div>
 
+          <SyncDashboard />
+
           <SearchFilters
             preset={preset} setPreset={setPreset}
             customStart={customStart} setCustomStart={setCustomStart}
@@ -1718,6 +1840,7 @@ export default function SearchTool() {
         handleRevertConfirm={handleRevertConfirm}
         handleBookPostEx={handleBookPostEx}
         handleCancelBooking={handleCancelBooking}
+        onForceResync={handleForceResync}
         handleBookInstaworld={handleBookInstaworld}
         handleManualStatusChange={handleManualStatusChange}
         updateOrderField={updateOrderField}
