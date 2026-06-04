@@ -1,6 +1,8 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { cleanVolume } = require('./utils/volumeCleaner');
+
 
 // --- 📊 LIVE PULSE LOG BUFFER ---
 const LOG_BUFFER_SIZE = 500;
@@ -98,25 +100,36 @@ function runDiskCleanup() {
     if (lines.length < 2) return;
     const parts = lines[1].split(/\s+/);
     if (parts.length < 6) return;
+    const totalKB = parseInt(parts[1], 10);
     const availableKB = parseInt(parts[3], 10);
-    if (isNaN(availableKB)) return;
+    if (isNaN(availableKB) || isNaN(totalKB) || totalKB === 0) return;
+    
     const availableMB = Math.round(availableKB / 1024);
+    const availablePercent = (availableKB / totalKB) * 100;
 
-    console.log(`💾 Auto-Healer Check: Available disk space is ${availableMB} MB`);
-    if (availableMB < 50) {
-      console.warn(`🚨 Auto-Healer: Critical disk space detected (${availableMB} MB). Starting emergency cleanup...`);
+    console.log(`💾 Auto-Healer Check: Available disk space is ${availableMB} MB (${availablePercent.toFixed(1)}%)`);
+    if (availableMB < 50 || availablePercent < 10) {
+      console.warn(`🚨 Auto-Healer: Critical disk space detected (${availableMB} MB, ${availablePercent.toFixed(1)}%). Starting emergency cleanup...`);
+      
+      // Execute the safe volume cleaner
+      try {
+        cleanVolume();
+      } catch (cleanErr) {
+        console.error('⚠️ Auto-Healer: Emergency volume cleaner failed:', cleanErr.message);
+      }
+
       const truncateScript = path.join(__dirname, 'scripts', 'truncate_logs.js');
       const purgeScript = path.join(__dirname, 'scripts', 'purge_old_media.js');
       const optimizeScript = path.join(__dirname, 'scripts', 'optimize_db.js');
 
       console.log('1/3: Truncating message logs older than 15 days...');
-      execSync(`node "${truncateScript}"`, { stdio: 'inherit', env: process.env });
+      try { execSync(`node "${truncateScript}"`, { stdio: 'inherit', env: process.env }); } catch (_) {}
 
       console.log('2/3: Purging old media older than 30 days from Google Drive...');
-      execSync(`node "${purgeScript}"`, { stdio: 'inherit', env: process.env });
+      try { execSync(`node "${purgeScript}"`, { stdio: 'inherit', env: process.env }); } catch (_) {}
 
       console.log('3/3: Reclaiming unused space via database VACUUM...');
-      execSync(`node "${optimizeScript}"`, { stdio: 'inherit', env: process.env });
+      try { execSync(`node "${optimizeScript}"`, { stdio: 'inherit', env: process.env }); } catch (_) {}
 
       console.log('Auto-Healer: Disk space freed automatically');
     }

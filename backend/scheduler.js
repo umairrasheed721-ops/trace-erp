@@ -255,6 +255,17 @@ module.exports = function schedulerInit() {
     }
   });
 
+  // 13. Every day at 4:00 AM: Safe Emergency Volume Cleaner
+  cron.schedule('0 4 * * *', async () => {
+    console.log('🧹 [CRON] Daily volume cleanup cycle starting...');
+    try {
+      const { cleanVolume } = require('./utils/volumeCleaner');
+      cleanVolume();
+    } catch (e) {
+      console.error('Volume cleanup cron error:', e.message);
+    }
+  });
+
   // Fire sniper once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     try { await runSniperScan(); } catch(e) {}

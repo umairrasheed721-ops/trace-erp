@@ -183,12 +183,6 @@ export default function SearchTool() {
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
-  // Explicit search trigger (mostly for the 'Run Search' button)
-  const runSearch = useCallback(() => {
-    setRefreshTrigger(prev => prev + 1);
-    setPage(1);
-  }, [])
-
   const hasState = !!(location.state && Object.keys(location.state).length > 0);
   const [preset, setPreset] = usePersistentState('command_center_filters_v1_preset', location.state?.preset || 'This Month', { override: hasState })
   const [customStart, setCustomStart] = usePersistentState('command_center_filters_v1_custom_start', location.state?.customStart || '', { override: hasState })
@@ -238,6 +232,99 @@ export default function SearchTool() {
     ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
   const debouncedColFilters = useDebounce(colFilters, 500)
+
+  /**
+   * Main data fetching function for SearchTool.
+   * Fetches orders from the backend with current filters, keyword, pagination, and sorting.
+   * Supports overrides for immediate clears/resets.
+   */
+  const fetchOrders = useCallback(async (options = {}) => {
+    if (!activeStoreId) return;
+
+    const wasProgrammatic = options.wasProgrammatic || false;
+    const isRefresh = options.isRefresh || false;
+    
+    // Choose source of values (accept override parameters for immediate/clear runs)
+    const presetVal = options.hasOwnProperty('preset') ? options.preset : preset;
+    const statusVal = options.hasOwnProperty('status') ? options.status : status;
+    const customStartVal = options.hasOwnProperty('customStart') ? options.customStart : customStart;
+    const customEndVal = options.hasOwnProperty('customEnd') ? options.customEnd : customEnd;
+    const keywordVal = options.hasOwnProperty('keyword') ? options.keyword : keyword;
+    const colFiltersVal = options.hasOwnProperty('colFilters') ? options.colFilters : colFilters;
+
+    const queryStatus = statusVal === 'All Statuses' ? '' : statusVal;
+    
+    // In clear mode, force-use keywordVal directly (which is '') to avoid debounced state delay
+    const currentKeyword = (wasProgrammatic || isClearingRef.current || options.clearKeyword) ? keywordVal : debouncedKeyword;
+    const kw = currentKeyword ? currentKeyword.trim().replace(/^#/, '') : '';
+    
+    const dateRange = getDateRange(presetVal, customStartVal, customEndVal);
+    const startDate = dateRange?.start ? formatYMD(dateRange.start) : '';
+    const endDate = dateRange?.end ? formatYMD(dateRange.end) : '';
+
+    const activeColFilters = (isClearingRef.current || options.clearColFilters) ? colFiltersVal : debouncedColFilters;
+    const colFilterParams = Object.entries(activeColFilters)
+      .filter(([_, v]) => v && v.trim())
+      .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
+      .join('');
+
+    const backendSortMap = {
+      'order_date': 'order_date',
+      'cost': 'cost',
+      'price': 'price',
+      'customer_name': 'customer_name',
+      'delivery_status': 'delivery_status'
+    };
+    const sCol = backendSortMap[sortKey] || 'created_timestamp';
+
+    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}`;
+
+    if (!isRefresh && !wasProgrammatic && urlWithoutTimestamp === lastFetchedUrlRef.current) {
+      console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
+      return;
+    }
+
+    lastFetchedUrlRef.current = urlWithoutTimestamp;
+    setLoading(true);
+
+    const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`;
+
+    console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
+    
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setAllOrders(data.orders || []);
+      setTotalCount(data.total || 0);
+      setDebugWhere(data.debugWhere || '');
+      
+      if (isClearingRef.current) {
+        console.log('🧹 [SearchTool] Clear fetch complete. Resetting clear flags.');
+        isClearingRef.current = false;
+        isClearingStageRef.current = null;
+      }
+    } catch (err) {
+      if (isClearingRef.current) {
+        isClearingRef.current = false;
+        isClearingStageRef.current = null;
+      }
+      console.error('❌ [SearchTool] fetchOrders failed:', err.message);
+      addToast('Failed to load orders', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, colFilters, debouncedColFilters,
+    sortKey, sortDir, limit, page, setAllOrders, setTotalCount, setDebugWhere, setLoading, addToast, keyword
+  ]);
+
+  const runSearch = useCallback(() => {
+    setPage(1);
+    fetchOrders({ isRefresh: true, wasProgrammatic: true });
+  }, [fetchOrders]);
 
   // ─── Route Persistence ───────────────────────────────────────────
   const { registerModule, unregisterModule, persistModuleState, getModuleState } = useRoutePersistence()
@@ -767,28 +854,41 @@ export default function SearchTool() {
   }, []);
 
   /**
-   * Synchronously batches the clearing of filters and keywords,
-   * then triggers a final search fetch after a 50ms propagation delay.
+   * Clears all filters and search keyword immediately, and triggers
+   * a direct, immediate API call with default unfiltered parameters.
    */
   const handleClear = useCallback(() => {
-    console.log('🧹 [SearchTool] handleClear execution started. isClearingRef.current =', isClearingRef.current);
-    if (loading && isClearingRef.current) {
-      console.log('🧹 [SearchTool] handleClear ignored: already clearing');
-      return;
-    }
-    isClearingRef.current = true;
-    isClearingStageRef.current = 'pending';
-
-    clearAllFilters();
+    console.log('🧹 [SearchTool] handleClear execution started.');
+    
+    // Clear all filters state immediately
+    setPreset('All Time');
+    setStatus('All Statuses');
+    setCustomStart('');
+    setCustomEnd('');
+    const emptyColFilters = {
+      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    };
+    setColFilters(emptyColFilters);
+    setActiveAgingBucket(null);
     setKeyword('');
+    setPage(1);
+
     addToast('Filters cleared', 'info');
 
-    setTimeout(() => {
-      console.log('🧹 [SearchTool] Clear sequence state propagated. Setting stage to fetch.');
-      isClearingStageRef.current = 'fetch';
-      runSearch();
-    }, 50);
-  }, [clearAllFilters, runSearch, addToast]);
+    // Trigger direct, immediate API call with cleared filters bypassing React state updates delay
+    fetchOrders({
+      preset: 'All Time',
+      status: 'All Statuses',
+      customStart: '',
+      customEnd: '',
+      keyword: '',
+      colFilters: emptyColFilters,
+      isRefresh: true,
+      wasProgrammatic: true,
+      clearKeyword: true,
+      clearColFilters: true
+    });
+  }, [fetchOrders, addToast]);
 
   /**
    * Triggers a programmatic search for a customer's orders using their phone or email.
@@ -966,16 +1066,7 @@ export default function SearchTool() {
    *      URL query string. Skips the fetch if the query parameters match the last successful request.
    */
   useEffect(() => {
-    if (!activeStoreId) return
-
-    // Hybrid Logic: Detect if ONLY sort changed
-    const searchConfig = JSON.stringify({ activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters });
-    const isSortOnlyChange = lastSearchRef.current === searchConfig;
-    lastSearchRef.current = searchConfig;
-
-    if (sortMode === 'instant' && isSortOnlyChange) {
-      return; // Skip server fetch, useMemo will handle local re-sort
-    }
+    if (!activeStoreId) return;
 
     // Skip trigger if clear sequence is pending
     if (isClearingStageRef.current === 'pending') {
@@ -994,157 +1085,34 @@ export default function SearchTool() {
       isClearingStageRef.current = 'fetching';
     }
 
-    // Compile URL parameters to check for redundant requests
-    const queryStatus = status === 'All Statuses' ? '' : status
-    const currentKeyword = (isProgrammaticRef.current || isClearingRef.current) ? keyword : debouncedKeyword
-    const kw = currentKeyword ? currentKeyword.trim().replace(/^#/, '') : ''
-    const dateRange = getDateRange(preset, customStart, customEnd)
-    const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
-    const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+    // Hybrid Logic: Detect if ONLY sort changed
+    const searchConfig = JSON.stringify({ activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters });
+    const isSortOnlyChange = lastSearchRef.current === searchConfig;
+    lastSearchRef.current = searchConfig;
 
-    const activeColFilters = isClearingRef.current ? colFilters : debouncedColFilters;
-    const colFilterParams = Object.entries(activeColFilters)
-      .filter(([_, v]) => v && v.trim())
-      .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
-      .join('')
-
-    const backendSortMap = {
-      'order_date': 'order_date',
-      'cost': 'cost',
-      'price': 'price',
-      'customer_name': 'customer_name',
-      'delivery_status': 'delivery_status'
-    }
-    const sCol = backendSortMap[sortKey] || 'created_timestamp'
-
-    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}`
-
-    const isRefresh = lastRefreshRef.current !== refreshTrigger
-
-    // Skip redundant fetching when the query parameters are identical to the last fetch
-    if (!isRefresh && urlWithoutTimestamp === lastFetchedUrlRef.current) {
-      console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
-      return;
+    if (sortMode === 'instant' && isSortOnlyChange) {
+      return; // Skip server fetch, useMemo will handle local re-sort
     }
 
-    lastFetchedUrlRef.current = urlWithoutTimestamp
-    lastRefreshRef.current = refreshTrigger
-
-    setLoading(true)
-    const controller = new AbortController();
-    const signal = controller.signal;
-    
     let fetchTimeoutId;
-    let requestTimeoutId;
-    let isRequestTimeout = false;
-
-    /**
-     * Executes the fetch call, registers a 5-second request timeout,
-     * and processes the fetched order datasets.
-     *
-     * @param {boolean} wasProgrammatic - Flag indicating if this was a programmatic call bypassing debounce.
-     */
-    const performFetch = (wasProgrammatic = false) => {
-      const fetchQueryStatus = status === 'All Statuses' ? '' : status
-      const fetchCurrentKeyword = wasProgrammatic ? keyword : debouncedKeyword
-      const fetchKw = fetchCurrentKeyword ? fetchCurrentKeyword.trim().replace(/^#/, '') : ''
-      const fetchDateRange = getDateRange(preset, customStart, customEnd)
-      const fetchStartDate = fetchDateRange?.start ? formatYMD(fetchDateRange.start) : ''
-      const fetchEndDate = fetchDateRange?.end ? formatYMD(fetchDateRange.end) : ''
-
-      const fetchActiveColFilters = isClearingRef.current ? colFilters : debouncedColFilters;
-      const fetchColFilterParams = Object.entries(fetchActiveColFilters)
-        .filter(([_, v]) => v && v.trim())
-        .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
-        .join('')
-
-      const fetchBackendSortMap = {
-        'order_date': 'order_date',
-        'cost': 'cost',
-        'price': 'price',
-        'customer_name': 'customer_name',
-        'delivery_status': 'delivery_status'
-      }
-      const fetchSCol = fetchBackendSortMap[sortKey] || 'created_timestamp'
-
-      const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(fetchQueryStatus||'')}&search=${encodeURIComponent(fetchKw)}&start_date=${fetchStartDate}&end_date=${fetchEndDate}&sort=${fetchSCol}&sort_dir=${sortDir}${fetchColFilterParams}&t=${Date.now()}`;
-      
-      console.log('📡 [SearchTool] performFetch executing query. wasProgrammatic:', wasProgrammatic, 'isClearing:', isClearingRef.current, 'keyword:', fetchKw);
-      console.log('📡 [SearchTool] Sending fetch request:', {
-        url,
-        params: {
-          store_id: activeStoreId,
-          limit,
-          page,
-          status: fetchQueryStatus,
-          search: fetchKw,
-          start_date: fetchStartDate,
-          end_date: fetchEndDate,
-          sort: fetchSCol,
-          sort_dir: sortDir,
-          colFilters: fetchActiveColFilters
-        }
-      });
-
-      // Strict 5-second fetch timeout
-      requestTimeoutId = setTimeout(() => {
-        isRequestTimeout = true;
-        controller.abort();
-      }, 5000);
-
-      fetch(url, { signal })
-        .then(r => {
-          clearTimeout(requestTimeoutId);
-          return r.json();
-        })
-        .then(data => { 
-          setAllOrders(data.orders || []); 
-          setTotalCount(data.total || 0);
-          setDebugWhere(data.debugWhere || '');
-          if (isClearingRef.current) {
-            console.log('🧹 [SearchTool] Clear fetch complete. Resetting clear flags.');
-            isClearingRef.current = false;
-            isClearingStageRef.current = null;
-          }
-          setLoading(false) 
-        })
-        .catch((err) => { 
-          clearTimeout(requestTimeoutId);
-          if (isClearingRef.current) {
-            console.log('🧹 [SearchTool] Clear fetch complete with error. Resetting clear flags.');
-            isClearingRef.current = false;
-            isClearingStageRef.current = null;
-          }
-          if (err.name === 'AbortError') {
-            if (isRequestTimeout) {
-              addToast('Error: Request Timed Out', 'error');
-              setLoading(false);
-            }
-            return;
-          }
-          addToast('Failed to load orders', 'error'); 
-          setLoading(false);
-        })
-    };
-
-    const shouldFetchInstantly = isClearingFetch;
-    if (shouldFetchInstantly) {
-      performFetch(true);
+    if (isClearingFetch) {
+      fetchOrders({ wasProgrammatic: true });
     } else if (isProgrammaticRef.current) {
       fetchTimeoutId = setTimeout(() => {
         isProgrammaticRef.current = false;
-        performFetch(true);
+        fetchOrders({ wasProgrammatic: true });
       }, 300);
     } else {
-      performFetch(false);
+      fetchOrders({ wasProgrammatic: false });
     }
-      
+
     return () => {
       if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
-      if (requestTimeoutId) clearTimeout(requestTimeoutId);
-      controller.abort();
     };
-  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger, keyword, colFilters])
+  }, [
+    activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters,
+    sortMode, refreshTrigger, fetchOrders
+  ]);
 
   // Live Updates Connection (SSE)
   useEffect(() => {
