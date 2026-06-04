@@ -154,8 +154,14 @@ router.get('/history-search', (req, res) => {
     // Dual-Key Lookup logic (phone OR email)
     let dualKeys = [];
     if (phone && phone.trim() && phone.trim() !== 'null' && phone.trim() !== 'undefined') {
-      dualKeys.push('o.phone = ?');
-      params.push(phone.trim());
+      const cleanPhoneVal = phone.trim().replace(/\D/g, '');
+      if (cleanPhoneVal.length >= 10) {
+        dualKeys.push('(o.phone IS NOT NULL AND o.phone != \'\' AND SUBSTR(o.phone, -10) = ?)');
+        params.push(cleanPhoneVal.slice(-10));
+      } else {
+        dualKeys.push('o.phone = ?');
+        params.push(phone.trim());
+      }
     }
     if (email && email.trim() && email.trim() !== 'null' && email.trim() !== 'undefined') {
       dualKeys.push('o.email = ?');
@@ -265,7 +271,7 @@ router.get('/', (req, res) => {
              (
                SELECT COUNT(*) 
                FROM orders 
-               WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+               WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != '' AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
                   OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
              ) as customer_order_count,
              (
@@ -471,7 +477,7 @@ router.put('/:id', (req, res) => {
            (
              SELECT COUNT(*) 
              FROM orders 
-             WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+             WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != '' AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
                 OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
            ) as customer_order_count,
            (
@@ -693,7 +699,7 @@ router.get('/by-shopify/:id', (req, res) => {
            (
              SELECT COUNT(*) 
              FROM orders 
-             WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+             WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != '' AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
                 OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
            ) as customer_order_count,
            (

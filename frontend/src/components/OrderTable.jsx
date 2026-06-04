@@ -784,8 +784,13 @@ export default function OrderTable({
   const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
   const getCustomerOrderCount = useCallback((phone, email) => {
     if (!phone && !email) return 0;
+    const cleanPhone = phone ? phone.replace(/\D/g, '').slice(-10) : '';
     return allOrders.filter(o => {
-      const phoneMatch = phone && o.phone && o.phone === phone;
+      let phoneMatch = false;
+      if (cleanPhone && o.phone) {
+        const oCleanPhone = o.phone.replace(/\D/g, '').slice(-10);
+        phoneMatch = oCleanPhone && oCleanPhone === cleanPhone;
+      }
       const emailMatch = email && o.email && o.email === email;
       return phoneMatch || emailMatch;
     }).length;
