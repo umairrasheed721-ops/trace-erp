@@ -326,7 +326,7 @@ const OrderRow = React.memo(({
                     )
                     if (col.id === 'customer_name') {
                       const hasIdentifier = o.phone || o.email;
-                      const count = getCustomerOrderCount(o.phone, o.email);
+                      const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
                       return (
                         <td 
                           key={col.id} 
@@ -470,7 +470,7 @@ const OrderRow = React.memo(({
 
                             <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
                             {(() => {
-                              const count = getCustomerOrderCount(o.phone, o.email)
+                              const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
                               return count > 1 ? (
                                 <span
                                   onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name }) }}

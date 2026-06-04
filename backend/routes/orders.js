@@ -237,6 +237,12 @@ router.get('/', (req, res) => {
     const orders = db.prepare(`
       SELECT o.*, s.shop_domain,
              (
+               SELECT COUNT(*) 
+               FROM orders 
+               WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+                  OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
+             ) as customer_order_count,
+             (
                SELECT direction 
                FROM whatsapp_messages 
                WHERE (order_id = o.id 
@@ -436,6 +442,12 @@ router.put('/:id', (req, res) => {
   // Return updated row so frontend can reflect all auto-changes
   const updated = db.prepare(`
     SELECT o.*, s.shop_domain,
+           (
+             SELECT COUNT(*) 
+             FROM orders 
+             WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+                OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
+           ) as customer_order_count,
            (
              SELECT direction 
              FROM whatsapp_messages 
@@ -652,6 +664,12 @@ router.get('/export', (req, res) => {
 router.get('/by-shopify/:id', (req, res) => {
   const order = db.prepare(`
     SELECT o.*, s.shop_domain,
+           (
+             SELECT COUNT(*) 
+             FROM orders 
+             WHERE (phone = o.phone AND o.phone IS NOT NULL AND o.phone != '')
+                OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
+           ) as customer_order_count,
            (
              SELECT direction 
              FROM whatsapp_messages 
