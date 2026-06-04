@@ -1,12 +1,14 @@
 import React from 'react'
+import CommandCenterStats from './CommandCenterStats'
 
 /**
  * CommandCenterFilters
  *
- * Renders the primary filter row (Date, Status, Keyword, Sort, Saved Views, Clear/Refresh)
- * and the secondary row (KPI cards, Aging backlog bar, sub-header action buttons).
+ * Renders the primary filter row (Date, Status, Keyword, Sort, Saved Views,
+ * Clear/Refresh), the KPI/aging stats row (via CommandCenterStats), and the
+ * sub-header action buttons.
  *
- * All state values and setters are received as props from SearchTool (the parent).
+ * All state values and setters are received as props from SearchTool.
  * This component is intentionally stateless — it owns no local state.
  */
 export default function CommandCenterFilters({
@@ -33,7 +35,7 @@ export default function CommandCenterFilters({
   sortMode, setSortMode,
   // ── Dialog triggers ───────────────────────────────────────────────────
   setShowSaveDialog, setShowColPicker, setShowNameDialog,
-  // ── KPI / Aging data ──────────────────────────────────────────────────
+  // ── KPI / Aging data (forwarded to CommandCenterStats) ────────────────
   syncProgress,
   kpi, deliveryRate, missingCostCount,
   activeAgingBucket, agingBuckets, agingCounts,
@@ -60,7 +62,7 @@ export default function CommandCenterFilters({
             </select>
           </div>
 
-          {/* Custom date pickers (visible only when Custom Range is selected) */}
+          {/* Custom date pickers */}
           {preset === 'Custom Range' && (
             <>
               <div>
@@ -141,76 +143,20 @@ export default function CommandCenterFilters({
         </div>
       </div>
 
-      {/* ── KPI & Aging Row ─────────────────────────────────────────────── */}
-      {showKPIs && (
-        <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
-          {/* KPI Cards */}
-          <div style={{ display: 'flex', gap: 8, flex: 1 }}>
-            <div className="kpi-card blue" style={{ flex: 1 }}>
-              <div className="kpi-label">Orders Found</div>
-              <div className="kpi-value">{kpi.total}</div>
-              <div className="kpi-icon">📦</div>
-            </div>
-            <div className="kpi-card purple" style={{ flex: 1 }}>
-              <div className="kpi-label">Revenue Sum</div>
-              <div className="kpi-value">Rs {Math.round(kpi.sum).toLocaleString()}</div>
-              <div className="kpi-icon">💰</div>
-            </div>
-            <div className="kpi-card green" style={{ flex: 1 }}>
-              <div className="kpi-label">Delivery Rate</div>
-              <div className="kpi-value">{deliveryRate}%</div>
-              <div className="kpi-icon">🎯</div>
-            </div>
-            {missingCostCount > 0 && (
-              <div
-                className="kpi-card red"
-                style={{ flex: 1, cursor: 'pointer', border: '2px solid var(--red)' }}
-                onClick={() => setStatus('[MISSING COST]')}
-              >
-                <div className="kpi-label">Missing Cost</div>
-                <div className="kpi-value">{missingCostCount}</div>
-                <div className="kpi-icon">⚠️</div>
-              </div>
-            )}
-          </div>
-
-          {/* Aging / Backlog Bar */}
-          {showAgingBar && (
-            <div className="card" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-              <div style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)', fontSize: '0.6rem', fontWeight: 900, opacity: 0.3, letterSpacing: '0.1em' }}>BACKLOG</div>
-              <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-                {agingBuckets.map((bucket, idx) => {
-                  const count = agingCounts[bucket.label] || 0
-                  const isActive = activeAgingBucket === bucket.label
-                  let bColor = 'var(--green)'
-                  if (idx > agingBuckets.length / 2) bColor = 'var(--orange)'
-                  if (idx === agingBuckets.length - 1) bColor = 'var(--red)'
-                  return (
-                    <div
-                      key={bucket.label}
-                      onClick={() => setActiveAgingBucket(isActive ? null : bucket.label)}
-                      style={{
-                        flex: 1,
-                        padding: '4px 8px',
-                        background: isActive ? bColor : 'var(--bg-elevated)',
-                        border: `1px solid ${isActive ? bColor : 'var(--border)'}`,
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        textAlign: 'center',
-                      }}
-                    >
-                      <div style={{ fontSize: '0.65rem', fontWeight: 700, color: isActive ? '#000' : 'var(--text-muted)' }}>{bucket.label}</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 900, color: isActive ? '#000' : bColor }}>{count}</div>
-                    </div>
-                  )
-                })}
-              </div>
-              <button className="btn btn-secondary btn-sm" style={{ padding: '4px 6px' }} onClick={() => setShowAgingConfig(true)}>⚙️</button>
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── KPI & Aging Row (delegated to CommandCenterStats) ────────────── */}
+      <CommandCenterStats
+        showKPIs={showKPIs}
+        showAgingBar={showAgingBar}
+        kpi={kpi}
+        deliveryRate={deliveryRate}
+        missingCostCount={missingCostCount}
+        activeAgingBucket={activeAgingBucket}
+        setActiveAgingBucket={setActiveAgingBucket}
+        agingBuckets={agingBuckets}
+        agingCounts={agingCounts}
+        setStatus={setStatus}
+        setShowAgingConfig={setShowAgingConfig}
+      />
 
       {/* ── Sub-Header Action Buttons ────────────────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>

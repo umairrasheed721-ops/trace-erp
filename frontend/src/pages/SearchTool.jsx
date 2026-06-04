@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
-import OrderTable from '../components/OrderTable'
+import CommandCenterTable from '../components/CommandCenter/Layout/CommandCenterTable'
 import BulkActions from '../components/BulkActions'
 import EditOrderModal from '../components/EditOrderModal'
 import CustomerHistoryModal from '../components/CustomerHistoryModal'
@@ -1805,7 +1805,7 @@ export default function SearchTool() {
         </div>
       )}
 
-      <OrderTable
+      <CommandCenterTable
         loading={loading}
         filteredOrders={filteredOrders}
         allOrders={allOrders}
