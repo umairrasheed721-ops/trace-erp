@@ -1119,6 +1119,8 @@ export default function SearchTool() {
     const signal = controller.signal;
     
     let fetchTimeoutId;
+    let requestTimeoutId;
+    let isRequestTimeout = false;
 
     const performFetch = () => {
       const queryStatus = status === 'All Statuses' ? '' : status
@@ -1141,8 +1143,35 @@ export default function SearchTool() {
       }
       const sCol = backendSortMap[sortKey] || 'created_timestamp'
 
-      fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`, { signal })
-        .then(r => r.json())
+      const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`;
+      
+      console.log('📡 [SearchTool] Sending fetch request:', {
+        url,
+        params: {
+          store_id: activeStoreId,
+          limit,
+          page,
+          status: queryStatus,
+          search: kw,
+          start_date: startDate,
+          end_date: endDate,
+          sort: sCol,
+          sort_dir: sortDir,
+          colFilters: debouncedColFilters
+        }
+      });
+
+      // Strict 5-second fetch timeout
+      requestTimeoutId = setTimeout(() => {
+        isRequestTimeout = true;
+        controller.abort();
+      }, 5000);
+
+      fetch(url, { signal })
+        .then(r => {
+          clearTimeout(requestTimeoutId);
+          return r.json();
+        })
         .then(data => { 
           setAllOrders(data.orders || []); 
           setTotalCount(data.total || 0);
@@ -1150,8 +1179,16 @@ export default function SearchTool() {
           setLoading(false) 
         })
         .catch((err) => { 
-          if (err.name === 'AbortError') return;
-          addToast('Failed to load orders', 'error'); setLoading(false) 
+          clearTimeout(requestTimeoutId);
+          if (err.name === 'AbortError') {
+            if (isRequestTimeout) {
+              addToast('Error: Request Timed Out', 'error');
+              setLoading(false);
+            }
+            return;
+          }
+          addToast('Failed to load orders', 'error'); 
+          setLoading(false);
         })
     };
 
@@ -1166,6 +1203,7 @@ export default function SearchTool() {
       
     return () => {
       if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
+      if (requestTimeoutId) clearTimeout(requestTimeoutId);
       controller.abort();
     };
   }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])

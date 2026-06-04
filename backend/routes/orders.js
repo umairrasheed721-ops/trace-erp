@@ -88,14 +88,31 @@ function getOrderFilters(req) {
           
           if (clause) {
             whereClauses.push(isNegated ? `NOT (${clause})` : clause);
-            queryParams.push(`%${value}%`);
-            if (target === 'ref') queryParams.push(`%${value}%`);
+            if (target === 'phone') {
+              const digits = value.replace(/\D/g, '');
+              const cleanVal = digits.length >= 10 ? digits.slice(-10) : digits;
+              queryParams.push(`%${cleanVal}%`);
+            } else if (target === 'ref') {
+              queryParams.push(`%${value}%`, `%${value}%`);
+            } else {
+              queryParams.push(`%${value}%`);
+            }
           }
         } else {
           clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ?)';
           whereClauses.push(isNegated ? `NOT (${clause})` : clause);
           const searchVal = `%${actualToken}%`;
-          queryParams.push(searchVal, searchVal, searchVal, searchVal, searchVal, searchVal, searchVal);
+          
+          let phoneSearchVal = searchVal;
+          if (/^\+?\d+$/.test(actualToken) || (actualToken.startsWith('+') && /^\d+$/.test(actualToken.slice(1)))) {
+            const digits = actualToken.replace(/\D/g, '');
+            if (digits.length >= 10) {
+              phoneSearchVal = `%${digits.slice(-10)}%`;
+            } else {
+              phoneSearchVal = `%${digits}%`;
+            }
+          }
+          queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, searchVal, searchVal);
         }
       });
     }
@@ -109,7 +126,15 @@ function getOrderFilters(req) {
       if (terms.length > 0) {
         const orClauses = terms.map(() => `LOWER(o.${field}) LIKE ?`).join(' OR ');
         whereClauses.push(`(${orClauses})`);
-        terms.forEach(t => queryParams.push(`%${t}%`));
+        terms.forEach(t => {
+          if (field === 'phone') {
+            const digits = t.replace(/\D/g, '');
+            const cleanVal = digits.length >= 10 ? digits.slice(-10) : digits;
+            queryParams.push(`%${cleanVal}%`);
+          } else {
+            queryParams.push(`%${t}%`);
+          }
+        });
       }
     }
   });
