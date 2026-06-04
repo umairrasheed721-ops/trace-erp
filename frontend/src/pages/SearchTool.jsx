@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
-import SearchFilters from '../components/SearchFilters'
 import OrderTable from '../components/OrderTable'
 import BulkActions from '../components/BulkActions'
 import EditOrderModal from '../components/EditOrderModal'
@@ -13,7 +12,8 @@ import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from 
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
-import SyncDashboard from '../components/CommandCenter/SyncDashboard'
+import CommandCenterHeader from '../components/CommandCenter/Layout/CommandCenterHeader'
+import CommandCenterFilters from '../components/CommandCenter/Layout/CommandCenterFilters'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -1695,22 +1695,12 @@ export default function SearchTool() {
     <div className={compactMode ? 'ultra-compact' : ''}>
       <ApiStatusBanner />
 
-      {/* Main Page Header */}
+      {/* Main Page Header + Filters */}
       {!isFocusMode && (
         <div className="sticky-controls">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compactMode ? 10 : 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h2 style={{ margin: 0, fontSize: compactMode ? '1.1rem' : '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
-                🔍 Command Center
-                <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'var(--brand-glow)', color: 'var(--brand)', borderRadius: '12px', border: '1px solid var(--brand)', letterSpacing: '0.05em' }}>v1.8.0: SKU & TOOLTIP LIVE</span>
-              </h2>
-              {!compactMode && <p style={{ margin: '4px 0 0', opacity: 0.6 }}>Advanced search, filter, and logistics management</p>}
-            </div>
-          </div>
+          <CommandCenterHeader compactMode={compactMode} />
 
-          <SyncDashboard />
-
-          <SearchFilters
+          <CommandCenterFilters
             preset={preset} setPreset={setPreset}
             customStart={customStart} setCustomStart={setCustomStart}
             customEnd={customEnd} setCustomEnd={setCustomEnd}
