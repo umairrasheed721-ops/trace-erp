@@ -152,8 +152,7 @@ router.get('/history-search', (req, res) => {
       FROM orders o 
       JOIN stores s ON o.store_id = s.id 
       WHERE ${whereClauses.join(' AND ')}
-      ORDER BY o.order_date DESC 
-      LIMIT 100
+      ORDER BY o.order_date DESC
     `).all(...params);
     res.json({ orders });
   } catch (err) { res.status(500).json({ error: err.message }); }

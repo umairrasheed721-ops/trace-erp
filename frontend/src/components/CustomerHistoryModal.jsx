@@ -21,6 +21,7 @@ export default function CustomerHistoryModal({ phone, email, name, onClose }) {
         .then(data => {
           console.log('CustomerHistoryModal API returned data:', data)
           const list = data && (Array.isArray(data) ? data : (data.orders || [])) || []
+          console.log('CustomerHistoryModal total fetched orders length:', list.length)
           setOrders(list)
           setLoading(false)
         })
@@ -52,16 +53,30 @@ export default function CustomerHistoryModal({ phone, email, name, onClose }) {
   let totalValue = 0
   const statusBreakdown = {}
   orders.forEach(o => {
-    const s = o.delivery_status || 'Pending'
+    let s = o.delivery_status || 'Pending'
+    const lowerS = s.toLowerCase().trim()
+    if (lowerS.includes('cancel') || lowerS.includes('void')) {
+      s = 'Cancelled'
+    } else if (lowerS.includes('return')) {
+      s = 'Returned'
+    } else if (lowerS.includes('deliver')) {
+      s = 'Delivered'
+    } else if (lowerS.includes('book')) {
+      s = 'Booked'
+    } else if (lowerS.includes('confirm')) {
+      s = 'Confirmed'
+    } else if (lowerS.includes('pend')) {
+      s = 'Pending'
+    } else {
+      s = s.charAt(0).toUpperCase() + s.slice(1)
+    }
+
     statusBreakdown[s] = (statusBreakdown[s] || 0) + 1
     totalValue += parseFloat(o.price) || 0
   })
 
-  const delivered = orders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered')).length
-  const returned = orders.filter(o => {
-    const s = (o.delivery_status||'').toLowerCase()
-    return s.includes('return') || s.includes('cancel')
-  }).length
+  const delivered = orders.filter(o => (o.delivery_status || '').toLowerCase().includes('deliver')).length
+  const returned = orders.filter(o => (o.delivery_status || '').toLowerCase().includes('return')).length
   const deliveryRate = orders.length > 0 ? ((delivered / orders.length) * 100).toFixed(0) : 0
 
   return (
