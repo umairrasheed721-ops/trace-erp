@@ -163,7 +163,7 @@ const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose 
 const OrderRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
-  handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getPhoneOrderCount,
+  handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getCustomerOrderCount,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
   activeShopDomain, setTooltipTriggerEl
@@ -324,11 +324,28 @@ const OrderRow = React.memo(({
                         {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
                       </td>
                     )
-                    if (col.id === 'customer_name') return (
-                      <td key={col.id} title={o.customer_name}>
-                        {formatCustomerName(o.customer_name)}
-                      </td>
-                    )
+                    if (col.id === 'customer_name') {
+                      const hasIdentifier = o.phone || o.email;
+                      return (
+                        <td 
+                          key={col.id} 
+                          title={o.customer_name}
+                          onClick={hasIdentifier ? (e) => {
+                            e.stopPropagation();
+                            setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
+                          } : undefined}
+                          style={hasIdentifier ? { 
+                            cursor: 'pointer', 
+                            color: 'var(--brand)', 
+                            fontWeight: 600,
+                            textDecoration: 'underline',
+                            textDecorationStyle: 'dotted'
+                          } : {}}
+                        >
+                          {formatCustomerName(o.customer_name)}
+                        </td>
+                      )
+                    }
                     if (col.id === 'phone') return (
                       <td key={col.id} style={{ fontSize: '0.75rem' }}>
                         {o.phone ? (
@@ -421,10 +438,10 @@ const OrderRow = React.memo(({
 
                             <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
                             {(() => {
-                              const count = getPhoneOrderCount(o.phone)
+                              const count = getCustomerOrderCount(o.phone, o.email)
                               return count > 0 ? (
                                 <span
-                                  onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone(o.phone) }}
+                                  onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name }) }}
                                   style={{
                                     background: 'var(--green-dim)',
                                     color: 'var(--green)',
@@ -729,9 +746,15 @@ export default function OrderTable({
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   const [tooltipTriggerEl, setTooltipTriggerEl] = useState(null)
 
-  // Memoize derived arrays/functions to avoid new refs on every render
   const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
-  const getPhoneOrderCount = useCallback((phone) => allOrders.filter(o => o.phone === phone).length, [allOrders])
+  const getCustomerOrderCount = useCallback((phone, email) => {
+    if (!phone && !email) return 0;
+    return allOrders.filter(o => {
+      const phoneMatch = phone && o.phone && o.phone === phone;
+      const emailMatch = email && o.email && o.email === email;
+      return phoneMatch || emailMatch;
+    }).length;
+  }, [allOrders])
 
   const totalTableWidth = useMemo(() => {
     const checkboxWidth = 40;
@@ -953,7 +976,7 @@ export default function OrderTable({
                   handleConfirmOrder={handleConfirmOrder} handleRevertConfirm={handleRevertConfirm}
                   handleBookPostEx={handleBookPostEx} handleCancelBooking={handleCancelBooking} handleBookInstaworld={handleBookInstaworld}
                   formatCustomerName={formatCustomerName} waTemplates={waTemplates} allOrdersCount={allOrders.length}
-                  getPhoneOrderCount={getPhoneOrderCount}
+                  getCustomerOrderCount={getCustomerOrderCount}
                   setCustomerHistoryPhone={setCustomerHistoryPhone} updateOrderField={updateOrderField}
                   canSeeFinancials={canSeeFinancials} activeTooltipOrderId={activeTooltipOrderId}
                   setActiveTooltipOrderId={setActiveTooltipOrderId} fetchBreakdown={fetchBreakdown}

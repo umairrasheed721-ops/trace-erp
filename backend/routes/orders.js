@@ -122,17 +122,36 @@ router.get('/history-search', (req, res) => {
   if (!phone && !email && !name) return res.status(400).json({ error: 'Search term required' });
 
   try {
-    let where = [];
+    let whereClauses = [];
     let params = [];
-    if (phone) { where.push('o.phone LIKE ?'); params.push(`%${phone}%`); }
-    if (email) { where.push('o.email LIKE ?'); params.push(`%${email}%`); }
-    if (name) { where.push('o.customer_name LIKE ?'); params.push(`%${name}%`); }
+
+    // Dual-Key Lookup logic (phone OR email)
+    let dualKeys = [];
+    if (phone && phone.trim() && phone.trim() !== 'null' && phone.trim() !== 'undefined') {
+      dualKeys.push('o.phone = ?');
+      params.push(phone.trim());
+    }
+    if (email && email.trim() && email.trim() !== 'null' && email.trim() !== 'undefined') {
+      dualKeys.push('o.email = ?');
+      params.push(email.trim());
+    }
+
+    if (dualKeys.length > 0) {
+      whereClauses.push(`(${dualKeys.join(' OR ')})`);
+    } else if (name && name.trim()) {
+      whereClauses.push('o.customer_name LIKE ?');
+      params.push(`%${name.trim()}%`);
+    }
+
+    if (whereClauses.length === 0) {
+      return res.status(400).json({ error: 'Valid search term required' });
+    }
 
     const orders = db.prepare(`
       SELECT o.*, s.shop_domain 
       FROM orders o 
       JOIN stores s ON o.store_id = s.id 
-      WHERE ${where.join(' OR ')}
+      WHERE ${whereClauses.join(' AND ')}
       ORDER BY o.order_date DESC 
       LIMIT 100
     `).all(...params);

@@ -1522,7 +1522,9 @@ export default function SearchTool() {
 
       {customerHistoryPhone && (
         <CustomerHistoryModal
-          phone={customerHistoryPhone}
+          phone={customerHistoryPhone.phone}
+          email={customerHistoryPhone.email}
+          name={customerHistoryPhone.name}
           onClose={() => setCustomerHistoryPhone(null)}
         />
       )}

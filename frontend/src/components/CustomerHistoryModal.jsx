@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 
-export default function CustomerHistoryModal({ phone, onClose }) {
+export default function CustomerHistoryModal({ phone, email, name, onClose }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (phone) {
-      fetch(`/api/orders/history-search?phone=${encodeURIComponent(phone)}`)
+    if (phone || email || name) {
+      const params = new URLSearchParams()
+      if (phone) params.append('phone', phone)
+      if (email) params.append('email', email)
+      if (name) params.append('name', name)
+
+      fetch(`/api/orders/history-search?${params.toString()}`)
         .then(res => res.json())
         .then(data => {
-          setOrders(Array.isArray(data) ? data : [])
+          const list = Array.isArray(data) ? data : (data.orders || [])
+          setOrders(list)
           setLoading(false)
         })
         .catch(err => {
@@ -18,7 +24,7 @@ export default function CustomerHistoryModal({ phone, onClose }) {
           setLoading(false)
         })
     }
-  }, [phone])
+  }, [phone, email, name])
 
   if (loading) {
     return (
@@ -34,7 +40,9 @@ export default function CustomerHistoryModal({ phone, onClose }) {
     )
   }
 
-  const customerName = orders[0]?.customer_name || 'Unknown Customer'
+  const customerName = orders[0]?.customer_name || name || 'Unknown Customer'
+  const displayPhone = phone || orders.find(o => o.phone)?.phone || ''
+  const displayEmail = email || orders.find(o => o.email)?.email || ''
 
   let totalValue = 0
   const statusBreakdown = {}
@@ -61,10 +69,17 @@ export default function CustomerHistoryModal({ phone, onClose }) {
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)' }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>👤 {customerName}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <a href={`tel:${phone}`} style={{ color: 'var(--blue)', textDecoration: 'none' }} title="Call">📞</a>
-              <a href={`https://wa.me/${phone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }} title="WhatsApp">💬</a>
-              <span style={{ opacity: 0.7 }}>{phone}</span>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {displayPhone && (
+                <>
+                  <a href={`tel:${displayPhone}`} style={{ color: 'var(--blue)', textDecoration: 'none' }} title="Call">📞</a>
+                  <a href={`https://wa.me/${displayPhone.replace(/\D/g,'').replace(/^0/,'92')}`} target="_blank" rel="noreferrer" style={{ color: 'var(--green)', textDecoration: 'none' }} title="WhatsApp">💬</a>
+                  <span style={{ opacity: 0.7 }}>{displayPhone}</span>
+                </>
+              )}
+              {displayEmail && (
+                <span style={{ opacity: 0.7, marginLeft: displayPhone ? 8 : 0 }}>✉️ {displayEmail}</span>
+              )}
             </div>
           </div>
           <button className="btn btn-secondary btn-sm" onClick={onClose}>✕ Close</button>
@@ -102,7 +117,7 @@ export default function CustomerHistoryModal({ phone, onClose }) {
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {orders.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No orders found for this number.</div>
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No orders found for this customer.</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
