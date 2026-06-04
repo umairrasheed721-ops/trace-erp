@@ -3,10 +3,24 @@ const router = express.Router();
 const db = require('../db');
 
 router.get('/daily', (req, res) => {
-  const { store_id } = req.query;
+  const { store_id, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id is required' });
 
   try {
+    let whereClauses = ['store_id = ?'];
+    const params = [Number(store_id)];
+
+    if (start_date) {
+      whereClauses.push('order_date >= ?');
+      params.push(start_date);
+    }
+    if (end_date) {
+      whereClauses.push('order_date <= ?');
+      params.push(end_date);
+    }
+
+    const whereString = whereClauses.join(' AND ');
+
     // 1. Get all orders and their metrics grouped by day
     const ordersQuery = `
       SELECT 
@@ -29,37 +43,55 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Returned' THEN 1 ELSE 0 END) as missing_parcel,
         SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN (tracking_number IS NULL OR tracking_number = '') AND delivery_status != 'Cancelled' THEN 1 ELSE 0 END) as without_tracking_id,
-        SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status = 'Pending' OR payment_status IS NULL) THEN 1 ELSE 0 END) as delivered_payment_pending,
+        SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN 1 ELSE 0 END) as delivered_payment_pending,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) THEN 1 ELSE 0 END) as cost_gaps,
-        SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status != 'Paid' AND payment_status != 'Payment Posted' OR payment_status IS NULL) THEN price ELSE 0 END) as unpaid_amount,
+        SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN price ELSE 0 END) as unpaid_amount,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status != 'Paid' AND payment_status != 'Payment Posted' OR payment_status IS NULL) AND (julianday('now', '+5 hours') - julianday(COALESCE(status_date, order_date))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count
       FROM orders
-      WHERE store_id = ?
+      WHERE ${whereString}
       GROUP BY substr(order_date, 1, 10)
     `;
-    const dailyOrders = db.prepare(ordersQuery).all(store_id);
+    const dailyOrders = db.prepare(ordersQuery).all(...params);
 
     // 2. Get Fake Returns from Watchdog
-    const fakeReturnsQuery = `
+    let fakeReturnsQuery = `
       SELECT 
         substr(o.order_date, 1, 10) as date_string,
         COUNT(w.id) as fake_returns
       FROM watchdog_results w
       JOIN orders o ON w.tracking_number = o.tracking_number AND w.store_id = o.store_id
       WHERE w.store_id = ? AND w.verdict LIKE '%FAKE%'
-      GROUP BY substr(o.order_date, 1, 10)
     `;
-    const fakeReturns = db.prepare(fakeReturnsQuery).all(store_id);
+    const fakeParams = [Number(store_id)];
+    if (start_date) {
+      fakeReturnsQuery += ' AND o.order_date >= ?';
+      fakeParams.push(start_date);
+    }
+    if (end_date) {
+      fakeReturnsQuery += ' AND o.order_date <= ?';
+      fakeParams.push(end_date);
+    }
+    fakeReturnsQuery += ' GROUP BY substr(o.order_date, 1, 10)';
+    const fakeReturns = db.prepare(fakeReturnsQuery).all(...fakeParams);
 
     // 3. Get manual metrics
-    const metricsQuery = `
+    let metricsQuery = `
       SELECT date_string, marketing_spend, tiktok_marketing, actual_exp, diff_correction
       FROM daily_metrics
       WHERE store_id = ?
     `;
-    const metrics = db.prepare(metricsQuery).all(store_id);
+    const metricsParams = [Number(store_id)];
+    if (start_date) {
+      metricsQuery += ' AND date_string >= ?';
+      metricsParams.push(start_date);
+    }
+    if (end_date) {
+      metricsQuery += ' AND date_string <= ?';
+      metricsParams.push(end_date);
+    }
+    const metrics = db.prepare(metricsQuery).all(...metricsParams);
 
     // Map the supplemental data
     const metricsMap = {};
