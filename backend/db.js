@@ -618,6 +618,10 @@ try { db.prepare("ALTER TABLE sync_audit ADD COLUMN store_id INTEGER").run(); } 
 try { db.prepare("ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'").run(); } catch (e) { }
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id)").run(); } catch (e) { }
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level)").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_orders_store_id ON orders(store_id)").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(phone)").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)").run(); } catch (e) { }
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date)").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE stores ADD COLUMN meta_access_token TEXT").run(); } catch (e) { }
 try { db.prepare("ALTER TABLE stores ADD COLUMN instaworld_key_3 TEXT").run(); } catch (e) { }

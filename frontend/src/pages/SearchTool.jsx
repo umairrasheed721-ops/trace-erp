@@ -11,6 +11,7 @@ import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } fr
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from '../components/OrderCells'
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
@@ -925,6 +926,12 @@ export default function SearchTool() {
     })
   }
 
+  /**
+   * Resets all search filters in the Command Center.
+   * Clears custom dates, sets date preset to 'All Time', resets delivery status,
+   * empties column-specific search inputs, and resets selected aging backlog buckets.
+   * This provides a clean slate before executing search transitions.
+   */
   const clearAllFilters = useCallback(() => {
     setPreset('All Time');
     setStatus('All Statuses');
@@ -936,6 +943,14 @@ export default function SearchTool() {
     setActiveAgingBucket(null);
   }, []);
 
+  /**
+   * Triggers a clean programmatic search sequence for a customer's orders.
+   * Sequence flow: setLoading(true) -> clearAllFilters() -> applyKeyword(newKeyword).
+   * It also toggles isProgrammaticRef.current to true to apply a 300ms debounce 
+   * to the subsequent fetch operation, preventing overlapping queries.
+   *
+   * @param {string} newKeyword - Phone number or email of the customer.
+   */
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
     setLoading(true);
     clearAllFilters();
@@ -1081,7 +1096,12 @@ export default function SearchTool() {
 
   // KPIs (defined below via useMemo)
 
-  // Load all orders for the active store (we filter client-side for instant search)
+  /**
+   * Main side-effect hook to fetch orders from the database.
+   * Handles local versus server-side sorting modes, cancels past requests with AbortController,
+   * and dynamically debounces execution by 300ms if isProgrammaticRef.current is true.
+   * This debouncing batches sequential filter modifications to prevent SQLite transaction congestion.
+   */
   useEffect(() => {
     if (!activeStoreId) return
 
@@ -1561,13 +1581,15 @@ export default function SearchTool() {
       />
 
       {customerHistoryPhone && (
-        <CustomerHistoryModal
-          phone={customerHistoryPhone.phone}
-          email={customerHistoryPhone.email}
-          name={customerHistoryPhone.name}
-          onClose={() => setCustomerHistoryPhone(null)}
-          onOpenAllOrders={triggerCustomerOrdersSearch}
-        />
+        <ErrorBoundary>
+          <CustomerHistoryModal
+            phone={customerHistoryPhone.phone}
+            email={customerHistoryPhone.email}
+            name={customerHistoryPhone.name}
+            onClose={() => setCustomerHistoryPhone(null)}
+            onOpenAllOrders={triggerCustomerOrdersSearch}
+          />
+        </ErrorBoundary>
       )}
 
       <SaveViewModal
