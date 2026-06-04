@@ -14,6 +14,15 @@ function formatNumber(value) {
   return (value || 0).toFixed(2);
 }
 
+function getColMinWidth(col) {
+  if (col.id === 'date') return 120;
+  if (col.group === 'income') return 120;
+  if (col.group === 'expense') return 115;
+  if (col.group === 'profit') return 120;
+  if (col.group === 'kpi') return 110;
+  return 100;
+}
+
 export default function Reports() {
   const { activeStoreId } = useApp();
   const navigate = useNavigate();
@@ -543,8 +552,37 @@ export default function Reports() {
               </tr>
               <tr>
                 {visibleCols.map(col => (
-                  <th key={col.id} className={col.id === 'date' ? 'sticky-col' : ''} onClick={() => requestSort(col.id)}>
-                    {col.label} {sortConfig.key === col.id ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  <th 
+                    key={col.id} 
+                    className={col.id === 'date' ? 'sticky-col' : ''} 
+                    onClick={() => requestSort(col.id)}
+                    style={{
+                      minWidth: getColMinWidth(col),
+                    }}
+                  >
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: col.id === 'date' ? 'flex-start' : 'flex-end', 
+                      gap: 4,
+                      width: '100%'
+                    }}>
+                      <span style={{ 
+                        flexGrow: 1, 
+                        minWidth: 0, 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        textAlign: col.id === 'date' ? 'left' : 'right'
+                      }}>
+                        {col.label}
+                      </span>
+                      {sortConfig.key === col.id && (
+                        <span style={{ flexShrink: 0, marginLeft: 2 }}>
+                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
                   </th>
                 ))}
               </tr>
