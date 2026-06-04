@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import ErrorBoundary from '../ErrorBoundary';
+import { useApp } from '../../context/AppContext';
 
 function SyncDashboard() {
+  const { addToast, token } = useApp();
   const [metrics, setMetrics] = useState({ pending: 0, resolved: 0, failed: 0 });
   const [orphanedList, setOrphanedList] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
   const [message, setMessage] = useState('');
   const [collapsed, setCollapsed] = useState(true);
 
@@ -14,13 +16,19 @@ function SyncDashboard() {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/sync/reconciliation/stats`);
+      const res = await fetch(`${apiUrl}/api/sync/reconciliation/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token || localStorage.getItem('trace_token')}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
           setMetrics(data.metrics);
           setOrphanedList(data.orphanedList);
         }
+      } else {
+        console.error(`Failed to fetch stats: HTTP ${res.status}`);
       }
     } catch (err) {
       console.error('Failed to fetch reconciliation stats:', err);
@@ -30,31 +38,44 @@ function SyncDashboard() {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, []);
+    if (token || localStorage.getItem('trace_token')) {
+      fetchStats();
+    }
+  }, [token]);
 
   const triggerReconciliation = async () => {
-    setRunning(true);
+    setIsReconciling(true);
     setMessage('Reconciliation running...');
     try {
       const res = await fetch(`${apiUrl}/api/sync/reconciliation/run`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token || localStorage.getItem('trace_token')}`
+        }
       });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setMessage(`Success: Resolved: ${data.results.totalResolved}, Failed: ${data.results.totalFailed}`);
+          const successMsg = `Reconciliation finished! Resolved: ${data.results?.totalResolved || 0}, Failed: ${data.results?.totalFailed || 0}`;
+          setMessage(`Success: Resolved: ${data.results?.totalResolved || 0}, Failed: ${data.results?.totalFailed || 0}`);
+          addToast(successMsg, 'success');
           fetchStats();
         } else {
-          setMessage(`Failed: ${data.message || 'Unknown error'}`);
+          const errMsg = `Reconciliation failed: ${data.message || 'Unknown error'}`;
+          setMessage(errMsg);
+          addToast(errMsg, 'error');
         }
       } else {
-        setMessage(`HTTP Error ${res.status}`);
+        const errMsg = `Reconciliation failed: HTTP ${res.status}`;
+        setMessage(errMsg);
+        addToast(errMsg, 'error');
       }
     } catch (err) {
-      setMessage(`Network Error: ${err.message}`);
+      const errMsg = `Network Error: ${err.message}`;
+      setMessage(errMsg);
+      addToast(errMsg, 'error');
     } finally {
-      setRunning(false);
+      setIsReconciling(false);
       setTimeout(() => setMessage(''), 10000);
     }
   };
@@ -109,7 +130,7 @@ function SyncDashboard() {
               <button
                 className="btn btn-primary"
                 onClick={triggerReconciliation}
-                disabled={running}
+                disabled={isReconciling}
                 style={{
                   padding: '8px 16px',
                   fontSize: '0.8rem',
@@ -121,14 +142,14 @@ function SyncDashboard() {
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',
-                  cursor: running ? 'not-allowed' : 'pointer',
-                  opacity: running ? 0.7 : 1
+                  cursor: isReconciling ? 'not-allowed' : 'pointer',
+                  opacity: isReconciling ? 0.7 : 1
                 }}
               >
-                {running ? (
+                {isReconciling ? (
                   <>
                     <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '12px', height: '12px', border: '2px solid #fff', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }}></span>
-                    Reconciling...
+                    Running...
                   </>
                 ) : 'Run Reconciliation Now'}
               </button>
