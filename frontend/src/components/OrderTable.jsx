@@ -382,7 +382,7 @@ const OrderRow = React.memo(({
                       <td key={col.id} style={{ fontSize: '0.75rem' }}>
                         {o.phone ? (
                           <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginRight: '6px', flexShrink: 0, minWidth: '42px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                               <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
                               
                               {/* Main Chat Bubble button - redirects to portal */}

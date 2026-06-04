@@ -34,6 +34,9 @@ export default function AppProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('trace_token')
     localStorage.removeItem('trace_user')
+    try {
+      sessionStorage.removeItem('command_center_filters')
+    } catch (_) {}
     setToken(null)
     setUser(null)
     addToast('Logged out successfully', 'info')
