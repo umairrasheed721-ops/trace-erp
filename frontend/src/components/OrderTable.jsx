@@ -9,9 +9,9 @@ import { TABLE_CONSTANTS } from '../config/uiConstants'
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
   ref_number: 160,
-  order_date: 100,
+  order_date: 125,
   customer_name: 140,
-  phone: 110,
+  phone: 150,
   address: 240,
   city: 90,
   items: 220,
@@ -382,93 +382,95 @@ const OrderRow = React.memo(({
                       <td key={col.id} style={{ fontSize: '0.75rem' }}>
                         {o.phone ? (
                           <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                            <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', flexShrink: 0 }} title="Call via SIM">📞</a>
-                            
-                            {/* Main Chat Bubble button - redirects to portal */}
-                            {(() => {
-                              const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
-                              return (
-                                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate('/whatsapp-portal', { state: { selectPhone: o.phone } });
-                                    }}
-                                    style={{
-                                      background: 'none',
-                                      border: 'none',
-                                      padding: 0,
-                                      cursor: 'pointer',
-                                      fontSize: '0.95rem',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      position: 'relative'
-                                    }}
-                                    title="Open Chat in Portal"
-                                  >
-                                    💬
-                                    {isUnread && <span className="wa-unread-badge"></span>}
-                                  </button>
-                                </div>
-                              );
-                            })()}
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginRight: '6px', flexShrink: 0, minWidth: '42px' }}>
+                              <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
+                              
+                              {/* Main Chat Bubble button - redirects to portal */}
+                              {(() => {
+                                const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
+                                return (
+                                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate('/whatsapp-portal', { state: { selectPhone: o.phone } });
+                                      }}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: 0,
+                                        cursor: 'pointer',
+                                        fontSize: '0.95rem',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        position: 'relative'
+                                      }}
+                                      title="Open Chat in Portal"
+                                    >
+                                      💬
+                                      {isUnread && <span className="wa-unread-badge"></span>}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
 
-                            {/* Template dropdown arrow selection */}
-                            <select 
-                              className="wa-template-select"
-                              style={{ 
-                                background: 'none', 
-                                border: 'none', 
-                                color: 'var(--text-muted)', 
-                                cursor: 'pointer', 
-                                fontSize: '0.65rem',
-                                padding: 0,
-                                width: '12px',
-                                marginLeft: '-4px'
-                              }}
-                              value=""
-                              onChange={(e) => {
-                                const templateId = e.target.value;
-                                if (!templateId) return;
-                                
-                                const template = waTemplates.find(t => t.id === parseInt(templateId));
-                                if (!template) return;
+                              {/* Template dropdown arrow selection */}
+                              <select 
+                                className="wa-template-select"
+                                style={{ 
+                                  background: 'none', 
+                                  border: 'none', 
+                                  color: 'var(--text-muted)', 
+                                  cursor: 'pointer', 
+                                  fontSize: '0.65rem',
+                                  padding: 0,
+                                  width: '12px',
+                                  marginLeft: '-2px'
+                                }}
+                                value=""
+                                onChange={(e) => {
+                                  const templateId = e.target.value;
+                                  if (!templateId) return;
+                                  
+                                  const template = waTemplates.find(t => t.id === parseInt(templateId));
+                                  if (!template) return;
 
-                                const name = formatCustomerName(o.customer_name);
-                                const orderId = o.ref_number || o.shopify_order_id;
-                                const price = Math.round(parseFloat(o.price)||0);
-                                const courier = o.courier || 'our courier';
-                                const tracking = o.tracking_number || '';
-                                
-                                let msg = template.content
-                                  .replace(/\[Name\]/g, name)
-                                  .replace(/\[OrderID\]/g, orderId)
-                                  .replace(/\[Price\]/g, price)
-                                  .replace(/\[Courier\]/g, courier)
-                                  .replace(/\[Tracking\]/g, tracking);
+                                  const name = formatCustomerName(o.customer_name);
+                                  const orderId = o.ref_number || o.shopify_order_id;
+                                  const price = Math.round(parseFloat(o.price)||0);
+                                  const courier = o.courier || 'our courier';
+                                  const tracking = o.tracking_number || '';
+                                  
+                                  let msg = template.content
+                                    .replace(/\[Name\]/g, name)
+                                    .replace(/\[OrderID\]/g, orderId)
+                                    .replace(/\[Price\]/g, price)
+                                    .replace(/\[Courier\]/g, courier)
+                                    .replace(/\[Tracking\]/g, tracking);
 
-                                // Auto-Link if confirmation token exists
-                                if (o.confirmation_token) {
-                                  const appUrl = window.location.origin;
-                                  const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-                                  msg = msg.replace(/\[Link\]/g, link);
-                                } else {
-                                  msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
-                                }
+                                  // Auto-Link if confirmation token exists
+                                  if (o.confirmation_token) {
+                                    const appUrl = window.location.origin;
+                                    const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+                                    msg = msg.replace(/\[Link\]/g, link);
+                                  } else {
+                                    msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+                                  }
 
-                                const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
-                                window.open(waLink, '_blank');
-                                e.target.value = ""; // Reset
-                              }}
-                            >
-                              <option value="" disabled>▼</option>
-                              {waTemplates.map(t => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                              ))}
-                            </select>
+                                  const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
+                                  window.open(waLink, '_blank');
+                                  e.target.value = ""; // Reset
+                                }}
+                              >
+                                <option value="" disabled>▼</option>
+                                {waTemplates.map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            </div>
 
-                            <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none' }}>{o.phone}</a>
+                            <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{o.phone}</a>
                             {(() => {
                               const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
                               return count > 1 ? (
