@@ -1526,6 +1526,11 @@ export default function SearchTool() {
           email={customerHistoryPhone.email}
           name={customerHistoryPhone.name}
           onClose={() => setCustomerHistoryPhone(null)}
+          setKeyword={setKeyword}
+          setPreset={setPreset}
+          setStatus={setStatus}
+          setColFilters={setColFilters}
+          setActiveAgingBucket={setActiveAgingBucket}
         />
       )}
 

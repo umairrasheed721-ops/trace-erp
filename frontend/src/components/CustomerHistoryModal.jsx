@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 
-export default function CustomerHistoryModal({ phone, email, name, onClose }) {
+export default function CustomerHistoryModal({ phone, email, name, onClose, setKeyword, setPreset, setStatus, setColFilters, setActiveAgingBucket }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -102,7 +102,27 @@ export default function CustomerHistoryModal({ phone, email, name, onClose }) {
               )}
             </div>
           </div>
-          <button className="btn btn-secondary btn-sm" onClick={onClose}>✕ Close</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {setKeyword && (phone || email) && (
+              <button 
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  const targetKeyword = (phone && phone !== 'null' && phone !== 'undefined') ? phone : (email && email !== 'null' && email !== 'undefined') ? email : '';
+                  if (targetKeyword) {
+                    if (setPreset) setPreset('All Time');
+                    if (setStatus) setStatus('All Statuses');
+                    if (setColFilters) setColFilters({ ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' });
+                    if (setActiveAgingBucket) setActiveAgingBucket(null);
+                    setKeyword(targetKeyword);
+                  }
+                  onClose();
+                }}
+              >
+                Open All Orders in Command Center
+              </button>
+            )}
+            <button className="btn btn-secondary btn-sm" onClick={onClose}>✕ Close</button>
+          </div>
         </div>
 
         <div style={{ padding: '14px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
