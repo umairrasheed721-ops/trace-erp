@@ -168,6 +168,8 @@ export default function SearchTool() {
   const searchInputRef = useRef(null)
   const lastFetchedUrlRef = useRef('')
   const lastRefreshRef = useRef(0)
+  const isClearingRef = useRef(false)
+  const isClearingStageRef = useRef(null)
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -947,6 +949,30 @@ export default function SearchTool() {
   }, []);
 
   /**
+   * Synchronously batches the clearing of filters and keywords,
+   * then triggers a final search fetch after a 50ms propagation delay.
+   */
+  const handleClear = useCallback(() => {
+    console.log('🧹 [SearchTool] handleClear execution started. isClearingRef.current =', isClearingRef.current);
+    if (loading && isClearingRef.current) {
+      console.log('🧹 [SearchTool] handleClear ignored: already clearing');
+      return;
+    }
+    isClearingRef.current = true;
+    isClearingStageRef.current = 'pending';
+
+    clearAllFilters();
+    setKeyword('');
+    addToast('Filters cleared', 'info');
+
+    setTimeout(() => {
+      console.log('🧹 [SearchTool] Clear sequence state propagated. Setting stage to fetch.');
+      isClearingStageRef.current = 'fetch';
+      runSearch();
+    }, 50);
+  }, [clearAllFilters, runSearch, addToast]);
+
+  /**
    * Triggers a programmatic search for a customer's orders using their phone or email.
    * To ensure the search input is properly synchronized and React receives the update
    * as an active input event, this function:
@@ -1137,15 +1163,33 @@ export default function SearchTool() {
       return; // Skip server fetch, useMemo will handle local re-sort
     }
 
+    // Skip trigger if clear sequence is pending
+    if (isClearingStageRef.current === 'pending') {
+      console.log('📡 [SearchTool] useEffect skipped: clear sequence is pending');
+      return;
+    }
+
+    // Prevent Redundant Fetch during active clear operation
+    const isClearingFetch = isClearingStageRef.current === 'fetch';
+    if (isClearingRef.current && !isClearingFetch) {
+      console.log('📡 [SearchTool] useEffect skipped: clear operation is active');
+      return;
+    }
+
+    if (isClearingFetch) {
+      isClearingStageRef.current = 'fetching';
+    }
+
     // Compile URL parameters to check for redundant requests
     const queryStatus = status === 'All Statuses' ? '' : status
-    const currentKeyword = isProgrammaticRef.current ? keyword : debouncedKeyword
+    const currentKeyword = (isProgrammaticRef.current || isClearingRef.current) ? keyword : debouncedKeyword
     const kw = currentKeyword ? currentKeyword.trim().replace(/^#/, '') : ''
     const dateRange = getDateRange(preset, customStart, customEnd)
     const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
     const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
 
-    const colFilterParams = Object.entries(debouncedColFilters)
+    const activeColFilters = isClearingRef.current ? colFilters : debouncedColFilters;
+    const colFilterParams = Object.entries(activeColFilters)
       .filter(([_, v]) => v && v.trim())
       .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
       .join('')
@@ -1194,7 +1238,8 @@ export default function SearchTool() {
       const fetchStartDate = fetchDateRange?.start ? formatYMD(fetchDateRange.start) : ''
       const fetchEndDate = fetchDateRange?.end ? formatYMD(fetchDateRange.end) : ''
 
-      const fetchColFilterParams = Object.entries(debouncedColFilters)
+      const fetchActiveColFilters = isClearingRef.current ? colFilters : debouncedColFilters;
+      const fetchColFilterParams = Object.entries(fetchActiveColFilters)
         .filter(([_, v]) => v && v.trim())
         .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
         .join('')
@@ -1210,7 +1255,7 @@ export default function SearchTool() {
 
       const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(fetchQueryStatus||'')}&search=${encodeURIComponent(fetchKw)}&start_date=${fetchStartDate}&end_date=${fetchEndDate}&sort=${fetchSCol}&sort_dir=${sortDir}${fetchColFilterParams}&t=${Date.now()}`;
       
-      console.log('📡 [SearchTool] performFetch executing query for keyword:', fetchKw);
+      console.log('📡 [SearchTool] performFetch executing query. wasProgrammatic:', wasProgrammatic, 'isClearing:', isClearingRef.current, 'keyword:', fetchKw);
       console.log('📡 [SearchTool] Sending fetch request:', {
         url,
         params: {
@@ -1223,7 +1268,7 @@ export default function SearchTool() {
           end_date: fetchEndDate,
           sort: fetchSCol,
           sort_dir: sortDir,
-          colFilters: debouncedColFilters
+          colFilters: fetchActiveColFilters
         }
       });
 
@@ -1242,10 +1287,20 @@ export default function SearchTool() {
           setAllOrders(data.orders || []); 
           setTotalCount(data.total || 0);
           setDebugWhere(data.debugWhere || '');
+          if (isClearingRef.current) {
+            console.log('🧹 [SearchTool] Clear fetch complete. Resetting clear flags.');
+            isClearingRef.current = false;
+            isClearingStageRef.current = null;
+          }
           setLoading(false) 
         })
         .catch((err) => { 
           clearTimeout(requestTimeoutId);
+          if (isClearingRef.current) {
+            console.log('🧹 [SearchTool] Clear fetch complete with error. Resetting clear flags.');
+            isClearingRef.current = false;
+            isClearingStageRef.current = null;
+          }
           if (err.name === 'AbortError') {
             if (isRequestTimeout) {
               addToast('Error: Request Timed Out', 'error');
@@ -1258,7 +1313,10 @@ export default function SearchTool() {
         })
     };
 
-    if (isProgrammaticRef.current) {
+    const shouldFetchInstantly = isClearingFetch;
+    if (shouldFetchInstantly) {
+      performFetch(true);
+    } else if (isProgrammaticRef.current) {
       fetchTimeoutId = setTimeout(() => {
         isProgrammaticRef.current = false;
         performFetch(true);
@@ -1272,7 +1330,7 @@ export default function SearchTool() {
       if (requestTimeoutId) clearTimeout(requestTimeoutId);
       controller.abort();
     };
-  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])
+  }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger, keyword, colFilters])
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -1567,6 +1625,7 @@ export default function SearchTool() {
             setSortMode={setSortMode}
             showKPIs={showKPIs}
             toggleKPIs={toggleKPIs}
+            onClear={handleClear}
           />
         </div>
       )}
@@ -1671,7 +1730,7 @@ export default function SearchTool() {
         limit={limit}
         setLimit={setLimit}
         onViewHistory={(o) => setHistoryOrder(o)}
-        clearAllFilters={clearAllFilters}
+        clearAllFilters={handleClear}
       />
 
       {/* MODALS */}

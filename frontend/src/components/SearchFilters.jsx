@@ -15,6 +15,7 @@ export default function SearchFilters({
   setColFilters,
   setActiveAgingBucket,
   addToast,
+  onClear,
   compactMode,
   toggleCompact,
   toggleAgingBar,
@@ -116,14 +117,7 @@ export default function SearchFilters({
           <div style={{ display: 'flex', gap: 6 }}>
             <button 
               className="btn btn-secondary" 
-              onClick={() => {
-                setPreset('All Time')
-                setStatus('All Statuses')
-                setKeyword('')
-                setColFilters({ ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' })
-                setActiveAgingBucket(null)
-                addToast('Filters cleared', 'info')
-              }}
+              onClick={onClear}
               style={{ flex: 1, padding: '8px', fontSize: '0.75rem', fontWeight: 600 }}
             >
               🧹 Clear
