@@ -243,7 +243,7 @@ const TableRow = React.memo(({
         if (col.id === 'phone') {
           const formattedPhone = formatPhone(o.phone);
           return (
-            <td key={col.id} style={{ fontSize: '0.75rem' }}>
+            <td key={col.id} className="min-w-[160px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem' }}>
               {formattedPhone ? (
                 <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
@@ -339,7 +339,7 @@ const TableRow = React.memo(({
         }
         if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} /></td>
         if (col.id === 'address') return (
-          <td key={col.id}>
+          <td key={col.id} className="break-words whitespace-normal">
             <AddressCell order={o} onSave={updateOrderField} />
           </td>
         )
