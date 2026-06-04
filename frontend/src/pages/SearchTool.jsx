@@ -165,6 +165,9 @@ export default function SearchTool() {
   const [debugWhere, setDebugWhere] = useState('')
   const lastSearchRef = useRef('')
   const isProgrammaticRef = useRef(false)
+  const searchInputRef = useRef(null)
+  const lastFetchedUrlRef = useRef('')
+  const lastRefreshRef = useRef(0)
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -175,10 +178,10 @@ export default function SearchTool() {
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, loading: false })
 
   // Explicit search trigger (mostly for the 'Run Search' button)
-  const runSearch = () => {
+  const runSearch = useCallback(() => {
     setRefreshTrigger(prev => prev + 1);
     setPage(1);
-  }
+  }, [])
 
   const [preset, setPreset] = useState(location.state?.preset || 'This Month')
   const [customStart, setCustomStart] = useState(location.state?.customStart || '')
@@ -944,22 +947,37 @@ export default function SearchTool() {
   }, []);
 
   /**
-   * Triggers a clean programmatic search sequence for a customer's orders.
-   * Sequence flow: setLoading(true) -> clearAllFilters() -> applyKeyword(newKeyword).
-   * It also toggles isProgrammaticRef.current to true to apply a 300ms debounce 
-   * to the subsequent fetch operation, preventing overlapping queries.
+   * Triggers a programmatic search for a customer's orders using their phone or email.
+   * To ensure the search input is properly synchronized and React receives the update
+   * as an active input event, this function:
+   * 1. Programmatically focuses the search input via `searchInputRef`.
+   * 2. Sets the input value using the browser's native HTMLInputElement prototype setter,
+   *    bypassing React's virtual DOM interceptor.
+   * 3. Dispatches a native 'input' event to trigger React's internal `onChange` handler.
+   * 4. Updates the page to 1, sets the programmatic search flag, and triggers an imperative search.
    *
-   * @param {string} newKeyword - Phone number or email of the customer.
+   * @param {string} newKeyword - Customer search keyword (phone number or email).
    */
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
     setLoading(true);
     clearAllFilters();
     isProgrammaticRef.current = true;
+    
     setTimeout(() => {
-      setKeyword(newKeyword);
-      setPage(1);
+      const inputEl = searchInputRef.current;
+      if (inputEl) {
+        inputEl.focus();
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        nativeInputValueSetter.call(inputEl, newKeyword);
+        const event = new Event('input', { bubbles: true });
+        inputEl.dispatchEvent(event);
+      } else {
+        setKeyword(newKeyword);
+      }
+      console.log('📡 [SearchTool] Imperatively triggering search for customer keyword:', newKeyword);
+      runSearch();
     }, 50);
-  }, [clearAllFilters]);
+  }, [clearAllFilters, runSearch]);
 
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()
@@ -1099,8 +1117,13 @@ export default function SearchTool() {
   /**
    * Main side-effect hook to fetch orders from the database.
    * Handles local versus server-side sorting modes, cancels past requests with AbortController,
-   * and dynamically debounces execution by 300ms if isProgrammaticRef.current is true.
-   * This debouncing batches sequential filter modifications to prevent SQLite transaction congestion.
+   * dynamically debounces execution by 300ms if isProgrammaticRef.current is true,
+   * and skips redundant queries if the compiled request URL parameters haven't changed.
+   *
+   * @why Bypasses the 400ms debounce during programmatic triggers to fetch instantly,
+   *      and implements a URL cache guard to prevent duplicate calls when debounce catches up.
+   * @how Compiles the keyword dynamically (bypassing debounce if programmatic) and builds a timestamp-free
+   *      URL query string. Skips the fetch if the query parameters match the last successful request.
    */
   useEffect(() => {
     if (!activeStoreId) return
@@ -1114,6 +1137,41 @@ export default function SearchTool() {
       return; // Skip server fetch, useMemo will handle local re-sort
     }
 
+    // Compile URL parameters to check for redundant requests
+    const queryStatus = status === 'All Statuses' ? '' : status
+    const currentKeyword = isProgrammaticRef.current ? keyword : debouncedKeyword
+    const kw = currentKeyword ? currentKeyword.trim().replace(/^#/, '') : ''
+    const dateRange = getDateRange(preset, customStart, customEnd)
+    const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
+    const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+
+    const colFilterParams = Object.entries(debouncedColFilters)
+      .filter(([_, v]) => v && v.trim())
+      .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
+      .join('')
+
+    const backendSortMap = {
+      'order_date': 'order_date',
+      'cost': 'cost',
+      'price': 'price',
+      'customer_name': 'customer_name',
+      'delivery_status': 'delivery_status'
+    }
+    const sCol = backendSortMap[sortKey] || 'created_timestamp'
+
+    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}`
+
+    const isRefresh = lastRefreshRef.current !== refreshTrigger
+
+    // Skip redundant fetching when the query parameters are identical to the last fetch
+    if (!isRefresh && urlWithoutTimestamp === lastFetchedUrlRef.current) {
+      console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
+      return;
+    }
+
+    lastFetchedUrlRef.current = urlWithoutTimestamp
+    lastRefreshRef.current = refreshTrigger
+
     setLoading(true)
     const controller = new AbortController();
     const signal = controller.signal;
@@ -1122,40 +1180,48 @@ export default function SearchTool() {
     let requestTimeoutId;
     let isRequestTimeout = false;
 
-    const performFetch = () => {
-      const queryStatus = status === 'All Statuses' ? '' : status
-      const kw = debouncedKeyword ? debouncedKeyword.trim().replace(/^#/, '') : ''
-      const dateRange = getDateRange(preset, customStart, customEnd)
-      const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
-      const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+    /**
+     * Executes the fetch call, registers a 5-second request timeout,
+     * and processes the fetched order datasets.
+     *
+     * @param {boolean} wasProgrammatic - Flag indicating if this was a programmatic call bypassing debounce.
+     */
+    const performFetch = (wasProgrammatic = false) => {
+      const fetchQueryStatus = status === 'All Statuses' ? '' : status
+      const fetchCurrentKeyword = wasProgrammatic ? keyword : debouncedKeyword
+      const fetchKw = fetchCurrentKeyword ? fetchCurrentKeyword.trim().replace(/^#/, '') : ''
+      const fetchDateRange = getDateRange(preset, customStart, customEnd)
+      const fetchStartDate = fetchDateRange?.start ? formatYMD(fetchDateRange.start) : ''
+      const fetchEndDate = fetchDateRange?.end ? formatYMD(fetchDateRange.end) : ''
 
-      const colFilterParams = Object.entries(debouncedColFilters)
+      const fetchColFilterParams = Object.entries(debouncedColFilters)
         .filter(([_, v]) => v && v.trim())
         .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
         .join('')
 
-      const backendSortMap = {
+      const fetchBackendSortMap = {
         'order_date': 'order_date',
         'cost': 'cost',
         'price': 'price',
         'customer_name': 'customer_name',
         'delivery_status': 'delivery_status'
       }
-      const sCol = backendSortMap[sortKey] || 'created_timestamp'
+      const fetchSCol = fetchBackendSortMap[sortKey] || 'created_timestamp'
 
-      const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`;
+      const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(fetchQueryStatus||'')}&search=${encodeURIComponent(fetchKw)}&start_date=${fetchStartDate}&end_date=${fetchEndDate}&sort=${fetchSCol}&sort_dir=${sortDir}${fetchColFilterParams}&t=${Date.now()}`;
       
+      console.log('📡 [SearchTool] performFetch executing query for keyword:', fetchKw);
       console.log('📡 [SearchTool] Sending fetch request:', {
         url,
         params: {
           store_id: activeStoreId,
           limit,
           page,
-          status: queryStatus,
-          search: kw,
-          start_date: startDate,
-          end_date: endDate,
-          sort: sCol,
+          status: fetchQueryStatus,
+          search: fetchKw,
+          start_date: fetchStartDate,
+          end_date: fetchEndDate,
+          sort: fetchSCol,
           sort_dir: sortDir,
           colFilters: debouncedColFilters
         }
@@ -1195,10 +1261,10 @@ export default function SearchTool() {
     if (isProgrammaticRef.current) {
       fetchTimeoutId = setTimeout(() => {
         isProgrammaticRef.current = false;
-        performFetch();
+        performFetch(true);
       }, 300);
     } else {
-      performFetch();
+      performFetch(false);
     }
       
     return () => {
@@ -1470,6 +1536,7 @@ export default function SearchTool() {
             customEnd={customEnd} setCustomEnd={setCustomEnd}
             status={status} setStatus={setStatus}
             keyword={keyword} setKeyword={setKeyword}
+            searchInputRef={searchInputRef}
             sort={sort} setSort={setSort}
             selectedView={selectedView} loadView={loadView}
             deleteView={deleteView}

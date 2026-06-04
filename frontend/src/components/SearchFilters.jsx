@@ -6,6 +6,7 @@ export default function SearchFilters({
   customEnd, setCustomEnd,
   status, setStatus,
   keyword, setKeyword,
+  searchInputRef,
   sort, setSort,
   selectedView, loadView,
   deleteView,
@@ -79,6 +80,7 @@ export default function SearchFilters({
           <div>
             <label className="form-label">🔑 Keyword</label>
             <input 
+              ref={searchInputRef}
               className="form-input" 
               placeholder="name, city, tracking..." 
               value={keyword} 
