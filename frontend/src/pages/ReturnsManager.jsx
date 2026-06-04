@@ -128,6 +128,33 @@ export default function ReturnsManager() {
     }
   }
 
+  const handleBulkAction = () => {
+    const lines = trackingInput.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) return
+
+    const idsToVerify = []
+    lines.forEach(line => {
+      const match = pendingReturns.find(r => r.tracking_number === line)
+      if (match) {
+        idsToVerify.push(match.id)
+      }
+    })
+
+    if (idsToVerify.length > 0) {
+      handleBulkVerify(idsToVerify)
+      setTrackingInput('')
+    } else {
+      addToast('No matching pending returns found', 'warning')
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleBulkAction()
+    }
+  }
+
   return (
     <div className="page-container" style={{ maxWidth: '1600px', margin: '0 auto' }}>
       <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -157,6 +184,7 @@ export default function ReturnsManager() {
               ref={inputRef}
               value={trackingInput}
               onChange={e => handleScanInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               disabled={isProcessing}
               placeholder={isProcessing ? "Wait..." : "Scan tracking barcode..."}
               style={{
@@ -165,6 +193,14 @@ export default function ReturnsManager() {
                 fontFamily: 'monospace', outline: 'none', transition: 'all 0.3s'
               }}
             />
+            <button
+              className="btn btn-brand"
+              onClick={handleBulkAction}
+              disabled={isProcessing || !trackingInput.trim()}
+              style={{ width: '100%', marginTop: 12, fontWeight: 700 }}
+            >
+              {isProcessing ? 'Processing...' : 'Run Bulk Action'}
+            </button>
             <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 8 }}>Auto-verifies orders found in the queue.</p>
           </div>
 
