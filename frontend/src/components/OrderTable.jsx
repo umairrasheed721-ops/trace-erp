@@ -721,7 +721,8 @@ export default function OrderTable({
   setLimit,
   keyword,
   status,
-  onViewHistory
+  onViewHistory,
+  clearAllFilters
 }) {
   const { addToast, user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
@@ -835,7 +836,7 @@ export default function OrderTable({
           </span>
           {(keyword || status !== 'All Statuses') && (
             <button 
-              onClick={() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); }}
+              onClick={clearAllFilters || (() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); })}
               className="btn btn-primary btn-sm"
               style={{ padding: '2px 8px', borderRadius: 4, fontWeight: 'bold', fontSize: '0.7rem' }}
             >

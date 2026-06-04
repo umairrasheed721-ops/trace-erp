@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 
-export default function CustomerHistoryModal({ phone, email, name, onClose, setKeyword, setPreset, setStatus, setColFilters, setActiveAgingBucket }) {
+export default function CustomerHistoryModal({ phone, email, name, onClose, onOpenAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -103,17 +103,13 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, setK
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {setKeyword && (phone || email) && (
+            {onOpenAllOrders && (phone || email) && (
               <button 
                 className="btn btn-primary btn-sm"
                 onClick={() => {
                   const targetKeyword = (phone && phone !== 'null' && phone !== 'undefined') ? phone : (email && email !== 'null' && email !== 'undefined') ? email : '';
                   if (targetKeyword) {
-                    if (setPreset) setPreset('All Time');
-                    if (setStatus) setStatus('All Statuses');
-                    if (setColFilters) setColFilters({ ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' });
-                    if (setActiveAgingBucket) setActiveAgingBucket(null);
-                    setKeyword(targetKeyword);
+                    onOpenAllOrders(targetKeyword);
                   }
                   onClose();
                 }}

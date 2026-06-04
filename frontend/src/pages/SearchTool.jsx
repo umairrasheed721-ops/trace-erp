@@ -163,6 +163,7 @@ export default function SearchTool() {
   const [loading, setLoading] = useState(false)
   const [debugWhere, setDebugWhere] = useState('')
   const lastSearchRef = useRef('')
+  const isProgrammaticRef = useRef(false)
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -924,6 +925,27 @@ export default function SearchTool() {
     })
   }
 
+  const clearAllFilters = useCallback(() => {
+    setPreset('All Time');
+    setStatus('All Statuses');
+    setCustomStart('');
+    setCustomEnd('');
+    setColFilters({
+      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    });
+    setActiveAgingBucket(null);
+  }, []);
+
+  const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
+    setLoading(true);
+    clearAllFilters();
+    isProgrammaticRef.current = true;
+    setTimeout(() => {
+      setKeyword(newKeyword);
+      setPage(1);
+    }, 50);
+  }, [clearAllFilters]);
+
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()
     const hasTracking = !!o.tracking_number && o.tracking_number !== '—' && String(o.tracking_number).length > 3
@@ -1027,6 +1049,7 @@ export default function SearchTool() {
   // Apply drill-down state from Reports page
   useEffect(() => {
     if (location.state) {
+      isProgrammaticRef.current = true
       const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: k } = location.state
       if (p) setPreset(p)
       if (cs) setCustomStart(cs)
@@ -1075,40 +1098,56 @@ export default function SearchTool() {
     const controller = new AbortController();
     const signal = controller.signal;
     
-    const queryStatus = status === 'All Statuses' ? '' : status
-    const kw = debouncedKeyword ? debouncedKeyword.trim().replace(/^#/, '') : ''
-    const dateRange = getDateRange(preset, customStart, customEnd)
-    const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
-    const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
+    let fetchTimeoutId;
 
-    const colFilterParams = Object.entries(debouncedColFilters)
-      .filter(([_, v]) => v && v.trim())
-      .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
-      .join('')
+    const performFetch = () => {
+      const queryStatus = status === 'All Statuses' ? '' : status
+      const kw = debouncedKeyword ? debouncedKeyword.trim().replace(/^#/, '') : ''
+      const dateRange = getDateRange(preset, customStart, customEnd)
+      const startDate = dateRange?.start ? formatYMD(dateRange.start) : ''
+      const endDate = dateRange?.end ? formatYMD(dateRange.end) : ''
 
-    const backendSortMap = {
-      'order_date': 'order_date',
-      'cost': 'cost',
-      'price': 'price',
-      'customer_name': 'customer_name',
-      'delivery_status': 'delivery_status'
+      const colFilterParams = Object.entries(debouncedColFilters)
+        .filter(([_, v]) => v && v.trim())
+        .map(([k, v]) => `&${k}=${encodeURIComponent(v.trim())}`)
+        .join('')
+
+      const backendSortMap = {
+        'order_date': 'order_date',
+        'cost': 'cost',
+        'price': 'price',
+        'customer_name': 'customer_name',
+        'delivery_status': 'delivery_status'
+      }
+      const sCol = backendSortMap[sortKey] || 'created_timestamp'
+
+      fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`, { signal })
+        .then(r => r.json())
+        .then(data => { 
+          setAllOrders(data.orders || []); 
+          setTotalCount(data.total || 0);
+          setDebugWhere(data.debugWhere || '');
+          setLoading(false) 
+        })
+        .catch((err) => { 
+          if (err.name === 'AbortError') return;
+          addToast('Failed to load orders', 'error'); setLoading(false) 
+        })
+    };
+
+    if (isProgrammaticRef.current) {
+      fetchTimeoutId = setTimeout(() => {
+        isProgrammaticRef.current = false;
+        performFetch();
+      }, 300);
+    } else {
+      performFetch();
     }
-    const sCol = backendSortMap[sortKey] || 'created_timestamp'
-
-    fetch(`/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`, { signal })
-      .then(r => r.json())
-      .then(data => { 
-        setAllOrders(data.orders || []); 
-        setTotalCount(data.total || 0);
-        setDebugWhere(data.debugWhere || '');
-        setLoading(false) 
-      })
-      .catch((err) => { 
-        if (err.name === 'AbortError') return;
-        addToast('Failed to load orders', 'error'); setLoading(false) 
-      })
       
-      return () => controller.abort();
+    return () => {
+      if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
+      controller.abort();
+    };
   }, [activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, limit, debouncedColFilters, sortKey, sortDir, sortMode, refreshTrigger])
 
   // Live Updates Connection (SSE)
@@ -1507,6 +1546,7 @@ export default function SearchTool() {
         limit={limit}
         setLimit={setLimit}
         onViewHistory={(o) => setHistoryOrder(o)}
+        clearAllFilters={clearAllFilters}
       />
 
       {/* MODALS */}
@@ -1526,11 +1566,7 @@ export default function SearchTool() {
           email={customerHistoryPhone.email}
           name={customerHistoryPhone.name}
           onClose={() => setCustomerHistoryPhone(null)}
-          setKeyword={setKeyword}
-          setPreset={setPreset}
-          setStatus={setStatus}
-          setColFilters={setColFilters}
-          setActiveAgingBucket={setActiveAgingBucket}
+          onOpenAllOrders={triggerCustomerOrdersSearch}
         />
       )}
 

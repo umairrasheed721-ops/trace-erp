@@ -1,5 +1,13 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
+/**
+ * STRICT PROTOCOL DOCUMENTATION - FILTER RESET SEQUENCE:
+ * When navigating from CustomerHistoryModal to the Command Center table (Bulk-Link):
+ * 1. setLoading(true) is invoked to show the spinner.
+ * 2. clearAllFilters() resets active states (preset -> 'All Time', status -> 'All Statuses', colFilters -> empty, agingBucket -> null).
+ * 3. applyKeyword(newKeyword) sets the customer's phone/email.
+ * 4. A 300ms programmatic debounce is applied to prevent SQLite request lockup and simultaneous API request conflicts.
+ */
 export default function useOrderManagement({
   editingOrder,
   setEditingOrder,
