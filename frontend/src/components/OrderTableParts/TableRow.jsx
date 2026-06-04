@@ -2,6 +2,15 @@ import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from '../OrderCells'
 
+const formatPhone = (phoneVal) => {
+  if (!phoneVal) return '';
+  const phoneStr = String(phoneVal).trim();
+  if (phoneStr.length === 10 && phoneStr.startsWith('3')) {
+    return '0' + phoneStr;
+  }
+  return phoneStr;
+};
+
 const TableRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
@@ -169,7 +178,7 @@ const TableRow = React.memo(({
         )
         if (col.id === 'customer_name') {
           const hasIdentifier = o.phone || o.email;
-          const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
+          const formattedPhone = formatPhone(o.phone);
           return (
             <td 
               key={col.id} 
@@ -180,7 +189,7 @@ const TableRow = React.memo(({
                 <span
                   onClick={hasIdentifier ? (e) => {
                     e.stopPropagation();
-                    setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
+                    setCustomerHistoryPhone({ phone: formattedPhone, email: o.email, name: o.customer_name });
                   } : undefined}
                   style={hasIdentifier ? { 
                     cursor: 'pointer', 
@@ -192,153 +201,142 @@ const TableRow = React.memo(({
                 >
                   {formatCustomerName(o.customer_name)}
                 </span>
-                {count > 1 && (
-                  <span
-                    onClick={hasIdentifier ? (e) => {
-                      e.stopPropagation();
-                      setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name });
-                    } : undefined}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      background: 'var(--green-dim)',
-                      color: 'var(--green)',
-                      fontSize: '0.58rem',
-                      fontWeight: 700,
-                      padding: '1px 6px',
-                      borderRadius: 10,
-                      cursor: hasIdentifier ? 'pointer' : 'default',
-                      border: '1px solid var(--green)',
-                      userSelect: 'none',
-                      marginTop: '2px'
-                    }}
-                    title="View customer order history"
-                  >
-                    {count} {count === 1 ? 'order' : 'orders'}
-                  </span>
-                )}
               </div>
             </td>
           )
         }
-        if (col.id === 'phone') return (
-          <td key={col.id} style={{ fontSize: '0.75rem' }}>
-            {o.phone ? (
-              <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                  <a href={`tel:${o.phone}`} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
-                  
-                  {(() => {
-                    const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
-                    return (
-                      <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate('/whatsapp-portal', { state: { selectPhone: o.phone } });
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer',
-                            fontSize: '0.95rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative'
-                          }}
-                          title="Open Chat in Portal"
-                        >
-                          💬
-                          {isUnread && <span className="wa-unread-badge"></span>}
-                        </button>
-                      </div>
-                    );
-                  })()}
+        if (col.id === 'customer_history') {
+          const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
+          const hasIdentifier = o.phone || o.email;
+          const formattedPhone = formatPhone(o.phone);
+          return (
+            <td key={col.id}>
+              {count > 1 ? (
+                <span
+                  onClick={hasIdentifier ? (e) => {
+                    e.stopPropagation();
+                    setCustomerHistoryPhone({ phone: formattedPhone, email: o.email, name: o.customer_name });
+                  } : undefined}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: 'var(--green-dim)',
+                    color: 'var(--green)',
+                    fontSize: '0.58rem',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 10,
+                    cursor: hasIdentifier ? 'pointer' : 'default',
+                    border: '1px solid var(--green)',
+                    userSelect: 'none'
+                  }}
+                  title="View customer order history"
+                >
+                  {count} Orders
+                </span>
+              ) : count === 1 ? (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>1 Order</span>
+              ) : '—'}
+            </td>
+          );
+        }
+        if (col.id === 'phone') {
+          const formattedPhone = formatPhone(o.phone);
+          return (
+            <td key={col.id} style={{ fontSize: '0.75rem' }}>
+              {formattedPhone ? (
+                <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <a href={`tel:${formattedPhone}`} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
+                    
+                    {(() => {
+                      const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
+                      return (
+                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              fontSize: '0.95rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              position: 'relative'
+                            }}
+                            title="Open Chat in Portal"
+                          >
+                            💬
+                            {isUnread && <span className="wa-unread-badge"></span>}
+                          </button>
+                        </div>
+                      );
+                    })()}
 
-                  <select 
-                    className="wa-template-select"
-                    style={{ 
-                      background: 'none', 
-                      border: 'none', 
-                      color: 'var(--text-muted)', 
-                      cursor: 'pointer', 
-                      fontSize: '0.65rem',
-                      padding: 0,
-                      width: '12px',
-                      marginLeft: '-2px'
-                    }}
-                    value=""
-                    onChange={(e) => {
-                      const templateId = e.target.value;
-                      if (!templateId) return;
-                      
-                      const template = waTemplates.find(t => t.id === parseInt(templateId));
-                      if (!template) return;
-
-                      const name = formatCustomerName(o.customer_name);
-                      const orderId = o.ref_number || o.shopify_order_id;
-                      const price = Math.round(parseFloat(o.price)||0);
-                      const courier = o.courier || 'our courier';
-                      const tracking = o.tracking_number || '';
-                      
-                      let msg = template.content
-                        .replace(/\[Name\]/g, name)
-                        .replace(/\[OrderID\]/g, orderId)
-                        .replace(/\[Price\]/g, price)
-                        .replace(/\[Courier\]/g, courier)
-                        .replace(/\[Tracking\]/g, tracking);
-
-                      if (o.confirmation_token) {
-                        const appUrl = window.location.origin;
-                        const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-                        msg = msg.replace(/\[Link\]/g, link);
-                      } else {
-                        msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
-                      }
-
-                      const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
-                      window.open(waLink, '_blank');
-                      e.target.value = ""; // Reset
-                    }}
-                  >
-                    <option value="" disabled>▼</option>
-                    {waTemplates.map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <a href={`tel:${o.phone}`} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{o.phone}</a>
-                {(() => {
-                  const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
-                  return count > 1 ? (
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setCustomerHistoryPhone({ phone: o.phone, email: o.email, name: o.customer_name }) }}
-                      style={{
-                        background: 'var(--green-dim)',
-                        color: 'var(--green)',
-                        fontSize: '0.58rem',
-                        fontWeight: 700,
-                        padding: '2px 6px',
-                        borderRadius: 10,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                        border: '1px solid var(--green)',
-                        userSelect: 'none'
+                    <select 
+                      className="wa-template-select"
+                      style={{ 
+                        background: 'none', 
+                        border: 'none', 
+                        color: 'var(--text-muted)', 
+                        cursor: 'pointer', 
+                        fontSize: '0.65rem',
+                        padding: 0,
+                        width: '12px',
+                        marginLeft: '-2px'
                       }}
-                      title="View customer order history"
+                      value=""
+                      onChange={(e) => {
+                        const templateId = e.target.value;
+                        if (!templateId) return;
+                        
+                        const template = waTemplates.find(t => t.id === parseInt(templateId));
+                        if (!template) return;
+
+                        const name = formatCustomerName(o.customer_name);
+                        const orderId = o.ref_number || o.shopify_order_id;
+                        const price = Math.round(parseFloat(o.price)||0);
+                        const courier = o.courier || 'our courier';
+                        const tracking = o.tracking_number || '';
+                        
+                        let msg = template.content
+                          .replace(/\[Name\]/g, name)
+                          .replace(/\[OrderID\]/g, orderId)
+                          .replace(/\[Price\]/g, price)
+                          .replace(/\[Courier\]/g, courier)
+                          .replace(/\[Tracking\]/g, tracking);
+
+                        if (o.confirmation_token) {
+                          const appUrl = window.location.origin;
+                          const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+                          msg = msg.replace(/\[Link\]/g, link);
+                        } else {
+                          msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+                        }
+
+                        const waLink = `https://wa.me/${formattedPhone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
+                        window.open(waLink, '_blank');
+                        e.target.value = ""; // Reset
+                      }}
                     >
-                      {count} {count === 1 ? 'Order' : 'Orders'}
-                    </span>
-                  ) : null
-                })()}
-              </div>
-            ) : '—'}
-          </td>
-        )
+                      <option value="" disabled>▼</option>
+                      {waTemplates.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <a href={`tel:${formattedPhone}`} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
+                </div>
+              ) : '—'}
+            </td>
+          )
+        }
         if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} /></td>
         if (col.id === 'address') return (
           <td key={col.id}>

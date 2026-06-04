@@ -962,6 +962,7 @@ export default function SearchTool() {
     { id: 'ref_number', label: 'Ref #' },
     { id: 'order_date', label: 'Date' },
     { id: 'customer_name', label: 'Customer' },
+    { id: 'customer_history', label: 'History' },
     { id: 'phone', label: 'Phone' },
     { id: 'address', label: 'Shipping Address' },
     { id: 'city', label: 'City' },
@@ -995,7 +996,7 @@ export default function SearchTool() {
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
     const currentIds = cols.map(c => c.id)
-    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address']
+    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'customer_history']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
