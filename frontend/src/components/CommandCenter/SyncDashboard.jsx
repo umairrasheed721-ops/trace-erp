@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ErrorBoundary from '../ErrorBoundary';
 import { useApp } from '../../context/AppContext';
+import axios from 'axios';
 
 function SyncDashboard() {
   const { addToast, token } = useApp();
@@ -95,34 +96,26 @@ function SyncDashboard() {
     setMessage('Uploading and patching orders...');
 
     try {
-      const res = await fetch(`${apiUrl}/api/postex/manual-patch`, {
-        method: 'POST',
+      const response = await axios.post(`${apiUrl}/api/postex/manual-patch`, formData, {
         headers: {
-          'Authorization': `Bearer ${token || localStorage.getItem('trace_token')}`
-        },
-        body: formData
+          'Authorization': `Bearer ${token || localStorage.getItem('trace_token')}`,
+          'Content-Type': 'multipart/form-data'
+        }
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          const successMsg = `Successfully patched ${data.patchedCount} of ${data.totalRows} orders!`;
-          setMessage(successMsg);
-          addToast(successMsg, 'success');
-          fetchStats();
-        } else {
-          const errMsg = `Patch failed: ${data.error || 'Unknown error'}`;
-          setMessage(errMsg);
-          addToast(errMsg, 'error');
-        }
+      const data = response.data;
+      if (data.success) {
+        const successMsg = `Successfully patched ${data.patchedCount} orders!`;
+        setMessage(successMsg);
+        addToast(successMsg, 'success');
+        fetchStats();
       } else {
-        const data = await res.json().catch(() => ({}));
-        const errMsg = data.error || `Patch failed: HTTP ${res.status}`;
+        const errMsg = `Patch failed: ${data.error || 'Unknown error'}`;
         setMessage(errMsg);
         addToast(errMsg, 'error');
       }
     } catch (err) {
-      const errMsg = `Upload error: ${err.message}`;
+      const errMsg = err.response?.data?.error || `Upload error: ${err.message}`;
       setMessage(errMsg);
       addToast(errMsg, 'error');
     } finally {
@@ -216,7 +209,7 @@ function SyncDashboard() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept=".csv,.xlsx,.xls"
+                accept=".xlsx"
                 style={{ display: 'none' }}
               />
               <button
@@ -238,7 +231,7 @@ function SyncDashboard() {
                   </>
                 ) : (
                   <>
-                    📤 Upload Booking Report (CSV/Excel)
+                    📤 Upload Tracking Excel
                   </>
                 )}
               </button>
