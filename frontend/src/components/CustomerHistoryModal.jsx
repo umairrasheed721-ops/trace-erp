@@ -151,15 +151,15 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
           </span>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto' }}>
+        <div className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200" style={{ flex: 1, overflowY: 'auto' }}>
           {orders.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No orders found for this customer.</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
-                <tr style={{ background: 'var(--bg-elevated)', position: 'sticky', top: 0, zIndex: 1 }}>
+                <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                   {['REF #', 'DATE', 'STATUS', 'COURIER', 'TRACKING', 'PRICE'].map(h => (
-                    <th key={h} style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', opacity: 0.5, letterSpacing: '0.05em' }}>{h}</th>
+                    <th key={h} className="text-gray-500 dark:text-gray-400" style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -167,22 +167,22 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
                 {orders.map((o) => {
                   const { bg, color } = getStatusColor(o.delivery_status)
                   return (
-                    <tr key={o.id} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                      <td style={{ padding: '9px 14px', color: 'var(--brand)', fontWeight: 700 }}>{o.ref_number || o.shopify_order_id || '—'}</td>
-                      <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
+                    <tr key={o.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50" style={{ background: 'transparent' }}>
+                      <td className="text-indigo-600 dark:text-indigo-400" style={{ padding: '9px 14px', fontWeight: 700 }}>{o.ref_number || o.shopify_order_id || '—'}</td>
+                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '9px 14px' }}>
                         <span style={{ background: bg, color, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
                           {o.delivery_status || 'Pending'}
                         </span>
                       </td>
-                      <td style={{ padding: '9px 14px', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.courier || '—'}</td>
-                      <td style={{ padding: '9px 14px', fontSize: '0.72rem' }}>
+                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>{o.courier || '—'}</td>
+                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>
                         {o.tracking_number
-                          ? <span style={{ color: 'var(--blue)' }}>🚚 {o.tracking_number}</span>
+                          ? <span className="text-blue-600 dark:text-blue-400">🚚 {o.tracking_number}</span>
                           : <span style={{ opacity: 0.3 }}>—</span>
                         }
                       </td>
-                      <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
+                      <td className="text-gray-900 dark:text-gray-100" style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
                     </tr>
                   )
                 })}
