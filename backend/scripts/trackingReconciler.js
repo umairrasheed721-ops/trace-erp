@@ -152,14 +152,15 @@ async function runReconciliation() {
       continue;
     }
 
-    // Fetch fulfilled orders lacking tracking numbers
+    // Fetch booked orders lacking tracking numbers
     const orders = db.prepare(`
       SELECT * FROM orders 
       WHERE store_id = ?
-        AND LOWER(delivery_status) = 'fulfilled' 
+        AND LOWER(delivery_status) = 'booked' 
         AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
     `).all(store.id);
 
+    console.log(`[RECONCILE AUDIT] Found ${orders.length} pending orders for store ID ${store.id} before processing.`);
     log(`Found ${orders.length} orders pending tracking reconciliation.`);
 
     for (const order of orders) {

@@ -125,19 +125,19 @@ router.post('/save-log', (req, res) => {
 // GET /api/sync/reconciliation/stats
 router.get('/reconciliation/stats', (req, res) => {
   try {
-    // 1. Pending Syncs: Fulfilled orders without tracking numbers, not in failed list
+    // 1. Pending Syncs: Booked orders without tracking numbers, not in failed list
     const pendingQuery = db.prepare(`
       SELECT COUNT(*) as count FROM orders
-      WHERE LOWER(delivery_status) = 'fulfilled'
+      WHERE LOWER(delivery_status) = 'booked'
         AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
         AND id NOT IN (SELECT order_id FROM tracking_reconciliation_logs WHERE status = 'failed')
     `);
     const pending = pendingQuery.get().count;
 
-    // 2. Failed Syncs: Fulfilled orders without tracking numbers, in failed list
+    // 2. Failed Syncs: Booked orders without tracking numbers, in failed list
     const failedQuery = db.prepare(`
       SELECT COUNT(*) as count FROM orders
-      WHERE LOWER(delivery_status) = 'fulfilled'
+      WHERE LOWER(delivery_status) = 'booked'
         AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
         AND id IN (SELECT order_id FROM tracking_reconciliation_logs WHERE status = 'failed')
     `);
