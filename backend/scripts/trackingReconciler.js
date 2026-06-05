@@ -298,4 +298,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { runReconciliation };
+module.exports = { runReconciliation, writeTrackingToShopify };

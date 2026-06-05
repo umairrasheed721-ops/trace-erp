@@ -53,6 +53,7 @@ const settingsRoutes    = safeRequire('./settings',     'Settings');
 const systemRoutes      = safeRequire('./system',       'System');
 const citiesRoutes      = require('./cities');
 const bulkRoutes        = require('./bulk_booking');
+const postexRoutes      = safeRequire('./postex',       'PostEx');
 
 // Register routes
 router.use('/api/auth', authRoutes);
@@ -79,6 +80,7 @@ router.use('/api/settings', settingsRoutes);
 router.use('/api/system', systemRoutes);
 router.use('/api/cities', citiesRoutes);
 router.use('/api/bulk', bulkRoutes);
+router.use('/api/postex', postexRoutes);
 
 // --- 🔄 AUTO-RETRY FAILED MODULES (every 90s) ---
 const ROUTE_MAP = {

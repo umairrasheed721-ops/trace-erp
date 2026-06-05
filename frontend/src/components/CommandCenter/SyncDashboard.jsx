@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ErrorBoundary from '../ErrorBoundary';
 import { useApp } from '../../context/AppContext';
 
@@ -10,6 +10,8 @@ function SyncDashboard() {
   const [isReconciling, setIsReconciling] = useState(false);
   const [message, setMessage] = useState('');
   const [collapsed, setCollapsed] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -76,6 +78,55 @@ function SyncDashboard() {
       addToast(errMsg, 'error');
     } finally {
       setIsReconciling(false);
+      setTimeout(() => setMessage(''), 10000);
+    }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    e.target.value = ''; // Reset input to allow re-upload of same file
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setIsUploading(true);
+    setMessage('Uploading and patching orders...');
+
+    try {
+      const res = await fetch(`${apiUrl}/api/postex/manual-patch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token || localStorage.getItem('trace_token')}`
+        },
+        body: formData
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          const successMsg = `Successfully patched ${data.patchedCount} of ${data.totalRows} orders!`;
+          setMessage(successMsg);
+          addToast(successMsg, 'success');
+          fetchStats();
+        } else {
+          const errMsg = `Patch failed: ${data.error || 'Unknown error'}`;
+          setMessage(errMsg);
+          addToast(errMsg, 'error');
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        const errMsg = data.error || `Patch failed: HTTP ${res.status}`;
+        setMessage(errMsg);
+        addToast(errMsg, 'error');
+      }
+    } catch (err) {
+      const errMsg = `Upload error: ${err.message}`;
+      setMessage(errMsg);
+      addToast(errMsg, 'error');
+    } finally {
+      setIsUploading(false);
       setTimeout(() => setMessage(''), 10000);
     }
   };
@@ -160,6 +211,36 @@ function SyncDashboard() {
                 style={{ padding: '8px 12px', fontSize: '0.8rem' }}
               >
                 🔄 Refresh Stats
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".csv,.xlsx,.xls"
+                style={{ display: 'none' }}
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={() => fileInputRef.current.click()}
+                disabled={isUploading || isReconciling}
+                style={{
+                  padding: '8px 12px',
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {isUploading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '12px', height: '12px', border: '2px solid var(--brand)', borderRightColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.75s linear infinite' }}></span>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    📤 Upload Booking Report (CSV/Excel)
+                  </>
+                )}
               </button>
             </div>
             {message && (
