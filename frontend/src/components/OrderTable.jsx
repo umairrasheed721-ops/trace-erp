@@ -40,14 +40,14 @@ const COLUMN_WIDTHS = {
 
 // Cost breakdown helper component moved to file level
 const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
-  if (loadingBreakdown) return <div className="cost-tooltip">⌛ Loading items...</div>
-  if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip">⚠️ No item data found</div>
+  if (loadingBreakdown) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⌛ Loading items...</div>
+  if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⚠️ No item data found</div>
 
   const totalLanded = breakdown.reduce((acc, item) => acc + (item.landed_cost * item.quantity), 0)
   const totalPkg = breakdown.reduce((acc, item) => acc + (item.packaging_cost * item.quantity), 0)
 
   return (
-    <div className="cost-tooltip shadow-xl">
+    <div className="cost-tooltip shadow-xl" style={{ color: '#e5e7eb' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', borderRadius: '8px 8px 0 0' }}>
         <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--brand)' }}>📦 Itemized Costing</h4>
         <button 
@@ -61,19 +61,19 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
         {breakdown.map((item, i) => (
           <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', opacity: 0.7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#9ca3af' }}>
               <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
               <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
             </div>
           </div>
         ))}
       </div>
-      <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '0 0 8px 8px', fontSize: '0.7rem', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#e5e7eb' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-          <span>Landed Total:</span>
-          <span style={{ color: 'var(--green)' }}>Rs {totalLanded.toLocaleString()}</span>
+          <span style={{ color: '#9ca3af' }}>Landed Total:</span>
+          <span style={{ color: 'var(--green)', fontWeight: 'bold' }}>Rs {totalLanded.toLocaleString()}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.7 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af' }}>
           <span>Pkg Total:</span>
           <span>Rs {totalPkg.toLocaleString()}</span>
         </div>
