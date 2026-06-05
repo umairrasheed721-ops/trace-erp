@@ -75,4 +75,94 @@ router.post('/reset', authenticateToken, (req, res) => {
   }
 });
 
+// Send Order Product Images directly via Baileys as memory buffer
+router.post('/send-order-images', authenticateToken, async (req, res) => {
+  const { orderId, phone } = req.body;
+  if (!orderId || !phone) {
+    return res.status(400).json({ error: 'Missing orderId or phone' });
+  }
+
+  try {
+    const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+    const { db } = require('../db');
+    const order = db.prepare('SELECT line_items FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenantId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (!order.line_items) {
+      return res.status(400).json({ error: 'Order has no items' });
+    }
+
+    const items = JSON.parse(order.line_items);
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Order has no items' });
+    }
+
+    // Extract valid Shopify image URLs
+    const imageTasks = [];
+    for (const item of items) {
+      if (item.image_url) {
+        imageTasks.push({
+          url: item.image_url,
+          itemName: item.title || item.variant_title || 'Product'
+        });
+      }
+    }
+
+    if (imageTasks.length === 0) {
+      return res.status(400).json({ error: 'No product images found for this order' });
+    }
+
+    // Connect to bot and ensure it's connected
+    const bot = getBot();
+    if (bot.status !== 'CONNECTED' || !bot.sock) {
+      return res.status(500).json({ error: 'WhatsApp bot is not connected. Connect via WhatsApp Portal.' });
+    }
+
+    // Normalize phone number to 92... without non-digits
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('0')) {
+      cleaned = '92' + cleaned.substring(1);
+    } else if (!cleaned.startsWith('92') && cleaned.length === 10) {
+      cleaned = '92' + cleaned;
+    }
+    const remoteJid = cleaned + '@s.whatsapp.net';
+
+    const axios = require('axios');
+    let sentCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (const task of imageTasks) {
+      try {
+        console.log(`[Send Order Images] Downloading image for ${task.itemName} from URL: ${task.url}`);
+        const response = await axios.get(task.url, { responseType: 'arraybuffer', timeout: 15000 });
+        const imageBuffer = Buffer.from(response.data);
+
+        console.log(`[Send Order Images] Sending image to ${remoteJid} via Baileys socket...`);
+        await bot.sock.sendMessage(remoteJid, { image: imageBuffer, caption: task.itemName });
+        sentCount++;
+      } catch (err) {
+        failedCount++;
+        const errMsg = err.message || 'Unknown error';
+        console.error(`[Send Order Images] Failed to send image for ${task.itemName}:`, errMsg);
+        errors.push({ itemName: task.itemName, error: errMsg });
+      }
+    }
+
+    res.json({
+      success: true,
+      sentCount,
+      failedCount,
+      errors
+    });
+
+  } catch (err) {
+    console.error('WhatsApp /send-order-images error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

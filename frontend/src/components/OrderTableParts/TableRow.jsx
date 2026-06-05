@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from '../OrderCells'
+import { useApp } from '../../context/AppContext'
 
 const formatPhone = (phoneVal) => {
   if (!phoneVal) return '';
@@ -21,6 +22,7 @@ const TableRow = React.memo(({
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
+  const { addToast } = useApp();
   const isClear = Math.abs(diff) <= 1;
   const { bg, color } = getStatusColor(o.delivery_status);
   const s = (o.delivery_status||'').toLowerCase();
@@ -295,6 +297,29 @@ const TableRow = React.memo(({
                         const templateId = e.target.value;
                         if (!templateId) return;
                         
+                        if (templateId === 'send_images') {
+                          e.target.value = ""; // Reset
+                          addToast("Sending actual images...", "info");
+                          
+                          fetch('/api/whatsapp/send-order-images', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
+                          })
+                          .then(async (res) => {
+                            const data = await res.json();
+                            if (res.ok && data.success) {
+                              addToast(`✅ Images sent successfully! (Sent ${data.sentCount} items)`, 'success');
+                            } else {
+                              addToast(`❌ Failed to send images: ${data.error || 'Unknown error'}`, 'error');
+                            }
+                          })
+                          .catch((err) => {
+                            addToast(`❌ Failed to send images: ${err.message || err}`, 'error');
+                          });
+                          return;
+                        }
+
                         const template = waTemplates.find(t => t.id === parseInt(templateId));
                         if (!template) return;
 
@@ -305,11 +330,11 @@ const TableRow = React.memo(({
                         const tracking = o.tracking_number || '';
                         
                         let msg = template.content
-                          .replace(/\[Name\]/g, name)
-                          .replace(/\[OrderID\]/g, orderId)
-                          .replace(/\[Price\]/g, price)
-                          .replace(/\[Courier\]/g, courier)
-                          .replace(/\[Tracking\]/g, tracking);
+                           .replace(/\[Name\]/g, name)
+                           .replace(/\[OrderID\]/g, orderId)
+                           .replace(/\[Price\]/g, price)
+                           .replace(/\[Courier\]/g, courier)
+                           .replace(/\[Tracking\]/g, tracking);
 
                         if (o.confirmation_token) {
                           const appUrl = window.location.origin;
@@ -325,6 +350,7 @@ const TableRow = React.memo(({
                       }}
                     >
                       <option value="" disabled>▼</option>
+                      <option value="send_images">🖼️ Send Product Images</option>
                       {waTemplates.map(t => (
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
