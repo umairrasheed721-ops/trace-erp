@@ -16,7 +16,8 @@ export default function useWhatsAppBot() {
     cooling_period_min: 15,
     cod_template: '',
     attempted_template: '',
-    dispatch_template: ''
+    dispatch_template: '',
+    poll_options: ['✅ Confirm Order', '❌ Cancel Order']
   })
 
   const [loading, setLoading] = useState(true)
@@ -115,7 +116,16 @@ export default function useWhatsAppBot() {
       if (queueRes.ok) setQueueData(await queueRes.json())
       if (settingsRes.ok) {
         const s = await settingsRes.json()
-        if (s && Object.keys(s).length > 0) setSettings(prev => ({ ...prev, ...s }))
+        if (s && Object.keys(s).length > 0) {
+          if (s.poll_options && typeof s.poll_options === 'string') {
+            try {
+              s.poll_options = JSON.parse(s.poll_options);
+            } catch (e) {
+              s.poll_options = ['✅ Confirm Order', '❌ Cancel Order'];
+            }
+          }
+          setSettings(prev => ({ ...prev, ...s }));
+        }
       }
       if (gemSetRes.ok) {
         const gs = await gemSetRes.json()

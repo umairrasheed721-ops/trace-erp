@@ -6,6 +6,18 @@ export default function BotRulesPanel({
   settings,
   setSettings
 }) {
+  const [pollOptions, setPollOptions] = React.useState(['✅ Confirm Order', '❌ Cancel Order']);
+
+  React.useEffect(() => {
+    if (settings.poll_options) {
+      setPollOptions(settings.poll_options);
+    }
+  }, [settings.poll_options]);
+
+  const updatePollOptions = (newOptions) => {
+    setPollOptions(newOptions);
+    setSettings(prev => ({ ...prev, poll_options: newOptions }));
+  };
   return (
     <div className="card glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 0.3s ease-in-out' }}>
       {/* Sub-Tabs Navigation */}
@@ -108,6 +120,62 @@ export default function BotRulesPanel({
             style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
           />
           <p className="text-muted" style={{ fontSize: '0.8rem' }}>This message is dispatched automatically when a new Cash on Delivery order is ingested into the Command Center.</p>
+
+          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <label style={{ fontWeight: 800, fontSize: '0.95rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>📊 Interactive Poll Options (Optional)</span>
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pollOptions.map((opt, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="premium-input"
+                    value={opt}
+                    onChange={e => {
+                      const copy = [...pollOptions];
+                      copy[idx] = e.target.value;
+                      updatePollOptions(copy);
+                    }}
+                    placeholder={`Option ${idx + 1}`}
+                    style={{ flex: 1, fontSize: '0.9rem', padding: '10px 14px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (pollOptions.length <= 1) return;
+                      const copy = pollOptions.filter((_, i) => i !== idx);
+                      updatePollOptions(copy);
+                    }}
+                    disabled={pollOptions.length <= 1}
+                    title="Remove Option"
+                    style={{
+                      background: 'none', border: 'none', color: '#ef4444', 
+                      fontSize: '1.2rem', cursor: 'pointer', padding: '4px 8px',
+                      opacity: pollOptions.length <= 1 ? 0.3 : 1
+                    }}
+                  >
+                    ✖
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  updatePollOptions([...pollOptions, '']);
+                }}
+                style={{
+                  fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex',
+                  alignItems: 'center', gap: 6, fontWeight: 700
+                }}
+              >
+                ➕ Add Option
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

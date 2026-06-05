@@ -102,6 +102,7 @@ module.exports = [
     ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.',
     status TEXT DEFAULT 'DISCONNECTED',
     stuck_threshold_hours INTEGER DEFAULT 36,
+    poll_options TEXT DEFAULT NULL,
     updated_at TEXT DEFAULT (datetime('now'))
   );`,
 
@@ -380,7 +381,8 @@ module.exports = [
       "ALTER TABLE gemini_bot_settings ADD COLUMN feature_media_cards INTEGER DEFAULT 1",
       "ALTER TABLE gemini_bot_settings ADD COLUMN feature_voice_notes INTEGER DEFAULT 1",
       "ALTER TABLE gemini_bot_settings ADD COLUMN voice_name TEXT DEFAULT 'Aoede'",
-      "ALTER TABLE gemini_bot_settings ADD COLUMN recommendation_rules TEXT DEFAULT '{}'"
+      "ALTER TABLE gemini_bot_settings ADD COLUMN recommendation_rules TEXT DEFAULT '{}'",
+      "ALTER TABLE whatsapp_settings ADD COLUMN poll_options TEXT DEFAULT NULL"
     ];
 
     alters.forEach(sql => {
