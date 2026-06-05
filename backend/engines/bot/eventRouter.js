@@ -147,54 +147,76 @@ async function handleMessagesUpdate(bot, updates) {
             ).get(cleanPhone);
             
             if (pendingCOD) {
-              const isConfirm = selectedOption.toLowerCase().includes('confirm') || selectedOption.includes('✅');
-              const isCancel = selectedOption.toLowerCase().includes('cancel') || selectedOption.includes('❌');
-              
-              if (isConfirm || isCancel) {
-                const newStatus = isConfirm ? 'confirmed' : 'cancelled';
-                db.prepare(`UPDATE cod_pending_verifications SET status = ?, replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(newStatus, pendingCOD.id);
-                
-                try {
-                  const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                  const storeId = order ? order.store_id : 1;
-                  db.prepare(`
-                    INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-                    VALUES (?, ?, ?, 'incoming', ?)
-                  `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
-                  
-                  const { broadcast } = require('../../websocket');
-                  broadcast('message', {
-                    order_id: pendingCOD.order_id,
-                    message: {
-                      store_id: storeId,
-                      order_id: pendingCOD.order_id,
-                      phone: cleanPhone,
-                      direction: 'incoming',
-                      message: `🗳️ Selected: ${selectedOption}`,
-                      created_at: new Date().toISOString()
-                    }
-                  });
-                } catch (e) {}
+              const lowerVote = selectedOption.toLowerCase();
+              const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
+              const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
+              const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
 
-                if (isConfirm) {
-                  db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed', delivery_status = 'confirmed' WHERE id = ?`).run(pendingCOD.order_id);
-                  const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                  if (order) {
-                    const { broadcast } = require('../../sse');
-                    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+              // Fetch the order ref for use in auto-reply messages
+              let orderRef = `#${pendingCOD.order_id}`;
+              try {
+                const orderRow = db.prepare('SELECT ref_number FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                if (orderRow && orderRow.ref_number) orderRef = orderRow.ref_number;
+              } catch (_) {}
+
+              // Log incoming poll vote to messages table
+              try {
+                const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                const storeId = order ? order.store_id : 1;
+                db.prepare(`
+                  INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
+                  VALUES (?, ?, ?, 'incoming', ?)
+                `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
+                
+                const { broadcast: wsBroadcast } = require('../../websocket');
+                wsBroadcast('message', {
+                  order_id: pendingCOD.order_id,
+                  message: {
+                    store_id: storeId,
+                    order_id: pendingCOD.order_id,
+                    phone: cleanPhone,
+                    direction: 'incoming',
+                    message: `🗳️ Selected: ${selectedOption}`,
+                    created_at: new Date().toISOString()
                   }
-                  await bot.sendMessage(fromPhone, `✅ *Shukriya!* Aapka COD order *confirm* ho gaya hai. Insha'Allah 2-3 working days mein deliver ho jayega. 📦`, false);
-                  console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
-                } else {
-                  db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
-                  const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                  if (order) {
-                    const { broadcast } = require('../../sse');
-                    broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-                  }
-                  await bot.sendMessage(fromPhone, `❌ Aapka order cancel note kar liya gaya hai. Agar dobara order karna chahein toh hamari website visit karein. JazakAllah! 🙏`, false);
-                  console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
+                });
+              } catch (e) {}
+
+              if (isConfirm) {
+                // ✅ CONFIRM ORDER
+                db.prepare(`UPDATE cod_pending_verifications SET status = 'confirmed', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+                db.prepare(`UPDATE orders SET wa_verification_status = 'verified', payment_status = 'COD Confirmed', delivery_status = 'confirmed' WHERE id = ?`).run(pendingCOD.order_id);
+                const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                if (order) {
+                  const { broadcast } = require('../../sse');
+                  broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                 }
+                await bot.sendMessage(fromPhone, `🎉 Thank you! Your order ${orderRef} is confirmed and will be dispatched shortly. 📦`, false);
+                console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
+
+              } else if (isEdit) {
+                // ✏️ EDIT SIZE / ADDRESS — put order on hold
+                db.prepare(`UPDATE cod_pending_verifications SET status = 'on_hold', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+                db.prepare(`UPDATE orders SET payment_status = 'On Hold - Customer Edit' WHERE id = ?`).run(pendingCOD.order_id);
+                const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                if (order) {
+                  const { broadcast } = require('../../sse');
+                  broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+                }
+                await bot.sendMessage(fromPhone, `✏️ No worries! Please reply with your updated size or address, and we will update it for you. 📝`, false);
+                console.log(`🗳️ [POLL] COD On Hold (Edit): Order ${pendingCOD.order_id} by customer +${fromPhone}`);
+
+              } else if (isCancel) {
+                // ❌ CANCEL ORDER
+                db.prepare(`UPDATE cod_pending_verifications SET status = 'cancelled', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+                db.prepare(`UPDATE orders SET payment_status = 'COD Cancelled' WHERE id = ?`).run(pendingCOD.order_id);
+                const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                if (order) {
+                  const { broadcast } = require('../../sse');
+                  broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+                }
+                await bot.sendMessage(fromPhone, `Your order ${orderRef} has been cancelled. We hope to serve you again soon! 🙏`, false);
+                console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
               }
             }
           }
@@ -206,10 +228,14 @@ async function handleMessagesUpdate(bot, updates) {
   }
 }
 
+
 function handleMessagesUpsert(bot, m) {
   const { messages, type } = m;
   if (type !== 'notify' && type !== 'append') return;
   for (const msg of messages) {
+    if (msg.message?.pollUpdateMessage) {
+      console.log(`🗳️ [messages.upsert] User voted on poll: Message ID ${msg.key?.id}, from JID ${msg.key?.remoteJid}`);
+    }
     setImmediate(() => {
       tenantContext.run(bot.tenantId, async () => {
         try {

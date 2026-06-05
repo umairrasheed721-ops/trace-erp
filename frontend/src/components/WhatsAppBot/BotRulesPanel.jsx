@@ -6,10 +6,10 @@ export default function BotRulesPanel({
   settings,
   setSettings
 }) {
-  const [pollOptions, setPollOptions] = React.useState(['✅ Confirm Order', '❌ Cancel Order']);
+  const [pollOptions, setPollOptions] = React.useState(['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order']);
 
   React.useEffect(() => {
-    if (settings.poll_options) {
+    if (settings.poll_options && Array.isArray(settings.poll_options) && settings.poll_options.length > 0) {
       setPollOptions(settings.poll_options);
     }
   }, [settings.poll_options]);
@@ -109,7 +109,7 @@ export default function BotRulesPanel({
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
             <span>💬 COD Order Verification Challenge Template</span>
-            <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{ref}'}, {'{amount}'}</span>
+            <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{ref}'}, {'{amount}'}, {'{first_name}'}, {'{store_name}'}</span>
           </label>
           <textarea 
             className="premium-input" 

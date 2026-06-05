@@ -17,7 +17,7 @@ export default function useWhatsAppBot() {
     cod_template: '',
     attempted_template: '',
     dispatch_template: '',
-    poll_options: ['✅ Confirm Order', '❌ Cancel Order']
+    poll_options: ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order']
   })
 
   const [loading, setLoading] = useState(true)
@@ -121,7 +121,7 @@ export default function useWhatsAppBot() {
             try {
               s.poll_options = JSON.parse(s.poll_options);
             } catch (e) {
-              s.poll_options = ['✅ Confirm Order', '❌ Cancel Order'];
+              s.poll_options = ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order'];
             }
           }
           setSettings(prev => ({ ...prev, ...s }));

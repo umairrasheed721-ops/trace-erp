@@ -97,6 +97,59 @@ async function dispatchCODVerification(order) {
   const name = (customer_name || 'Customer').split(' ')[0];
   const ref = ref_number || `#${orderId}`;
 
+  let amount = order.price;
+  if (amount === undefined || amount === null) {
+    try {
+      const orderRow = db.prepare('SELECT price FROM orders WHERE id = ?').get(orderId);
+      amount = orderRow ? orderRow.price : 'N/A';
+    } catch (dbErr) {
+      console.error('🔐 COD Verifier: Failed to query price for order:', dbErr.message);
+      amount = 'N/A';
+    }
+  }
+
+  let templateText = '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!';
+  let pollOptions = ["✅ Confirm Order", "✏️ Edit Size / Address", "❌ Cancel Order"];
+
+  // Resolve store name for {store_name} variable
+  let storeName = 'TracePK';
+  try {
+    const storeRow = db.prepare('SELECT s.store_name FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(orderId);
+    if (storeRow && storeRow.store_name) {
+      storeName = storeRow.store_name;
+    }
+  } catch (storeErr) {
+    console.error('🔐 COD Verifier: Failed to query store name:', storeErr.message);
+  }
+
+  try {
+    const settings = db.prepare('SELECT cod_template, poll_options FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
+    if (settings) {
+      if (settings.cod_template) {
+        templateText = settings.cod_template;
+      }
+      if (settings.poll_options) {
+        try {
+          const parsed = JSON.parse(settings.poll_options);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            pollOptions = parsed;
+          }
+        } catch (jsonErr) {
+          console.error('🔐 COD Verifier: Failed to parse poll_options JSON:', jsonErr.message);
+        }
+      }
+    }
+  } catch (dbErr) {
+    console.error('🔐 COD Verifier: Failed to fetch whatsapp settings:', dbErr.message);
+  }
+
+  const finalMessage = templateText
+    .replace(/\{ref\}/gi, ref)
+    .replace(/\{amount\}/gi, amount)
+    .replace(/\{name\}/gi, name)
+    .replace(/\{first_name\}/gi, name)
+    .replace(/\{store_name\}/gi, storeName);
+
   console.log(`🔐 COD Verifier: Starting VN generation for order ${ref} → ${normalizedPhone} (raw: ${phone})`);
 
   try {
@@ -142,8 +195,8 @@ async function dispatchCODVerification(order) {
 
     // Hard-Fix Poll Payload Structure
     const pollData = {
-      name: `🔐 *COD Order Verification — ${ref}*\n\nHi ${name}, aapka Cash on Delivery order confirm karein:`,
-      values: ["✅ Confirm Order", "❌ Cancel Order"],
+      name: finalMessage,
+      values: pollOptions,
       selectableCount: 1
     };
     // Force-send the poll/message
