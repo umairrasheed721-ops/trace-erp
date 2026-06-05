@@ -127,12 +127,12 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     return { added: 0, logs: auditLogs, failed: 1 };
   }
 
-  const updateStatus = (status, progress, processed = 0, total = 0) => {
+  const updateStatus = (status, progress, processed = 0, total = 0, currentOrder = '') => {
     try {
       db.prepare('UPDATE stores SET sync_status = ?, sync_progress = ?, sync_processed = ?, sync_total = ? WHERE id = ?')
         .run(status, progress, processed, total, storeId);
     } catch (e) { console.error('Status Error:', e.message); }
-    if (onProgress) onProgress(status, progress, processed, total);
+    if (onProgress) onProgress(status, progress, processed, total, currentOrder);
   };
 
   const insertOrder = db.prepare(`
@@ -263,7 +263,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
       const newlyFoundInBatch = batch.filter(o => !existingIds.has(String(o.id)));
       
       if (newlyFoundInBatch.length > 0) {
-        updateStatus('syncing', `Processing batch... ${totalScanned} scanned, ${totalAdded + newlyFoundInBatch.length} saved.`, totalAdded, totalAdded + 500);
+        const firstOrderName = newlyFoundInBatch[0]?.name || '';
+        updateStatus('syncing', `Processing batch... ${totalScanned} scanned, ${totalAdded + newlyFoundInBatch.length} saved.`, totalAdded, totalAdded + 500, firstOrderName);
 
         const batchVariantIds = [...new Set(
           newlyFoundInBatch.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
@@ -271,7 +272,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         const costMap = await getLiveShopifyCosts(
           shop_domain, access_token, batchVariantIds,
-          (msg) => updateStatus('syncing', `Batch Progress: ${msg}`, totalAdded, totalAdded + 500)
+          (msg) => updateStatus('syncing', `Batch Progress: ${msg}`, totalAdded, totalAdded + 500, firstOrderName)
         );
 
         const added = insertChunk(newlyFoundInBatch.reverse(), costMap);
@@ -306,12 +307,12 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
 async function refreshShopifyUpdates(store, onProgress, options = {}) {
   const { id: storeId, shop_domain, access_token } = store;
-  const updateStatus = (status, progress, processed = 0, total = 0) => {
+  const updateStatus = (status, progress, processed = 0, total = 0, currentOrder = '') => {
     try {
       db.prepare('UPDATE stores SET sync_status = ?, sync_progress = ?, sync_processed = ?, sync_total = ? WHERE id = ?')
         .run(status, progress, processed, total, storeId);
     } catch (e) { console.error('Status Error:', e.message); }
-    if (onProgress) onProgress(status, progress, processed, total);
+    if (onProgress) onProgress(status, progress, processed, total, currentOrder);
   };
 
   if (!access_token || access_token === 'PENDING') return { updated: 0 };
@@ -383,17 +384,17 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       }
     });
 
+    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
     let costMap = {};
+    const firstUpdateName = sheetOrders && sheetOrders[0] ? (shopifyMap[String(sheetOrders[0].shopify_order_id)]?.name || '') : '';
     if (syncCosts) {
-      updateStatus('syncing', `Fetching costs for ${[...new Set(allVariantIds)].length} variants...`, 0, 0);
+      updateStatus('syncing', `Fetching costs for ${[...new Set(allVariantIds)].length} variants...`, 0, 0, firstUpdateName);
       costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(allVariantIds)], (msg) => {
-        updateStatus('syncing', msg, 50, 100);
+        updateStatus('syncing', msg, 50, 100, firstUpdateName);
       });
     } else {
-      updateStatus('syncing', 'Skipping costs (Status Only mode)...', 0, 0);
+      updateStatus('syncing', 'Skipping costs (Status Only mode)...', 0, 0, firstUpdateName);
     }
-
-    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
 
     let count = 0;
     const updateStmt = db.prepare(`

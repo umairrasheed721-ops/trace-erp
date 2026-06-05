@@ -32,7 +32,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, delivery_status FROM orders
+    SELECT id, ref_number, tracking_number, delivery_status FROM orders
     WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
     AND (
       TRIM(LOWER(courier)) IN ('instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs', 'private rider')
@@ -162,7 +162,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     }
 
     processedCount += batch.length;
-    if (onProgress) onProgress('Syncing Instaworld', processedCount, toProcess.length);
+    const currentOrder = batch[0]?.ref_number || '';
+    if (onProgress) onProgress('Syncing Instaworld', processedCount, toProcess.length, currentOrder);
     await sleepWithJitter();
   }
 
@@ -194,7 +195,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   }
 
   console.log(`✅ Instaworld [${store.shop_domain}]: Updated ${updatesToApply.length} orders`);
-  return { updated: updatesToApply.length };
+  return { updated: updatesToApply.length, logs: auditLogs, total: toProcess.length, failed: auditLogs.length };
 }
 
 module.exports = { syncInstaworld };

@@ -32,7 +32,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const baseUrl = rawUrl.replace(/\/?$/, '/');
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, delivery_status FROM orders
+    SELECT id, ref_number, tracking_number, delivery_status FROM orders
     WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
     AND (LOWER(courier) IN ('postex', 'post ex') OR courier IS NULL OR courier = '')
   `).all(storeId);
@@ -130,7 +130,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     }
     
     processed += batch.length;
-    if (onProgress) onProgress('Syncing PostEx Tracking', processed, toProcess.length);
+    const currentOrder = batch[0]?.ref_number || '';
+    if (onProgress) onProgress('Syncing PostEx Tracking', processed, toProcess.length, currentOrder);
 
     await sleepWithJitter();
   }

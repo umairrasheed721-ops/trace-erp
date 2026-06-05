@@ -132,10 +132,14 @@ router.post('/sync-shopify', async (req, res) => {
   res.json({ success: true, message: 'Shopify sync started in background' });
 
   const { runShopifySyncWithJournal } = require('../engines/shopify_sync');
+  const tenantId = req.tenantId || 'default';
 
   (async () => {
     try {
-      await runShopifySyncWithJournal(store);
+      const tenantContext = require('../tenant-context');
+      await tenantContext.run(tenantId, async () => {
+        await runShopifySyncWithJournal(store);
+      });
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
@@ -156,10 +160,14 @@ router.post('/sync-couriers', async (req, res) => {
   res.json({ success: true, message: 'Courier sync started in background' });
 
   const { runCourierSyncWithJournal } = require('../engines/courier_sync');
+  const tenantId = req.tenantId || 'default';
 
   (async () => {
     try {
-      await runCourierSyncWithJournal(store);
+      const tenantContext = require('../tenant-context');
+      await tenantContext.run(tenantId, async () => {
+        await runCourierSyncWithJournal(store);
+      });
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
@@ -176,39 +184,43 @@ router.post('/sync-all', async (req, res) => {
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
   // Reset progress state
-  global.syncProgress[store_id] = { status: 'Starting Sync...', processed: 0, total: 0 };
+  global.syncProgress[store_id] = { status: 'Starting Sync...', processed: 0, total: 0, abort: false };
 
   const updateProgress = (stage, processed, total) => {
     if (global.syncProgress[store_id]) {
-      global.syncProgress[store_id] = { status: stage, processed, total };
+      global.syncProgress[store_id] = { status: stage, processed, total, abort: global.syncProgress[store_id].abort || false };
       broadcast('sync_progress', { storeId: store_id, status: stage, processed, total });
     }
   };
 
   res.json({ success: true, message: 'Sync started in background' });
+  const tenantId = req.tenantId || 'default';
 
   // Run in background (non-blocking)
   (async () => {
     try {
-      updateProgress('Fetching Shopify (New Orders)', 0, 100);
-      const r1 = await fetchShopifyOrders(store, updateProgress);
-      
-      updateProgress('Refreshing Shopify Updates', 0, 100);
-      const r2 = await refreshShopifyUpdates(store, updateProgress);
-      
-      updateProgress('Syncing PostEx Tracking', 0, 100);
-      const r3 = await syncPostEx(store, 'FULL', updateProgress);
-      
-      updateProgress('Syncing Instaworld Tracking', 0, 100);
-      const r4 = await syncInstaworld(store, 'FULL', updateProgress);
+      const tenantContext = require('../tenant-context');
+      await tenantContext.run(tenantId, async () => {
+        updateProgress('Fetching Shopify (New Orders)', 0, 100);
+        const r1 = await fetchShopifyOrders(store, updateProgress);
+        
+        updateProgress('Refreshing Shopify Updates', 0, 100);
+        const r2 = await refreshShopifyUpdates(store, updateProgress);
+        
+        updateProgress('Syncing PostEx Tracking', 0, 100);
+        const r3 = await syncPostEx(store, 'FULL', updateProgress);
+        
+        updateProgress('Syncing Instaworld Tracking', 0, 100);
+        const r4 = await syncInstaworld(store, 'FULL', updateProgress);
 
-      updateProgress('Sync Complete', 100, 100);
-      saveSyncLog('Global Store Sync', 
-        (r1.total || 0) + (r3.total || 0) + (r4.total || 0), 
-        (r1.added || 0) + (r3.updated || 0) + (r4.updated || 0), 
-        (r1.failed || 0) + (r3.failed || 0) + (r4.failed || 0), 
-        [...(r1.logs || []), ...(r2.logs || []), ...(r3.logs || []), ...(r4.logs || [])]
-      );
+        updateProgress('Sync Complete', 100, 100);
+        saveSyncLog('Global Store Sync', 
+          (r1.total || 0) + (r3.total || 0) + (r4.total || 0), 
+          (r1.added || 0) + (r3.updated || 0) + (r4.updated || 0), 
+          (r1.failed || 0) + (r3.failed || 0) + (r4.failed || 0), 
+          [...(r1.logs || []), ...(r2.logs || []), ...(r3.logs || []), ...(r4.logs || [])]
+        );
+      });
       setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
     } catch (e) {
       console.error(`Full sync error for ${store.shop_domain}: ${e.message}`);

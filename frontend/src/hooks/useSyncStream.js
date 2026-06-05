@@ -37,11 +37,11 @@ export default function useSyncStream() {
         if (String(data.storeId) === String(activeStoreId)) {
           setSyncState(data);
           
-          const isComplete = data.status === 'Sync Complete' || (data.processed >= data.total && data.total > 0);
+          const isComplete = data.status === 'Sync Complete' || data.status === 'Sync Aborted' || data.aborted || (data.processed >= data.total && data.total > 0);
           if (isComplete) {
             setTimeout(() => {
               setSyncState(prev => {
-                if (prev && (prev.status === 'Sync Complete' || prev.processed >= prev.total)) {
+                if (prev && (prev.status === 'Sync Complete' || prev.status === 'Sync Aborted' || prev.aborted || prev.processed >= prev.total)) {
                   return null;
                 }
                 return prev;
@@ -51,6 +51,25 @@ export default function useSyncStream() {
         }
       } catch (err) {
         console.error('Error parsing sync progress SSE:', err);
+      }
+    });
+
+    es.addEventListener('aborted', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (String(data.storeId) === String(activeStoreId)) {
+          setSyncState(prev => prev ? { ...prev, aborted: true, status: 'Sync Aborted' } : null);
+          setTimeout(() => {
+            setSyncState(prev => {
+              if (prev && (prev.aborted || prev.status === 'Sync Aborted')) {
+                return null;
+              }
+              return prev;
+            });
+          }, 5000);
+        }
+      } catch (err) {
+        console.error('Error parsing aborted SSE:', err);
       }
     });
 

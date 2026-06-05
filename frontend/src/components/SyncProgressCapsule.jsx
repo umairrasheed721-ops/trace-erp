@@ -15,7 +15,7 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
     if (!activeStore?.id) return;
     try {
       const token = localStorage.getItem('trace_token') || '';
-      const res = await fetch('/api/tracking/cancel-sync', {
+      const res = await fetch('/api/sync/abort', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ store_id: activeStore.id })
@@ -46,21 +46,26 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
           <span className="loading-spinner" style={{ width: 12, height: 12, borderWidth: '2px' }}></span>
         )}
         <span style={{ whiteSpace: 'nowrap' }}>
-          {isReconnecting ? 'Waiting for Reconnect...' : (syncState?.status || '')}
+          {isReconnecting ? 'Waiting for Reconnect...' : (
+            syncState?.currentOrder 
+              ? `Syncing ${syncState.currentOrder}` 
+              : (syncState?.status || '')
+          )}
         </span>
         <span style={{ color: 'var(--text-muted)', fontWeight: 400, whiteSpace: 'nowrap' }}>
-          {processed} / {Math.max(processed, total)} ({percent}%)
+          ({processed}/{Math.max(processed, total)})
         </span>
         <button 
           onClick={handleCancelSync}
           title="Stop Sync"
           style={{
-            background: 'var(--red)', border: 'none', color: 'white', borderRadius: '50%',
-            width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', marginLeft: 8, padding: 0, fontSize: '0.6rem', lineHeight: 1
+            background: '#ef4444', border: 'none', color: 'white', borderRadius: '4px',
+            padding: '2px 8px', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', 
+            alignItems: 'center', gap: '4px', cursor: 'pointer', marginLeft: 8,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
           }}
         >
-          ✖
+          🛑 Stop
         </button>
       </div>
 

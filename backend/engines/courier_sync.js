@@ -9,6 +9,10 @@ async function runCourierSyncWithJournal(store, options = {}) {
   const storeId = store.id;
   const syncType = 'Courier Sync';
 
+  global.syncProgress = global.syncProgress || {};
+  global.syncProgress[storeId] = global.syncProgress[storeId] || {};
+  global.syncProgress[storeId].abort = false;
+
   // 1. Initialize Journal: Delete past journal entries for this sync type
   try {
     db.prepare('DELETE FROM sync_journal WHERE store_id = ? AND sync_type = ?').run(storeId, syncType);
@@ -29,13 +33,13 @@ async function runCourierSyncWithJournal(store, options = {}) {
   let totalOrders = 0;
 
   // Progress callback to update active state in DB and broadcast SSE
-  const onProgress = (stage, progressMsg, processed = 0, total = 0) => {
+  const onProgress = (stage, progressMsg, processed = 0, total = 0, currentOrder = '') => {
     totalProcessed = Number(processed) || totalProcessed;
     totalOrders = Number(total) || totalOrders;
     const displayMsg = `Syncing: ${stage} - ${progressMsg || ''}`;
 
     try {
-      const meta = JSON.stringify({ processed: totalProcessed, total: totalOrders, status: displayMsg });
+      const meta = JSON.stringify({ processed: totalProcessed, total: totalOrders, status: displayMsg, currentOrder });
       db.prepare('UPDATE sync_journal SET error_details = ? WHERE store_id = ? AND sync_type = ? AND order_id = \'METADATA\'')
         .run(meta, storeId, syncType);
     } catch (e) {
@@ -47,23 +51,24 @@ async function runCourierSyncWithJournal(store, options = {}) {
       status: displayMsg, 
       processed: totalProcessed, 
       total: totalOrders,
-      sync_type: syncType 
+      sync_type: syncType,
+      currentOrder
     });
   };
 
   try {
     // Run PostEx Sync
     onProgress('PostEx Tracking', 'Starting PostEx update...', 0, 100);
-    const r1 = await syncPostEx(store, 'FULL', (stage, processed, total) => {
-      onProgress('PostEx Tracking', stage, processed, total);
+    const r1 = await syncPostEx(store, 'FULL', (stage, processed, total, currentOrder) => {
+      onProgress('PostEx Tracking', stage, processed, total, currentOrder);
     });
 
     // Run Instaworld Sync
     const postExUpdated = r1.updated || 0;
     const postExTotal = r1.total || 0;
     onProgress('Instaworld Tracking', 'Starting Instaworld update...', postExUpdated, postExTotal + 100);
-    const r2 = await syncInstaworld(store, 'FULL', (stage, processed, total) => {
-      onProgress('Instaworld Tracking', stage, postExUpdated + processed, postExTotal + total);
+    const r2 = await syncInstaworld(store, 'FULL', (stage, processed, total, currentOrder) => {
+      onProgress('Instaworld Tracking', stage, postExUpdated + processed, postExTotal + total, currentOrder);
     });
 
     const logs = [...(r1.logs || []), ...(r2.logs || [])];
@@ -79,10 +84,14 @@ async function runCourierSyncWithJournal(store, options = {}) {
       });
     })();
 
-    // 4. Mark METADATA complete
+    // 4. Mark METADATA complete or aborted
+    const isAborted = !!(global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort);
+    const finalStatus = isAborted ? 'Sync Aborted' : 'Sync Complete';
+    const finalJournalStatus = isAborted ? 'ABORTED' : 'COMPLETE';
+
     try {
-      db.prepare('UPDATE sync_journal SET status = \'COMPLETE\', error_details = ? WHERE store_id = ? AND sync_type = ? AND order_id = \'METADATA\'')
-        .run(JSON.stringify({ processed: total, total, status: 'Sync Complete' }), storeId, syncType);
+      db.prepare('UPDATE sync_journal SET status = ?, error_details = ? WHERE store_id = ? AND sync_type = ? AND order_id = \'METADATA\'')
+        .run(finalJournalStatus, JSON.stringify({ processed: totalProcessed, total: totalOrders, status: finalStatus, aborted: isAborted }), storeId, syncType);
     } catch (e) {}
 
     // 5. Push to sync_history (Notifications)
@@ -96,7 +105,17 @@ async function runCourierSyncWithJournal(store, options = {}) {
 
     db.prepare("DELETE FROM sync_history WHERE created_at < datetime('now', '+5 hours', '-3 days')").run();
     broadcast('sync_history_updated', { type: syncType });
-    broadcast('sync_progress', { storeId, status: 'Sync Complete', processed: total, total, sync_type: syncType });
+    if (isAborted) {
+      broadcast('aborted', { storeId, sync_type: syncType });
+    }
+    broadcast('sync_progress', { 
+      storeId, 
+      status: finalStatus, 
+      processed: totalProcessed, 
+      total: totalOrders, 
+      sync_type: syncType,
+      aborted: isAborted
+    });
 
     // Clean up METADATA after 5 seconds
     setTimeout(() => {

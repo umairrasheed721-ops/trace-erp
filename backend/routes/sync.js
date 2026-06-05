@@ -190,5 +190,24 @@ router.post('/reconciliation/run', async (req, res) => {
   }
 });
 
+// POST /api/sync/abort
+router.post('/abort', (req, res) => {
+  const storeId = req.body.store_id || req.body.storeId;
+  if (!storeId) return res.status(400).json({ error: 'store_id required' });
+
+  global.syncProgress = global.syncProgress || {};
+  global.syncProgress[storeId] = global.syncProgress[storeId] || {};
+  global.syncProgress[storeId].abort = true;
+
+  try {
+    db.prepare("UPDATE sync_journal SET status = 'ABORTED' WHERE store_id = ? AND order_id = 'METADATA'").run(storeId);
+  } catch (e) {}
+
+  // Emit aborted event to SSE client streams
+  broadcast('aborted', { storeId });
+
+  res.json({ success: true, message: 'Cancellation signal sent.' });
+});
+
 module.exports = router;
 
