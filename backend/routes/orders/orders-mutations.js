@@ -71,9 +71,9 @@ router.put('/:id/cs-update', async (req, res) => {
 });
 
 // PUT /api/orders/:id - Update a single order field (for manual edits)
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address1', 'province', 'zip'];
+  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address', 'address1', 'address2', 'province', 'zip'];
   const updates = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields to update' });
 
@@ -142,19 +142,55 @@ router.put('/:id', (req, res) => {
       new_val: newOrder
     });
 
-    // 5. SHOPIFY LIVE SYNC: If note changed, push to Shopify
-    if (req.body.notes !== undefined) {
-      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
-      if (order && order.shopify_order_id) {
-        const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
-        fetch(shopifyUrl, {
-          method: 'PUT',
-          headers: {
-            'X-Shopify-Access-Token': order.access_token,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ order: { id: order.shopify_order_id, note: req.body.notes } })
-        }).catch(err => console.error('Failed to sync note to Shopify:', err));
+    // 5. SHOPIFY LIVE SYNC: Push notes, address, or city changes to Shopify
+    const hasAddressChange = req.body.address !== undefined || req.body.city !== undefined || req.body.phone !== undefined || req.body.address1 !== undefined || req.body.province !== undefined || req.body.zip !== undefined;
+    const hasNoteChange = req.body.notes !== undefined;
+
+    if (hasNoteChange || hasAddressChange) {
+      try {
+        const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+        if (order && order.shopify_order_id) {
+          const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
+          const shopifyPayload = { order: { id: order.shopify_order_id } };
+
+          if (hasNoteChange) {
+            shopifyPayload.order.note = req.body.notes;
+          }
+
+          if (hasAddressChange) {
+            // Build shipping_address from what was changed, falling back to DB values for unset fields
+            shopifyPayload.order.shipping_address = {
+              address1: req.body.address || req.body.address1 || order.address || order.address1 || '',
+              address2: req.body.address2 || order.address2 || '',
+              city:     req.body.city     || order.city     || '',
+              province: req.body.province || order.province || '',
+              zip:      req.body.zip      || order.zip      || '',
+              phone:    req.body.phone    || order.phone    || '',
+              country:  order.country     || 'PK',
+            };
+          }
+
+          console.log(`📦 [ADDRESS_SYNC] Pushing to Shopify order ${order.shopify_order_id}:`, JSON.stringify(shopifyPayload.order.shipping_address || {}));
+
+          fetch(shopifyUrl, {
+            method: 'PUT',
+            headers: {
+              'X-Shopify-Access-Token': order.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(shopifyPayload)
+          }).then(async sRes => {
+            if (!sRes.ok) {
+              const errBody = await sRes.text();
+              console.error(`⚠️ [ADDRESS_SYNC] Shopify rejected update for order ${order.shopify_order_id}: ${sRes.status} — ${errBody}`);
+            } else {
+              console.log(`✅ [ADDRESS_SYNC] Shopify address updated for order ${order.shopify_order_id}`);
+            }
+          }).catch(err => console.error('❌ [ADDRESS_SYNC] Failed to push to Shopify:', err.message));
+        }
+      } catch (shopifyErr) {
+        // Dual-save: local DB update succeeded above — Shopify failure is non-blocking
+        console.error('⚠️ [ADDRESS_SYNC] Shopify sync error (local DB still saved):', shopifyErr.message);
       }
     }
 

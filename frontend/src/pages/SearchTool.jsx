@@ -1308,10 +1308,12 @@ export default function SearchTool() {
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o))
     try {
+      const payload = { [field]: value };
+      console.log('📦 [updateOrderField] Sending payload:', payload, '→ PUT /api/orders/' + orderId);
       const res = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value })
+        body: JSON.stringify(payload)
       })
       const data = await res.json()
       if (res.ok && data.order) {
@@ -1325,6 +1327,7 @@ export default function SearchTool() {
       addToast(`❌ Failed to save: ${err.message}`, 'error')
     }
   }
+
 
 
 
