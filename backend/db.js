@@ -250,12 +250,13 @@ function backupDatabase() {
       fs.mkdirSync(backupDir, { recursive: true });
     }
     
+    const tenantId = tenantContext.getStore() || 'default';
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const mainBackupPath = path.join(backupDir, `trace_erp_backup_default_${timestamp}.db`);
+    const mainBackupPath = path.join(backupDir, `trace_erp_backup_${tenantId}_${timestamp}.db`);
     
     const conn = getDbInstance();
     conn.exec(`VACUUM INTO '${mainBackupPath}'`);
-    console.log(`💾 [BACKUP] Successfully backed up default database to: ${mainBackupPath}`);
+    console.log(`💾 [BACKUP] Successfully backed up database for tenant [${tenantId}] to: ${mainBackupPath}`);
     
     // Cleanup old backups (> 7 days)
     const files = fs.readdirSync(backupDir);
