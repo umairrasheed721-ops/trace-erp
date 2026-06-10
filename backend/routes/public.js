@@ -80,7 +80,7 @@ router.get('/poll-diag', (req, res) => {
 
     // stores
     try {
-      result.stores = db.prepare('SELECT id, shop_domain, CASE WHEN access_token IS NULL OR access_token = "PENDING" THEN "MISSING" ELSE "SET" END as token_status FROM stores').all();
+      result.stores = db.prepare("SELECT id, shop_domain FROM stores").all();
     } catch (e) {
       result.stores_error = e.message;
     }
