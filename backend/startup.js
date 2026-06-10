@@ -171,7 +171,23 @@ function runEarlyStartup() {
 
   process.on('SIGTERM', () => {
     console.log('📡 SIGTERM received — graceful shutdown');
-    process.exit(0);
+    try {
+      const { sessions } = require('./engines/whatsapp_bot');
+      if (sessions) {
+        for (const [tenantId, botInstance] of sessions.entries()) {
+          if (botInstance.sock) {
+            console.log(`🔌 Closing WebSocket gracefully for tenant [${tenantId}]...`);
+            botInstance.sock.end(undefined);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to end bot sockets gracefully:', e.message);
+    }
+    setTimeout(() => {
+      console.log('👋 Safe exit.');
+      process.exit(0);
+    }, 850);
   });
 
   // Environment health guard
