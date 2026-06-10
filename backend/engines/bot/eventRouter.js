@@ -233,9 +233,27 @@ function handleMessagesUpsert(bot, m) {
   const { messages, type } = m;
   if (type !== 'notify' && type !== 'append') return;
   for (const msg of messages) {
+
+    // ── CRITICAL: Poll votes MUST bypass the portal-hook HTTP path ──
+    // pollUpdate.vote.selectedOptions contains raw Uint8Array/Buffer SHA-256 hashes.
+    // JSON.stringify → JSON.parse (used by portal-hook) corrupts binary data:
+    //   Uint8Array([23, 45, ...]) → {"0":23,"1":45,...} (plain object, not a Buffer)
+    // This breaks BOTH Baileys' getAggregateVotesInPollMessage AND our SHA-256 matching.
+    // Solution: process poll votes directly, skipping serialization entirely.
     if (msg.message?.pollUpdateMessage) {
-      console.log(`🗳️ [messages.upsert] User voted on poll: Message ID ${msg.key?.id}, from JID ${msg.key?.remoteJid}`);
+      console.log(`🗳️ [PollVault] Poll vote detected — bypassing portal-hook to preserve Buffer integrity. JID: ${msg.key?.remoteJid}`);
+      setImmediate(() => {
+        tenantContext.run(bot.tenantId, async () => {
+          try {
+            await processIncomingMessage(bot, msg, bot.sock, db);
+          } catch (e) {
+            console.error('[PollVault] Direct poll processing error:', e.message);
+          }
+        });
+      });
+      continue; // skip portal-hook routing for this message
     }
+
     setImmediate(() => {
       tenantContext.run(bot.tenantId, async () => {
         try {
