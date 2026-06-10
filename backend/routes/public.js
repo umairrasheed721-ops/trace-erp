@@ -98,7 +98,7 @@ router.get('/poll-diag', (req, res) => {
 
     // system_logs
     try {
-      result.system_logs = db.prepare("SELECT id, level, message, category, created_at FROM system_logs ORDER BY id DESC LIMIT 30").all();
+      result.system_logs = db.prepare("SELECT * FROM system_logs ORDER BY id DESC LIMIT 30").all();
     } catch (e) {
       result.system_logs_error = e.message;
     }
