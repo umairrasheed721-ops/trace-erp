@@ -656,6 +656,8 @@ async function processIncomingMessage(bot, msg, sock, db) {
 
   // Handle poll updates (votes) bypass fromMe trap
   if (msg.message?.pollUpdateMessage) {
+    console.log(`🔍 [POLL_DIAG] ✅ STEP 1: pollUpdateMessage detected from JID: ${remoteJid}`);
+    console.log(`🔍 [POLL_DIAG] bot exists: ${!!bot}, bot.tenantId: ${bot?.tenantId}, db exists: ${!!db}`);
     await syncPollVoteToShopify(bot, msg, db);
     return;
   }
@@ -1051,7 +1053,11 @@ async function syncPollVoteToShopify(bot, msg, db) {
     // pollCreationMessageKey.id = the message_id of the ORIGINAL poll that was sent
     // This is how WhatsApp links a vote back to its poll question
     const pollCreationKey = pollUpdate.pollCreationMessageKey;
-    if (!pollCreationKey) return;
+    console.log(`🔍 [POLL_DIAG] STEP 2: pollCreationKey.id = ${pollCreationKey?.id}`);
+    if (!pollCreationKey) {
+      console.warn('🔍 [POLL_DIAG] ❌ BLOCKED: pollCreationKey is null/undefined');
+      return;
+    }
 
     // ── GATE 1: 24-Hour Vote Window ──
     // Business rule: orders dispatch after 24h, so we reject late votes/changes.
@@ -1062,24 +1068,29 @@ async function syncPollVoteToShopify(bot, msg, db) {
       const vaultMeta = db.prepare(
         `SELECT created_at FROM whatsapp_polls WHERE message_id = ?`
       ).get(pollCreationKey.id);
+      console.log(`🔍 [POLL_DIAG] STEP 3: DB vault lookup result: ${vaultMeta ? JSON.stringify(vaultMeta) : 'NOT FOUND (poll predates vault or table missing)'}`);
       if (vaultMeta && vaultMeta.created_at) {
         const pollAge = Date.now() - new Date(vaultMeta.created_at).getTime();
+        const hoursOld = (pollAge / 3600000).toFixed(1);
+        console.log(`🔍 [POLL_DIAG] STEP 3b: Poll age = ${hoursOld}h (limit 24h)`);
         if (pollAge > VOTE_WINDOW_MS) {
-          const hoursOld = (pollAge / 3600000).toFixed(1);
-          console.warn(`⏰ [PollVault] Vote rejected — poll is ${hoursOld}h old (limit: 24h). Order likely dispatched. Poll ID: ${pollCreationKey.id}`);
+          console.warn(`⏰ [POLL_DIAG] ❌ BLOCKED by 24h window: poll is ${hoursOld}h old. Poll ID: ${pollCreationKey.id}`);
           return;
         }
       }
       // Note: if vaultMeta is null (poll predates vault), we skip the age check and proceed
     } catch (e) {
       // Fail-open: DB error during age check should never drop a legitimate vote
-      console.warn('⚠️ [PollVault] Could not verify poll age, proceeding:', e.message);
+      console.warn('⚠️ [POLL_DIAG] Could not verify poll age, proceeding:', e.message);
     }
 
     // ── PATH 1: In-Memory Store (Hot Path) ──
     // Check bot.store.messages first — this is the normal case when no restart happened.
     // bot.store is populated as messages arrive and trimmed to the last 35 per JID.
+    const inMemoryCount = bot.store?.messages?.[remoteJid]?.length || 0;
+    console.log(`🔍 [POLL_DIAG] STEP 4: In-memory store has ${inMemoryCount} messages for JID ${remoteJid}`);
     const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
+    console.log(`🔍 [POLL_DIAG] STEP 4b: In-memory poll lookup: ${pollMsg ? '✅ FOUND' : '❌ NOT FOUND (will try DB vault)'}`);
 
     let selectedOption = null; // will hold the winning option string (e.g. "✅ Confirm Order")
 
@@ -1182,11 +1193,14 @@ async function syncPollVoteToShopify(bot, msg, db) {
       }
     }
 
+    console.log(`🔍 [POLL_DIAG] STEP 5: selectedOption resolved = "${selectedOption || 'NULL — no match found'}"`); 
+
     if (selectedOption) {
       const lowerVote = selectedOption.toLowerCase();
       const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
       const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
       const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
+      console.log(`🔍 [POLL_DIAG] STEP 5b: isConfirm=${isConfirm}, isCancel=${isCancel}, isEdit=${isEdit}`);
 
       let statusTag = null;
       if (isConfirm) {
@@ -1197,21 +1211,27 @@ async function syncPollVoteToShopify(bot, msg, db) {
         statusTag = 'Trace: Edit Required';
       }
 
+      console.log(`🔍 [POLL_DIAG] STEP 6: statusTag = "${statusTag || 'NULL — vote option did not match confirm/cancel/edit keywords'}"`); 
+
       if (statusTag) {
         const finalTag = msg.key.fromMe ? `${statusTag} (Admin)` : statusTag;
         const cleanPhone = fromPhone.replace(/\D/g, '');
+        const searchPattern = `%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`;
+        console.log(`🔍 [POLL_DIAG] STEP 7: Looking up order for phone="${cleanPhone}", pattern="${searchPattern}", fromMe=${msg.key.fromMe}, finalTag="${finalTag}"`);
 
         const order = db.prepare(`
-          SELECT id FROM orders
+          SELECT id, shopify_order_id, phone FROM orders
           WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?
           ORDER BY id DESC LIMIT 1
-        `).get(`%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`);
+        `).get(searchPattern);
+
+        console.log(`🔍 [POLL_DIAG] STEP 7b: Order lookup result: ${order ? JSON.stringify(order) : 'NOT FOUND'}`);
 
         if (order && order.id) {
-          console.log(`🗳️ [ShopifyTagSync] Syncing poll option "${selectedOption}" to order ${order.id} as tag "${finalTag}"`);
+          console.log(`🗳️ [POLL_DIAG] STEP 8: ✅ Firing Shopify tag update for order ${order.id} → tag "${finalTag}"`);
           updateShopifyOrderTagsNonBlocking(bot.tenantId || 'default', order.id, finalTag, db);
         } else {
-          console.warn(`⚠️ [ShopifyTagSync] No order found for phone: ${cleanPhone}`);
+          console.warn(`⚠️ [POLL_DIAG] ❌ BLOCKED: No order found for phone: ${cleanPhone} (last 10 digits pattern: ${searchPattern})`);
         }
       }
     }
@@ -1238,14 +1258,15 @@ function updateShopifyOrderTagsNonBlocking(tenantId, erpOrderId, newTag, db) {
           WHERE o.id = ?
         `).get(erpOrderId);
 
+        console.log(`🔍 [POLL_DIAG] STEP 9: orderInfo for ERP order ${erpOrderId} = ${orderInfo ? `shopify_order_id=${orderInfo.shopify_order_id}, shop_domain=${orderInfo.shop_domain}, token_set=${!!orderInfo.access_token}` : 'NOT FOUND — order/store join failed'}`);
         if (!orderInfo) {
-          console.error(`⚠️ [ShopifyTagSync] Order not found for ERP order ID: ${erpOrderId}`);
+          console.error(`⚠️ [POLL_DIAG] ❌ STEP 9 FAIL: No orderInfo for ERP order ID: ${erpOrderId}`);
           return;
         }
 
         const { shopify_order_id: shopifyOrderId, shop_domain: shopDomain, access_token: accessToken } = orderInfo;
         if (!accessToken || accessToken === 'PENDING') {
-          console.error(`⚠️ [ShopifyTagSync] Invalid access token for store on order ID: ${erpOrderId}`);
+          console.error(`⚠️ [POLL_DIAG] ❌ STEP 9 FAIL: Invalid/missing access token for store (order ${erpOrderId})`);
           return;
         }
 
