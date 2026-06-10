@@ -471,6 +471,16 @@ class WhatsAppBot {
         let dbMessageContent;
         if (poll) {
           dbMessageContent = `🗳️ Poll: ${poll.name}`;
+          try {
+            db.prepare(`
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, tenant_id)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(message_id) DO NOTHING
+            `).run(messageId, jid, poll.name, JSON.stringify(poll.values), this.tenantId || 'default');
+            console.log(`🗄️ [PollVault] [DIRECT] Persisted poll "${poll.name}" (id=${messageId}) to DB for crash resilience.`);
+          } catch (vaultErr) {
+            console.error('⚠️ [PollVault] [DIRECT] Failed to persist poll to DB:', vaultErr.message);
+          }
         } else if (payload.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select' || payload.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
           dbMessageContent = payload.interactiveMessage?.body?.text || payload.viewOnceMessage?.message?.interactiveMessage?.body?.text || 'Interactive List';
         } else {
