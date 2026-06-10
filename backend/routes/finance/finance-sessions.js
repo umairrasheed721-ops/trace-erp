@@ -18,11 +18,16 @@ function formatDate(dStr) {
 }
 
 // GET /api/finance/couriers?store_id=1
-router.get('/couriers', asyncHandler(async (req, res) => {
-  const { store_id } = req.query;
-  const couriers = FinanceService.getCouriers(store_id);
-  res.success(couriers, 'Couriers retrieved successfully');
-}));
+router.get('/couriers', async (req, res) => {
+  try {
+    const { store_id } = req.query;
+    const couriers = FinanceService.getCouriers(store_id);
+    res.json({ success: true, data: couriers, message: 'Couriers retrieved successfully' });
+  } catch (err) {
+    console.error('[CourierFinanceRoute Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // GET /api/finance/ghost-product-orders?store_id=1&name=Product%20Name
 router.get('/ghost-product-orders', (req, res) => {

@@ -129,23 +129,34 @@ router.post('/sync-shopify', async (req, res) => {
 
   global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0, abort: false };
 
-  res.json({ success: true, message: 'Shopify sync started in background' });
-
   const { runShopifySyncWithJournal } = require('../engines/shopify_sync');
   const tenantId = req.tenantId || 'default';
 
-  (async () => {
-    try {
-      const tenantContext = require('../tenant-context');
-      await tenantContext.run(tenantId, async () => {
-        await runShopifySyncWithJournal(store);
-      });
-      setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
-    } catch (e) {
-      console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
-      setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
-    }
-  })();
+  try {
+    const syncPromise = new Promise(async (resolve, reject) => {
+      try {
+        const tenantContext = require('../tenant-context');
+        await tenantContext.run(tenantId, async () => {
+          const result = await runShopifySyncWithJournal(store);
+          resolve(result);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Shopify sync request timed out')), 35000)
+    );
+
+    const result = await Promise.race([syncPromise, timeoutPromise]);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
+    res.status(500).json({ error: e.message || 'Sync failed' });
+  } finally {
+    delete global.syncProgress[store_id];
+  }
 });
 
 // POST /api/tracking/sync-couriers - Courier tracking only (PostEx + Instaworld)
@@ -157,23 +168,34 @@ router.post('/sync-couriers', async (req, res) => {
 
   global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
 
-  res.json({ success: true, message: 'Courier sync started in background' });
-
   const { runCourierSyncWithJournal } = require('../engines/courier_sync');
   const tenantId = req.tenantId || 'default';
 
-  (async () => {
-    try {
-      const tenantContext = require('../tenant-context');
-      await tenantContext.run(tenantId, async () => {
-        await runCourierSyncWithJournal(store);
-      });
-      setTimeout(() => { delete global.syncProgress[store_id]; }, 5000);
-    } catch (e) {
-      console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
-      setTimeout(() => { delete global.syncProgress[store_id]; }, 10000);
-    }
-  })();
+  try {
+    const syncPromise = new Promise(async (resolve, reject) => {
+      try {
+        const tenantContext = require('../tenant-context');
+        await tenantContext.run(tenantId, async () => {
+          const result = await runCourierSyncWithJournal(store);
+          resolve(result);
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Courier sync request timed out')), 35000)
+    );
+
+    const result = await Promise.race([syncPromise, timeoutPromise]);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
+    res.status(500).json({ error: e.message || 'Sync failed' });
+  } finally {
+    delete global.syncProgress[store_id];
+  }
 });
 
 // POST /api/tracking/sync-all - Full sync for a store (Shopify fetch + both couriers)

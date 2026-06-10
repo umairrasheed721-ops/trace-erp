@@ -65,6 +65,7 @@ export function FinanceProvider({ children }) {
   const [isRepairing, setIsRepairing] = useState(false)
   const [repairResult, setRepairResult] = useState(null)
   const [forceUnpaidAsReturned, setForceUnpaidAsReturned] = useState(false)
+  const [isCourierSyncing, setCourierSyncing] = useState(false)
 
   // Product Costs Recovery State
   const [ghostProducts, setGhostProducts] = useState([])
@@ -88,8 +89,12 @@ export function FinanceProvider({ children }) {
 
   const fetchCouriers = async () => {
     if (!activeStoreId) return
+    setCourierSyncing(true)
     try {
       const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
+      if (!res.ok) {
+        throw new Error('Courier sync failed')
+      }
       const data = await res.json()
       if (data && data.success && Array.isArray(data.data)) {
         setCouriers(data.data)
@@ -101,6 +106,11 @@ export function FinanceProvider({ children }) {
     } catch (e) {
       console.error('Failed to fetch couriers', e)
       setCouriers([])
+      if (addToast) {
+        addToast('Courier sync failed', 'error')
+      }
+    } finally {
+      setCourierSyncing(false)
     }
   }
 
@@ -365,7 +375,7 @@ export function FinanceProvider({ children }) {
       loadingHistory, fetchHistory,
       couriers, selectedCourier, setSelectedCourier,
       daysOld, setDaysOld,
-      isRepairing, repairResult, setRepairResult,
+      isRepairing, isCourierSyncing, repairResult, setRepairResult,
       forceUnpaidAsReturned, setForceUnpaidAsReturned,
       ghostProducts, setGhostProducts,
       productCosts, setProductCosts,

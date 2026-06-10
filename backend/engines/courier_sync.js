@@ -132,6 +132,18 @@ async function runCourierSyncWithJournal(store, options = {}) {
         .run(JSON.stringify({ processed: 0, total: 0, status: `Failed: ${err.message}` }), storeId, syncType);
     } catch (e) {}
 
+    // Broadcast progress failure event via SSE
+    try {
+      broadcast('sync_progress', { 
+        storeId, 
+        status: `Failed: ${err.message}`, 
+        processed: 0, 
+        total: 0, 
+        sync_type: syncType,
+        failed: true
+      });
+    } catch (e) {}
+
     // Create error notification log
     try {
       const stmt = db.prepare('INSERT INTO sync_history (type, total, success, failed, log_data) VALUES (?, ?, ?, ?, ?)');

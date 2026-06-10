@@ -27,10 +27,11 @@ export const SyncButtons = React.memo(function SyncButtons() {
         body: JSON.stringify({ store_id: activeStoreId })
       })
       if (!res.ok) {
-        throw new Error('Sync failed to start')
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Sync failed to start');
       }
     } catch (e) {
-      addToast('❌ Sync failed to start', 'error')
+      addToast(`❌ Sync failed: ${e.message}`, 'error')
     } finally {
       if (type === 'shopify') setSyncingShopify(false)
       else setSyncingCourier(false)

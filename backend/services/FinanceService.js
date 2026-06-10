@@ -8,7 +8,7 @@ class FinanceService {
       error.status = 400;
       throw error;
     }
-    const couriers = db.prepare('SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ""').all(Number(storeId));
+    const couriers = db.prepare("SELECT DISTINCT courier FROM orders WHERE store_id = ? AND courier IS NOT NULL AND courier != ''").all(Number(storeId));
     return couriers.map(c => c.courier);
   }
 

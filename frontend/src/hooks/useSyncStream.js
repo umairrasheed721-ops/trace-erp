@@ -37,11 +37,25 @@ export default function useSyncStream() {
         if (String(data.storeId) === String(activeStoreId)) {
           setSyncState(data);
           
-          const isComplete = data.status === 'Sync Complete' || data.status === 'Sync Aborted' || data.aborted || (data.processed >= data.total && data.total > 0);
+          const isComplete = data.status === 'Sync Complete' || 
+                             data.status === 'Sync Aborted' || 
+                             data.aborted || 
+                             data.failed ||
+                             data.status?.toLowerCase().includes('failed') || 
+                             data.status?.toLowerCase().includes('error') ||
+                             (data.processed >= data.total && data.total > 0);
           if (isComplete) {
             setTimeout(() => {
               setSyncState(prev => {
-                if (prev && (prev.status === 'Sync Complete' || prev.status === 'Sync Aborted' || prev.aborted || prev.processed >= prev.total)) {
+                if (prev && (
+                  prev.status === 'Sync Complete' || 
+                  prev.status === 'Sync Aborted' || 
+                  prev.aborted || 
+                  prev.failed ||
+                  prev.status?.toLowerCase().includes('failed') || 
+                  prev.status?.toLowerCase().includes('error') ||
+                  prev.processed >= prev.total
+                )) {
                   return null;
                 }
                 return prev;
