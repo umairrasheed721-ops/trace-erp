@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import useSyncStream from '../hooks/useSyncStream'
 
 export const SyncButtons = React.memo(function SyncButtons() {
-  const { token, activeStoreId, setSyncHistory, fetchSyncHistory } = useApp()
+  const { token, activeStoreId, setSyncHistory, fetchSyncHistory, addToast } = useApp()
   const { syncState } = useSyncStream()
 
   const [isSyncingShopify, setSyncingShopify] = useState(false)
@@ -51,6 +51,8 @@ export const SyncButtons = React.memo(function SyncButtons() {
     else setSyncingCourier(true)
 
     try {
+      addToast(`🔄 Starting ${type === 'shopify' ? 'Shopify' : 'Courier'} Sync...`, 'info');
+      
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 
@@ -79,6 +81,14 @@ export const SyncButtons = React.memo(function SyncButtons() {
         ...prev
       ]);
       fetchSyncHistory();
+      
+      const successCount = type === 'shopify' 
+        ? (data.added !== undefined ? data.added : (data.successCount || 0))
+        : (data.successCount || 0);
+      const failedCount = type === 'shopify'
+        ? (data.failed !== undefined ? data.failed : (data.failedCount || 0))
+        : (data.failedCount || 0);
+      addToast(`✅ ${type === 'shopify' ? 'Shopify' : 'Courier'} Sync complete: ${successCount} processed, ${failedCount} failed`, 'success');
     } catch (e) {
       // Dispatch error to notification center
       setSyncHistory(prev => [
@@ -93,6 +103,7 @@ export const SyncButtons = React.memo(function SyncButtons() {
         ...prev
       ]);
       fetchSyncHistory();
+      addToast(`❌ ${type === 'shopify' ? 'Shopify' : 'Courier'} Sync failed: ${e.message}`, 'error');
     } finally {
       if (type === 'shopify') setSyncingShopify(false)
       else setSyncingCourier(false)
