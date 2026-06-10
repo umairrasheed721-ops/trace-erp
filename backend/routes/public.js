@@ -103,6 +103,24 @@ router.get('/poll-diag', (req, res) => {
       result.system_logs_error = e.message;
     }
 
+    // Bots status
+    try {
+      const botModule = require('../engines/whatsapp_bot');
+      result.bots = [];
+      if (botModule.sessions) {
+        for (const [tenantId, botInstance] of botModule.sessions.entries()) {
+          result.bots.push({
+            tenantId,
+            status: botInstance.status,
+            activeNumber: botInstance.activeNumber,
+            reconnectAttempts: botInstance.reconnectAttempts
+          });
+        }
+      }
+    } catch (e) {
+      result.bots_error = e.message;
+    }
+
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
