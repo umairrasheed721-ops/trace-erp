@@ -57,4 +57,49 @@ router.post('/crash-report', (req, res) => {
   res.json({ success: true });
 });
 
+// --- 🔍 TEMP POLL DIAGNOSTIC (remove after debugging) ---
+router.get('/poll-diag', (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const result = {};
+
+    // whatsapp_polls table
+    try {
+      result.polls = db.prepare('SELECT id, message_id, remote_jid, poll_name, poll_options, created_at FROM whatsapp_polls ORDER BY id DESC LIMIT 5').all();
+      result.poll_count = db.prepare('SELECT COUNT(*) as c FROM whatsapp_polls').get().c;
+    } catch (e) {
+      result.polls_error = e.message;
+    }
+
+    // recent orders
+    try {
+      result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
+    } catch (e) {
+      result.orders_error = e.message;
+    }
+
+    // stores
+    try {
+      result.stores = db.prepare('SELECT id, shop_domain, CASE WHEN access_token IS NULL OR access_token = "PENDING" THEN "MISSING" ELSE "SET" END as token_status FROM stores').all();
+    } catch (e) {
+      result.stores_error = e.message;
+    }
+
+    // SHA-256 test
+    const opts = ['✅ Confirm Order', '❌ Cancel Order', '✏️ Edit Order'];
+    result.sha256_test = opts.map(o => ({ option: o, hash: crypto.createHash('sha256').update(o).digest('hex') }));
+
+    // All tables
+    try {
+      result.tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(t => t.name);
+    } catch (e) {
+      result.tables_error = e.message;
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
