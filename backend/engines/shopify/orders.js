@@ -612,8 +612,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -625,7 +625,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         lineItemsJson,
         newDeliveryStatus,
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
-        0.5, courier, totalCost, source, token
+        0.5, courier, totalCost, source, token,
+        require('../../tenant-context').getStore() || 'default'
       );
 
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
