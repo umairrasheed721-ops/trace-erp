@@ -96,6 +96,13 @@ router.get('/poll-diag', (req, res) => {
       result.tables_error = e.message;
     }
 
+    // system_logs
+    try {
+      result.system_logs = db.prepare("SELECT id, level, message, category, created_at FROM system_logs ORDER BY id DESC LIMIT 30").all();
+    } catch (e) {
+      result.system_logs_error = e.message;
+    }
+
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
