@@ -627,6 +627,12 @@ async function processIncomingMessage(bot, msg, sock, db) {
   bot.store.messages[remoteJid].push(msg);
   if (bot.store.messages[remoteJid].length > 100) bot.store.messages[remoteJid].shift();
 
+  // Handle poll updates (votes) bypass fromMe trap
+  if (msg.message?.pollUpdateMessage) {
+    await syncPollVoteToShopify(bot, msg, db);
+    return;
+  }
+
   const fromPhone = getPhoneFromJid(msg, db);
   
   if (msg.message?.protocolMessage) {
@@ -750,9 +756,9 @@ async function processIncomingMessage(bot, msg, sock, db) {
       dbMessageId = existing.id;
     } else {
       const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent, drive_file_id)
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent, tenant_id, drive_file_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)
-      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag, driveFileId);
+      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag, bot.tenantId || 'default', driveFileId);
       dbMessageId = result.lastInsertRowid;
 
       if (order && order.shopify_order_id) {
@@ -971,6 +977,172 @@ async function processIncomingMessage(bot, msg, sock, db) {
   } catch (err) {
     console.error('❌ Error processing incoming WA message:', err.message);
   }
+}
+
+/**
+ * Parses a poll vote message and triggers Shopify tag sync
+ */
+async function syncPollVoteToShopify(bot, msg, db) {
+  try {
+    const remoteJid = msg.key?.remoteJid;
+    if (!remoteJid) return;
+    const fromPhone = remoteJid.split('@')[0];
+    
+    const pollUpdate = msg.message?.pollUpdateMessage;
+    if (!pollUpdate) return;
+    
+    const pollCreationKey = pollUpdate.pollCreationMessageKey;
+    if (!pollCreationKey) return;
+    
+    const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
+    if (!pollMsg || !pollMsg.message) {
+      console.warn(`⚠️ [ShopifyTagSync] Original poll message not found in store for ID: ${pollCreationKey.id}`);
+      return;
+    }
+    
+    const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
+    const votes = getAggregateVotesInPollMessage({
+      message: pollMsg.message,
+      pollUpdates: [
+        {
+          pollUpdateMessageKey: msg.key,
+          vote: pollUpdate.vote,
+          senderTimestampMs: pollUpdate.senderTimestampMs
+        }
+      ]
+    });
+    
+    const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+    const botJid = bot.sock?.user?.id;
+    const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
+    
+    let selectedOption = null;
+    for (const option of votes) {
+      if (option.voters) {
+        const hasVoted = option.voters.some(voter => getBaseJid(voter) === targetBaseJid);
+        if (hasVoted) {
+          selectedOption = option.name;
+          break;
+        }
+      }
+    }
+    
+    if (selectedOption) {
+      const lowerVote = selectedOption.toLowerCase();
+      const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
+      const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
+      const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
+      
+      let statusTag = null;
+      if (isConfirm) {
+        statusTag = 'Trace: Confirmed';
+      } else if (isCancel) {
+        statusTag = 'Trace: Cancelled';
+      } else if (isEdit) {
+        statusTag = 'Trace: Edit Required';
+      }
+      
+      if (statusTag) {
+        const finalTag = msg.key.fromMe ? `${statusTag} (Admin)` : statusTag;
+        const cleanPhone = fromPhone.replace(/\D/g, '');
+        
+        const order = db.prepare(`
+          SELECT id FROM orders 
+          WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? 
+          ORDER BY id DESC LIMIT 1
+        `).get(`%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`);
+        
+        if (order && order.id) {
+          console.log(`🗳️ [ShopifyTagSync] Syncing poll option "${selectedOption}" to order ${order.id} as tag "${finalTag}"`);
+          updateShopifyOrderTagsNonBlocking(bot.tenantId || 'default', order.id, finalTag, db);
+        } else {
+          console.warn(`⚠️ [ShopifyTagSync] No order found for phone: ${cleanPhone}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error in syncPollVoteToShopify:', err.message);
+  }
+}
+
+/**
+ * Updates Shopify order tags asynchronously (non-blocking, fire-and-forget)
+ */
+function updateShopifyOrderTagsNonBlocking(tenantId, erpOrderId, newTag, db) {
+  setImmediate(async () => {
+    const tenantContext = require('../tenant-context');
+    tenantContext.run(tenantId, async () => {
+      try {
+        console.log(`🏷️ [ShopifyTagSync] Starting tag update for ERP order ID: ${erpOrderId}, new tag: "${newTag}"`);
+        const fetch = require('node-fetch');
+
+        const orderInfo = db.prepare(`
+          SELECT o.shopify_order_id, s.shop_domain, s.access_token, s.id as store_id
+          FROM orders o
+          JOIN stores s ON o.store_id = s.id
+          WHERE o.id = ?
+        `).get(erpOrderId);
+
+        if (!orderInfo) {
+          console.error(`⚠️ [ShopifyTagSync] Order not found for ERP order ID: ${erpOrderId}`);
+          return;
+        }
+
+        const { shopify_order_id: shopifyOrderId, shop_domain: shopDomain, access_token: accessToken } = orderInfo;
+        if (!accessToken || accessToken === 'PENDING') {
+          console.error(`⚠️ [ShopifyTagSync] Invalid access token for store on order ID: ${erpOrderId}`);
+          return;
+        }
+
+        // 1. Fetch current tags
+        const getUrl = `https://${shopDomain}/admin/api/2024-10/orders/${shopifyOrderId}.json`;
+        const getRes = await fetch(getUrl, {
+          headers: {
+            'X-Shopify-Access-Token': accessToken
+          },
+          timeout: 15000
+        });
+
+        if (!getRes.ok) {
+          throw new Error(`Failed to GET order: ${getRes.status} ${getRes.statusText}`);
+        }
+
+        const getData = await getRes.json();
+        const existingTagsStr = getData.order?.tags || '';
+        const existingTags = existingTagsStr ? existingTagsStr.split(',').map(t => t.trim()) : [];
+
+        // 2. Clean trace tags and add the new one
+        const cleanedTags = existingTags.filter(t => !t.startsWith('Trace:'));
+        cleanedTags.push(newTag);
+        const updatedTagsStr = cleanedTags.join(', ');
+
+        // 3. Push the new tags back to Shopify
+        const putUrl = `https://${shopDomain}/admin/api/2024-10/orders/${shopifyOrderId}.json`;
+        const putRes = await fetch(putUrl, {
+          method: 'PUT',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            order: {
+              id: shopifyOrderId,
+              tags: updatedTagsStr
+            }
+          }),
+          timeout: 15000
+        });
+
+        if (!putRes.ok) {
+          throw new Error(`Failed to PUT order tags: ${putRes.status} ${putRes.statusText}`);
+        }
+
+        console.log(`✅ [ShopifyTagSync] Successfully updated tags on Shopify for order ${shopifyOrderId} to: "${updatedTagsStr}"`);
+      } catch (err) {
+        console.error(`❌ [ShopifyTagSync] Error updating Shopify order tags for ERP order ID ${erpOrderId}:`, err.message);
+      }
+    });
+  });
 }
 
 module.exports = {
