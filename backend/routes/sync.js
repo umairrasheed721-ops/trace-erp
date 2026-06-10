@@ -206,6 +206,12 @@ router.post('/abort', (req, res) => {
   // Emit aborted event to SSE client streams
   broadcast('aborted', { storeId });
 
+  const tenantId = req.tenantId || 'default';
+  if (global.activeSyncs && global.activeSyncs[tenantId]) {
+    global.activeSyncs[tenantId].shopify = false;
+    global.activeSyncs[tenantId].courier = false;
+  }
+
   res.json({ success: true, message: 'Cancellation signal sent.' });
 });
 

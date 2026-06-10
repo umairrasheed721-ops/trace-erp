@@ -1,13 +1,47 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import useSyncStream from '../hooks/useSyncStream'
 
 export const SyncButtons = React.memo(function SyncButtons() {
-  const { token, activeStoreId, addToast } = useApp()
+  const { token, activeStoreId, setSyncHistory, fetchSyncHistory } = useApp()
   const { syncState } = useSyncStream()
 
   const [isSyncingShopify, setSyncingShopify] = useState(false)
   const [isSyncingCourier, setSyncingCourier] = useState(false)
+
+  useEffect(() => {
+    if (!token) return
+
+    let active = true
+    let intervalId = null
+
+    const checkSyncStatus = async () => {
+      try {
+        const res = await fetch('/api/finance/sync-status', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        if (res.ok && active) {
+          const data = await res.json()
+          if (data.success) {
+            setSyncingShopify(data.shopify)
+            setSyncingCourier(data.courier)
+          }
+        }
+      } catch (err) {
+        console.error('[SyncButtons] Failed to check sync status:', err)
+      }
+    }
+
+    checkSyncStatus()
+    intervalId = setInterval(checkSyncStatus, 5000)
+
+    return () => {
+      active = false
+      if (intervalId) clearInterval(intervalId)
+    }
+  }, [token])
 
   const handleSync = async (type) => {
     if (!activeStoreId || syncState) return
@@ -16,7 +50,6 @@ export const SyncButtons = React.memo(function SyncButtons() {
     if (type === 'shopify') setSyncingShopify(true)
     else setSyncingCourier(true)
 
-    addToast(`${type === 'shopify' ? '🛒' : '🚚'} Sync started...`, 'info')
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -26,15 +59,62 @@ export const SyncButtons = React.memo(function SyncButtons() {
         },
         body: JSON.stringify({ store_id: activeStoreId })
       })
+      
+      const data = await res.json().catch(() => ({}));
+      
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Sync failed to start');
+        throw new Error(data.error || 'Sync failed to start');
       }
+
+      // Dispatch success to notification center
+      setSyncHistory(prev => [
+        {
+          id: data.logId || Date.now(),
+          type: type === 'shopify' ? 'Shopify Sync' : 'Courier Sync',
+          success: data.added !== undefined ? data.added : (data.successCount || 0),
+          failed: data.failed !== undefined ? data.failed : (data.failedCount || 0),
+          log_data: JSON.stringify(data.logs || []),
+          created_at: new Date().toISOString()
+        },
+        ...prev
+      ]);
+      fetchSyncHistory();
     } catch (e) {
-      addToast(`❌ Sync failed: ${e.message}`, 'error')
+      // Dispatch error to notification center
+      setSyncHistory(prev => [
+        {
+          id: Date.now(),
+          type: type === 'shopify' ? 'Shopify Sync' : 'Courier Sync',
+          success: 0,
+          failed: 1,
+          log_data: JSON.stringify([{ id: 'ERROR', status: 'FAILED', message: e.message }]),
+          created_at: new Date().toISOString()
+        },
+        ...prev
+      ]);
+      fetchSyncHistory();
     } finally {
       if (type === 'shopify') setSyncingShopify(false)
       else setSyncingCourier(false)
+    }
+  }
+
+  const handleCancelSync = async () => {
+    if (!activeStoreId) return
+    try {
+      await fetch('/api/sync/abort', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ store_id: activeStoreId })
+      });
+      // Reset local syncing states immediately
+      setSyncingShopify(false);
+      setSyncingCourier(false);
+    } catch (e) {
+      console.error('Abort failed', e);
     }
   }
 
@@ -97,47 +177,95 @@ export const SyncButtons = React.memo(function SyncButtons() {
         }
       `}</style>
 
-      <button 
-        onClick={() => handleSync('shopify')} 
-        disabled={isShopifyActive || !!syncState} 
-        className="btn btn-secondary btn-sm"
-        style={shopifyBtnStyle}
-      >
-        {isShopifyActive ? (
-          <>
-            {spinnerSvg}
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
-            </span>
-          </>
-        ) : (
-          <>
-            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🛒</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Shopify Sync</span>
-          </>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button 
+          onClick={() => handleSync('shopify')} 
+          disabled={isShopifyActive || !!syncState} 
+          className="btn btn-secondary btn-sm"
+          style={shopifyBtnStyle}
+        >
+          {isShopifyActive ? (
+            <>
+              {spinnerSvg}
+              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🛒</span>
+              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Shopify Sync</span>
+            </>
+          )}
+        </button>
+        {isShopifyActive && (
+          <button
+            onClick={handleCancelSync}
+            title="Stop Sync"
+            style={{
+              background: '#ef4444',
+              border: 'none',
+              color: 'white',
+              borderRadius: '50%',
+              width: 28,
+              height: 28,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            }}
+          >
+            🛑
+          </button>
         )}
-      </button>
+      </div>
 
-      <button 
-        onClick={() => handleSync('courier')} 
-        disabled={isCourierActive || !!syncState} 
-        className="btn btn-secondary btn-sm"
-        style={courierBtnStyle}
-      >
-        {isCourierActive ? (
-          <>
-            {spinnerSvg}
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
-            </span>
-          </>
-        ) : (
-          <>
-            <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🚚</span>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Courier Sync</span>
-          </>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button 
+          onClick={() => handleSync('courier')} 
+          disabled={isCourierActive || !!syncState} 
+          className="btn btn-secondary btn-sm"
+          style={courierBtnStyle}
+        >
+          {isCourierActive ? (
+            <>
+              {spinnerSvg}
+              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={{ fontSize: '1.1rem', marginTop: -2 }}>🚚</span>
+              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Courier Sync</span>
+            </>
+          )}
+        </button>
+        {isCourierActive && (
+          <button
+            onClick={handleCancelSync}
+            title="Stop Sync"
+            style={{
+              background: '#ef4444',
+              border: 'none',
+              color: 'white',
+              borderRadius: '50%',
+              width: 28,
+              height: 28,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            }}
+          >
+            🛑
+          </button>
         )}
-      </button>
+      </div>
     </>
   )
 })

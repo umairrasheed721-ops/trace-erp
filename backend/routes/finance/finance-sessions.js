@@ -29,6 +29,14 @@ router.get('/couriers', async (req, res) => {
   }
 });
 
+// GET /api/finance/sync-status
+router.get('/sync-status', (req, res) => {
+  const tenantId = req.tenantId || 'default';
+  global.activeSyncs = global.activeSyncs || {};
+  const status = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+  res.json({ success: true, ...status });
+});
+
 // GET /api/finance/ghost-product-orders?store_id=1&name=Product%20Name
 router.get('/ghost-product-orders', (req, res) => {
   const { store_id, name } = req.query;

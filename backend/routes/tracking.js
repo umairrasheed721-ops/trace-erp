@@ -116,6 +116,12 @@ router.post('/cancel-sync', (req, res) => {
   try {
     db.prepare("UPDATE sync_journal SET status = 'ABORTED' WHERE store_id = ? AND order_id = 'METADATA'").run(store_id);
   } catch (e) {}
+
+  const tenantId = req.tenantId || 'default';
+  if (global.activeSyncs && global.activeSyncs[tenantId]) {
+    global.activeSyncs[tenantId].shopify = false;
+    global.activeSyncs[tenantId].courier = false;
+  }
   
   res.json({ success: true, message: 'Cancellation signal sent.' });
 });
@@ -131,6 +137,11 @@ router.post('/sync-shopify', async (req, res) => {
 
   const { runShopifySyncWithJournal } = require('../engines/shopify_sync');
   const tenantId = req.tenantId || 'default';
+
+  // Set activeSyncs state
+  global.activeSyncs = global.activeSyncs || {};
+  global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+  global.activeSyncs[tenantId].shopify = true;
 
   try {
     const syncPromise = new Promise(async (resolve, reject) => {
@@ -156,6 +167,9 @@ router.post('/sync-shopify', async (req, res) => {
     res.status(500).json({ error: e.message || 'Sync failed' });
   } finally {
     delete global.syncProgress[store_id];
+    if (global.activeSyncs[tenantId]) {
+      global.activeSyncs[tenantId].shopify = false;
+    }
   }
 });
 
@@ -170,6 +184,11 @@ router.post('/sync-couriers', async (req, res) => {
 
   const { runCourierSyncWithJournal } = require('../engines/courier_sync');
   const tenantId = req.tenantId || 'default';
+
+  // Set activeSyncs state
+  global.activeSyncs = global.activeSyncs || {};
+  global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+  global.activeSyncs[tenantId].courier = true;
 
   try {
     const syncPromise = new Promise(async (resolve, reject) => {
@@ -195,6 +214,9 @@ router.post('/sync-couriers', async (req, res) => {
     res.status(500).json({ error: e.message || 'Sync failed' });
   } finally {
     delete global.syncProgress[store_id];
+    if (global.activeSyncs[tenantId]) {
+      global.activeSyncs[tenantId].courier = false;
+    }
   }
 });
 
