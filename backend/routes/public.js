@@ -134,4 +134,17 @@ router.get('/poll-diag', (req, res) => {
   }
 });
 
+// --- 🔍 TEMP SESSION RESET ENDPOINT (remove after debugging) ---
+router.post('/reset-session', (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Missing phone' });
+    const pattern = `%${phone.replace(/\D/g, '')}%`;
+    const result = db.prepare("DELETE FROM wa_session_store WHERE key LIKE ?").run(pattern);
+    res.json({ success: true, deleted: result.changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
