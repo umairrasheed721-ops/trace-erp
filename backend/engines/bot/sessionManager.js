@@ -238,12 +238,28 @@ async function connectBot(bot) {
         return;
       }
 
+      // ── CONNECTION CLOSE HANDLER ──
+      // WhatsApp WebSocket can drop for two fundamentally different reasons:
+      //
+      // 1. DELIBERATE LOGOUT (401, 403, DisconnectReason.loggedOut):
+      //    The phone removed this device from linked devices, or the session expired.
+      //    → We MUST clear credentials and wait for a new QR scan. Auto-reconnect
+      //      would loop forever with a dead session.
+      //
+      // 2. TRANSIENT NETWORK DROP (all other codes, including statusCode=0):
+      //    Railway container networking blip, WhatsApp server maintenance (503),
+      //    timeout (408), or a pure TCP drop with no HTTP status at all (code=0).
+      //    → We SHOULD auto-reconnect after a short backoff delay.
+      //
+      // _scheduleReconnect uses exponential backoff: 3s, 5s, 7s... capped at 30s.
       if (connection === 'close') {
         bot.isConnecting = false;
         const err = lastDisconnect?.error;
+        // Boom is the HTTP error library Baileys uses — if err is not a Boom instance
+        // (e.g. raw TCP error), statusCode will be 0 which falls into the reconnect branch
         const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
 
-        // Log known Railway/WhatsApp disconnect codes explicitly
+        // Log the specific code so Railway logs are easy to diagnose
         if (statusCode === 503) {
           console.warn(`🔌 [Reconnect] WhatsApp service unavailable (503) — scheduling reconnect.`);
         } else if (statusCode === 408) {
@@ -259,6 +275,7 @@ async function connectBot(bot) {
         }
         bot.status = 'DISCONNECTED';
 
+        // Named constant for clarity — any future dev can see exactly what "deliberate logout" means
         const isDeliberateLogout =
           statusCode === DisconnectReason.loggedOut ||
           statusCode === 401 ||

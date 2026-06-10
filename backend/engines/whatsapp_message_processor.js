@@ -273,13 +273,26 @@ async function processQueue(bot, sock, db) {
           const pollPayload = {
             poll: {
               name: poll.name,
+              // values = the option strings shown to the customer (e.g. ['✅ Confirm', '❌ Cancel'])
               values: poll.values,
               selectableCount: poll.selectableCount || 1
             }
           };
           sentMsg = await safeSend(jid, pollPayload);
 
-          // ── Poll Vault: persist to SQLite so votes survive a container restart ──
+          // ── POLL VAULT: Write poll metadata to SQLite immediately after send ──
+          //
+          // WHY THIS EXISTS:
+          // Baileys keeps all sent/received messages in bot.store.messages (in-memory only).
+          // When the Railway container restarts, that memory is wiped.
+          // If a customer votes on a poll that was sent BEFORE the restart,
+          // bot.store has no record of it → syncPollVoteToShopify fails silently.
+          //
+          // FIX: Write poll.name + poll.values to the whatsapp_polls SQLite table right
+          // after the poll is sent. This is our "Poll Vault" — a crash-proof backup.
+          // When the in-memory store misses, we fall back to this table.
+          //
+          // ON CONFLICT DO NOTHING = safe if Baileys retries the send on reconnect.
           try {
             const vaultMsgId = sentMsg?.key?.id || uuid;
             db.prepare(`
@@ -289,6 +302,7 @@ async function processQueue(bot, sock, db) {
             `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), bot.tenantId || 'default');
             console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB for crash resilience.`);
           } catch (vaultErr) {
+            // Non-fatal: poll still sent successfully, vault write is best-effort
             console.error('⚠️ [PollVault] Failed to persist poll to DB:', vaultErr.message);
           }
         } else if (hasButtons && buttonsMode === 'text') {
@@ -993,7 +1007,36 @@ async function processIncomingMessage(bot, msg, sock, db) {
 }
 
 /**
- * Parses a poll vote message and triggers Shopify tag sync
+ * syncPollVoteToShopify
+ *
+ * PURPOSE:
+ * When a customer votes on a WhatsApp poll (e.g. "✅ Confirm Order"), this function:
+ * 1. Decrypts which option they selected
+ * 2. Maps it to a Shopify order tag (e.g. "Trace: Confirmed")
+ * 3. Fires a non-blocking Shopify API update
+ *
+ * ARCHITECTURE — TWO-PATH VOTE DECRYPTION:
+ * Baileys (the WhatsApp library) stores all messages in bot.store.messages (in-memory).
+ * On a Railway container restart, that memory is wiped — causing "Server Restart Amnesia".
+ * To survive restarts, we introduced a "Poll Vault" (whatsapp_polls SQLite table).
+ *
+ * Path 1 (HOT — no restart occurred):
+ *   bot.store.messages has the original poll → use Baileys' getAggregateVotesInPollMessage.
+ *
+ * Path 2 (COLD — restart happened):
+ *   bot.store misses → query whatsapp_polls by message_id → use SHA-256 hash matching.
+ *   WHY SHA-256: WhatsApp encodes poll votes as SHA-256 hashes of the option strings.
+ *   pollUpdate.vote.selectedOptions = [Buffer(sha256("✅ Confirm Order")), ...]
+ *   We re-hash each stored option and compare buffers — no Baileys memory needed.
+ *
+ * BUSINESS RULE — 24-HOUR WINDOW:
+ * Orders are dispatched ~24h after confirmation. Any vote (or vote change) received
+ * after 24h is rejected to prevent tag changes on already-shipped orders.
+ * Fail-open: if the age check itself errors, vote proceeds (never drop on infra bugs).
+ *
+ * ADMIN vs CUSTOMER:
+ * If msg.key.fromMe is true, the vote came from the linked device (internal team).
+ * In that case, the tag gets an "(Admin)" suffix → "Trace: Confirmed (Admin)".
  */
 async function syncPollVoteToShopify(bot, msg, db) {
   try {
@@ -1001,15 +1044,20 @@ async function syncPollVoteToShopify(bot, msg, db) {
     if (!remoteJid) return;
     const fromPhone = remoteJid.split('@')[0];
 
+    // pollUpdateMessage = WhatsApp's event type when someone votes on a poll
     const pollUpdate = msg.message?.pollUpdateMessage;
     if (!pollUpdate) return;
 
+    // pollCreationMessageKey.id = the message_id of the ORIGINAL poll that was sent
+    // This is how WhatsApp links a vote back to its poll question
     const pollCreationKey = pollUpdate.pollCreationMessageKey;
     if (!pollCreationKey) return;
 
-    // ── 24-Hour Vote Window Enforcement ──
-    // Orders dispatch after 24h — votes/changes after that are rejected
-    const VOTE_WINDOW_MS = 24 * 60 * 60 * 1000;
+    // ── GATE 1: 24-Hour Vote Window ──
+    // Business rule: orders dispatch after 24h, so we reject late votes/changes.
+    // We check created_at from whatsapp_polls (set when poll was originally sent).
+    // Fail-open design: if this check crashes, we proceed rather than drop the vote.
+    const VOTE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     try {
       const vaultMeta = db.prepare(
         `SELECT created_at FROM whatsapp_polls WHERE message_id = ?`
@@ -1022,18 +1070,21 @@ async function syncPollVoteToShopify(bot, msg, db) {
           return;
         }
       }
+      // Note: if vaultMeta is null (poll predates vault), we skip the age check and proceed
     } catch (e) {
-      // If timestamp check fails, proceed (fail-open — don't drop legitimate votes)
+      // Fail-open: DB error during age check should never drop a legitimate vote
       console.warn('⚠️ [PollVault] Could not verify poll age, proceeding:', e.message);
     }
 
-    // ── Path 1: Try in-memory store (hot path — zero DB cost) ──
+    // ── PATH 1: In-Memory Store (Hot Path) ──
+    // Check bot.store.messages first — this is the normal case when no restart happened.
+    // bot.store is populated as messages arrive and trimmed to the last 35 per JID.
     const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
 
-    let selectedOption = null;
+    let selectedOption = null; // will hold the winning option string (e.g. "✅ Confirm Order")
 
     if (pollMsg && pollMsg.message) {
-      // In-memory hit — use Baileys aggregation helper
+      // In-memory hit — delegate decryption to the official Baileys helper
       console.log(`🗳️ [PollVault] In-memory hit for poll ${pollCreationKey.id}`);
       const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
       const votes = getAggregateVotesInPollMessage({
@@ -1047,10 +1098,13 @@ async function syncPollVoteToShopify(bot, msg, db) {
         ]
       });
 
+      // getBaseJid strips device suffixes: "92300...@s.whatsapp.net:5" → "92300...@s.whatsapp.net"
+      // Needed because fromMe votes carry the bot's multi-device JID which has a colon suffix
       const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
       const botJid = bot.sock?.user?.id;
       const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
 
+      // Find the option that this specific voter (customer or admin) selected
       for (const option of votes) {
         if (option.voters) {
           const hasVoted = option.voters.some(voter => getBaseJid(voter) === targetBaseJid);
@@ -1061,7 +1115,9 @@ async function syncPollVoteToShopify(bot, msg, db) {
         }
       }
     } else {
-      // ── Path 2: DB Vault fallback (crash-resilience path) ──
+      // ── PATH 2: DB Vault Fallback (Crash-Resilience Path) ──
+      // Triggered when bot.store is empty after a Railway container restart.
+      // We query the whatsapp_polls table which was populated at poll-send time.
       console.warn(`⚠️ [PollVault] In-memory miss for poll ${pollCreationKey.id} — querying DB vault (restart amnesia recovery).`);
 
       let dbPoll = null;
@@ -1074,14 +1130,23 @@ async function syncPollVoteToShopify(bot, msg, db) {
       }
 
       if (!dbPoll) {
+        // Poll was sent before the vault feature was deployed — nothing we can do
         console.warn(`⚠️ [PollVault] Poll ${pollCreationKey.id} not found in DB vault either — vote dropped. (Was this poll sent before the vault was deployed?)`);
         return;
       }
 
-      // SHA-256 hash-match: pollUpdate.vote.selectedOptions contains hashes of option strings
+      // ── SHA-256 Hash Matching ──
+      // WhatsApp does NOT send the raw option string in pollUpdate.vote.
+      // Instead it sends SHA-256 hashes of whichever options were selected.
+      // pollUpdate.vote.selectedOptions = [Buffer(sha256("✅ Confirm Order")), ...]
+      //
+      // To decode: hash each stored option string and compare buffers.
+      // This is cryptographically reliable — same option always produces the same hash.
+      // No Baileys internal state or message object needed.
       const crypto = require('crypto');
       let pollOptions = [];
       try {
+        // poll_options is stored as a JSON array: ["✅ Confirm Order", "❌ Cancel", "✏️ Edit"]
         pollOptions = JSON.parse(dbPoll.poll_options);
       } catch (_) {
         console.error('⚠️ [PollVault] Failed to parse stored poll_options JSON');
@@ -1090,15 +1155,18 @@ async function syncPollVoteToShopify(bot, msg, db) {
 
       const selectedOptions = pollUpdate.vote?.selectedOptions || [];
       if (!selectedOptions.length) {
+        // Empty selectedOptions means the voter tapped their own vote to deselect it — ignore
         console.log(`🗳️ [PollVault] Empty selectedOptions — voter cleared their selection.`);
         return;
       }
 
       for (const optionStr of pollOptions) {
+        // Hash the stored option string exactly as WhatsApp would
         const hash = crypto.createHash('sha256').update(optionStr).digest();
         const matched = selectedOptions.some(sel => {
+          // selectedOptions items may arrive as Buffer or Uint8Array depending on Baileys version
           const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
-          return Buffer.compare(selBuf, hash) === 0;
+          return Buffer.compare(selBuf, hash) === 0; // byte-perfect comparison
         });
         if (matched) {
           selectedOption = optionStr;
@@ -1108,6 +1176,7 @@ async function syncPollVoteToShopify(bot, msg, db) {
       }
 
       if (!selectedOption) {
+        // Should rarely happen — would mean WhatsApp changed how it hashes options
         console.warn(`⚠️ [PollVault] SHA-256 hash did not match any stored option for poll ${pollCreationKey.id}. Vote hash may be salted or option set changed.`);
         return;
       }
