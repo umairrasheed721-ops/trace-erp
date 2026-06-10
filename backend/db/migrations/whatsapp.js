@@ -472,5 +472,17 @@ module.exports = [
     } catch (e) {
       console.error('Failed to seed knowledge base:', e.message);
     }
-  }
+  },
+
+  // Poll Vault — persist outbound poll metadata to survive container restarts
+  `CREATE TABLE IF NOT EXISTS whatsapp_polls (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id   TEXT NOT NULL UNIQUE,
+    remote_jid   TEXT NOT NULL,
+    poll_name    TEXT NOT NULL,
+    poll_options TEXT NOT NULL,
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    created_at   TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_wa_polls_message_id ON whatsapp_polls(message_id)`,
 ];

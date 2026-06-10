@@ -243,16 +243,35 @@ async function connectBot(bot) {
         const err = lastDisconnect?.error;
         const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
 
-        console.warn(`🔌 Connection closed. Code: ${statusCode}`);
+        // Log known Railway/WhatsApp disconnect codes explicitly
+        if (statusCode === 503) {
+          console.warn(`🔌 [Reconnect] WhatsApp service unavailable (503) — scheduling reconnect.`);
+        } else if (statusCode === 408) {
+          console.warn(`🔌 [Reconnect] Connection timeout (408) — scheduling reconnect.`);
+        } else if (statusCode === 500) {
+          console.warn(`🔌 [Reconnect] Server error (500) — scheduling reconnect.`);
+        } else if (statusCode === 400) {
+          console.warn(`🔌 [Reconnect] Bad request (400) — scheduling reconnect.`);
+        } else if (!statusCode) {
+          console.warn(`🔌 [Reconnect] Pure TCP/WebSocket drop (no status code) — scheduling reconnect.`);
+        } else {
+          console.warn(`🔌 Connection closed. Code: ${statusCode}`);
+        }
         bot.status = 'DISCONNECTED';
 
-        if (statusCode === DisconnectReason.loggedOut || statusCode === 401 || statusCode === 403) {
+        const isDeliberateLogout =
+          statusCode === DisconnectReason.loggedOut ||
+          statusCode === 401 ||
+          statusCode === 403;
+
+        if (isDeliberateLogout) {
           console.log('📵 Logged out from phone — clearing session. Rescan QR to reconnect.');
           bot._isLoggedOut = true;
           _wipeCreds(bot);
           clearDbSession();
           bot.reconnectAttempts = 0;
         } else {
+          // All other disconnect reasons (including statusCode=0 pure drops) → reconnect
           _scheduleReconnect(bot);
         }
       }

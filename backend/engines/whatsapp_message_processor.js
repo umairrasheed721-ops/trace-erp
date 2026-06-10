@@ -278,6 +278,19 @@ async function processQueue(bot, sock, db) {
             }
           };
           sentMsg = await safeSend(jid, pollPayload);
+
+          // ── Poll Vault: persist to SQLite so votes survive a container restart ──
+          try {
+            const vaultMsgId = sentMsg?.key?.id || uuid;
+            db.prepare(`
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, tenant_id)
+              VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(message_id) DO NOTHING
+            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), bot.tenantId || 'default');
+            console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB for crash resilience.`);
+          } catch (vaultErr) {
+            console.error('⚠️ [PollVault] Failed to persist poll to DB:', vaultErr.message);
+          }
         } else if (hasButtons && buttonsMode === 'text') {
           const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
           const listText = buttons.map((btn, idx) => {
@@ -987,52 +1000,105 @@ async function syncPollVoteToShopify(bot, msg, db) {
     const remoteJid = msg.key?.remoteJid;
     if (!remoteJid) return;
     const fromPhone = remoteJid.split('@')[0];
-    
+
     const pollUpdate = msg.message?.pollUpdateMessage;
     if (!pollUpdate) return;
-    
+
     const pollCreationKey = pollUpdate.pollCreationMessageKey;
     if (!pollCreationKey) return;
-    
+
+    // ── Path 1: Try in-memory store (hot path — zero DB cost) ──
     const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
-    if (!pollMsg || !pollMsg.message) {
-      console.warn(`⚠️ [ShopifyTagSync] Original poll message not found in store for ID: ${pollCreationKey.id}`);
-      return;
-    }
-    
-    const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
-    const votes = getAggregateVotesInPollMessage({
-      message: pollMsg.message,
-      pollUpdates: [
-        {
-          pollUpdateMessageKey: msg.key,
-          vote: pollUpdate.vote,
-          senderTimestampMs: pollUpdate.senderTimestampMs
-        }
-      ]
-    });
-    
-    const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
-    const botJid = bot.sock?.user?.id;
-    const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
-    
+
     let selectedOption = null;
-    for (const option of votes) {
-      if (option.voters) {
-        const hasVoted = option.voters.some(voter => getBaseJid(voter) === targetBaseJid);
-        if (hasVoted) {
-          selectedOption = option.name;
+
+    if (pollMsg && pollMsg.message) {
+      // In-memory hit — use Baileys aggregation helper
+      console.log(`🗳️ [PollVault] In-memory hit for poll ${pollCreationKey.id}`);
+      const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
+      const votes = getAggregateVotesInPollMessage({
+        message: pollMsg.message,
+        pollUpdates: [
+          {
+            pollUpdateMessageKey: msg.key,
+            vote: pollUpdate.vote,
+            senderTimestampMs: pollUpdate.senderTimestampMs
+          }
+        ]
+      });
+
+      const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+      const botJid = bot.sock?.user?.id;
+      const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
+
+      for (const option of votes) {
+        if (option.voters) {
+          const hasVoted = option.voters.some(voter => getBaseJid(voter) === targetBaseJid);
+          if (hasVoted) {
+            selectedOption = option.name;
+            break;
+          }
+        }
+      }
+    } else {
+      // ── Path 2: DB Vault fallback (crash-resilience path) ──
+      console.warn(`⚠️ [PollVault] In-memory miss for poll ${pollCreationKey.id} — querying DB vault (restart amnesia recovery).`);
+
+      let dbPoll = null;
+      try {
+        dbPoll = db.prepare(
+          `SELECT poll_name, poll_options FROM whatsapp_polls WHERE message_id = ?`
+        ).get(pollCreationKey.id);
+      } catch (e) {
+        console.error('⚠️ [PollVault] DB query failed:', e.message);
+      }
+
+      if (!dbPoll) {
+        console.warn(`⚠️ [PollVault] Poll ${pollCreationKey.id} not found in DB vault either — vote dropped. (Was this poll sent before the vault was deployed?)`);
+        return;
+      }
+
+      // SHA-256 hash-match: pollUpdate.vote.selectedOptions contains hashes of option strings
+      const crypto = require('crypto');
+      let pollOptions = [];
+      try {
+        pollOptions = JSON.parse(dbPoll.poll_options);
+      } catch (_) {
+        console.error('⚠️ [PollVault] Failed to parse stored poll_options JSON');
+        return;
+      }
+
+      const selectedOptions = pollUpdate.vote?.selectedOptions || [];
+      if (!selectedOptions.length) {
+        console.log(`🗳️ [PollVault] Empty selectedOptions — voter cleared their selection.`);
+        return;
+      }
+
+      for (const optionStr of pollOptions) {
+        const hash = crypto.createHash('sha256').update(optionStr).digest();
+        const matched = selectedOptions.some(sel => {
+          const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+          return Buffer.compare(selBuf, hash) === 0;
+        });
+        if (matched) {
+          selectedOption = optionStr;
+          console.log(`✅ [PollVault] SHA-256 matched option: "${selectedOption}" from DB vault (poll: "${dbPoll.poll_name}")`);
           break;
         }
       }
+
+      if (!selectedOption) {
+        console.warn(`⚠️ [PollVault] SHA-256 hash did not match any stored option for poll ${pollCreationKey.id}. Vote hash may be salted or option set changed.`);
+        return;
+      }
     }
-    
+
     if (selectedOption) {
       const lowerVote = selectedOption.toLowerCase();
       const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
       const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
       const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
-      
+
       let statusTag = null;
       if (isConfirm) {
         statusTag = 'Trace: Confirmed';
@@ -1041,17 +1107,17 @@ async function syncPollVoteToShopify(bot, msg, db) {
       } else if (isEdit) {
         statusTag = 'Trace: Edit Required';
       }
-      
+
       if (statusTag) {
         const finalTag = msg.key.fromMe ? `${statusTag} (Admin)` : statusTag;
         const cleanPhone = fromPhone.replace(/\D/g, '');
-        
+
         const order = db.prepare(`
-          SELECT id FROM orders 
-          WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? 
+          SELECT id FROM orders
+          WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?
           ORDER BY id DESC LIMIT 1
         `).get(`%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`);
-        
+
         if (order && order.id) {
           console.log(`🗳️ [ShopifyTagSync] Syncing poll option "${selectedOption}" to order ${order.id} as tag "${finalTag}"`);
           updateShopifyOrderTagsNonBlocking(bot.tenantId || 'default', order.id, finalTag, db);
