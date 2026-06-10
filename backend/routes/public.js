@@ -121,6 +121,13 @@ router.get('/poll-diag', (req, res) => {
       result.bots_error = e.message;
     }
 
+    // Session keys list
+    try {
+      result.session_keys = db.prepare("SELECT key FROM wa_session_store WHERE key LIKE 'key:session%'").all().map(r => r.key);
+    } catch (e) {
+      result.session_keys_error = e.message;
+    }
+
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
