@@ -73,7 +73,7 @@ router.get('/poll-diag', (req, res) => {
 
     // recent orders
     try {
-      result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
+      result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, delivery_status, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
     } catch (e) {
       result.orders_error = e.message;
     }
