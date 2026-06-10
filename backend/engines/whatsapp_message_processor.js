@@ -1329,5 +1329,6 @@ module.exports = {
   saveMediaFile,
   processQueue,
   processIncomingMessage,
-  adaptiveStrategy
+  adaptiveStrategy,
+  syncPollVoteToShopify
 };
