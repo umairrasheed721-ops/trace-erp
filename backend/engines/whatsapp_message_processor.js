@@ -1007,6 +1007,26 @@ async function syncPollVoteToShopify(bot, msg, db) {
     const pollCreationKey = pollUpdate.pollCreationMessageKey;
     if (!pollCreationKey) return;
 
+    // ── 24-Hour Vote Window Enforcement ──
+    // Orders dispatch after 24h — votes/changes after that are rejected
+    const VOTE_WINDOW_MS = 24 * 60 * 60 * 1000;
+    try {
+      const vaultMeta = db.prepare(
+        `SELECT created_at FROM whatsapp_polls WHERE message_id = ?`
+      ).get(pollCreationKey.id);
+      if (vaultMeta && vaultMeta.created_at) {
+        const pollAge = Date.now() - new Date(vaultMeta.created_at).getTime();
+        if (pollAge > VOTE_WINDOW_MS) {
+          const hoursOld = (pollAge / 3600000).toFixed(1);
+          console.warn(`⏰ [PollVault] Vote rejected — poll is ${hoursOld}h old (limit: 24h). Order likely dispatched. Poll ID: ${pollCreationKey.id}`);
+          return;
+        }
+      }
+    } catch (e) {
+      // If timestamp check fails, proceed (fail-open — don't drop legitimate votes)
+      console.warn('⚠️ [PollVault] Could not verify poll age, proceeding:', e.message);
+    }
+
     // ── Path 1: Try in-memory store (hot path — zero DB cost) ──
     const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
 
@@ -1047,7 +1067,7 @@ async function syncPollVoteToShopify(bot, msg, db) {
       let dbPoll = null;
       try {
         dbPoll = db.prepare(
-          `SELECT poll_name, poll_options FROM whatsapp_polls WHERE message_id = ?`
+          `SELECT poll_name, poll_options, created_at FROM whatsapp_polls WHERE message_id = ?`
         ).get(pollCreationKey.id);
       } catch (e) {
         console.error('⚠️ [PollVault] DB query failed:', e.message);
