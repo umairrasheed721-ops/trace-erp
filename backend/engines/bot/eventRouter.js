@@ -150,109 +150,78 @@ async function handleMessagesUpdate(bot, updates) {
 
     if (update.pollUpdates && key.remoteJid && !key.remoteJid.includes('@g.us')) {
       try {
-        const remoteJid = key.remoteJid;
-        const fromPhone = remoteJid.split('@')[0];
-        
-        let selectedOption = null;
-        let trueRemoteJid = remoteJid;
-        let dbPoll = null;
+        const pollId = key.id;
+        console.log(`\n🔍 [X-RAY] Poll ID from WA: ${pollId}`);
+        console.log(`🔍 [X-RAY] Raw pollUpdates payload:`, JSON.stringify(update.pollUpdates, null, 2));
 
+        if (!pollId) return;
+
+        // 1. Fetch DB Record to retrieve order_id and tenant_id
+        let dbRecord = null;
+        let trueRemoteJid = key.remoteJid;
         try {
-          dbPoll = db.prepare(
-            `SELECT remote_jid, poll_options FROM whatsapp_polls WHERE message_id = ?`
-          ).get(key.id);
-          if (dbPoll && dbPoll.remote_jid) {
-            trueRemoteJid = dbPoll.remote_jid;
+          const pollRow = db.prepare(
+            `SELECT remote_jid, tenant_id FROM whatsapp_polls WHERE message_id = ?`
+          ).get(pollId);
+          
+          if (pollRow) {
+            trueRemoteJid = pollRow.remote_jid;
+            const cleanPhone = pollRow.remote_jid.split('@')[0].replace(/\D/g, '');
+            const searchPattern = `%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`;
+            const orderRow = db.prepare(`
+              SELECT id as order_id FROM orders
+              WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?
+              ORDER BY id DESC LIMIT 1
+            `).get(searchPattern);
+            
+            if (orderRow) {
+              dbRecord = {
+                order_id: orderRow.order_id,
+                tenant_id: pollRow.tenant_id
+              };
+            }
           }
         } catch (e) {
-          console.error('⚠️ [PollVault] DB query failed in handleMessagesUpdate:', e.message);
+          console.error('⚠️ [PollNative] Failed to fetch dbRecord in handleMessagesUpdate:', e.message);
         }
 
-        // Resolve candidates
-        let pollOptions = [];
-        try {
-          if (dbPoll && dbPoll.poll_options) {
-            pollOptions = JSON.parse(dbPoll.poll_options);
-          }
-        } catch (_) {}
+        console.log(`🔍 [X-RAY] DB Record Found: ${!!dbRecord}`);
+        
+        if (!dbRecord) {
+          console.log(`⚠️ [X-RAY] Skipping - Poll ID ${pollId} not found in our SQLite DB.`);
+          return;
+        }
 
-        if (dbPoll && pollOptions.length > 0) {
-          for (const updateItem of update.pollUpdates) {
-            let selectedOptions = updateItem.vote?.selectedOptions || [];
-            if (selectedOptions.length > 0) {
-              selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
-            }
+        const fromPhone = trueRemoteJid.split('@')[0];
+        let selectedOption = null;
+
+        // 2. Parse Baileys Native Format (Option Name + Array of Voters)
+        for (const option of update.pollUpdates) {
+          // If someone voted for this option, voters array will have elements
+          if (option.voters && option.voters.length > 0) {
+            selectedOption = option.name;
+            const optStr = String(option.name).toLowerCase();
+            let tagToApply = '';
             
-            if (selectedOption) {
-              const pollId = key.id;
-              let dbRecord = null;
+            if (optStr.includes('confirm')) tagToApply = 'Trace: Confirmed';
+            else if (optStr.includes('cancel')) tagToApply = 'Trace: Cancelled';
+            else if (optStr.includes('edit') || optStr.includes('size') || optStr.includes('address')) tagToApply = 'Trace: Edit Requested';
+
+            if (tagToApply) {
+              const voterJid = option.voters[0];
+              const botCleanId = bot.sock?.user?.id?.split(':')[0]?.split('@')[0];
+              const voterCleanId = voterJid?.split(':')[0]?.split('@')[0];
+              const isFromMe = voterCleanId && botCleanId && (voterCleanId === botCleanId);
+              
+              const finalTag = isFromMe ? `${tagToApply} (Admin)` : tagToApply;
+              console.log(`[ShopifySync] 🏷️ Applying tag "${finalTag}" to Order ${dbRecord.order_id}`);
+              
               try {
-                const pollRow = db.prepare(
-                  `SELECT remote_jid, tenant_id FROM whatsapp_polls WHERE message_id = ?`
-                ).get(pollId);
-                
-                if (pollRow) {
-                  const cleanPhone = pollRow.remote_jid.split('@')[0].replace(/\D/g, '');
-                  const searchPattern = `%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`;
-                  const orderRow = db.prepare(`
-                    SELECT id as order_id FROM orders
-                    WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?
-                    ORDER BY id DESC LIMIT 1
-                  `).get(searchPattern);
-                  
-                  if (orderRow) {
-                    dbRecord = {
-                      order_id: orderRow.order_id,
-                      tenant_id: pollRow.tenant_id
-                    };
-                  }
-                }
-              } catch (e) {
-                console.error('⚠️ [PollNative] Failed to fetch dbRecord in handleMessagesUpdate:', e.message);
+                const { updateShopifyOrderTagsNonBlocking } = require('../whatsapp_message_processor');
+                updateShopifyOrderTagsNonBlocking(dbRecord.tenant_id || 'default', dbRecord.order_id, finalTag, db);
+              } catch (syncErr) {
+                console.error('⚠️ [PollNative] Failed to call updateShopifyOrderTagsNonBlocking:', syncErr.message);
               }
-
-              const optStr = String(selectedOption).toLowerCase();
-              let tagToApply = '';
-              if (optStr.includes('confirm')) tagToApply = 'Trace: Confirmed';
-              else if (optStr.includes('cancel')) tagToApply = 'Trace: Cancelled';
-              else if (optStr.includes('edit') || optStr.includes('size') || optStr.includes('address')) tagToApply = 'Trace: Edit Requested';
-
-              if (tagToApply && dbRecord) {
-                const finalTag = key.fromMe ? `${tagToApply} (Admin)` : tagToApply;
-                console.log(`[ShopifySync] 🏷️ Applying tag "${finalTag}" to Order ${dbRecord.order_id}`);
-                try {
-                  const { updateShopifyOrderTagsNonBlocking } = require('../whatsapp_message_processor');
-                  updateShopifyOrderTagsNonBlocking(dbRecord.tenant_id || 'default', dbRecord.order_id, finalTag, db);
-                } catch (syncErr) {
-                  console.error('⚠️ [PollNative] Failed to call updateShopifyOrderTagsNonBlocking:', syncErr.message);
-                }
-              }
-
-              // Construct a msg payload to pass to syncPollVoteToShopify for Shopify Tag sync
-              const mockMsgForShopify = {
-                key: {
-                  remoteJid: trueRemoteJid,
-                  fromMe: key.fromMe,
-                  id: updateItem.pollUpdateMessageKey?.id || key.id
-                },
-                message: {
-                  pollUpdateMessage: {
-                    pollCreationMessageKey: {
-                      id: key.id,
-                      remoteJid: trueRemoteJid,
-                      fromMe: true
-                    },
-                    vote: updateItem.vote
-                  }
-                }
-              };
-              try {
-                const { syncPollVoteToShopify } = require('../whatsapp_message_processor');
-                await syncPollVoteToShopify(bot, mockMsgForShopify, db);
-              } catch (err) {
-                console.error('⚠️ [PollNative] Failed to call syncPollVoteToShopify from handleMessagesUpdate:', err.message);
-              }
-              break;
             }
           }
         }
