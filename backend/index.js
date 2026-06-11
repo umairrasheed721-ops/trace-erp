@@ -131,3 +131,6 @@ const server = app.listen(PORT, () => {
 });
 
 initWebSocket(server);
+
+const startShopifySyncJob = require('./services/shopifySyncJob');
+startShopifySyncJob(); // Starts the background 15-min interval

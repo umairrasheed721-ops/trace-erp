@@ -485,6 +485,7 @@ module.exports = [
     full_message_json TEXT,
     order_id     INTEGER,
     erp_status   TEXT,
+    shopify_synced INTEGER DEFAULT 0,
     tenant_id    TEXT NOT NULL DEFAULT 'default',
     created_at   TEXT DEFAULT (datetime('now'))
   )`,
@@ -531,6 +532,19 @@ module.exports = [
     try {
       db.exec(`ALTER TABLE whatsapp_polls ADD COLUMN erp_status TEXT`);
       console.log('✅ Migration: Added erp_status column to whatsapp_polls table.');
+    } catch (e) {
+      // Column already exists
+    }
+  },
+
+  // Add shopify_synced column for existing installations
+  (db) => {
+    if (typeof db.run !== 'function') {
+      db.run = function(sql) { return this.exec(sql); };
+    }
+    try {
+      db.run(`ALTER TABLE whatsapp_polls ADD COLUMN shopify_synced INTEGER DEFAULT 0;`);
+      console.log('[WA-DB] ✅ Added missing shopify_synced column.');
     } catch (e) {
       // Column already exists
     }

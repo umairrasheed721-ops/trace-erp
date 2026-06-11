@@ -249,7 +249,7 @@ async function handleMessagesUpdate(bot, updates) {
               } catch (e) {}
 
               // ── 1. Update whatsapp_polls local erp_status ──────────────────
-              const query = `UPDATE whatsapp_polls SET erp_status = ? WHERE order_id = ?`;
+              const query = `UPDATE whatsapp_polls SET erp_status = ?, shopify_synced = 0 WHERE order_id = ?`;
               db.run(query, [tagToApply, dbRecord.order_id], function(err) {
                   if (err) {
                       console.error(`[ERP_DB] ❌ Failed to update local status:`, err);
@@ -505,7 +505,7 @@ function handleMessagesUpsert(bot, m) {
           console.log(`🎯 [TEXT_REPLY_MATCH] Customer +${cleanPhone} matched: "${tagToApply}" for Order ${pendingCOD.order_id} (input: "${msgText}")`);
 
           // ── 1. Update whatsapp_polls local erp_status ──────────────────
-          const query = `UPDATE whatsapp_polls SET erp_status = ? WHERE order_id = ?`;
+          const query = `UPDATE whatsapp_polls SET erp_status = ?, shopify_synced = 0 WHERE order_id = ?`;
           db.run(query, [tagToApply, dbRecord.order_id], function(err) {
               if (err) {
                   console.error(`[ERP_DB] ❌ Failed to update local status:`, err);
