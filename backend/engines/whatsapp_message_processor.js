@@ -1046,55 +1046,26 @@ async function processIncomingMessage(bot, msg, sock, db) {
  * In that case, the tag gets an "(Admin)" suffix → "Trace: Confirmed (Admin)".
  */
 /**
- * Resolves a selected poll option string from its raw SHA-256 hashes, supporting variations in emojis/spaces.
+ * Resolves a selected poll option string from its raw SHA-256 hashes.
  */
 function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
-  if (!selectedOptions || !selectedOptions.length || !pollOptions || !pollOptions.length) {
+  if (!selectedOptions || !selectedOptions.length) {
     return null;
   }
   
-  const crypto = require('crypto');
-  
-  // Helper to generate variations of option strings to account for emoji/space encoding differences
-  const getVariations = (optionStr) => {
-    const vars = new Set();
-    vars.add(optionStr);
-    vars.add(optionStr.trim());
-    vars.add(optionStr.replace(/\uFE0F/g, ''));
-    vars.add(optionStr.replace(/\uFE0E/g, ''));
-    
-    // Replace non-breaking spaces, variation selectors, etc.
-    vars.add(optionStr.replace(/[\uFE00-\uFE0F\u200B-\u200D\u2060]/g, ''));
-    
-    // ASCII/alphanumeric words only
-    const cleanWord = optionStr.replace(/[^\x00-\x7F]/g, '').trim().replace(/\s+/g, ' ');
-    if (cleanWord) {
-      vars.add(cleanWord);
-    }
-    
-    // Try to normalize emojis by adding variation selectors
-    const withVS = optionStr.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, (m) => {
-      return m.endsWith('\uFE0F') ? m : m + '\uFE0F';
-    });
-    vars.add(withVS);
-    vars.add(withVS.trim());
-    
-    return Array.from(vars);
-  };
+  const rawSel = Array.isArray(selectedOptions) ? selectedOptions[0] : selectedOptions;
+  if (!rawSel) return null;
 
-  for (const optionStr of pollOptions) {
-    const variations = getVariations(optionStr);
-    for (const v of variations) {
-      const hash = crypto.createHash('sha256').update(v).digest();
-      const matched = selectedOptions.some(sel => {
-        if (typeof sel === 'string') {
-          return sel.toLowerCase().includes(v.toLowerCase()) || v.toLowerCase().includes(sel.toLowerCase());
-        }
-        const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
-        return Buffer.compare(selBuf, hash) === 0;
-      });
-      if (matched) {
-        console.log(`🎯 [PollResolver] Matched hash for variation "${v}" (original: "${optionStr}")`);
+  if (typeof rawSel === 'string') {
+    return rawSel;
+  }
+
+  if (pollOptions && pollOptions.length) {
+    const crypto = require('crypto');
+    const selBuf = Buffer.isBuffer(rawSel) ? rawSel : Buffer.from(rawSel);
+    for (const optionStr of pollOptions) {
+      const hash = crypto.createHash('sha256').update(optionStr).digest();
+      if (Buffer.compare(selBuf, hash) === 0) {
         return optionStr;
       }
     }
@@ -1114,7 +1085,6 @@ async function syncPollVoteToShopify(bot, msg, db) {
     if (!pollUpdate) return;
 
     // pollCreationMessageKey.id = the message_id of the ORIGINAL poll that was sent
-    // This is how WhatsApp links a vote back to its poll question
     const pollCreationKey = pollUpdate.pollCreationMessageKey;
     console.log(`🔍 [POLL_DIAG] STEP 2: pollCreationKey.id = ${pollCreationKey?.id}`);
     if (!pollCreationKey) {
@@ -1155,9 +1125,6 @@ async function syncPollVoteToShopify(bot, msg, db) {
     } catch (_) {}
 
     // ── GATE 1: 24-Hour Vote Window ──
-    // Business rule: orders dispatch after 24h, so we reject late votes/changes.
-    // We check created_at from whatsapp_polls (set when poll was originally sent).
-    // Fail-open design: if this check crashes, we proceed rather than drop the vote.
     const VOTE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     if (dbPoll && dbPoll.created_at) {
       const pollAge = Date.now() - new Date(dbPoll.created_at).getTime();
@@ -1169,122 +1136,110 @@ async function syncPollVoteToShopify(bot, msg, db) {
       }
     }
 
+    let selectedOption = null;
+    let decryptedVotes = null;
+
     // ── PATH 1: In-Memory Store (Hot Path) ──
-    // Check bot.store.messages first — this is the normal case when no restart happened.
-    // bot.store is populated as messages arrive and trimmed to the last 35 per JID.
     const inMemoryCount = bot.store?.messages?.[trueRemoteJid]?.length || 0;
     console.log(`🔍 [POLL_DIAG] STEP 4: In-memory store has ${inMemoryCount} messages for JID ${trueRemoteJid}`);
     const pollMsg = bot.store?.messages?.[trueRemoteJid]?.find(m => m.key.id === pollCreationKey.id);
     console.log(`🔍 [POLL_DIAG] STEP 4b: In-memory poll lookup: ${pollMsg ? '✅ FOUND' : '❌ NOT FOUND (will try DB vault)'}`);
 
-    let selectedOption = null; // will hold the winning option string (e.g. "✅ Confirm Order")
-
     if (pollMsg && pollMsg.message) {
-      // In-memory hit — delegate decryption to the official Baileys helper
       console.log(`🗳️ [PollVault] In-memory hit for poll ${pollCreationKey.id}`);
-      const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
-      const votes = getAggregateVotesInPollMessage({
-        message: pollMsg.message,
-        pollUpdates: [
-          {
-            pollUpdateMessageKey: msg.key,
-            vote: pollUpdate.vote,
-            senderTimestampMs: pollUpdate.senderTimestampMs
-          }
-        ]
-      });
-
-      const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
-      const botBaseJid = getBaseJid(bot.sock?.user?.id);
-
-      // Find the option that this specific voter (customer or admin) selected
-      for (const option of votes) {
-        if (option.voters) {
-          const hasVoted = option.voters.some(voter => {
-            const voterBase = getBaseJid(voter);
-            if (msg.key.fromMe) {
-              return voterBase === botBaseJid; // Admin vote
-            } else {
-              return voterBase !== botBaseJid; // Customer vote
+      try {
+        const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
+        const votes = getAggregateVotesInPollMessage({
+          message: pollMsg.message,
+          pollUpdates: [
+            {
+              pollUpdateMessageKey: msg.key,
+              vote: pollUpdate.vote,
+              senderTimestampMs: pollUpdate.senderTimestampMs
             }
-          });
-          if (hasVoted) {
-            selectedOption = option.name;
-            break;
+          ]
+        });
+
+        decryptedVotes = votes;
+
+        const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
+        const botBaseJid = getBaseJid(bot.sock?.user?.id);
+
+        // Find the option that this specific voter (customer or admin) selected
+        for (const option of votes) {
+          if (option.voters) {
+            const hasVoted = option.voters.some(voter => {
+              const voterBase = getBaseJid(voter);
+              if (msg.key.fromMe) {
+                return voterBase === botBaseJid; // Admin vote
+              } else {
+                return voterBase !== botBaseJid; // Customer vote
+              }
+            });
+            if (hasVoted) {
+              selectedOption = option.name;
+              break;
+            }
           }
         }
-      }
-
-      // Fallback in Path 1 if Baileys returned 'Unknown' or failed to resolve
-      if ((!selectedOption || selectedOption === 'Unknown') && pollOptions.length > 0) {
-        const rawOptions = pollUpdate.vote?.selectedOptions || [];
-        selectedOption = resolveSelectedOptionFromHashes(rawOptions, pollOptions);
-      }
-    } else {
-      // ── PATH 2: DB Vault Fallback (Crash-Resilience Path) ──
-      // Triggered when bot.store is empty after a Railway container restart.
-      // We query the whatsapp_polls table which was populated at poll-send time.
-      console.warn(`⚠️ [PollVault] In-memory miss for poll ${pollCreationKey.id} — querying DB vault (restart amnesia recovery).`);
-
-      if (!dbPoll) {
-        // Poll was sent before the vault feature was deployed — nothing we can do
-        console.warn(`⚠️ [PollVault] Poll ${pollCreationKey.id} not found in DB vault either — vote dropped. (Was this poll sent before the vault was deployed?)`);
-        return;
-      }
-
-      let selectedOptions = pollUpdate.vote?.selectedOptions || [];
-      
-      // Decrypt using message_secret if empty or encrypted
-      if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
-        try {
-          const { decryptPollVote } = await import('@whiskeysockets/baileys');
-          const secretBuf = Buffer.from(vaultSecret, 'hex');
-          const voterJid = msg.key.participant || remoteJid;
-          
-          const decrypted = decryptPollVote(pollUpdate.vote, {
-            pollCreatorJid: bot.sock?.user?.id || remoteJid,
-            pollMsgId: pollCreationKey.id,
-            pollEncKey: secretBuf,
-            voterJid: voterJid
-          });
-          
-          if (decrypted && decrypted.selectedOptions) {
-            selectedOptions = decrypted.selectedOptions;
-            console.log('✅ [PollVault] Decrypted poll vote options using message_secret:', selectedOptions);
-          }
-        } catch (decErr) {
-          console.error('⚠️ [PollVault] Failed to decrypt poll vote using message_secret:', decErr.message);
-        }
-      }
-
-      if (!selectedOptions.length) {
-        // Empty selectedOptions means the voter tapped their own vote to deselect it — ignore
-        console.log(`🗳️ [PollVault] Empty selectedOptions — voter cleared their selection.`);
-        return;
-      }
-
-      if (pollOptions.length > 0) {
-        selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
-      }
-
-      if (!selectedOption) {
-        // Should rarely happen — would mean WhatsApp changed how it hashes options
-        console.warn(`⚠️ [PollVault] SHA-256 hash did not match any stored option for poll ${pollCreationKey.id}. Vote hash may be salted or option set changed.`);
-        return;
+      } catch (err) {
+        console.error('⚠️ Error during in-memory poll decryption:', err.message);
       }
     }
+
+    // ── FALLBACK PATH: DB Vault Decryption (Cold Path / RAM corruption recovery) ──
+    // Force the code to fall back to the DB Vault decryption using the message_secret if selectedOption is null/undefined/Unknown
+    if (!selectedOption || selectedOption === 'Unknown') {
+      console.log(`⚠️ [PollVault] In-memory decryption failed or returned Unknown for poll ${pollCreationKey.id} — falling back to DB vault decryption.`);
+
+      if (dbPoll) {
+        let selectedOptions = pollUpdate.vote?.selectedOptions || [];
+        
+        // Decrypt using message_secret if empty or encrypted
+        if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+          try {
+            const { decryptPollVote } = await import('@whiskeysockets/baileys');
+            const secretBuf = Buffer.from(vaultSecret, 'hex');
+            const voterJid = msg.key.participant || remoteJid;
+            
+            const decrypted = decryptPollVote(pollUpdate.vote, {
+              pollCreatorJid: bot.sock?.user?.id || remoteJid,
+              pollMsgId: pollCreationKey.id,
+              pollEncKey: secretBuf,
+              voterJid: voterJid
+            });
+            
+            decryptedVotes = decrypted;
+
+            if (decrypted && decrypted.selectedOptions) {
+              selectedOptions = decrypted.selectedOptions;
+              console.log('✅ [PollVault] Decrypted poll vote options using message_secret:', selectedOptions);
+            }
+          } catch (decErr) {
+            console.error('⚠️ [PollVault] Failed to decrypt poll vote using message_secret:', decErr.message);
+          }
+        }
+
+        if (selectedOptions.length > 0 && pollOptions.length > 0) {
+          selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
+        }
+      }
+    }
+
+    // Log the RAW payload right before Step 5
+    console.log('[POLL_DIAG] RAW DECRYPTED PAYLOAD:', JSON.stringify(decryptedVotes || pollUpdate.vote));
 
     console.log(`🔍 [POLL_DIAG] STEP 5: selectedOption resolved = "${selectedOption || 'NULL — no match found'}"`); 
 
     if (selectedOption) {
-      const opt = selectedOption.toLowerCase();
+      const optStr = String(selectedOption).toLowerCase();
       let statusTag = null;
 
-      if (opt.includes('confirm')) {
+      if (optStr.includes('confirm')) {
         statusTag = 'Trace: Confirmed';
-      } else if (opt.includes('cancel')) {
+      } else if (optStr.includes('cancel')) {
         statusTag = 'Trace: Cancelled';
-      } else if (opt.includes('edit') || opt.includes('size') || opt.includes('address')) {
+      } else if (optStr.includes('size') || optStr.includes('edit')) {
         statusTag = 'Trace: Edit Requested';
       }
 
