@@ -536,6 +536,68 @@ const TableRow = React.memo(({
         if (col.id === 'payment_ref') return <td key={col.id} style={{ fontSize: '0.7rem' }}>{o.payment_ref || '—'}</td>
         if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
         if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>
+        if (col.id === 'wa_erp_status') {
+          const status = o.wa_erp_status;
+          let badgeBg = 'rgba(100,116,139,0.2)';
+          let badgeColor = '#94a3b8';
+          let badgeBorder = '1px solid rgba(100,116,139,0.3)';
+          let emoji = '—';
+          if (status) {
+            const lower = status.toLowerCase();
+            if (lower.includes('confirm')) {
+              badgeBg = 'rgba(34,197,94,0.15)';
+              badgeColor = '#22c55e';
+              badgeBorder = '1px solid rgba(34,197,94,0.4)';
+              emoji = '✅';
+            } else if (lower.includes('cancel')) {
+              badgeBg = 'rgba(239,68,68,0.15)';
+              badgeColor = '#ef4444';
+              badgeBorder = '1px solid rgba(239,68,68,0.4)';
+              emoji = '❌';
+            } else if (lower.includes('edit')) {
+              badgeBg = 'rgba(234,179,8,0.15)';
+              badgeColor = '#eab308';
+              badgeBorder = '1px solid rgba(234,179,8,0.4)';
+              emoji = '✏️';
+            }
+          }
+          return (
+            <td key={col.id}>
+              {status ? (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    background: badgeBg,
+                    color: badgeColor,
+                    border: badgeBorder,
+                    borderRadius: 10,
+                    padding: '3px 8px',
+                    fontSize: '0.62rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    letterSpacing: '0.02em'
+                  }}
+                  title={`WA Poll ERP Status: ${status}`}
+                >
+                  <span
+                    style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: badgeColor,
+                      display: 'inline-block',
+                      boxShadow: `0 0 6px ${badgeColor}`,
+                      animation: 'waPulseDot 2s infinite'
+                    }}
+                  />
+                  {emoji} {status.replace('Trace: ', '')}
+                </span>
+              ) : (
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem', opacity: 0.4 }}>—</span>
+              )}
+            </td>
+          );
+        }
         return <td key={col.id}>—</td>
       })}
     </tr>

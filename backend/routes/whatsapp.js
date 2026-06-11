@@ -165,4 +165,67 @@ router.post('/send-order-images', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── WA ERP Status Poll Endpoint ─────────────────────────────────────────────
+// GET /api/whatsapp/poll-status/:orderId
+// Lightweight endpoint to return the latest erp_status for a given order_id.
+// Used by the frontend to live-poll the whatsapp_polls table every few seconds.
+router.get('/poll-status/:orderId', authenticateToken, (req, res) => {
+  try {
+    const { db } = require('../db');
+    const { orderId } = req.params;
+    if (!orderId) return res.status(400).json({ error: 'orderId required' });
+
+    const row = db.prepare(
+      `SELECT erp_status, message_id, poll_name, created_at
+       FROM whatsapp_polls
+       WHERE order_id = ?
+       ORDER BY id DESC LIMIT 1`
+    ).get(orderId);
+
+    res.json({
+      order_id: parseInt(orderId),
+      erp_status: row ? row.erp_status : null,
+      poll_name: row ? row.poll_name : null,
+      message_id: row ? row.message_id : null,
+      last_updated: row ? row.created_at : null,
+    });
+  } catch (err) {
+    console.error('WhatsApp /poll-status error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Batch WA ERP Status Endpoint ────────────────────────────────────────────
+// GET /api/whatsapp/poll-statuses?order_ids=1,2,3
+// Returns erp_status for multiple order IDs at once (used for table refresh).
+router.get('/poll-statuses', authenticateToken, (req, res) => {
+  try {
+    const { db } = require('../db');
+    const { order_ids } = req.query;
+    if (!order_ids) return res.json({ statuses: {} });
+
+    const ids = order_ids.split(',').map(id => parseInt(id.trim())).filter(Boolean);
+    if (ids.length === 0) return res.json({ statuses: {} });
+
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT order_id, erp_status
+       FROM whatsapp_polls
+       WHERE order_id IN (${placeholders})
+       GROUP BY order_id
+       HAVING id = MAX(id)`
+    ).all(...ids);
+
+    const statuses = {};
+    rows.forEach(row => {
+      if (row.order_id) statuses[row.order_id] = row.erp_status;
+    });
+
+    res.json({ statuses });
+  } catch (err) {
+    console.error('WhatsApp /poll-statuses error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

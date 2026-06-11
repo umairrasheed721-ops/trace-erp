@@ -131,31 +131,38 @@ router.get('/', (req, res) => {
     const orders = db.prepare(`
       SELECT o.*, s.shop_domain,
              (
-               SELECT COUNT(*) 
-               FROM orders 
-               WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != '' AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
+               SELECT COUNT(*)
+               FROM orders
+               WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != ''
+                      AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
                   OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
              ) as customer_order_count,
              (
-               SELECT direction 
-               FROM whatsapp_messages 
-               WHERE (order_id = o.id 
-                  OR phone = o.phone 
-                  OR phone = REPLACE(o.phone, '+', '') 
+               SELECT direction
+               FROM whatsapp_messages
+               WHERE (order_id = o.id
+                  OR phone = o.phone
+                  OR phone = REPLACE(o.phone, '+', '')
                   OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
                  AND tenant_id = o.tenant_id
                ORDER BY id DESC LIMIT 1
              ) as last_wa_direction,
              (
-               SELECT status 
-               FROM whatsapp_messages 
-               WHERE (order_id = o.id 
-                  OR phone = o.phone 
-                  OR phone = REPLACE(o.phone, '+', '') 
+               SELECT status
+               FROM whatsapp_messages
+               WHERE (order_id = o.id
+                  OR phone = o.phone
+                  OR phone = REPLACE(o.phone, '+', '')
                   OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
                  AND tenant_id = o.tenant_id
                ORDER BY id DESC LIMIT 1
-             ) as last_wa_status
+             ) as last_wa_status,
+             (
+               SELECT erp_status
+               FROM whatsapp_polls
+               WHERE order_id = o.id
+               ORDER BY id DESC LIMIT 1
+             ) as wa_erp_status
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE ${where}

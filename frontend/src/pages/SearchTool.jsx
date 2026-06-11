@@ -971,6 +971,7 @@ export default function SearchTool() {
     { id: 'courier', label: 'Courier' },
     { id: 'courier_status', label: 'Courier Status' },
     { id: 'delivery_status', label: 'ERP Status' },
+    { id: 'wa_erp_status', label: '📱 WA Poll Status' },
     { id: 'payment_status', label: 'Payment' },
     { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
@@ -996,7 +997,7 @@ export default function SearchTool() {
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
     const currentIds = cols.map(c => c.id)
-    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'customer_history']
+    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'customer_history', 'wa_erp_status']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
@@ -1010,6 +1011,40 @@ export default function SearchTool() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ─── Live WA ERP Status Polling (every 5 seconds) ─────────────────────────
+  // Batch-fetches wa_erp_status for all visible orders from the backend and
+  // merges the results into allOrders state so the badge updates in real-time
+  // without requiring a full page reload.
+  useEffect(() => {
+    const pollWAStatuses = async () => {
+      if (!allOrders || allOrders.length === 0) return;
+      try {
+        const ids = allOrders.map(o => o.id).join(',');
+        const token = localStorage.getItem('trace_token');
+        const res = await fetch(`/api/whatsapp/poll-statuses?order_ids=${ids}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const statuses = data.statuses || {};
+        if (Object.keys(statuses).length === 0) return;
+        setAllOrders(prev => prev.map(o => {
+          const newStatus = statuses[o.id];
+          // Only trigger re-render if the status actually changed
+          if (newStatus !== undefined && newStatus !== o.wa_erp_status) {
+            return { ...o, wa_erp_status: newStatus };
+          }
+          return o;
+        }));
+      } catch (e) {
+        // Silently ignore polling errors — do not disrupt the UI
+      }
+    };
+
+    const intervalId = setInterval(pollWAStatuses, 5000);
+    return () => clearInterval(intervalId);
+  }, [allOrders.length, activeStoreId]);
   const [draggedIdx, setDraggedIdx] = useState(null)
 
   const onDragStart = (idx) => setDraggedIdx(idx)

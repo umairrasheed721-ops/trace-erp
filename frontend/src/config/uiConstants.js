@@ -37,7 +37,8 @@ export const TABLE_CONSTANTS = {
     payment_date: 110,
     postex_weight: 90,
     edit: 80,
-    notes: 180
+    notes: 180,
+    wa_erp_status: 140
   },
 
   // Centralized Z-index scale to prevent overlapping bugs across tooltips, sticky headers, and modals
