@@ -55,4 +55,4 @@ COPY --from=builder /app/backend ./backend
 EXPOSE 3001
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "--experimental-sqlite", "backend/index.js"]

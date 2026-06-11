@@ -154,6 +154,8 @@ function setupWatchdogs() {
   }, 300000); // Every 5 minutes
 }
 
+let activeServer = null;
+
 function runEarlyStartup() {
   // Global crash preventers
   process.on('uncaughtException', (err) => {
@@ -169,26 +171,44 @@ function runEarlyStartup() {
     try { logSystemError('ERROR', msg, 'unhandledRejection'); } catch (_) {}
   });
 
-  process.on('SIGTERM', () => {
-    console.log('📡 SIGTERM received — graceful shutdown');
+  const shutdown = () => {
+    console.log('\n👋 Shutdown signal received. Closing resources gracefully...');
     try {
       const { sessions } = require('./engines/whatsapp_bot');
       if (sessions) {
         for (const [tenantId, botInstance] of sessions.entries()) {
           if (botInstance.sock) {
             console.log(`🔌 Closing WebSocket gracefully for tenant [${tenantId}]...`);
-            botInstance.sock.end(undefined);
+            try { botInstance.sock.end(undefined); } catch(_) {}
           }
         }
       }
     } catch (e) {
       console.error('Failed to end bot sockets gracefully:', e.message);
     }
-    setTimeout(() => {
-      console.log('👋 Safe exit.');
+
+    if (activeServer) {
+      activeServer.close(() => {
+        console.log('✅ HTTP server closed.');
+        try {
+          const { db } = require('./db');
+          db.exec('PRAGMA optimize;');
+          console.log('✅ Database optimized and closed.');
+        } catch (e) {}
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    }, 850);
-  });
+    }
+
+    setTimeout(() => {
+      console.error('⚠️ Could not close connections in time, forcing shut down');
+      process.exit(0);
+    }, 5000);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 
   // Environment health guard
   const REQUIRED_ENV = ['DB_PATH', 'JWT_SECRET']; 
@@ -245,25 +265,7 @@ function initPostListen(server) {
   }
 
   // Graceful shutdown sequence
-  const shutdown = () => {
-    console.log('\n👋 Shutdown signal received. Closing server gracefully...');
-    server.close(() => {
-      console.log('✅ HTTP server closed.');
-      try {
-        const { db } = require('./db');
-        db.exec('PRAGMA optimize;');
-        console.log('✅ Database optimized and closed.');
-      } catch (e) {}
-      process.exit(0);
-    });
-
-    setTimeout(() => {
-      console.error('⚠️ Could not close connections in time, forcing shut down');
-      process.exit(1);
-    }, 10000);
-  };
-
-  process.on('SIGINT', shutdown);
+  activeServer = server;
 }
 
 // Run early startup tasks on require
