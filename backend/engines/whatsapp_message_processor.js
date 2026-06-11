@@ -295,12 +295,17 @@ async function processQueue(bot, sock, db) {
           // ON CONFLICT DO NOTHING = safe if Baileys retries the send on reconnect.
           try {
             const vaultMsgId = sentMsg?.key?.id || uuid;
+            let secretHex = null;
+            const secretBuf = sentMsg?.message?.messageContextInfo?.messageSecret;
+            if (secretBuf) {
+              secretHex = Buffer.from(secretBuf).toString('hex');
+            }
             db.prepare(`
-              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, tenant_id)
-              VALUES (?, ?, ?, ?, ?)
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?)
               ON CONFLICT(message_id) DO NOTHING
-            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), bot.tenantId || 'default');
-            console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB for crash resilience.`);
+            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), secretHex, bot.tenantId || 'default');
+            console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB with secret for crash resilience.`);
           } catch (vaultErr) {
             // Non-fatal: poll still sent successfully, vault write is best-effort
             console.error('⚠️ [PollVault] Failed to persist poll to DB:', vaultErr.message);
@@ -1059,37 +1064,49 @@ async function syncPollVoteToShopify(bot, msg, db) {
       return;
     }
 
+    // ── STEP 1: Cross-Reference JID and Decryption Secret from DB Vault ──
+    let trueRemoteJid = remoteJid;
+    let vaultSecret = null;
+    let vaultOptions = null;
+    let dbPoll = null;
+
+    try {
+      dbPoll = db.prepare(
+        `SELECT remote_jid, message_secret, poll_options, created_at, poll_name FROM whatsapp_polls WHERE message_id = ?`
+      ).get(pollCreationKey.id);
+      if (dbPoll) {
+        if (dbPoll.remote_jid) {
+          trueRemoteJid = dbPoll.remote_jid;
+          console.log(`🔍 [POLL_DIAG] Mapped incoming JID ${remoteJid} to trueRemoteJid ${trueRemoteJid} from DB vault`);
+        }
+        vaultSecret = dbPoll.message_secret;
+        vaultOptions = dbPoll.poll_options;
+      }
+    } catch (e) {
+      console.warn('⚠️ [POLL_DIAG] Failed to lookup poll in vault:', e.message);
+    }
+
     // ── GATE 1: 24-Hour Vote Window ──
     // Business rule: orders dispatch after 24h, so we reject late votes/changes.
     // We check created_at from whatsapp_polls (set when poll was originally sent).
     // Fail-open design: if this check crashes, we proceed rather than drop the vote.
     const VOTE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    try {
-      const vaultMeta = db.prepare(
-        `SELECT created_at FROM whatsapp_polls WHERE message_id = ?`
-      ).get(pollCreationKey.id);
-      console.log(`🔍 [POLL_DIAG] STEP 3: DB vault lookup result: ${vaultMeta ? JSON.stringify(vaultMeta) : 'NOT FOUND (poll predates vault or table missing)'}`);
-      if (vaultMeta && vaultMeta.created_at) {
-        const pollAge = Date.now() - new Date(vaultMeta.created_at).getTime();
-        const hoursOld = (pollAge / 3600000).toFixed(1);
-        console.log(`🔍 [POLL_DIAG] STEP 3b: Poll age = ${hoursOld}h (limit 24h)`);
-        if (pollAge > VOTE_WINDOW_MS) {
-          console.warn(`⏰ [POLL_DIAG] ❌ BLOCKED by 24h window: poll is ${hoursOld}h old. Poll ID: ${pollCreationKey.id}`);
-          return;
-        }
+    if (dbPoll && dbPoll.created_at) {
+      const pollAge = Date.now() - new Date(dbPoll.created_at).getTime();
+      const hoursOld = (pollAge / 3600000).toFixed(1);
+      console.log(`🔍 [POLL_DIAG] STEP 3b: Poll age = ${hoursOld}h (limit 24h)`);
+      if (pollAge > VOTE_WINDOW_MS) {
+        console.warn(`⏰ [POLL_DIAG] ❌ BLOCKED by 24h window: poll is ${hoursOld}h old. Poll ID: ${pollCreationKey.id}`);
+        return;
       }
-      // Note: if vaultMeta is null (poll predates vault), we skip the age check and proceed
-    } catch (e) {
-      // Fail-open: DB error during age check should never drop a legitimate vote
-      console.warn('⚠️ [POLL_DIAG] Could not verify poll age, proceeding:', e.message);
     }
 
     // ── PATH 1: In-Memory Store (Hot Path) ──
     // Check bot.store.messages first — this is the normal case when no restart happened.
     // bot.store is populated as messages arrive and trimmed to the last 35 per JID.
-    const inMemoryCount = bot.store?.messages?.[remoteJid]?.length || 0;
-    console.log(`🔍 [POLL_DIAG] STEP 4: In-memory store has ${inMemoryCount} messages for JID ${remoteJid}`);
-    const pollMsg = bot.store?.messages?.[remoteJid]?.find(m => m.key.id === pollCreationKey.id);
+    const inMemoryCount = bot.store?.messages?.[trueRemoteJid]?.length || 0;
+    console.log(`🔍 [POLL_DIAG] STEP 4: In-memory store has ${inMemoryCount} messages for JID ${trueRemoteJid}`);
+    const pollMsg = bot.store?.messages?.[trueRemoteJid]?.find(m => m.key.id === pollCreationKey.id);
     console.log(`🔍 [POLL_DIAG] STEP 4b: In-memory poll lookup: ${pollMsg ? '✅ FOUND' : '❌ NOT FOUND (will try DB vault)'}`);
 
     let selectedOption = null; // will hold the winning option string (e.g. "✅ Confirm Order")
@@ -1111,7 +1128,7 @@ async function syncPollVoteToShopify(bot, msg, db) {
 
       // getBaseJid strips device suffixes: "92300...@s.whatsapp.net:5" → "92300...@s.whatsapp.net"
       // Needed because fromMe votes carry the bot's multi-device JID which has a colon suffix
-      const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] + '@s.whatsapp.net' : '';
+      const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
       const botJid = bot.sock?.user?.id;
       const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
 
@@ -1131,40 +1148,47 @@ async function syncPollVoteToShopify(bot, msg, db) {
       // We query the whatsapp_polls table which was populated at poll-send time.
       console.warn(`⚠️ [PollVault] In-memory miss for poll ${pollCreationKey.id} — querying DB vault (restart amnesia recovery).`);
 
-      let dbPoll = null;
-      try {
-        dbPoll = db.prepare(
-          `SELECT poll_name, poll_options, created_at FROM whatsapp_polls WHERE message_id = ?`
-        ).get(pollCreationKey.id);
-      } catch (e) {
-        console.error('⚠️ [PollVault] DB query failed:', e.message);
-      }
-
       if (!dbPoll) {
         // Poll was sent before the vault feature was deployed — nothing we can do
         console.warn(`⚠️ [PollVault] Poll ${pollCreationKey.id} not found in DB vault either — vote dropped. (Was this poll sent before the vault was deployed?)`);
         return;
       }
 
-      // ── SHA-256 Hash Matching ──
-      // WhatsApp does NOT send the raw option string in pollUpdate.vote.
-      // Instead it sends SHA-256 hashes of whichever options were selected.
-      // pollUpdate.vote.selectedOptions = [Buffer(sha256("✅ Confirm Order")), ...]
-      //
-      // To decode: hash each stored option string and compare buffers.
-      // This is cryptographically reliable — same option always produces the same hash.
-      // No Baileys internal state or message object needed.
       const crypto = require('crypto');
       let pollOptions = [];
       try {
         // poll_options is stored as a JSON array: ["✅ Confirm Order", "❌ Cancel", "✏️ Edit"]
-        pollOptions = JSON.parse(dbPoll.poll_options);
+        pollOptions = JSON.parse(vaultOptions || dbPoll.poll_options);
       } catch (_) {
         console.error('⚠️ [PollVault] Failed to parse stored poll_options JSON');
         return;
       }
 
-      const selectedOptions = pollUpdate.vote?.selectedOptions || [];
+      let selectedOptions = pollUpdate.vote?.selectedOptions || [];
+      
+      // Decrypt using message_secret if empty or encrypted
+      if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+        try {
+          const { decryptPollVote } = await import('@whiskeysockets/baileys');
+          const secretBuf = Buffer.from(vaultSecret, 'hex');
+          const voterJid = msg.key.participant || remoteJid;
+          
+          const decrypted = decryptPollVote(pollUpdate.vote, {
+            pollCreatorJid: bot.sock?.user?.id || remoteJid,
+            pollMsgId: pollCreationKey.id,
+            pollEncKey: secretBuf,
+            voterJid: voterJid
+          });
+          
+          if (decrypted && decrypted.selectedOptions) {
+            selectedOptions = decrypted.selectedOptions;
+            console.log('✅ [PollVault] Decrypted poll vote options using message_secret:', selectedOptions);
+          }
+        } catch (decErr) {
+          console.error('⚠️ [PollVault] Failed to decrypt poll vote using message_secret:', decErr.message);
+        }
+      }
+
       if (!selectedOptions.length) {
         // Empty selectedOptions means the voter tapped their own vote to deselect it — ignore
         console.log(`🗳️ [PollVault] Empty selectedOptions — voter cleared their selection.`);

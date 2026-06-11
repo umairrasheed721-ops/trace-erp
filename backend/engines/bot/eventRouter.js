@@ -122,7 +122,28 @@ async function handleMessagesUpdate(bot, updates) {
         const fromPhone = remoteJid.split('@')[0];
         
         let selectedOption = null;
-        const pollMsg = bot.store.messages[remoteJid]?.find(m => m.key.id === key.id);
+        let trueRemoteJid = remoteJid;
+        let vaultSecret = null;
+        let vaultOptions = null;
+        let dbPoll = null;
+
+        try {
+          dbPoll = db.prepare(
+            `SELECT remote_jid, message_secret, poll_options FROM whatsapp_polls WHERE message_id = ?`
+          ).get(key.id);
+          if (dbPoll) {
+            if (dbPoll.remote_jid) {
+              trueRemoteJid = dbPoll.remote_jid;
+            }
+            vaultSecret = dbPoll.message_secret;
+            vaultOptions = dbPoll.poll_options;
+          }
+        } catch (e) {
+          console.error('⚠️ [PollVault] DB query failed in handleMessagesUpdate:', e.message);
+        }
+
+        const pollMsg = bot.store.messages[trueRemoteJid]?.find(m => m.key.id === key.id);
+
         if (pollMsg && pollMsg.message) {
           const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
           const votes = getAggregateVotesInPollMessage({
@@ -130,53 +151,70 @@ async function handleMessagesUpdate(bot, updates) {
             pollUpdates: update.pollUpdates,
           });
           
+          const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
+          const voterJid = key.fromMe ? (bot.sock?.user?.id || '') : remoteJid;
+          const voterBase = getBaseJid(voterJid);
+
           for (const option of votes) {
-            if (option.voters && option.voters.includes(remoteJid)) {
-              selectedOption = option.name;
-              break;
+            if (option.voters) {
+              const hasVoted = option.voters.some(voter => getBaseJid(voter) === voterBase);
+              if (hasVoted) {
+                selectedOption = option.name;
+                break;
+              }
             }
           }
         } else {
           // --- POLL VAULT FALLBACK ---
           console.warn(`⚠️ [PollVault] handleMessagesUpdate in-memory miss for poll ${key.id} — querying DB vault.`);
-          let dbPoll = null;
-          try {
-            dbPoll = db.prepare(
-              `SELECT poll_name, poll_options FROM whatsapp_polls WHERE message_id = ?`
-            ).get(key.id);
-          } catch (e) {
-            console.error('⚠️ [PollVault] DB query failed in handleMessagesUpdate:', e.message);
-          }
 
-          if (dbPoll) {
+          if (dbPoll && vaultOptions) {
             let pollOptions = [];
             try {
-              pollOptions = JSON.parse(dbPoll.poll_options);
+              pollOptions = JSON.parse(vaultOptions);
             } catch (_) {}
 
             if (pollOptions.length > 0) {
               const crypto = require('crypto');
-              const voterBase = remoteJid.split(':')[0].split('@')[0];
+              const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
+              const voterJid = key.fromMe ? (bot.sock?.user?.id || '') : remoteJid;
+              const voterBase = getBaseJid(voterJid);
               
               for (const updateItem of update.pollUpdates) {
-                const updateJid = updateItem.pollUpdateMessageKey?.fromMe 
-                  ? (bot.sock?.user?.id || '').split(':')[0].split('@')[0]
-                  : remoteJid.split(':')[0].split('@')[0];
+                let selectedOptions = updateItem.vote?.selectedOptions || [];
+                
+                // Decrypt using message_secret if empty or encrypted
+                if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+                  try {
+                    const { decryptPollVote } = await import('@whiskeysockets/baileys');
+                    const secretBuf = Buffer.from(vaultSecret, 'hex');
+                    
+                    const decrypted = decryptPollVote(updateItem.vote, {
+                      pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                      pollMsgId: key.id,
+                      pollEncKey: secretBuf,
+                      voterJid: voterJid
+                    });
+                    
+                    if (decrypted && decrypted.selectedOptions) {
+                      selectedOptions = decrypted.selectedOptions;
+                    }
+                  } catch (decErr) {
+                    console.error('⚠️ [PollVault] Failed to decrypt poll vote in update handler:', decErr.message);
+                  }
+                }
 
-                if (updateJid === voterBase) {
-                  const selectedOptions = updateItem.vote?.selectedOptions || [];
-                  if (selectedOptions.length > 0) {
-                    for (const optionStr of pollOptions) {
-                      const hash = crypto.createHash('sha256').update(optionStr).digest();
-                      const matched = selectedOptions.some(sel => {
-                        const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
-                        return Buffer.compare(selBuf, hash) === 0;
-                      });
-                      if (matched) {
-                        selectedOption = optionStr;
-                        console.log(`✅ [PollVault] handleMessagesUpdate matched option: "${selectedOption}" via SHA-256 fallback`);
-                        break;
-                      }
+                if (selectedOptions.length > 0) {
+                  for (const optionStr of pollOptions) {
+                    const hash = crypto.createHash('sha256').update(optionStr).digest();
+                    const matched = selectedOptions.some(sel => {
+                      const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+                      return Buffer.compare(selBuf, hash) === 0;
+                    });
+                    if (matched) {
+                      selectedOption = optionStr;
+                      console.log(`✅ [PollVault] handleMessagesUpdate matched option: "${selectedOption}" via SHA-256 fallback`);
+                      break;
                     }
                   }
                 }

@@ -481,8 +481,19 @@ module.exports = [
     remote_jid   TEXT NOT NULL,
     poll_name    TEXT NOT NULL,
     poll_options TEXT NOT NULL,
+    message_secret TEXT,
     tenant_id    TEXT NOT NULL DEFAULT 'default',
     created_at   TEXT DEFAULT (datetime('now'))
   )`,
   `CREATE INDEX IF NOT EXISTS idx_wa_polls_message_id ON whatsapp_polls(message_id)`,
+
+  // Add message_secret column for existing installations
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE whatsapp_polls ADD COLUMN message_secret TEXT`);
+      console.log('✅ Migration: Added message_secret column to whatsapp_polls table.');
+    } catch (e) {
+      // Column already exists
+    }
+  }
 ];

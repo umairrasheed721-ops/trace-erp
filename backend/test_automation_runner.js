@@ -168,10 +168,10 @@ tenantContext.run('default', async () => {
         
         try {
           db.prepare(`
-            INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, tenant_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, tenant_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(message_id) DO NOTHING
-          `).run(messageId, jid, poll.name, JSON.stringify(poll.values), 'default');
+          `).run(messageId, jid, poll.name, JSON.stringify(poll.values), '0102030405', 'default');
           console.log(`🗄️ [Mock bot.directSendMessage] Success: Persisted mock poll to DB (message_id=${messageId})`);
           generatedPollMessageId = messageId;
         } catch (err) {
@@ -214,7 +214,7 @@ tenantContext.run('default', async () => {
 
     const mockMsg = {
       key: {
-        remoteJid: '923134725415@s.whatsapp.net',
+        remoteJid: '923134725415@lid',
         fromMe: false,
         id: 'mock-vote-id-123'
       },
@@ -222,7 +222,7 @@ tenantContext.run('default', async () => {
         pollUpdateMessage: {
           pollCreationMessageKey: {
             id: generatedPollMessageId,
-            remoteJid: '923134725415@s.whatsapp.net',
+            remoteJid: '923134725415@lid',
             fromMe: true
           },
           vote: {
