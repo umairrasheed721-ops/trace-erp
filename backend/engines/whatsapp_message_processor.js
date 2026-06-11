@@ -663,6 +663,13 @@ async function processIncomingMessage(bot, msg, sock, db) {
   // Handle poll updates (votes) bypass fromMe trap
   if (msg.message?.pollUpdateMessage) {
     console.log(`🗳️ [PollNative] Poll vote upsert detected (decryption and updates handled via messages.update) from JID: ${remoteJid}`);
+    // LOG EVERYTHING unconditionally to find the real structure
+    const messages = msg;
+    const updates = null;
+    console.log(`\n🚨 [RAW_PAYLOAD_DUMP] Inspecting incoming update/message object:`);
+    console.log(JSON.stringify(updates || messages, (key, value) => 
+        typeof value === 'bigint' ? value.toString() : value, 2
+    ));
     return;
   }
 

@@ -110,6 +110,12 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
  * Handles nested structure, poll message types, and common wrappers (ephemeral, viewOnce, etc.).
  */
 async function handleMessagesUpdate(bot, updates) {
+  // LOG EVERYTHING unconditionally to find the real structure
+  console.log(`\n🚨 [RAW_PAYLOAD_DUMP] Inspecting incoming update/message object:`);
+  console.log(JSON.stringify(updates, (key, value) => 
+      typeof value === 'bigint' ? value.toString() : value, 2
+  ));
+
   for (const { key, update } of updates) {
     const messageId = key.id;
     const statusVal = update.status;
@@ -148,7 +154,8 @@ async function handleMessagesUpdate(bot, updates) {
       }
     }
 
-    if (update.pollUpdates && key.remoteJid && !key.remoteJid.includes('@g.us')) {
+    // Temporarily relaxed check to analyze update payloads
+    if (key.remoteJid && !key.remoteJid.includes('@g.us')) {
       try {
         const pollId = key.id;
         console.log(`\n🔍 [X-RAY] Poll ID from WA: ${pollId}`);
@@ -196,7 +203,8 @@ async function handleMessagesUpdate(bot, updates) {
         let selectedOption = null;
 
         // 2. Parse Baileys Native Format (Option Name + Array of Voters)
-        for (const option of update.pollUpdates) {
+        if (update.pollUpdates && Array.isArray(update.pollUpdates)) {
+          for (const option of update.pollUpdates) {
           // If someone voted for this option, voters array will have elements
           if (option.voters && option.voters.length > 0) {
             selectedOption = option.name;
@@ -392,6 +400,7 @@ async function handleMessagesUpdate(bot, updates) {
               }
             }
           }
+        }
       } catch (pollErr) {
         console.error('⚠️ Poll vote handling failed:', pollErr.message);
       }
