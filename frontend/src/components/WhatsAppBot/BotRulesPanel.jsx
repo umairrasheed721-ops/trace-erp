@@ -8,11 +8,32 @@ export default function BotRulesPanel({
 }) {
   const [activeTab, setActiveTab] = useState('master');
 
-  const handleSettingChange = (key, value) => {
-    setSettings(prev => ({
-      ...prev,
-      [key]: value ? 1 : 0
-    }));
+  const handleSettingChange = async (settingKey, newValue) => {
+    const valueToStore = typeof newValue === 'boolean' ? (newValue ? 1 : 0) : newValue;
+    const previousValue = settings[settingKey];
+
+    // 1. Optimistic UI Update: Instantly update local state so the UI feels fast
+    setSettings(prev => ({ ...prev, [settingKey]: valueToStore }));
+
+    try {
+      // 2. Make the API call to save to the backend database
+      // Merge with the local state to send the full updated settings object
+      const updatedSettings = { ...settings, [settingKey]: valueToStore };
+      const response = await fetch('/api/whatsapp-governance/settings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify(updatedSettings)
+      });
+
+      if (!response.ok) throw new Error('Failed to save to database');
+    } catch (error) {
+      console.error('Settings update failed:', error);
+      // 3. Rollback: If API fails, revert the state to its previous value
+      setSettings(prev => ({ ...prev, [settingKey]: previousValue }));
+    }
   };
 
   return (
@@ -64,7 +85,7 @@ export default function BotRulesPanel({
                 <select 
                   className="premium-input w-full"
                   value={settings.mode}
-                  onChange={e => setSettings({ ...settings, mode: e.target.value })}
+                  onChange={e => handleSettingChange('mode', e.target.value)}
                   style={{ fontWeight: 800, color: settings.mode === 'live' ? 'var(--green)' : 'var(--orange)', fontSize: '0.95rem', padding: '12px 16px' }}
                 >
                   <option value="live">🟢 LIVE MODE (Instant Dispatch via Baileys Bot)</option>

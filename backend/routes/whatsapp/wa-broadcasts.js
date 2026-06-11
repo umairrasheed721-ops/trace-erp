@@ -124,8 +124,15 @@ router.get('/status', (req, res) => {
 
 // POST /api/whatsapp-governance/settings
 router.post('/settings', (req, res) => {
-  const { mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, enable_cod_reminders, enable_thank_you_msg, thank_you_template, enable_fallback_autoreply, fallback_autoreply_template, enable_post_delivery_feedback, post_delivery_template, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min, cod_template, attempted_template, dispatch_template, ai_responder_enabled, ai_tracking_template, ai_landmark_template, poll_options } = req.body;
   try {
+    // Fetch current settings to support partial updates safely
+    const current = db.prepare('SELECT * FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+    
+    // Merge req.body with current settings
+    const merged = { ...current, ...req.body };
+
+    const { mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, enable_cod_reminders, enable_thank_you_msg, thank_you_template, enable_fallback_autoreply, fallback_autoreply_template, enable_post_delivery_feedback, post_delivery_template, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min, cod_template, attempted_template, dispatch_template, ai_responder_enabled, ai_tracking_template, ai_landmark_template, poll_options } = merged;
+
     const pollOptionsStr = Array.isArray(poll_options) ? JSON.stringify(poll_options) : (typeof poll_options === 'string' ? poll_options : '[]');
     db.prepare(`
       UPDATE whatsapp_settings SET
