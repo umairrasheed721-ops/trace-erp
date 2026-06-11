@@ -197,6 +197,7 @@ async function connectBot(bot) {
       connectTimeoutMs: 60000,
       keepAliveIntervalMs: 10000,
       getMessage: async (key) => {
+        console.log(`\n🕵️‍♂️ [GET_MESSAGE_HOOK] Baileys is requesting original message for Poll ID: ${key.id}`);
         try {
           // 1. Try RAM first
           if (bot.store && bot.store.messages) {
@@ -205,9 +206,11 @@ async function connectBot(bot) {
             if (list) {
               const msg = list.find(m => m.key?.id === key.id);
               if (msg && msg.message) {
-                console.log('🗳️ [PollNative] getMessage hit in RAM for poll:', key.id);
+                console.log(`🗳️ [GET_MESSAGE_HOOK] Hit in RAM for Poll ID: ${key.id}`);
                 const parsed = msg.message;
-                return parsed.message ? parsed.message : parsed;
+                const msgToReturn = parsed.message ? parsed.message : parsed;
+                console.log(`✅ [GET_MESSAGE_HOOK] SUCCESS: Supplying original message from RAM to Baileys for decryption.`);
+                return msgToReturn;
               }
             }
           }
@@ -222,18 +225,26 @@ async function connectBot(bot) {
                 `SELECT full_message_json FROM whatsapp_polls WHERE message_id = ?`
               ).get(key.id);
             } catch (err) {
-              console.error('⚠️ [PollNative] Failed to lookup poll in DB getMessage fallback:', err.message);
+              console.error(`🚨 [GET_MESSAGE_HOOK] ERROR reading from DB:`, err);
             }
           });
 
-          if (dbRow && dbRow.full_message_json) {
-            console.log('🗳️ [PollNative] getMessage hit in DB Vault for poll:', key.id);
-            const parsed = JSON.parse(dbRow.full_message_json);
-            return parsed.message ? parsed.message : parsed;
+          if (!dbRow) {
+            console.log(`❌ [GET_MESSAGE_HOOK] FAIL: Poll ID not found in SQLite DB or RAM.`);
+            return undefined;
           }
-          return undefined;
+          if (!dbRow.full_message_json) {
+            console.log(`❌ [GET_MESSAGE_HOOK] FAIL: Row found, but full_message_json is empty.`);
+            return undefined;
+          }
+
+          const parsed = JSON.parse(dbRow.full_message_json);
+          const msgToReturn = parsed.message ? parsed.message : parsed;
+          
+          console.log(`✅ [GET_MESSAGE_HOOK] SUCCESS: Supplying original message from DB to Baileys for decryption.`);
+          return msgToReturn;
         } catch (err) {
-          console.error('⚠️ [PollNative] Error in getMessage hook:', err.message);
+          console.error(`🚨 [GET_MESSAGE_HOOK] ERROR in getMessage hook:`, err);
           return undefined;
         }
       },
