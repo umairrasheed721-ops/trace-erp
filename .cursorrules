@@ -1,0 +1,51 @@
+# TRACE ERP AI Rules & Context
+
+Welcome! You are developing on the **Trace ERP & WhatsApp Governance System**. This ruleset ensures you write code that is clean, optimal, and matches our established patterns.
+
+---
+
+## 1. Project Architecture
+
+*   **Backend**: Node.js v22+ (Express.js) inside the `backend/` folder.
+    *   **Database**: Uses Node's native **`node:sqlite`** (`DatabaseSync`) module. No NPM install of `better-sqlite3` or SQLite drivers is required. The main DB file is `backend/trace_erp.db` (and tenant-specific databases like `backend/trace_erp_tenant_abc.db` via `backend/tenant-context.js`).
+    *   **Background Engines**: Placed in `backend/engines/` (e.g., `whatsapp_bot.js`, `cod_verifier.js`, `post_delivery_feedback.js`).
+    *   **API Routes**: Placed in `backend/routes/`.
+*   **Frontend**: React (Vite) in the `frontend/` folder.
+    *   Vite builds into `frontend/dist/`.
+    *   `build_script.js` compiles the frontend and copies the assets into the production backend folder `backend/public/`.
+*   **Build Pipeline**: Run `node build_script.js` in the root directory to verify syntax checks and compile the full app.
+
+---
+
+## 2. SQLite Database Schema Quick Reference
+
+### Orders Table (`orders`)
+*   Key columns: `id`, `store_id`, `shopify_order_id`, `ref_number`, `customer_name`, `phone`, `price`, `total_price`, `delivery_status`, `payment_status`, `wa_verification_status`, `tenant_id`.
+*   *WARNING*: There is **no** column named `name` or `order_number` in the `orders` table. Always use `customer_name` for customer names and `ref_number` or `id` for references.
+
+### WhatsApp Settings Table (`whatsapp_settings`)
+*   Key columns: `mode` (live/simulation), `cod_verification_enabled`, `enable_cod_reminders`, `enable_post_delivery_feedback`, `cod_template`, `post_delivery_template`, `auto_responders` (JSON array of triggers and response bodies).
+
+### WhatsApp Messages Table (`whatsapp_messages`)
+*   Key columns: `id`, `store_id`, `order_id`, `phone`, `direction` (`incoming`/`outgoing`), `message`, `message_id`, `media_url`, `media_type`, `status` (`sent`, `failed`, `delivered`, `read`), `tenant_id`.
+
+---
+
+## 3. Mandatory AI Design Principles & Rules
+
+### A. Message Sending & Logging (No False Ticks)
+*   When sending WhatsApp messages inside background tasks/engines, **never** manually execute SQL inserts with a hardcoded `'sent'` status outside of the send actions.
+*   Always let the sending method (`directSendMessage` or `sendMessage`) log the success/failure to `whatsapp_messages` automatically.
+*   Pass `orderId` or `storeId` inside the `options` object parameter (e.g., `{ force: true, orderId: order_id }`) so that the bot engine logs the message with the correct order association and actual status (`sent` or `failed`).
+
+### B. Double-Templating Prevention
+*   In the WhatsApp engines, when a `poll` or challenge object is passed, **do not re-format the template**.
+*   The challenger template has already been rendered by the caller using customer and order variables. Directly use `poll.name` as the payload text: `payload = { text: poll.name }`.
+
+### C. Dynamic Auto-Responders
+*   All automated replies to customer confirmation messages (`1`, `2`, `3`, or `fallback` triggers) must be resolved dynamically by looking up the `auto_responders` array configuration in `whatsapp_settings` instead of hardcoding strings.
+*   Custom trigger matches must be checked on incoming text messages prior to invoking AI responders (Gemini) to allow quick keyword overrides.
+
+### D. File Modularization
+*   Keep files short and clean (preferably under 400 lines). Break complex modules in `backend/engines/` or `backend/routes/` into helper functions located in `backend/engines/processors/` or `backend/utils/`.
+*   Annotate all key functions using JSDoc type signatures so that AI tools can read them instantly.
