@@ -384,7 +384,8 @@ module.exports = [
       "ALTER TABLE gemini_bot_settings ADD COLUMN recommendation_rules TEXT DEFAULT '{}'",
       "ALTER TABLE whatsapp_settings ADD COLUMN poll_options TEXT DEFAULT NULL",
       "ALTER TABLE cod_pending_verifications ADD COLUMN followup_sent INTEGER DEFAULT 0",
-      "ALTER TABLE whatsapp_settings ADD COLUMN cod_followup_template TEXT DEFAULT '👋 Quick reminder! We are waiting for your confirmation for order {ref} of Rs. {amount}. Please reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size'"
+      "ALTER TABLE whatsapp_settings ADD COLUMN cod_followup_template TEXT DEFAULT '👋 Quick reminder! We are waiting for your confirmation for order {ref} of Rs. {amount}. Please reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size'",
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_cod_reminders INTEGER DEFAULT 1"
     ];
 
     alters.forEach(sql => {

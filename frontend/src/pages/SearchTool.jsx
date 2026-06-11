@@ -971,7 +971,7 @@ export default function SearchTool() {
     { id: 'courier', label: 'Courier' },
     { id: 'courier_status', label: 'Courier Status' },
     { id: 'delivery_status', label: 'ERP Status' },
-    { id: 'wa_erp_status', label: '📱 WA Poll Status' },
+    { id: 'wa_erp_status', label: '📱 COD Status' },
     { id: 'payment_status', label: 'Payment' },
     { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
@@ -1032,8 +1032,8 @@ export default function SearchTool() {
         setAllOrders(prev => prev.map(o => {
           const newStatus = statuses[o.id];
           // Only trigger re-render if the status actually changed
-          if (newStatus !== undefined && newStatus !== o.wa_erp_status) {
-            return { ...o, wa_erp_status: newStatus };
+          if (newStatus !== undefined && (newStatus !== o.wa_erp_status || newStatus !== o.wa_status)) {
+            return { ...o, wa_erp_status: newStatus, wa_status: newStatus };
           }
           return o;
         }));

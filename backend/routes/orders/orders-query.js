@@ -184,7 +184,10 @@ router.get('/', (req, res) => {
         if (pollRows && pollRows.length > 0) {
           const statusMap = {};
           pollRows.forEach(row => { if (row.order_id) statusMap[row.order_id] = row.erp_status; });
-          orders.forEach(o => { o.wa_erp_status = statusMap[o.id] || null; });
+          orders.forEach(o => {
+            o.wa_status = statusMap[o.id] || null;
+            o.wa_erp_status = statusMap[o.id] || null;
+          });
         }
       } catch (waErr) {
         // Non-fatal: whatsapp_polls may not exist on fresh containers
@@ -363,6 +366,19 @@ router.get('/by-shopify/:id', (req, res) => {
     JOIN stores s ON o.store_id = s.id 
     WHERE o.shopify_order_id = ?
   `).get(req.params.id);
+
+  if (order) {
+    try {
+      const pollRow = db.prepare(
+        `SELECT erp_status FROM whatsapp_polls WHERE order_id = ? ORDER BY id DESC LIMIT 1`
+      ).get(order.id);
+      order.wa_status = pollRow ? pollRow.erp_status : null;
+      order.wa_erp_status = pollRow ? pollRow.erp_status : null;
+    } catch (waErr) {
+      console.warn('[WA Status Merge Single] Skipped:', waErr.message);
+    }
+  }
+
   res.json(order);
 });
 

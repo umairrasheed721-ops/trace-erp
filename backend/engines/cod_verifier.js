@@ -229,6 +229,22 @@ async function checkAndSendCODFollowUps(customDb, customBot) {
 
   console.log('🕵️‍♂️ [COD_FOLLOWUP] Scanning for pending verifications older than 24 hours...');
 
+  // ── Master Toggle Check ─────────────────────────────────────────────────────
+  // If 'Enable 24-Hour COD Follow-up Reminders' is disabled in Master Settings,
+  // skip all reminders immediately to honour the admin's explicit choice.
+  try {
+    const masterSettings = activeDb.prepare(
+      'SELECT enable_cod_reminders FROM whatsapp_settings ORDER BY id DESC LIMIT 1'
+    ).get();
+    if (masterSettings && masterSettings.enable_cod_reminders === 0) {
+      console.log('[Reminders] 🛑 Skipped: COD Reminders are disabled in Master Settings.');
+      return;
+    }
+  } catch (settingsErr) {
+    // Non-fatal: if the column doesn't exist yet (e.g. fresh container), proceed normally
+    console.warn('[COD_FOLLOWUP] Could not read enable_cod_reminders setting, proceeding:', settingsErr.message);
+  }
+
   try {
     const pendingVerifications = activeDb.prepare(`
       SELECT * FROM cod_pending_verifications

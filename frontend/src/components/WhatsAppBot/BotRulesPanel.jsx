@@ -99,6 +99,15 @@ export default function BotRulesPanel({
                 />
                 <span>Enable Order Dispatch & Tracking Alerts</span>
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                <input 
+                  type="checkbox" 
+                  checked={settings.enable_cod_reminders !== 0}
+                  onChange={e => setSettings({ ...settings, enable_cod_reminders: e.target.checked ? 1 : 0 })}
+                  style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                />
+                <span>Enable 24-Hour COD Follow-up Reminders</span>
+              </label>
             </div>
           </div>
         </div>

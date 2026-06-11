@@ -537,34 +537,52 @@ const TableRow = React.memo(({
         if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
         if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>
         if (col.id === 'wa_erp_status') {
-          const status = o.wa_erp_status;
+          const status = o.wa_status || o.wa_erp_status;
           let badgeBg = 'rgba(100,116,139,0.2)';
           let badgeColor = '#94a3b8';
           let badgeBorder = '1px solid rgba(100,116,139,0.3)';
           let emoji = '—';
+          let displayStatus = '—';
           if (status) {
             const lower = status.toLowerCase();
             if (lower.includes('confirm')) {
               badgeBg = 'rgba(34,197,94,0.15)';
               badgeColor = '#22c55e';
               badgeBorder = '1px solid rgba(34,197,94,0.4)';
-              emoji = '✅';
+              emoji = '🟢';
+              displayStatus = 'Confirmed';
             } else if (lower.includes('cancel')) {
               badgeBg = 'rgba(239,68,68,0.15)';
               badgeColor = '#ef4444';
               badgeBorder = '1px solid rgba(239,68,68,0.4)';
-              emoji = '❌';
+              emoji = '🔴';
+              displayStatus = 'Cancelled';
             } else if (lower.includes('edit')) {
               badgeBg = 'rgba(234,179,8,0.15)';
               badgeColor = '#eab308';
               badgeBorder = '1px solid rgba(234,179,8,0.4)';
               emoji = '✏️';
+              displayStatus = 'Edit Req';
+            } else if (lower.includes('review')) {
+              badgeBg = 'rgba(249,115,22,0.15)';
+              badgeColor = '#f97316';
+              badgeBorder = '1px solid rgba(249,115,22,0.4)';
+              emoji = '🟡';
+              displayStatus = 'Review';
+            } else {
+              displayStatus = status.replace('Trace: ', '');
             }
           }
           return (
-            <td key={col.id}>
+            <td key={col.id} className="px-4 py-2">
               {status ? (
                 <span
+                  className={`text-xs px-2 py-1 rounded-full font-medium ${
+                    status === 'Trace: Confirmed' ? 'bg-green-100 text-green-800' :
+                    status === 'Trace: Cancelled' ? 'bg-red-100 text-red-800' :
+                    status === 'Trace: Edit Requested' ? 'bg-yellow-100 text-yellow-800' :
+                    status === 'Trace: Manual Review' ? 'bg-orange-100 text-orange-800' : ''
+                  }`}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -579,7 +597,7 @@ const TableRow = React.memo(({
                     whiteSpace: 'nowrap',
                     letterSpacing: '0.02em'
                   }}
-                  title={`WA Poll ERP Status: ${status}`}
+                  title={`COD Status: ${status}`}
                 >
                   <span
                     style={{
@@ -590,7 +608,7 @@ const TableRow = React.memo(({
                       animation: 'waPulseDot 2s infinite'
                     }}
                   />
-                  {emoji} {status.replace('Trace: ', '')}
+                  {emoji} {displayStatus}
                 </span>
               ) : (
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem', opacity: 0.4 }}>—</span>
