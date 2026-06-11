@@ -207,21 +207,34 @@ async function handleMessagesUpdate(bot, updates) {
             else if (optStr.includes('cancel')) tagToApply = 'Trace: Cancelled';
             else if (optStr.includes('edit') || optStr.includes('size') || optStr.includes('address')) tagToApply = 'Trace: Edit Requested';
 
-            if (tagToApply) {
-              const voterJid = option.voters[0];
-              const botCleanId = bot.sock?.user?.id?.split(':')[0]?.split('@')[0];
-              const voterCleanId = voterJid?.split(':')[0]?.split('@')[0];
-              const isFromMe = voterCleanId && botCleanId && (voterCleanId === botCleanId);
-              
-              const finalTag = isFromMe ? `${tagToApply} (Admin)` : tagToApply;
-              console.log(`[ShopifySync] 🏷️ Applying tag "${finalTag}" to Order ${dbRecord.order_id}`);
-              
-              try {
-                const { updateShopifyOrderTagsNonBlocking } = require('../whatsapp_message_processor');
-                updateShopifyOrderTagsNonBlocking(dbRecord.tenant_id || 'default', dbRecord.order_id, finalTag, db);
-              } catch (syncErr) {
-                console.error('⚠️ [PollNative] Failed to call updateShopifyOrderTagsNonBlocking:', syncErr.message);
+            if (tagToApply && dbRecord) {
+              // Polyfill db.run if it doesn't exist (Node DatabaseSync has prepare/run but not db.run)
+              if (typeof db.run !== 'function') {
+                db.run = function(sql, params, callback) {
+                  try {
+                    const stmt = this.prepare(sql);
+                    stmt.run(...params);
+                    if (typeof callback === 'function') callback(null);
+                  } catch (err) {
+                    if (typeof callback === 'function') callback(err);
+                  }
+                };
               }
+
+              // Ensure order_id is saved to whatsapp_polls so the erp_status update matches
+              try {
+                db.prepare(`UPDATE whatsapp_polls SET order_id = ? WHERE message_id = ?`).run(dbRecord.order_id, pollId);
+              } catch (e) {}
+
+              // Execute local SQLite UPDATE query exactly as requested
+              const query = `UPDATE whatsapp_polls SET erp_status = ? WHERE order_id = ?`;
+              db.run(query, [tagToApply, dbRecord.order_id], function(err) {
+                  if (err) {
+                      console.error(`[ERP_DB] ❌ Failed to update local status:`, err);
+                  } else {
+                      console.log(`[ERP_DB] ✅ Local ERP status safely updated to "${tagToApply}" for Order ${dbRecord.order_id}`);
+                  }
+              });
             }
           }
         }
