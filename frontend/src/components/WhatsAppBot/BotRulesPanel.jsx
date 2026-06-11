@@ -11,10 +11,12 @@ export default function BotRulesPanel({
       {/* Sub-Tabs Navigation */}
       <div style={{ display: 'flex', gap: 10, borderBottom: '1px solid #334155', paddingBottom: 16, overflowX: 'auto' }}>
         {[
-          { id: 'rules', label: '⚙️ Master Authority & Rules' },
-          { id: 'cod', label: '💬 COD Verification Template' },
-          { id: 'rescue', label: '⚠️ Courier Rescue Template' },
+          { id: 'rules',    label: '⚙️ Master Authority & Rules' },
+          { id: 'cod',      label: '💬 COD Verification Template' },
+          { id: 'rescue',   label: '⚠️ Courier Rescue Template' },
           { id: 'dispatch', label: '📦 Dispatch Alert Template' },
+          { id: 'thankyou', label: '🎉 Thank You Template' },
+          { id: 'autoreply',label: '🤖 Auto-Reply Template' },
         ].map(sub => (
           <button
             key={sub.id}
@@ -85,7 +87,7 @@ export default function BotRulesPanel({
                   onChange={e => setSettings({ ...settings, dispatch_alerts_enabled: e.target.checked ? 1 : 0 })}
                   style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
                 />
-                <span>Enable Order Dispatch & Tracking Alerts</span>
+                <span>Enable Order Dispatch &amp; Tracking Alerts</span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
                 <input 
@@ -95,6 +97,24 @@ export default function BotRulesPanel({
                   style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
                 />
                 <span>Enable 24-Hour COD Follow-up Reminders</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                <input 
+                  type="checkbox" 
+                  checked={settings.enable_thank_you_msg !== 0}
+                  onChange={e => setSettings({ ...settings, enable_thank_you_msg: e.target.checked ? 1 : 0 })}
+                  style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                />
+                <span>Enable 'Thank You' Confirmation Messages</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                <input 
+                  type="checkbox" 
+                  checked={settings.enable_fallback_autoreply === 1}
+                  onChange={e => setSettings({ ...settings, enable_fallback_autoreply: e.target.checked ? 1 : 0 })}
+                  style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                />
+                <span>Enable Fallback Auto-Replies (Unrecognized Text)</span>
               </label>
             </div>
           </div>
@@ -145,7 +165,7 @@ export default function BotRulesPanel({
       {activeSubTabA === 'dispatch' && (
         <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
-            <span>📦 Order Dispatch & Tracking Alert Template</span>
+            <span>📦 Order Dispatch &amp; Tracking Alert Template</span>
             <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{ref}'}, {'{courier}'}, {'{tracking}'}, {'{link}'}</span>
           </label>
           <textarea 
@@ -157,6 +177,56 @@ export default function BotRulesPanel({
             style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
           />
           <p className="text-muted" style={{ fontSize: '0.8rem' }}>Broadcasted automatically when an order is successfully booked and assigned a tracking airway bill.</p>
+        </div>
+      )}
+
+      {/* Sub-Tab A5: Thank You Template */}
+      {activeSubTabA === 'thankyou' && (
+        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
+            <span>🎉 Thank You Confirmation Template</span>
+            <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{ref}'}, {'{amount}'}, {'{first_name}'}, {'{store_name}'}</span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, background: settings.enable_thank_you_msg !== 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${settings.enable_thank_you_msg !== 0 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: settings.enable_thank_you_msg !== 0 ? 'var(--green)' : '#ef4444' }}>
+              {settings.enable_thank_you_msg !== 0 ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— Toggle in Master Authority tab</span>
+          </div>
+          <textarea 
+            className="premium-input" 
+            rows={5}
+            value={settings.thank_you_template}
+            onChange={e => setSettings({ ...settings, thank_you_template: e.target.value })}
+            placeholder="🎉 Thank You! Your order #{ref} is confirmed and will be dispatched via PostEx shortly. 📦👍"
+            style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
+          />
+          <p className="text-muted" style={{ fontSize: '0.8rem' }}>Sent automatically after a customer successfully confirms their COD order via the numeric text-reply system.</p>
+        </div>
+      )}
+
+      {/* Sub-Tab A6: Fallback Auto-Reply Template */}
+      {activeSubTabA === 'autoreply' && (
+        <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
+            <span>🤖 Fallback Auto-Reply Template</span>
+            <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>No variables — plain text only</span>
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, background: settings.enable_fallback_autoreply === 1 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${settings.enable_fallback_autoreply === 1 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: settings.enable_fallback_autoreply === 1 ? 'var(--green)' : '#ef4444' }}>
+              {settings.enable_fallback_autoreply === 1 ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— Toggle in Master Authority tab</span>
+          </div>
+          <textarea 
+            className="premium-input" 
+            rows={5}
+            value={settings.fallback_autoreply_template}
+            onChange={e => setSettings({ ...settings, fallback_autoreply_template: e.target.value })}
+            placeholder="👋 Hello! We have received your message. A human agent will reply shortly. For urgent inquiries, please call us."
+            style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
+          />
+          <p className="text-muted" style={{ fontSize: '0.8rem' }}>Sent when an incoming message does not match any known keyword, reply number, or active conversation session.</p>
         </div>
       )}
     </div>

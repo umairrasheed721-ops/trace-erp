@@ -385,7 +385,11 @@ module.exports = [
       "ALTER TABLE whatsapp_settings ADD COLUMN poll_options TEXT DEFAULT NULL",
       "ALTER TABLE cod_pending_verifications ADD COLUMN followup_sent INTEGER DEFAULT 0",
       "ALTER TABLE whatsapp_settings ADD COLUMN cod_followup_template TEXT DEFAULT '👋 Quick reminder! We are waiting for your confirmation for order {ref} of Rs. {amount}. Please reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size'",
-      "ALTER TABLE whatsapp_settings ADD COLUMN enable_cod_reminders INTEGER DEFAULT 1"
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_cod_reminders INTEGER DEFAULT 1",
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_thank_you_msg INTEGER DEFAULT 1",
+      "ALTER TABLE whatsapp_settings ADD COLUMN thank_you_template TEXT DEFAULT '🎉 Thank You! Your order #{ref} is confirmed and will be dispatched via PostEx shortly. 📦👍'",
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_fallback_autoreply INTEGER DEFAULT 0",
+      "ALTER TABLE whatsapp_settings ADD COLUMN fallback_autoreply_template TEXT DEFAULT '👋 Hello! We have received your message. A human agent will reply shortly. For urgent inquiries, please call us.'"
     ];
 
     alters.forEach(sql => {
