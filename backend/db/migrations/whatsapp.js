@@ -483,11 +483,28 @@ module.exports = [
     poll_options TEXT NOT NULL,
     message_secret TEXT,
     full_message_json TEXT,
+    order_id     INTEGER,
     erp_status   TEXT,
     tenant_id    TEXT NOT NULL DEFAULT 'default',
     created_at   TEXT DEFAULT (datetime('now'))
   )`,
   `CREATE INDEX IF NOT EXISTS idx_wa_polls_message_id ON whatsapp_polls(message_id)`,
+
+  // Aggressive SQLite migration/alter table block for existing databases
+  (db) => {
+    if (typeof db.run !== 'function') {
+      db.run = function(sql) { return this.exec(sql); };
+    }
+    try {
+        db.run(`ALTER TABLE whatsapp_polls ADD COLUMN order_id INTEGER;`);
+        console.log('[WA-DB] ✅ Added missing order_id column.');
+    } catch (e) { /* Ignore if it already exists */ }
+
+    try {
+        db.run(`ALTER TABLE whatsapp_polls ADD COLUMN erp_status TEXT;`);
+        console.log('[WA-DB] ✅ Added missing erp_status column.');
+    } catch (e) { /* Ignore if it already exists */ }
+  },
 
   // Add message_secret column for existing installations
   (db) => {
