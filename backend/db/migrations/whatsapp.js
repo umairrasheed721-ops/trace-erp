@@ -482,6 +482,7 @@ module.exports = [
     poll_name    TEXT NOT NULL,
     poll_options TEXT NOT NULL,
     message_secret TEXT,
+    full_message_json TEXT,
     tenant_id    TEXT NOT NULL DEFAULT 'default',
     created_at   TEXT DEFAULT (datetime('now'))
   )`,
@@ -492,6 +493,16 @@ module.exports = [
     try {
       db.exec(`ALTER TABLE whatsapp_polls ADD COLUMN message_secret TEXT`);
       console.log('✅ Migration: Added message_secret column to whatsapp_polls table.');
+    } catch (e) {
+      // Column already exists
+    }
+  },
+
+  // Add full_message_json column for existing installations
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE whatsapp_polls ADD COLUMN full_message_json TEXT`);
+      console.log('✅ Migration: Added full_message_json column to whatsapp_polls table.');
     } catch (e) {
       // Column already exists
     }

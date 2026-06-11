@@ -477,12 +477,13 @@ class WhatsAppBot {
             if (secretBuf) {
               secretBase64 = Buffer.from(secretBuf).toString('base64');
             }
+            const fullMsgJson = sentMsg?.message ? JSON.stringify(sentMsg.message) : null;
             db.prepare(`
-              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, tenant_id)
-              VALUES (?, ?, ?, ?, ?, ?)
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(message_id) DO NOTHING
-            `).run(messageId, jid, poll.name, JSON.stringify(poll.values), secretBase64, this.tenantId || 'default');
-            console.log(`🗄️ [PollVault] [DIRECT] Persisted poll "${poll.name}" (id=${messageId}) to DB with secret for crash resilience.`);
+            `).run(messageId, jid, poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, this.tenantId || 'default');
+            console.log(`🗄️ [PollVault] [DIRECT] Persisted poll "${poll.name}" (id=${messageId}) to DB with secret and full message JSON for crash resilience.`);
           } catch (vaultErr) {
             console.error('⚠️ [PollVault] [DIRECT] Failed to persist poll to DB:', vaultErr.message);
           }

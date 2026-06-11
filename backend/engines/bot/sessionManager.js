@@ -116,6 +116,13 @@ function _scheduleReconnect(bot) {
   }, delay);
 }
 
+function cleanJid(jid) {
+  if (!jid) return jid;
+  const [user, domain] = jid.split('@');
+  const cleanUser = user.split(':')[0];
+  return `${cleanUser}@${domain || 's.whatsapp.net'}`;
+}
+
 async function connectBot(bot) {
   if (bot.isConnecting) return;
   if (bot._isLoggedOut) {
@@ -189,7 +196,45 @@ async function connectBot(bot) {
       browser: ['TRACE ERP', 'Chrome', '120.0'],
       connectTimeoutMs: 60000,
       keepAliveIntervalMs: 10000,
-      getMessage: async () => ({ conversation: '' }),
+      getMessage: async (key) => {
+        try {
+          // 1. Try RAM first
+          if (bot.store && bot.store.messages) {
+            const cleanRemoteJid = cleanJid(key.remoteJid);
+            const list = bot.store.messages[cleanRemoteJid];
+            if (list) {
+              const msg = list.find(m => m.key?.id === key.id);
+              if (msg && msg.message) {
+                console.log('🗳️ [PollNative] getMessage hit in RAM for poll:', key.id);
+                return msg.message;
+              }
+            }
+          }
+
+          // 2. Fallback to SQLite DB Vault
+          let dbRow = null;
+          const tenantContext = require('../../tenant-context');
+          const { db: tenantDb } = require('../../db');
+          tenantContext.run(bot.tenantId || 'default', () => {
+            try {
+              dbRow = tenantDb.prepare(
+                `SELECT full_message_json FROM whatsapp_polls WHERE message_id = ?`
+              ).get(key.id);
+            } catch (err) {
+              console.error('⚠️ [PollNative] Failed to lookup poll in DB getMessage fallback:', err.message);
+            }
+          });
+
+          if (dbRow && dbRow.full_message_json) {
+            console.log('🗳️ [PollNative] getMessage hit in DB Vault for poll:', key.id);
+            return JSON.parse(dbRow.full_message_json);
+          }
+          return undefined;
+        } catch (err) {
+          console.error('⚠️ [PollNative] Error in getMessage hook:', err.message);
+          return undefined;
+        }
+      },
     });
 
     bot.sock.ev.on('creds.update', saveCreds);

@@ -109,77 +109,6 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
  * Safely extracts the messageSecret from a Baileys message object in RAM.
  * Handles nested structure, poll message types, and common wrappers (ephemeral, viewOnce, etc.).
  */
-function extractMessageSecret(pollMsg) {
-  if (!pollMsg || !pollMsg.message) return null;
-  const message = pollMsg.message;
-
-  // 1. Direct messageContextInfo
-  if (message.messageContextInfo?.messageSecret) {
-    return message.messageContextInfo.messageSecret;
-  }
-
-  // 2. Try unwrapping potential wrappers (ephemeral, viewOnce, etc.)
-  const wrappers = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'documentWithCaptionMessage'];
-  for (const wrapper of wrappers) {
-    if (message[wrapper]?.message) {
-      const subMsg = message[wrapper].message;
-      if (subMsg.messageContextInfo?.messageSecret) {
-        return subMsg.messageContextInfo.messageSecret;
-      }
-      if (subMsg.pollCreationMessage?.messageContextInfo?.messageSecret) {
-        return subMsg.pollCreationMessage.messageContextInfo.messageSecret;
-      }
-      if (subMsg.pollCreationMessageV2?.messageContextInfo?.messageSecret) {
-        return subMsg.pollCreationMessageV2.messageContextInfo.messageSecret;
-      }
-      if (subMsg.pollCreationMessage?.messageSecret) {
-        return subMsg.pollCreationMessage.messageSecret;
-      }
-      if (subMsg.pollCreationMessageV2?.messageSecret) {
-        return subMsg.pollCreationMessageV2.messageSecret;
-      }
-    }
-  }
-
-  // 3. Inside pollCreationMessage or pollCreationMessageV2 in top level
-  if (message.pollCreationMessage?.messageContextInfo?.messageSecret) {
-    return message.pollCreationMessage.messageContextInfo.messageSecret;
-  }
-  if (message.pollCreationMessageV2?.messageContextInfo?.messageSecret) {
-    return message.pollCreationMessageV2.messageContextInfo.messageSecret;
-  }
-  if (message.pollCreationMessage?.messageSecret) {
-    return message.pollCreationMessage.messageSecret;
-  }
-  if (message.pollCreationMessageV2?.messageSecret) {
-    return message.pollCreationMessageV2.messageSecret;
-  }
-
-  return null;
-}
-
-/**
- * Normalizes user JIDs by cleaning the device suffix if present.
- */
-function cleanJid(jid) {
-  if (!jid) return jid;
-  const [user, domain] = jid.split('@');
-  const cleanUser = user.split(':')[0];
-  return `${cleanUser}@${domain || 's.whatsapp.net'}`;
-}
-
-/**
- * Ensures a value is converted to a Buffer object (supporting base64 strings, arrays, objects).
- */
-function ensureBuffer(val) {
-  if (!val) return Buffer.alloc(0);
-  if (Buffer.isBuffer(val)) return val;
-  if (typeof val === 'string') return Buffer.from(val, 'base64');
-  if (val.type === 'Buffer' && Array.isArray(val.data)) return Buffer.from(val.data);
-  if (val instanceof Uint8Array || Array.isArray(val)) return Buffer.from(val);
-  return Buffer.from(val);
-}
-
 async function handleMessagesUpdate(bot, updates) {
   for (const { key, update } of updates) {
     const messageId = key.id;
@@ -226,20 +155,14 @@ async function handleMessagesUpdate(bot, updates) {
         
         let selectedOption = null;
         let trueRemoteJid = remoteJid;
-        let vaultSecret = null;
-        let vaultOptions = null;
         let dbPoll = null;
 
         try {
           dbPoll = db.prepare(
-            `SELECT remote_jid, message_secret, poll_options FROM whatsapp_polls WHERE message_id = ?`
+            `SELECT remote_jid, poll_options FROM whatsapp_polls WHERE message_id = ?`
           ).get(key.id);
-          if (dbPoll) {
-            if (dbPoll.remote_jid) {
-              trueRemoteJid = dbPoll.remote_jid;
-            }
-            vaultSecret = dbPoll.message_secret;
-            vaultOptions = dbPoll.poll_options;
+          if (dbPoll && dbPoll.remote_jid) {
+            trueRemoteJid = dbPoll.remote_jid;
           }
         } catch (e) {
           console.error('⚠️ [PollVault] DB query failed in handleMessagesUpdate:', e.message);
@@ -248,9 +171,7 @@ async function handleMessagesUpdate(bot, updates) {
         // Resolve candidates
         let pollOptions = [];
         try {
-          if (vaultOptions) {
-            pollOptions = JSON.parse(vaultOptions);
-          } else if (dbPoll && dbPoll.poll_options) {
+          if (dbPoll && dbPoll.poll_options) {
             pollOptions = JSON.parse(dbPoll.poll_options);
           }
         } catch (_) {}
@@ -258,62 +179,37 @@ async function handleMessagesUpdate(bot, updates) {
         if (dbPoll && pollOptions.length > 0) {
           for (const updateItem of update.pollUpdates) {
             let selectedOptions = updateItem.vote?.selectedOptions || [];
-            if (!selectedOptions || !selectedOptions.length) {
-              try {
-                let secretBuf = null;
-
-                // 1. Try to find the message in RAM first to get the pristine messageSecret
-                if (bot.store?.messages?.[trueRemoteJid]) {
-                  const pollMsg = bot.store.messages[trueRemoteJid].find(m => m.key.id === key.id);
-                  if (pollMsg) {
-                    const ramSecret = extractMessageSecret(pollMsg);
-                    if (ramSecret) {
-                      secretBuf = Buffer.isBuffer(ramSecret) ? ramSecret : Buffer.from(ramSecret);
-                      console.log('🗳️ [PollVault] Found pristine messageSecret in RAM in eventRouter for poll:', key.id);
-                    }
-                  }
-                }
-
-                // 2. Fall back to DB vault message_secret if RAM lookup failed
-                if (!secretBuf && vaultSecret) {
-                  console.log('🗳️ [PollVault] messageSecret not in RAM in eventRouter, falling back to DB vault message_secret for poll:', key.id);
-                  secretBuf = (vaultSecret.length === 64 && /^[0-9a-fA-F]+$/.test(vaultSecret))
-                    ? Buffer.from(vaultSecret, 'hex')
-                    : Buffer.from(vaultSecret, 'base64');
-                }
-
-                if (secretBuf) {
-                  const { decryptPollVote } = await import('@whiskeysockets/baileys');
-                  const voterJid = key.participant || remoteJid;
-                  const vote = updateItem.vote;
-                  
-                  const payloadBuf = ensureBuffer(vote.encPayload);
-                  const ivBuf = ensureBuffer(vote.encIv);
-                  
-                  const rawCreatorJid = bot.sock?.user?.id || remoteJid;
-                  const creatorJid = cleanJid(rawCreatorJid);
-
-                  const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
-                    pollCreatorJid: creatorJid,
-                    pollMsgId: key.id,
-                    pollEncKey: secretBuf,
-                    voterJid: voterJid
-                  });
-                  
-                  if (decrypted && decrypted.selectedOptions) {
-                    selectedOptions = decrypted.selectedOptions;
-                  }
-                } else {
-                  console.warn(`⚠️ [PollVault] No messageSecret found in RAM or DB in eventRouter for poll ${key.id}`);
-                }
-              } catch (decErr) {
-                console.error('⚠️ [PollVault] Direct poll vote decryption failed in eventRouter:', decErr.message);
-              }
-            }
             if (selectedOptions.length > 0) {
               selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
             }
-            if (selectedOption) break;
+            
+            if (selectedOption) {
+              // Construct a msg payload to pass to syncPollVoteToShopify for Shopify Tag sync
+              const mockMsgForShopify = {
+                key: {
+                  remoteJid: key.remoteJid,
+                  fromMe: key.fromMe,
+                  id: updateItem.pollUpdateMessageKey?.id || key.id
+                },
+                message: {
+                  pollUpdateMessage: {
+                    pollCreationMessageKey: {
+                      id: key.id,
+                      remoteJid: trueRemoteJid,
+                      fromMe: true
+                    },
+                    vote: updateItem.vote
+                  }
+                }
+              };
+              try {
+                const { syncPollVoteToShopify } = require('../whatsapp_message_processor');
+                await syncPollVoteToShopify(bot, mockMsgForShopify, db);
+              } catch (err) {
+                console.error('⚠️ [PollNative] Failed to call syncPollVoteToShopify from handleMessagesUpdate:', err.message);
+              }
+              break;
+            }
           }
         }
         
