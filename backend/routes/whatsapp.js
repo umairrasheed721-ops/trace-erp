@@ -9,6 +9,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
+const { normalizePhone } = require('../engines/whatsapp_message_processor');
 
 // ─── Null-Bot Fallback ────────────────────────────────────────────────────────
 // Used if the real bot module fails to load for any reason.
@@ -61,6 +62,132 @@ router.post('/send-test', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('WhatsApp /send-test error:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Send Manual Chat/Order message via active Baileys socket
+router.post('/send', authenticateToken, async (req, res) => {
+  const { phone, text, message, clientUuid, quoteContext } = req.body;
+  const textContent = text || message;
+  const tenantId = req.user?.tenant_id || req.tenantId || 'default';
+
+  if (!phone || !textContent) {
+    return res.status(400).json({ error: 'Phone and message text are required' });
+  }
+
+  console.log(`[WA-SEND-API] Inbound payload: phone="${phone}", text="${textContent}", clientUuid="${clientUuid}", tenantId="${tenantId}"`);
+
+  try {
+    const botInstance = getBot();
+    const cleaned = normalizePhone(phone);
+    const jid = cleaned + '@s.whatsapp.net';
+    console.log(`[WA-SEND-API] Normalized destination JID: "${jid}"`);
+    console.log(`[WA-SEND-API] Active Baileys socket status: "${botInstance.status}" (sock available: ${!!botInstance.sock})`);
+
+    // Guard: ensure the socket is connected/accessible
+    if (botInstance.status !== 'CONNECTED' || !botInstance.sock) {
+      console.error(`[WA-SEND-API-ERROR] Cannot send message: bot is disconnected (status: "${botInstance.status}")`);
+      return res.status(500).json({ error: 'WhatsApp bot is not connected. Please connect via WhatsApp Portal.' });
+    }
+
+    const last10 = cleaned.substring(cleaned.length - 10);
+    const { db } = require('../db');
+    const order = db.prepare(`
+      SELECT id, store_id, shopify_order_id FROM orders 
+      WHERE phone LIKE ? AND tenant_id = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(`%${last10}%`, tenantId);
+
+    const storeId = order ? order.store_id : 1;
+    const orderId = order ? order.id : null;
+
+    let parsedQuoteContext = quoteContext || null;
+    if (typeof parsedQuoteContext === 'string') {
+      try {
+        parsedQuoteContext = JSON.parse(parsedQuoteContext);
+      } catch (e) {}
+    }
+
+    let verifiedQuote = null;
+    const qid = parsedQuoteContext?.id || parsedQuoteContext?.message_id;
+    if (parsedQuoteContext && qid) {
+      let participant = parsedQuoteContext.participant;
+      let qtext = parsedQuoteContext.text;
+      try {
+        const quotedRow = db.prepare(`
+          SELECT * FROM whatsapp_messages 
+          WHERE message_id = ? AND tenant_id = ?
+          LIMIT 1
+        `).get(qid, tenantId);
+
+        if (quotedRow) {
+          const fromMe = quotedRow.direction === 'outgoing';
+          const remoteJid = jid;
+          if (!participant) {
+            participant = fromMe 
+              ? (botInstance.sock?.user?.id ? botInstance.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
+              : remoteJid;
+          }
+          if (!qtext) {
+            qtext = quotedRow.message || '';
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+      }
+
+      if (!participant) {
+        participant = jid;
+      }
+
+      verifiedQuote = {
+        id: qid,
+        participant: participant,
+        text: qtext || 'Media'
+      };
+    }
+
+    const uuid = clientUuid || require('crypto').randomUUID();
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?, ?)
+      `).run(storeId, orderId, cleaned, textContent, uuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to save manual chat message to SQLite:', err.message);
+    }
+
+    const sendResult = await botInstance.sendMessage(cleaned, textContent, true, null, null, null, uuid, verifiedQuote);
+    if (sendResult && sendResult.success === false) {
+      console.error(`[WA-SEND-API-ERROR] sendMessage failed: ${sendResult.error}`);
+      return res.status(500).json({ error: sendResult.error || 'Failed to dispatch message via Baileys socket' });
+    }
+
+    const newMsg = {
+      id: dbMessageId || Date.now(),
+      store_id: storeId,
+      order_id: orderId,
+      phone: cleaned,
+      direction: 'outgoing',
+      message: textContent,
+      status: 'sent',
+      quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
+      created_at: new Date().toISOString()
+    };
+
+    if (order && order.shopify_order_id) {
+      try {
+        const { broadcast } = require('../sse');
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+      } catch (err) {}
+    }
+
+    return res.status(200).json({ success: true, message: newMsg });
+  } catch (error) {
+    console.error('[WA-SEND-API-CATCH]', error);
+    return res.status(500).json({ error: 'Failed to send message: ' + error.message });
   }
 });
 

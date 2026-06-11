@@ -703,11 +703,16 @@ export default function useWhatsAppPortal() {
     scrollToBottom()
 
     try {
-      const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/send`, {
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch(`/api/whatsapp/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ 
-          message: finalMsg, 
+          phone: activeChat.phone,
+          text: finalMsg, 
           clientUuid,
           quoteContext: activeQuote ? { 
             id: activeQuote.id, 

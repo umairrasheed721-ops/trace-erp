@@ -310,13 +310,16 @@ export default function useOrderManagement({
 
     setSendingWaMsg(true);
     try {
-      const res = await fetch(`${apiBase}/api/whatsapp-governance/chat/${editingOrder.id}/send`, {
+      const res = await fetch(`${apiBase}/api/whatsapp/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
         },
-        body: JSON.stringify({ message: textToSend })
+        body: JSON.stringify({ 
+          phone: editingOrder.phone,
+          text: textToSend 
+        })
       });
       const data = await res.json();
       if (data.success) {
