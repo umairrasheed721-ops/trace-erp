@@ -406,26 +406,10 @@ async function fetchHistoryForPhone(bot, phone) {
   let cleaned = phone.replace(/\D/g, '');
   if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
   else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-  const jid = cleaned + '@s.whatsapp.net';
 
   try {
-    console.log(`📂 Fetching older message chunks from WhatsApp for ${cleaned}...`);
-    let fetched = [];
-    if (typeof bot.sock.fetchMessagesFromWA === 'function') {
-      try {
-        fetched = await bot.sock.fetchMessagesFromWA(jid, 50) || [];
-        for (const msg of fetched) {
-          if (!msg.message) continue;
-          if (!bot.store.messages[jid]) bot.store.messages[jid] = [];
-          if (!bot.store.messages[jid].some(m => m.key.id === msg.key.id)) {
-            bot.store.messages[jid].push(msg);
-          }
-        }
-      } catch (e) {
-        console.warn('⚠️ fetchMessagesFromWA error:', e.message);
-      }
-    }
-    return { success: true, count: fetched.length, messages: getChatHistory(bot, cleaned) };
+    console.log(`📂 Fetching older message chunks for ${cleaned} [BYPASSED — fetchMessagesFromWA is deprecated]`);
+    return { success: true, count: 0, messages: getChatHistory(bot, cleaned) };
   } catch (err) {
     console.error('❌ fetchHistory error:', err.message);
     return { success: false, error: err.message };
@@ -434,100 +418,7 @@ async function fetchHistoryForPhone(bot, phone) {
 
 async function syncDeepHistory(bot) {
   if (!bot.sock) return;
-  console.log('🔄 Starting Deep History Sync for active customers...');
-  
-  let downloadMediaMessage;
-  try {
-    const baileys = await import('@whiskeysockets/baileys');
-    downloadMediaMessage = baileys.downloadMediaMessage;
-  } catch (err) {
-    console.error('⚠️ Failed to load downloadMediaMessage from Baileys:', err.message);
-  }
-  
-  const activeCustomers = db.prepare(`
-    SELECT DISTINCT phone, id as order_id, store_id 
-    FROM orders 
-    WHERE phone IS NOT NULL AND phone != ''
-    ORDER BY id DESC 
-    LIMIT 50
-  `).all();
-
-  console.log(`📱 Found ${activeCustomers.length} active customers to sync.`);
-
-  for (const customer of activeCustomers) {
-    let cleaned = customer.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
-    const jid = cleaned + '@s.whatsapp.net';
-
-    try {
-      console.log(`📥 Syncing history for +${cleaned}...`);
-      await new Promise(r => setTimeout(r, 600));
-
-      let fetched = [];
-      if (typeof bot.sock.fetchMessagesFromWA === 'function') {
-        fetched = await bot.sock.fetchMessagesFromWA(jid, 50) || [];
-      } else {
-        console.warn('⚠️ fetchMessagesFromWA is not a function on bot.sock');
-        break;
-      }
-
-      let newMsgsCount = 0;
-      for (const msg of fetched) {
-        if (!msg.message) continue;
-        
-        const messageId = msg.key.id;
-        const exists = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(messageId);
-        if (exists) continue;
-
-        const isOutgoing = msg.key.fromMe;
-        const text = getMessageText(msg);
-        const mediaDetails = getMessageMediaDetails(msg);
-
-        let mediaUrl = null;
-        let mediaType = null;
-        let driveFileId = null;
-        
-        if (mediaDetails && downloadMediaMessage) {
-          mediaType = mediaDetails.type;
-          const mediaResult = await saveMediaFile(msg, mediaDetails, downloadMediaMessage);
-          if (mediaResult) {
-            mediaUrl = mediaResult.url;
-            driveFileId = mediaResult.id;
-          }
-        }
-
-        const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
-        const timestampSec = Number(msg.messageTimestamp) || Date.now() / 1000;
-        const createdAt = new Date(timestampSec * 1000).toISOString().replace('T', ' ').substring(0, 19);
-
-        db.prepare(`
-          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, created_at, drive_file_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)
-        `).run(
-          customer.store_id || 1,
-          customer.order_id,
-          cleaned,
-          isOutgoing ? 'outgoing' : 'incoming',
-          finalMessage,
-          messageId,
-          mediaUrl,
-          mediaType,
-          createdAt,
-          driveFileId
-        );
-
-        newMsgsCount++;
-      }
-      
-      if (newMsgsCount > 0) {
-        console.log(`✅ Synced ${newMsgsCount} new messages for +${cleaned}`);
-      }
-    } catch (err) {
-      console.error(`❌ Error syncing history for +${cleaned}:`, err.message);
-    }
-  }
-  console.log('🔄 Deep History Sync completed!');
+  console.log('🔄 Deep History Sync bypassed (legacy fetchMessagesFromWA is deprecated).');
 }
 
 module.exports = {

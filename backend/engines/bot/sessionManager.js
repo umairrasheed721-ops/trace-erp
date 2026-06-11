@@ -259,6 +259,19 @@ async function connectBot(bot) {
         // (e.g. raw TCP error), statusCode will be 0 which falls into the reconnect branch
         const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
 
+        const isBadMac = err && (err.message?.includes('Bad MAC') || err.stack?.includes('Bad MAC') || err.message?.includes('bad mac') || err.stack?.includes('bad mac'));
+        const is440 = statusCode === 440;
+
+        if (isBadMac || is440) {
+          console.warn(`🚨 [Session Reset] Detected Bad MAC or 440 Disconnect! Wiping DB session store to prevent loops. (isBadMac=${isBadMac}, is440=${is440})`);
+          clearDbSession();
+          bot._isLoggedOut = false;
+          bot.reconnectAttempts = 0;
+          await _wipeCreds(bot);
+          setTimeout(() => connectBot(bot), 1000);
+          return;
+        }
+
         // Log the specific code so Railway logs are easy to diagnose
         if (statusCode === 503) {
           console.warn(`🔌 [Reconnect] WhatsApp service unavailable (503) — scheduling reconnect.`);
