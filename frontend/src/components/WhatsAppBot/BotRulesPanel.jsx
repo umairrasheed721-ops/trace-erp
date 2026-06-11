@@ -6,18 +6,6 @@ export default function BotRulesPanel({
   settings,
   setSettings
 }) {
-  const [pollOptions, setPollOptions] = React.useState(['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order']);
-
-  React.useEffect(() => {
-    if (settings.poll_options && Array.isArray(settings.poll_options) && settings.poll_options.length > 0) {
-      setPollOptions(settings.poll_options);
-    }
-  }, [settings.poll_options]);
-
-  const updatePollOptions = (newOptions) => {
-    setPollOptions(newOptions);
-    setSettings(prev => ({ ...prev, poll_options: newOptions }));
-  };
   return (
     <div className="card glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: 24, animation: 'fadeIn 0.3s ease-in-out' }}>
       {/* Sub-Tabs Navigation */}
@@ -122,69 +110,15 @@ export default function BotRulesPanel({
           </label>
           <textarea 
             className="premium-input" 
-            rows={5}
+            rows={8}
             value={settings.cod_template}
             onChange={e => setSettings({ ...settings, cod_template: e.target.value })}
-            placeholder="👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with 'YES' to confirm your order."
+            placeholder={`👋 Hello from {store_name}!\nWe have received your COD order #{ref} for Rs. {amount}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`}
             style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
           />
-          <p className="text-muted" style={{ fontSize: '0.8rem' }}>This message is dispatched automatically when a new Cash on Delivery order is ingested into the Command Center.</p>
-
-          <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ fontWeight: 800, fontSize: '0.95rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>📊 Interactive Poll Options (Optional)</span>
-            </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {pollOptions.map((opt, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    className="premium-input"
-                    value={opt}
-                    onChange={e => {
-                      const copy = [...pollOptions];
-                      copy[idx] = e.target.value;
-                      updatePollOptions(copy);
-                    }}
-                    placeholder={`Option ${idx + 1}`}
-                    style={{ flex: 1, fontSize: '0.9rem', padding: '10px 14px' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (pollOptions.length <= 1) return;
-                      const copy = pollOptions.filter((_, i) => i !== idx);
-                      updatePollOptions(copy);
-                    }}
-                    disabled={pollOptions.length <= 1}
-                    title="Remove Option"
-                    style={{
-                      background: 'none', border: 'none', color: '#ef4444', 
-                      fontSize: '1.2rem', cursor: 'pointer', padding: '4px 8px',
-                      opacity: pollOptions.length <= 1 ? 0.3 : 1
-                    }}
-                  >
-                    ✖
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  updatePollOptions([...pollOptions, '']);
-                }}
-                style={{
-                  fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex',
-                  alignItems: 'center', gap: 6, fontWeight: 700
-                }}
-              >
-                ➕ Add Option
-              </button>
-            </div>
-          </div>
+          <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+            Write your numeric reply options <strong>directly in the message body</strong> above. This message is dispatched automatically when a new COD order is ingested into the Command Center. Customers reply with <code>1</code>, <code>2</code>, or <code>3</code>.
+          </p>
         </div>
       )}
 
