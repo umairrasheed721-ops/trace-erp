@@ -156,19 +156,42 @@ router.get('/', (req, res) => {
                   OR SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10))
                  AND tenant_id = o.tenant_id
                ORDER BY id DESC LIMIT 1
-             ) as last_wa_status,
-             (
-               SELECT erp_status
-               FROM whatsapp_polls
-               WHERE order_id = o.id
-               ORDER BY id DESC LIMIT 1
-             ) as wa_erp_status
+             ) as last_wa_status
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE ${where}
       ORDER BY o.${safeSort} ${safeDir}
       LIMIT ? OFFSET ?
     `).all(...queryParams, parseInt(limit), offset);
+
+    // ── WA ERP Status Merge (JS-level, crash-safe) ────────────────────────────
+    // Fetches wa_erp_status from whatsapp_polls in a separate query and merges
+    // it into the order objects. Wrapped in try/catch so if whatsapp_polls
+    // doesn't exist (new containers) or errors for any reason, the orders
+    // response is still sent successfully — wa_erp_status just won't be set.
+    if (orders.length > 0) {
+      try {
+        const orderIds = orders.map(o => o.id);
+        const placeholders = orderIds.map(() => '?').join(',');
+        const pollRows = db.prepare(
+          `SELECT order_id, erp_status
+           FROM whatsapp_polls
+           WHERE order_id IN (${placeholders})
+           GROUP BY order_id
+           HAVING id = MAX(id)`
+        ).all(...orderIds);
+
+        if (pollRows && pollRows.length > 0) {
+          const statusMap = {};
+          pollRows.forEach(row => { if (row.order_id) statusMap[row.order_id] = row.erp_status; });
+          orders.forEach(o => { o.wa_erp_status = statusMap[o.id] || null; });
+        }
+      } catch (waErr) {
+        // Non-fatal: whatsapp_polls may not exist on fresh containers
+        // Orders are still returned correctly without wa_erp_status
+        console.warn('[WA Status Merge] Skipped:', waErr.message);
+      }
+    }
 
     res.json({ 
       orders, 
