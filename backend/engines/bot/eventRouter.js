@@ -77,6 +77,64 @@ async function handleMessagingHistorySet(bot, { chats, messages, isLatest }) {
   }
 }
 
+/**
+ * Resolves a selected poll option string from its raw SHA-256 hashes, supporting variations in emojis/spaces.
+ */
+function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
+  if (!selectedOptions || !selectedOptions.length || !pollOptions || !pollOptions.length) {
+    return null;
+  }
+  
+  const crypto = require('crypto');
+  
+  // Helper to generate variations of option strings to account for emoji/space encoding differences
+  const getVariations = (optionStr) => {
+    const vars = new Set();
+    vars.add(optionStr);
+    vars.add(optionStr.trim());
+    vars.add(optionStr.replace(/\uFE0F/g, ''));
+    vars.add(optionStr.replace(/\uFE0E/g, ''));
+    
+    // Replace non-breaking spaces, variation selectors, etc.
+    vars.add(optionStr.replace(/[\uFE00-\uFE0F\u200B-\u200D\u2060]/g, ''));
+    
+    // ASCII/alphanumeric words only
+    const cleanWord = optionStr.replace(/[^\x00-\x7F]/g, '').trim().replace(/\s+/g, ' ');
+    if (cleanWord) {
+      vars.add(cleanWord);
+    }
+    
+    // Try to normalize emojis by adding variation selectors
+    const withVS = optionStr.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, (m) => {
+      return m.endsWith('\uFE0F') ? m : m + '\uFE0F';
+    });
+    vars.add(withVS);
+    vars.add(withVS.trim());
+    
+    return Array.from(vars);
+  };
+
+  for (const optionStr of pollOptions) {
+    const variations = getVariations(optionStr);
+    for (const v of variations) {
+      const hash = crypto.createHash('sha256').update(v).digest();
+      const matched = selectedOptions.some(sel => {
+        if (typeof sel === 'string') {
+          return sel.toLowerCase().includes(v.toLowerCase()) || v.toLowerCase().includes(sel.toLowerCase());
+        }
+        const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+        return Buffer.compare(selBuf, hash) === 0;
+      });
+      if (matched) {
+        console.log(`🎯 [PollResolver] Matched hash for variation "${v}" (original: "${optionStr}")`);
+        return optionStr;
+      }
+    }
+  }
+  
+  return null;
+}
+
 async function handleMessagesUpdate(bot, updates) {
   for (const { key, update } of updates) {
     const messageId = key.id;
@@ -142,6 +200,16 @@ async function handleMessagesUpdate(bot, updates) {
           console.error('⚠️ [PollVault] DB query failed in handleMessagesUpdate:', e.message);
         }
 
+        // Resolve candidates
+        let pollOptions = [];
+        try {
+          if (vaultOptions) {
+            pollOptions = JSON.parse(vaultOptions);
+          } else if (dbPoll && dbPoll.poll_options) {
+            pollOptions = JSON.parse(dbPoll.poll_options);
+          }
+        } catch (_) {}
+
         const pollMsg = bot.store.messages[trueRemoteJid]?.find(m => m.key.id === key.id);
 
         if (pollMsg && pollMsg.message) {
@@ -164,62 +232,51 @@ async function handleMessagesUpdate(bot, updates) {
               }
             }
           }
+
+          // Fallback in Path 1 if Baileys returned 'Unknown' or failed to resolve
+          if ((!selectedOption || selectedOption === 'Unknown') && pollOptions.length > 0) {
+            for (const updateItem of update.pollUpdates) {
+              const rawOptions = updateItem.vote?.selectedOptions || [];
+              selectedOption = resolveSelectedOptionFromHashes(rawOptions, pollOptions);
+              if (selectedOption) break;
+            }
+          }
         } else {
           // --- POLL VAULT FALLBACK ---
           console.warn(`⚠️ [PollVault] handleMessagesUpdate in-memory miss for poll ${key.id} — querying DB vault.`);
 
-          if (dbPoll && vaultOptions) {
-            let pollOptions = [];
-            try {
-              pollOptions = JSON.parse(vaultOptions);
-            } catch (_) {}
-
-            if (pollOptions.length > 0) {
-              const crypto = require('crypto');
-              const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
-              const voterJid = key.fromMe ? (bot.sock?.user?.id || '') : remoteJid;
-              const voterBase = getBaseJid(voterJid);
+          if (dbPoll && pollOptions.length > 0) {
+            const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
+            
+            for (const updateItem of update.pollUpdates) {
+              let selectedOptions = updateItem.vote?.selectedOptions || [];
               
-              for (const updateItem of update.pollUpdates) {
-                let selectedOptions = updateItem.vote?.selectedOptions || [];
-                
-                // Decrypt using message_secret if empty or encrypted
-                if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
-                  try {
-                    const { decryptPollVote } = await import('@whiskeysockets/baileys');
-                    const secretBuf = Buffer.from(vaultSecret, 'hex');
-                    
-                    const decrypted = decryptPollVote(updateItem.vote, {
-                      pollCreatorJid: bot.sock?.user?.id || remoteJid,
-                      pollMsgId: key.id,
-                      pollEncKey: secretBuf,
-                      voterJid: voterJid
-                    });
-                    
-                    if (decrypted && decrypted.selectedOptions) {
-                      selectedOptions = decrypted.selectedOptions;
-                    }
-                  } catch (decErr) {
-                    console.error('⚠️ [PollVault] Failed to decrypt poll vote in update handler:', decErr.message);
+              // Decrypt using message_secret if empty or encrypted
+              if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+                try {
+                  const { decryptPollVote } = await import('@whiskeysockets/baileys');
+                  const secretBuf = Buffer.from(vaultSecret, 'hex');
+                  const voterJid = key.participant || remoteJid;
+                  
+                  const decrypted = decryptPollVote(updateItem.vote, {
+                    pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                    pollMsgId: key.id,
+                    pollEncKey: secretBuf,
+                    voterJid: voterJid
+                  });
+                  
+                  if (decrypted && decrypted.selectedOptions) {
+                    selectedOptions = decrypted.selectedOptions;
                   }
+                } catch (decErr) {
+                  console.error('⚠️ [PollVault] Failed to decrypt poll vote in update handler:', decErr.message);
                 }
-
-                if (selectedOptions.length > 0) {
-                  for (const optionStr of pollOptions) {
-                    const hash = crypto.createHash('sha256').update(optionStr).digest();
-                    const matched = selectedOptions.some(sel => {
-                      const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
-                      return Buffer.compare(selBuf, hash) === 0;
-                    });
-                    if (matched) {
-                      selectedOption = optionStr;
-                      console.log(`✅ [PollVault] handleMessagesUpdate matched option: "${selectedOption}" via SHA-256 fallback`);
-                      break;
-                    }
-                  }
-                }
-                if (selectedOption) break;
               }
+
+              if (selectedOptions.length > 0) {
+                selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
+              }
+              if (selectedOption) break;
             }
           }
         }

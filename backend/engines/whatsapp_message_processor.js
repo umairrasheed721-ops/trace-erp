@@ -1045,6 +1045,64 @@ async function processIncomingMessage(bot, msg, sock, db) {
  * If msg.key.fromMe is true, the vote came from the linked device (internal team).
  * In that case, the tag gets an "(Admin)" suffix → "Trace: Confirmed (Admin)".
  */
+/**
+ * Resolves a selected poll option string from its raw SHA-256 hashes, supporting variations in emojis/spaces.
+ */
+function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
+  if (!selectedOptions || !selectedOptions.length || !pollOptions || !pollOptions.length) {
+    return null;
+  }
+  
+  const crypto = require('crypto');
+  
+  // Helper to generate variations of option strings to account for emoji/space encoding differences
+  const getVariations = (optionStr) => {
+    const vars = new Set();
+    vars.add(optionStr);
+    vars.add(optionStr.trim());
+    vars.add(optionStr.replace(/\uFE0F/g, ''));
+    vars.add(optionStr.replace(/\uFE0E/g, ''));
+    
+    // Replace non-breaking spaces, variation selectors, etc.
+    vars.add(optionStr.replace(/[\uFE00-\uFE0F\u200B-\u200D\u2060]/g, ''));
+    
+    // ASCII/alphanumeric words only
+    const cleanWord = optionStr.replace(/[^\x00-\x7F]/g, '').trim().replace(/\s+/g, ' ');
+    if (cleanWord) {
+      vars.add(cleanWord);
+    }
+    
+    // Try to normalize emojis by adding variation selectors
+    const withVS = optionStr.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, (m) => {
+      return m.endsWith('\uFE0F') ? m : m + '\uFE0F';
+    });
+    vars.add(withVS);
+    vars.add(withVS.trim());
+    
+    return Array.from(vars);
+  };
+
+  for (const optionStr of pollOptions) {
+    const variations = getVariations(optionStr);
+    for (const v of variations) {
+      const hash = crypto.createHash('sha256').update(v).digest();
+      const matched = selectedOptions.some(sel => {
+        if (typeof sel === 'string') {
+          return sel.toLowerCase().includes(v.toLowerCase()) || v.toLowerCase().includes(sel.toLowerCase());
+        }
+        const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+        return Buffer.compare(selBuf, hash) === 0;
+      });
+      if (matched) {
+        console.log(`🎯 [PollResolver] Matched hash for variation "${v}" (original: "${optionStr}")`);
+        return optionStr;
+      }
+    }
+  }
+  
+  return null;
+}
+
 async function syncPollVoteToShopify(bot, msg, db) {
   try {
     const remoteJid = msg.key?.remoteJid;
@@ -1085,6 +1143,16 @@ async function syncPollVoteToShopify(bot, msg, db) {
     } catch (e) {
       console.warn('⚠️ [POLL_DIAG] Failed to lookup poll in vault:', e.message);
     }
+
+    // Resolve candidates
+    let pollOptions = [];
+    try {
+      if (vaultOptions) {
+        pollOptions = JSON.parse(vaultOptions);
+      } else if (dbPoll && dbPoll.poll_options) {
+        pollOptions = JSON.parse(dbPoll.poll_options);
+      }
+    } catch (_) {}
 
     // ── GATE 1: 24-Hour Vote Window ──
     // Business rule: orders dispatch after 24h, so we reject late votes/changes.
@@ -1146,6 +1214,12 @@ async function syncPollVoteToShopify(bot, msg, db) {
           }
         }
       }
+
+      // Fallback in Path 1 if Baileys returned 'Unknown' or failed to resolve
+      if ((!selectedOption || selectedOption === 'Unknown') && pollOptions.length > 0) {
+        const rawOptions = pollUpdate.vote?.selectedOptions || [];
+        selectedOption = resolveSelectedOptionFromHashes(rawOptions, pollOptions);
+      }
     } else {
       // ── PATH 2: DB Vault Fallback (Crash-Resilience Path) ──
       // Triggered when bot.store is empty after a Railway container restart.
@@ -1155,16 +1229,6 @@ async function syncPollVoteToShopify(bot, msg, db) {
       if (!dbPoll) {
         // Poll was sent before the vault feature was deployed — nothing we can do
         console.warn(`⚠️ [PollVault] Poll ${pollCreationKey.id} not found in DB vault either — vote dropped. (Was this poll sent before the vault was deployed?)`);
-        return;
-      }
-
-      const crypto = require('crypto');
-      let pollOptions = [];
-      try {
-        // poll_options is stored as a JSON array: ["✅ Confirm Order", "❌ Cancel", "✏️ Edit"]
-        pollOptions = JSON.parse(vaultOptions || dbPoll.poll_options);
-      } catch (_) {
-        console.error('⚠️ [PollVault] Failed to parse stored poll_options JSON');
         return;
       }
 
@@ -1199,19 +1263,8 @@ async function syncPollVoteToShopify(bot, msg, db) {
         return;
       }
 
-      for (const optionStr of pollOptions) {
-        // Hash the stored option string exactly as WhatsApp would
-        const hash = crypto.createHash('sha256').update(optionStr).digest();
-        const matched = selectedOptions.some(sel => {
-          // selectedOptions items may arrive as Buffer or Uint8Array depending on Baileys version
-          const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
-          return Buffer.compare(selBuf, hash) === 0; // byte-perfect comparison
-        });
-        if (matched) {
-          selectedOption = optionStr;
-          console.log(`✅ [PollVault] SHA-256 matched option: "${selectedOption}" from DB vault (poll: "${dbPoll.poll_name}")`);
-          break;
-        }
+      if (pollOptions.length > 0) {
+        selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
       }
 
       if (!selectedOption) {
