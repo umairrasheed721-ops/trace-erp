@@ -30,23 +30,23 @@ class WhatsappService {
    * @param {string} [clientUuid] - Optional unique client-side message identifier
    * @returns {Promise<MessageResponse>} Object detailing the success/fail result
    */
-  async sendText(phone, text, clientUuid) {
-    if (!this.sock) throw new Error("Baileys socket is not connected!");
+  async sendText(phone, text) {
+    if (!this.sock) {
+        console.error('[WA-FATAL] Baileys socket reference is missing in whatsappService!');
+        throw new Error("WhatsApp socket not initialized.");
+    }
 
-    // Format JID
-    let jid = phone.replace(/[^0-9]/g, '');
+    // Clean and format JID strictly
+    let jid = phone.toString().replace(/[^0-9]/g, '');
     if (!jid.endsWith('@s.whatsapp.net')) jid = `${jid}@s.whatsapp.net`;
 
-    console.log(`[WA-REAL-DISPATCH] Sending text to Baileys Socket: ${jid}`);
+    console.log(`[WA-RAW-BYPASS] Firing message directly to Meta for JID: ${jid}`);
     
-    // THE REAL DEAL: Await the actual Baileys socket operation
+    // RAW DISPATCH - No queues, no delays
     const result = await this.sock.sendMessage(jid, { text: text });
     
-    // Return the ACTUAL Baileys message ID, not the mock UUID
-    return { 
-        success: true, 
-        messageId: result?.key?.id || clientUuid 
-    };
+    console.log(`[WA-RAW-SUCCESS] Baileys Message ID: ${result?.key?.id}`);
+    return { success: true, messageId: result?.key?.id };
   }
 
   /**
