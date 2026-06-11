@@ -239,7 +239,7 @@ router.post('/simulate-trigger', (req, res) => {
       prepare(`UPDATE orders SET wa_verification_status = 'Pending', wa_interaction_logs = ? WHERE id = ?`).run(JSON.stringify(logs), order.id);
 
       if (isLive && isEnabled && order.phone) {
-        const template = settings.cod_template || '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!';
+        const template = settings.cod_template || '👋 Hello from Trace ERP!\nWe have received your COD order #{ref} for Rs. {amount}.\n\nPlease reply with:\n1 - ✅ Confirm Order\n2 - ❌ Cancel Order\n3 - ✏️ Edit Address/Size';
         const msg = template.replace('{ref}', order.ref_number || order.shopify_order_id).replace('{amount}', order.price || 0);
         bot.sendMessage(order.phone, msg);
       }

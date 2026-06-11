@@ -108,7 +108,7 @@ async function dispatchCODVerification(order) {
     }
   }
 
-  let templateText = '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!';
+  let templateText = '👋 Hello from Trace ERP!\nWe have received your COD order #{ref} for Rs. {amount}.\n\nPlease reply with:\n1 - ✅ Confirm Order\n2 - ❌ Cancel Order\n3 - ✏️ Edit Address/Size';
   let pollOptions = ["✅ Confirm Order", "✏️ Edit Size / Address", "❌ Cancel Order"];
 
   // Resolve store name for {store_name} variable

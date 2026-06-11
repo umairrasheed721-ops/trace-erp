@@ -94,7 +94,13 @@ module.exports = [
     max_delay_sec INTEGER DEFAULT 15,
     max_per_hour INTEGER DEFAULT 60,
     cooling_period_min INTEGER DEFAULT 15,
-    cod_template TEXT DEFAULT '👋 Hello from Trace ERP! We have received your COD order #{ref} for Rs. {amount}. Please reply with CONFIRM to dispatch your order immediately!',
+    cod_template TEXT DEFAULT '👋 Hello from Trace ERP!
+We have received your COD order #{ref} for Rs. {amount}.
+
+Please reply with:
+1 - ✅ Confirm Order
+2 - ❌ Cancel Order
+3 - ✏️ Edit Address/Size',
     attempted_template TEXT DEFAULT '⚠️ Urgent: Our rider tried to deliver your parcel ({tracking}) today but couldn''t reach you. Please click here to drop your exact GPS location or delivery instructions so we can reattempt delivery tomorrow: {link}',
     dispatch_template TEXT DEFAULT '📦 Your order #{ref} has been dispatched via {courier}. Tracking number: {tracking}. Track here: {link}',
     ai_responder_enabled INTEGER DEFAULT 1,
