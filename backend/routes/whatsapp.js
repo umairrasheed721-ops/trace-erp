@@ -67,36 +67,43 @@ router.post('/send-test', authenticateToken, async (req, res) => {
 
 // Send Manual Chat/Order message via active Baileys socket
 router.post('/send', authenticateToken, async (req, res) => {
+  console.log('[WA-SEND] Route hit successfully! Auth passed.');
+  console.log('[WA-SEND] Payload Body:', req.body);
+
   const { phone, text, message, clientUuid, quoteContext } = req.body;
   const textContent = text || message;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
 
   if (!phone || !textContent) {
+    console.error('[WA-SEND-VALIDATION-FAILED] Missing phone or text content in req.body!');
     return res.status(400).json({ error: 'Phone and message text are required' });
   }
 
-  console.log(`[WA-SEND-API] Inbound payload: phone="${phone}", text="${textContent}", clientUuid="${clientUuid}", tenantId="${tenantId}"`);
-
   try {
+    console.log('[WA-SEND] Retrieving bot instance for tenant:', tenantId);
     const botInstance = getBot();
+    console.log('[WA-SEND] Bot proxy presence:', !!botInstance, 'Status:', botInstance?.status);
+
+    // Check if socket is actually available in this scope
+    if (!botInstance || !botInstance.sock) {
+      console.error('[WA-SEND-FATAL] botInstance.sock is undefined or null in this controller scope!');
+      return res.status(500).json({ error: 'WhatsApp socket is not connected to this route.' });
+    }
+
     const cleaned = normalizePhone(phone);
     const jid = cleaned + '@s.whatsapp.net';
-    console.log(`[WA-SEND-API] Normalized destination JID: "${jid}"`);
-    console.log(`[WA-SEND-API] Active Baileys socket status: "${botInstance.status}" (sock available: ${!!botInstance.sock})`);
-
-    // Guard: ensure the socket is connected/accessible
-    if (botInstance.status !== 'CONNECTED' || !botInstance.sock) {
-      console.error(`[WA-SEND-API-ERROR] Cannot send message: bot is disconnected (status: "${botInstance.status}")`);
-      return res.status(500).json({ error: 'WhatsApp bot is not connected. Please connect via WhatsApp Portal.' });
-    }
+    console.log(`[WA-SEND] Normalized destination phone: "${cleaned}", JID: "${jid}"`);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const { db } = require('../db');
+    
+    console.log('[WA-SEND] Querying order metadata matching phone search pattern:', `%${last10}%`);
     const order = db.prepare(`
       SELECT id, store_id, shopify_order_id FROM orders 
       WHERE phone LIKE ? AND tenant_id = ?
       ORDER BY id DESC LIMIT 1
     `).get(`%${last10}%`, tenantId);
+    console.log('[WA-SEND] Matched Order metadata result:', order);
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
@@ -105,7 +112,10 @@ router.post('/send', authenticateToken, async (req, res) => {
     if (typeof parsedQuoteContext === 'string') {
       try {
         parsedQuoteContext = JSON.parse(parsedQuoteContext);
-      } catch (e) {}
+        console.log('[WA-SEND] Parsed quoteContext string:', parsedQuoteContext);
+      } catch (e) {
+        console.warn('[WA-SEND] Failed to parse quoteContext string:', e.message);
+      }
     }
 
     let verifiedQuote = null;
@@ -113,6 +123,7 @@ router.post('/send', authenticateToken, async (req, res) => {
     if (parsedQuoteContext && qid) {
       let participant = parsedQuoteContext.participant;
       let qtext = parsedQuoteContext.text;
+      console.log('[WA-SEND] Verifying quoted message context, qid:', qid);
       try {
         const quotedRow = db.prepare(`
           SELECT * FROM whatsapp_messages 
@@ -121,6 +132,7 @@ router.post('/send', authenticateToken, async (req, res) => {
         `).get(qid, tenantId);
 
         if (quotedRow) {
+          console.log('[WA-SEND] Quoted message row fetched:', quotedRow);
           const fromMe = quotedRow.direction === 'outgoing';
           const remoteJid = jid;
           if (!participant) {
@@ -133,7 +145,7 @@ router.post('/send', authenticateToken, async (req, res) => {
           }
         }
       } catch (err) {
-        console.warn('⚠️ Failed to verify quoted message in SQLite:', err.message);
+        console.warn('⚠️ [WA-SEND] Failed to verify quoted message in SQLite:', err.message);
       }
 
       if (!participant) {
@@ -145,23 +157,31 @@ router.post('/send', authenticateToken, async (req, res) => {
         participant: participant,
         text: qtext || 'Media'
       };
+      console.log('[WA-SEND] Quoted message verification context finalized:', verifiedQuote);
     }
 
     const uuid = clientUuid || require('crypto').randomUUID();
+    console.log('[WA-SEND] Message unique tracking uuid generated/received:', uuid);
+    
     let dbMessageId = null;
     try {
+      console.log('[WA-SEND] Logging manual outgoing message into SQLite database...');
       const result = db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id, quote_context)
         VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?, ?)
       `).run(storeId, orderId, cleaned, textContent, uuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
+      console.log('[WA-SEND] Logged manual outgoing message successfully, SQLite row ID:', dbMessageId);
     } catch (err) {
-      console.error('Failed to save manual chat message to SQLite:', err.message);
+      console.error('[WA-SEND] Failed to save manual chat message to SQLite:', err.message);
     }
 
+    console.log(`[WA-SEND] Attempting dispatch to JID: ${jid} via botInstance.sendMessage...`);
     const sendResult = await botInstance.sendMessage(cleaned, textContent, true, null, null, null, uuid, verifiedQuote);
+    console.log('[WA-SEND] botInstance.sendMessage returned result:', sendResult);
+
     if (sendResult && sendResult.success === false) {
-      console.error(`[WA-SEND-API-ERROR] sendMessage failed: ${sendResult.error}`);
+      console.error(`[WA-SEND-FATAL] sendMessage dispatch reported failure: ${sendResult.error}`);
       return res.status(500).json({ error: sendResult.error || 'Failed to dispatch message via Baileys socket' });
     }
 
@@ -179,15 +199,19 @@ router.post('/send', authenticateToken, async (req, res) => {
 
     if (order && order.shopify_order_id) {
       try {
+        console.log('[WA-SEND] Broadcasting SSE refresh event for Shopify order ID:', order.shopify_order_id);
         const { broadcast } = require('../sse');
         broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-      } catch (err) {}
+      } catch (err) {
+        console.warn('[WA-SEND] SSE broadcast failed:', err.message);
+      }
     }
 
+    console.log('[WA-SEND] Manual message dispatch procedure finished successfully.');
     return res.status(200).json({ success: true, message: newMsg });
   } catch (error) {
-    console.error('[WA-SEND-API-CATCH]', error);
-    return res.status(500).json({ error: 'Failed to send message: ' + error.message });
+    console.error('[WA-SEND-ERROR] Try/Catch triggered:', error.message, error.stack);
+    return res.status(500).json({ error: error.message });
   }
 });
 
