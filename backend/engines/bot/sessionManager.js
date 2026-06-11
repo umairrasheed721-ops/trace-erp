@@ -247,108 +247,129 @@ async function connectBot(bot) {
     });
 
     bot.sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-
-      if (qr) {
-        console.log('📸 QR Code ready — scan with WhatsApp');
-        try {
-          bot.qrCode = await qrcode.toDataURL(qr);
-          bot.status = 'QR_READY';
-        } catch (e) {
-          console.error('QR generation error:', e.message);
-        }
+      // Guard against old/zombie socket instances executing connection events
+      if (bot.sock !== sock) {
+        console.log('🗳️ [PollNative] Guard: Ignoring connection update from old socket instance.');
         return;
       }
 
-      if (connection === 'open') {
-        console.log('✅ WhatsApp CONNECTED!');
-        bot.status = 'CONNECTED';
-        bot.qrCode = null;
-        bot.reconnectAttempts = 0;
-        bot.isConnecting = false;
+      try {
+        const { connection, lastDisconnect, qr } = update;
 
-        try {
-          const rawId = bot.sock?.user?.id || '';
-          const digits = rawId.split(':')[0].split('@')[0];
-          bot.activeNumber = digits ? `+${digits}` : null;
-          if (bot.activeNumber) console.log(`📱 Active WA number: ${bot.activeNumber}`);
-        } catch (_) {
-          bot.activeNumber = null;
-        }
-
-        setTimeout(() => {
-          bot.syncDeepHistory().catch(err => console.error('❌ Deep History Sync error:', err.message));
-        }, 8000);
-
-        return;
-      }
-
-      // ── CONNECTION CLOSE HANDLER ──
-      // WhatsApp WebSocket can drop for two fundamentally different reasons:
-      //
-      // 1. DELIBERATE LOGOUT (401, 403, DisconnectReason.loggedOut):
-      //    The phone removed this device from linked devices, or the session expired.
-      //    → We MUST clear credentials and wait for a new QR scan. Auto-reconnect
-      //      would loop forever with a dead session.
-      //
-      // 2. TRANSIENT NETWORK DROP (all other codes, including statusCode=0):
-      //    Railway container networking blip, WhatsApp server maintenance (503),
-      //    timeout (408), or a pure TCP drop with no HTTP status at all (code=0).
-      //    → We SHOULD auto-reconnect after a short backoff delay.
-      //
-      // _scheduleReconnect uses exponential backoff: 3s, 5s, 7s... capped at 30s.
-      if (connection === 'close') {
-        bot.isConnecting = false;
-        const err = lastDisconnect?.error;
-        // Boom is the HTTP error library Baileys uses — if err is not a Boom instance
-        // (e.g. raw TCP error), statusCode will be 0 which falls into the reconnect branch
-        const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
-
-        const isBadMac = err && (err.message?.includes('Bad MAC') || err.stack?.includes('Bad MAC') || err.message?.includes('bad mac') || err.stack?.includes('bad mac'));
-        const is440 = statusCode === 440;
-
-        if (isBadMac || is440) {
-          console.warn(`🚨 [Session Reset] Detected Bad MAC or 440 Disconnect! Wiping DB session store to prevent loops. (isBadMac=${isBadMac}, is440=${is440})`);
-          clearDbSession();
-          bot._isLoggedOut = false;
-          bot.reconnectAttempts = 0;
-          await _wipeCreds(bot);
-          setTimeout(() => connectBot(bot), 1000);
+        if (qr) {
+          console.log('📸 QR Code ready — scan with WhatsApp');
+          try {
+            bot.qrCode = await qrcode.toDataURL(qr);
+            bot.status = 'QR_READY';
+          } catch (e) {
+            console.error('QR generation error:', e.message);
+          }
           return;
         }
 
-        // Log the specific code so Railway logs are easy to diagnose
-        if (statusCode === 503) {
-          console.warn(`🔌 [Reconnect] WhatsApp service unavailable (503) — scheduling reconnect.`);
-        } else if (statusCode === 408) {
-          console.warn(`🔌 [Reconnect] Connection timeout (408) — scheduling reconnect.`);
-        } else if (statusCode === 500) {
-          console.warn(`🔌 [Reconnect] Server error (500) — scheduling reconnect.`);
-        } else if (statusCode === 400) {
-          console.warn(`🔌 [Reconnect] Bad request (400) — scheduling reconnect.`);
-        } else if (!statusCode) {
-          console.warn(`🔌 [Reconnect] Pure TCP/WebSocket drop (no status code) — scheduling reconnect.`);
-        } else {
-          console.warn(`🔌 Connection closed. Code: ${statusCode}`);
-        }
-        bot.status = 'DISCONNECTED';
-
-        // Named constant for clarity — any future dev can see exactly what "deliberate logout" means
-        const isDeliberateLogout =
-          statusCode === DisconnectReason.loggedOut ||
-          statusCode === 401 ||
-          statusCode === 403;
-
-        if (isDeliberateLogout) {
-          console.log('📵 Logged out from phone — clearing session. Rescan QR to reconnect.');
-          bot._isLoggedOut = true;
-          _wipeCreds(bot);
-          clearDbSession();
+        if (connection === 'open') {
+          console.log('✅ WhatsApp CONNECTED!');
+          bot.status = 'CONNECTED';
+          bot.qrCode = null;
           bot.reconnectAttempts = 0;
-        } else {
-          // All other disconnect reasons (including statusCode=0 pure drops) → reconnect
-          _scheduleReconnect(bot);
+          bot.isConnecting = false;
+
+          try {
+            const rawId = bot.sock?.user?.id || '';
+            const digits = rawId.split(':')[0].split('@')[0];
+            bot.activeNumber = digits ? `+${digits}` : null;
+            if (bot.activeNumber) console.log(`📱 Active WA number: ${bot.activeNumber}`);
+          } catch (_) {
+            bot.activeNumber = null;
+          }
+
+          setTimeout(() => {
+            bot.syncDeepHistory().catch(err => console.error('❌ Deep History Sync error:', err.message));
+          }, 8000);
+
+          return;
         }
+
+        // ── CONNECTION CLOSE HANDLER ──
+        // WhatsApp WebSocket can drop for two fundamentally different reasons:
+        //
+        // 1. DELIBERATE LOGOUT (401, 403, DisconnectReason.loggedOut):
+        //    The phone removed this device from linked devices, or the session expired.
+        //    → We MUST clear credentials and wait for a new QR scan. Auto-reconnect
+        //      would loop forever with a dead session.
+        //
+        // 2. TRANSIENT NETWORK DROP (all other codes, including statusCode=0):
+        //    Railway container networking blip, WhatsApp server maintenance (503),
+        //    timeout (408), or a pure TCP drop with no HTTP status at all (code=0).
+        //    → We SHOULD auto-reconnect after a short backoff delay.
+        //
+        // _scheduleReconnect uses exponential backoff: 3s, 5s, 7s... capped at 30s.
+        if (connection === 'close') {
+          const wasConnecting = bot.isConnecting;
+          bot.isConnecting = false;
+          const err = lastDisconnect?.error;
+          // Boom is the HTTP error library Baileys uses — if err is not a Boom instance
+          // (e.g. raw TCP error), statusCode will be 0 which falls into the reconnect branch
+          const statusCode = err instanceof Boom ? err.output?.statusCode : 0;
+
+          const errorStr = String(err || '');
+          const isBadMac = err && (errorStr.includes('Bad MAC') || errorStr.includes('bad mac') || err.message?.includes('Bad MAC') || err.message?.includes('bad mac') || err.stack?.includes('Bad MAC') || err.stack?.includes('bad mac'));
+          const is440 = statusCode === 440;
+
+          if (isBadMac || is440) {
+            // Strict Connection State Guard: Do NOT wipe the database if the connection is currently trying to establish or if connection === 'open'
+            if (bot.status === 'CONNECTED' || connection === 'open') {
+              console.log(`🗳️ [PollNative] Guard: Connection is open/connected (status=${bot.status}, connection=${connection}), ignoring transient session wipe.`);
+            } else {
+              console.warn(`🚨 [Session Reset] Detected Bad MAC or 440 Disconnect! Wiping DB session store to prevent loops. (isBadMac=${isBadMac}, is440=${is440})`);
+              clearDbSession();
+              bot._isLoggedOut = false;
+              bot.reconnectAttempts = 0;
+              await _wipeCreds(bot).catch(e => console.error('⚠️ Failed to wipe creds:', e.message));
+              setTimeout(() => {
+                if (bot.sock === sock) {
+                  connectBot(bot).catch(e => console.error('⚠️ Failed to reconnect bot:', e.message));
+                }
+              }, 1000);
+              return;
+            }
+          }
+
+          // Log the specific code so Railway logs are easy to diagnose
+          if (statusCode === 503) {
+            console.warn(`🔌 [Reconnect] WhatsApp service unavailable (503) — scheduling reconnect.`);
+          } else if (statusCode === 408) {
+            console.warn(`🔌 [Reconnect] Connection timeout (408) — scheduling reconnect.`);
+          } else if (statusCode === 500) {
+            console.warn(`🔌 [Reconnect] Server error (500) — scheduling reconnect.`);
+          } else if (statusCode === 400) {
+            console.warn(`🔌 [Reconnect] Bad request (400) — scheduling reconnect.`);
+          } else if (!statusCode) {
+            console.warn(`🔌 [Reconnect] Pure TCP/WebSocket drop (no status code) — scheduling reconnect.`);
+          } else {
+            console.warn(`🔌 Connection closed. Code: ${statusCode}`);
+          }
+          bot.status = 'DISCONNECTED';
+
+          // Named constant for clarity — any future dev can see exactly what "deliberate logout" means
+          const isDeliberateLogout =
+            statusCode === DisconnectReason.loggedOut ||
+            statusCode === 401 ||
+            statusCode === 403;
+
+          if (isDeliberateLogout) {
+            console.log('📵 Logged out from phone — clearing session. Rescan QR to reconnect.');
+            bot._isLoggedOut = true;
+            await _wipeCreds(bot).catch(e => console.error('⚠️ Failed to wipe creds:', e.message));
+            clearDbSession();
+            bot.reconnectAttempts = 0;
+          } else {
+            // All other disconnect reasons (including statusCode=0 pure drops) → reconnect
+            _scheduleReconnect(bot);
+          }
+        }
+      } catch (handlerErr) {
+        console.error('⚠️ [PollNative] Error in connection.update handler:', handlerErr.message);
       }
     });
 

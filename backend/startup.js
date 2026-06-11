@@ -160,6 +160,11 @@ function runEarlyStartup() {
   // Global crash preventers
   process.on('uncaughtException', (err) => {
     if (err && (err.code === 'EIO' || (err.message && err.message.includes('EIO')))) return;
+    const msg = err && err.message ? err.message : String(err);
+    if (msg.includes('Connection Closed') || msg.includes('connection closed') || msg.includes('Stream Errored') || msg.includes('stream errored')) {
+      console.warn('🔌 Gracefully ignored uncaught Connection Closed / Stream Errored exception during background processes.');
+      return;
+    }
     console.error('🛑 CRITICAL: Uncaught Exception — server kept alive:', err.stack || err.message);
     try { logSystemError('ERROR', err.message, 'uncaughtException'); } catch (_) {}
   });
@@ -167,6 +172,10 @@ function runEarlyStartup() {
   process.on('unhandledRejection', (reason, promise) => {
     const msg = reason instanceof Error ? reason.message : String(reason);
     if (reason && (reason.code === 'EIO' || msg.includes('EIO'))) return;
+    if (msg.includes('Connection Closed') || msg.includes('connection closed') || msg.includes('Stream Errored') || msg.includes('stream errored')) {
+      console.warn('🔌 Gracefully ignored unhandled Connection Closed / Stream Errored rejection during background processes.');
+      return;
+    }
     console.error('🛑 CRITICAL: Unhandled Rejection — server kept alive:', msg);
     try { logSystemError('ERROR', msg, 'unhandledRejection'); } catch (_) {}
   });
