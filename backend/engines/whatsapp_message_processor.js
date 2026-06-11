@@ -1277,5 +1277,6 @@ module.exports = {
   processQueue,
   processIncomingMessage,
   adaptiveStrategy,
-  syncPollVoteToShopify
+  syncPollVoteToShopify,
+  updateShopifyOrderTagsNonBlocking
 };

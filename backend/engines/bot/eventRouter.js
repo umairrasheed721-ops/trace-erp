@@ -184,10 +184,54 @@ async function handleMessagesUpdate(bot, updates) {
             }
             
             if (selectedOption) {
+              const pollId = key.id;
+              let dbRecord = null;
+              try {
+                const pollRow = db.prepare(
+                  `SELECT remote_jid, tenant_id FROM whatsapp_polls WHERE message_id = ?`
+                ).get(pollId);
+                
+                if (pollRow) {
+                  const cleanPhone = pollRow.remote_jid.split('@')[0].replace(/\D/g, '');
+                  const searchPattern = `%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`;
+                  const orderRow = db.prepare(`
+                    SELECT id as order_id FROM orders
+                    WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?
+                    ORDER BY id DESC LIMIT 1
+                  `).get(searchPattern);
+                  
+                  if (orderRow) {
+                    dbRecord = {
+                      order_id: orderRow.order_id,
+                      tenant_id: pollRow.tenant_id
+                    };
+                  }
+                }
+              } catch (e) {
+                console.error('⚠️ [PollNative] Failed to fetch dbRecord in handleMessagesUpdate:', e.message);
+              }
+
+              const optStr = String(selectedOption).toLowerCase();
+              let tagToApply = '';
+              if (optStr.includes('confirm')) tagToApply = 'Trace: Confirmed';
+              else if (optStr.includes('cancel')) tagToApply = 'Trace: Cancelled';
+              else if (optStr.includes('edit') || optStr.includes('size') || optStr.includes('address')) tagToApply = 'Trace: Edit Requested';
+
+              if (tagToApply && dbRecord) {
+                const finalTag = key.fromMe ? `${tagToApply} (Admin)` : tagToApply;
+                console.log(`[ShopifySync] 🏷️ Applying tag "${finalTag}" to Order ${dbRecord.order_id}`);
+                try {
+                  const { updateShopifyOrderTagsNonBlocking } = require('../whatsapp_message_processor');
+                  updateShopifyOrderTagsNonBlocking(dbRecord.tenant_id || 'default', dbRecord.order_id, finalTag, db);
+                } catch (syncErr) {
+                  console.error('⚠️ [PollNative] Failed to call updateShopifyOrderTagsNonBlocking:', syncErr.message);
+                }
+              }
+
               // Construct a msg payload to pass to syncPollVoteToShopify for Shopify Tag sync
               const mockMsgForShopify = {
                 key: {
-                  remoteJid: key.remoteJid,
+                  remoteJid: trueRemoteJid,
                   fromMe: key.fromMe,
                   id: updateItem.pollUpdateMessageKey?.id || key.id
                 },
