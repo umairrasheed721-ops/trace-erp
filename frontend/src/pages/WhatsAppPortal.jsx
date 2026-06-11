@@ -174,7 +174,7 @@ export default function WhatsAppPortal() {
                       className="btn btn-secondary btn-sm"
                       onClick={handleTriggerCODVerification}
                       disabled={!customerInfo.latestOrder}
-                      title="Send COD Verification Poll to Customer"
+                      title="Send COD Verification Message to Customer"
                       style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}
                     >
                       🔐 COD Verify

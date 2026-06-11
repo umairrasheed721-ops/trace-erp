@@ -184,6 +184,7 @@ class WhatsAppBot {
     const uuid = customMessageId || require('crypto').randomUUID();
 
     const { db } = require('../db');
+    let pollMessageText = null;
     const adapted = adaptiveStrategy(phone, {
       message, quoteContext, buttons, buttonsMode, poll
     }, db, isManual);
@@ -221,6 +222,7 @@ class WhatsAppBot {
 
         const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
 
+        pollMessageText = codMessage;
         payload = { text: codMessage };
       } else if (hasButtons && buttonsMode === 'text') {
         const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
@@ -477,7 +479,7 @@ class WhatsAppBot {
         
         let dbMessageContent;
         if (poll) {
-          dbMessageContent = `🗳️ Poll: ${poll.name}`;
+          dbMessageContent = pollMessageText || `🗳️ Poll: ${poll.name}`;
           try {
             let secretBase64 = null;
             const secretBuf = sentMsg?.message?.messageContextInfo?.messageSecret;
@@ -588,7 +590,7 @@ class WhatsAppBot {
         
         let dbMessageContent;
         if (poll) {
-          dbMessageContent = `🗳️ Poll: ${poll.name}`;
+          dbMessageContent = pollMessageText || `🗳️ Poll: ${poll.name}`;
         } else if (payload?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select' || payload?.viewOnceMessage?.message?.interactiveMessage?.nativeFlowMessage?.buttons?.[0]?.name === 'single_select') {
           dbMessageContent = payload.interactiveMessage?.body?.text || payload.viewOnceMessage?.message?.interactiveMessage?.body?.text || 'Interactive List';
         } else {

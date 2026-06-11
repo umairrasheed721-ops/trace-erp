@@ -168,7 +168,7 @@ export default function useWhatsAppPortal() {
   };
 
   const baseSlashCommands = [
-    { cmd: '/verify', label: '🔐 COD Verify', desc: 'Send COD verification poll to customer', action: () => { handleTriggerCODVerification(); setShowSlashMenu(false); updateInputText(''); } },
+    { cmd: '/verify', label: '🔐 COD Verify', desc: 'Send COD verification message to customer', action: () => { handleTriggerCODVerification(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/invoice', label: '📄 Send Invoice', desc: 'Generate & send PDF invoice', action: () => { handleSendInvoice(); setShowSlashMenu(false); updateInputText(''); } },
     { cmd: '/track', label: '📦 Send Tracking', desc: 'Send order tracking info', action: () => {
       if (activeChat) {
@@ -855,7 +855,7 @@ export default function useWhatsAppPortal() {
       return addToast('No order history matched to trigger verification', 'warning')
     }
 
-    if (!confirm(`Are you sure you want to send COD Verification Poll to customer for Order #${customerInfo.latestOrder.ref_number || customerInfo.latestOrder.id}?`)) {
+    if (!confirm(`Are you sure you want to send COD Verification Message to customer for Order #${customerInfo.latestOrder.ref_number || customerInfo.latestOrder.id}?`)) {
       return
     }
 
@@ -867,7 +867,7 @@ export default function useWhatsAppPortal() {
       });
       const data = await res.json();
       if (data.success) {
-        addToast('✅ COD verification poll has been successfully queued and dispatched!', 'success');
+        addToast('✅ COD verification message has been successfully queued and dispatched!', 'success');
       } else {
         addToast(data.error || 'Failed to trigger verification', 'error');
       }

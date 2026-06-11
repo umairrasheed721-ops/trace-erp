@@ -261,6 +261,7 @@ async function processQueue(bot, sock, db) {
           }
         };
 
+        let pollMessageText = null;
         let finalMediaType = mediaType;
         if (mediaUrl && !finalMediaType) {
           finalMediaType = 'image';
@@ -284,6 +285,7 @@ async function processQueue(bot, sock, db) {
 
           const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
 
+          pollMessageText = codMessage;
           sentMsg = await safeSend(jid, { text: codMessage });
 
           // ── POLL VAULT: Write poll metadata to SQLite immediately after send ──
@@ -480,7 +482,7 @@ async function processQueue(bot, sock, db) {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, bot.tenantId);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = poll ? `🗳️ Poll: ${poll.name}` : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
+          const dbMessageContent = poll ? (pollMessageText || `🗳️ Poll: ${poll.name}`) : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
           
           let finalDbMediaUrl = dbMediaUrl;
           if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
@@ -567,7 +569,7 @@ async function processQueue(bot, sock, db) {
           const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, bot.tenantId);
           const orderId = order ? order.id : null;
           const storeId = order ? order.store_id : 1;
-          const dbMessageContent = poll ? `🗳️ Poll: ${poll.name}` : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
+          const dbMessageContent = poll ? (pollMessageText || `🗳️ Poll: ${poll.name}`) : (dbMediaUrl ? `[${finalMediaType.toUpperCase()}] ${message}` : message);
 
           let finalDbMediaUrl = dbMediaUrl;
           if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
