@@ -163,6 +163,20 @@ async function handleMessagesUpdate(bot, updates) {
 
         if (!pollId) return;
 
+        // ── Print chosen option unconditionally ──
+        if (update.pollUpdates && Array.isArray(update.pollUpdates)) {
+          for (const option of update.pollUpdates) {
+            if (option.voters && option.voters.length > 0) {
+              console.log(`\n==================================================`);
+              console.log(`🚨 [POLL_VOTE_CHOSEN] SUCCESS! A vote has been registered.`);
+              console.log(`📱 Poll ID: ${key?.id || update.key?.id}`);
+              console.log(`🎯 Exact Option String: "${option.name}"`);
+              console.log(`👤 Voter JID: ${option.voters[0]}`);
+              console.log(`==================================================\n`);
+            }
+          }
+        }
+
         // 1. Fetch DB Record to retrieve order_id and tenant_id
         let dbRecord = null;
         let trueRemoteJid = key.remoteJid;
