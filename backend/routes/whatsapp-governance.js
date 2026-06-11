@@ -66,9 +66,7 @@ router.get('/chat/:order_id', (req, res) => {
       return res.json({ order, messages: [] });
     }
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
 
     const dbMessages = db.prepare(`
       SELECT * FROM whatsapp_messages 
@@ -106,32 +104,48 @@ router.post('/chat/:order_id/send', async (req, res) => {
     const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    console.log(`[WA-SEND-ORDER-MANUAL] Inbound payload: orderId="${order_id}", phone="${order.phone}", message_length=${message?.length}`);
+
+    const cleaned = normalizePhone(order.phone);
+    const jid = cleaned + '@s.whatsapp.net';
+    console.log(`[WA-SEND-ORDER-MANUAL] Formatted JID: "${jid}"`);
+    console.log(`[WA-SEND-ORDER-MANUAL] Active Baileys socket connected: ${!!bot.sock}, status: "${bot.status}"`);
+
+    const crypto = require('crypto');
+    const clientUuid = crypto.randomUUID();
+    let dbMessageId = null;
 
     try {
-      db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
-      `).run(order.store_id, order.id, cleaned, message, tenantId);
-    } catch (err) {}
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?)
+      `).run(order.store_id, order.id, cleaned, message, clientUuid, tenantId);
+      dbMessageId = result.lastInsertRowid;
+    } catch (err) {
+      console.error('Failed to save manual order message in DB:', err.message);
+    }
 
-    bot.sendMessage(cleaned, message, true);
+    const sendResult = await bot.sendMessage(cleaned, message, true, null, null, null, clientUuid);
+    if (sendResult && sendResult.success === false) {
+      console.error(`[WA-SEND-ORDER-ERROR] bot.sendMessage failed: ${sendResult.error}`);
+      return res.status(500).json({ error: sendResult.error || 'Failed to dispatch message via Baileys socket' });
+    }
 
     const newMsg = {
-      id: Date.now(),
+      id: dbMessageId || Date.now(),
       store_id: order.store_id,
       order_id: order.id,
       phone: cleaned,
       direction: 'outgoing',
       message,
       status: 'sent',
+      message_id: clientUuid,
       created_at: new Date().toISOString()
     };
 
     res.json({ success: true, message: newMsg });
   } catch (e) {
+    console.error('[WA-SEND-ORDER-CATCH]', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -148,9 +162,7 @@ router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, 
     const order = db.prepare('SELECT id, store_id, phone FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
 
     const absolutePath = req.file.path;
     
@@ -175,9 +187,7 @@ router.post('/chat/:order_id/send-images', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.phone) return res.status(400).json({ error: 'Order phone not found' });
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
 
     let lineItems = [];
     try {
@@ -222,9 +232,7 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
     const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
 
     if (typeof bot.fetchHistoryForPhone === 'function') {
       const result = await bot.fetchHistoryForPhone(cleaned);
@@ -446,10 +454,13 @@ router.post('/chats/:phone/send', async (req, res) => {
 
   if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
 
+  console.log(`[WA-SEND-MANUAL] Inbound payload from frontend: phone="${phone}", message_length=${message?.length}, tenantId="${tenantId}"`);
+
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
+    const jid = cleaned + '@s.whatsapp.net';
+    console.log(`[WA-SEND-MANUAL] Formatted JID: "${jid}"`);
+    console.log(`[WA-SEND-MANUAL] Active Baileys socket connected: ${!!bot.sock}, status: "${bot.status}"`);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`
@@ -483,7 +494,7 @@ router.post('/chats/:phone/send', async (req, res) => {
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
-          const remoteJid = cleaned + '@s.whatsapp.net';
+          const remoteJid = jid;
           if (!participant) {
             participant = fromMe 
               ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
@@ -498,7 +509,7 @@ router.post('/chats/:phone/send', async (req, res) => {
       }
 
       if (!participant) {
-        participant = cleaned + '@s.whatsapp.net';
+        participant = jid;
       }
 
       verifiedQuote = {
@@ -519,7 +530,11 @@ router.post('/chats/:phone/send', async (req, res) => {
       console.error('Failed to save manual chat message:', err.message);
     }
 
-    bot.sendMessage(cleaned, message, true, null, null, null, clientUuid, verifiedQuote);
+    const sendResult = await bot.sendMessage(cleaned, message, true, null, null, null, clientUuid, verifiedQuote);
+    if (sendResult && sendResult.success === false) {
+      console.error(`[WA-SEND-MANUAL-ERROR] bot.sendMessage failed: ${sendResult.error}`);
+      return res.status(500).json({ error: sendResult.error || 'Failed to dispatch message via Baileys socket' });
+    }
 
     const newMsg = {
       id: dbMessageId || Date.now(),
@@ -542,6 +557,7 @@ router.post('/chats/:phone/send', async (req, res) => {
 
     res.json({ success: true, message: newMsg });
   } catch (e) {
+    console.error('[WA-SEND-MANUAL-CATCH]', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -555,9 +571,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
   if (!req.file) return res.status(400).json({ error: 'No media file provided' });
 
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`
@@ -673,9 +687,7 @@ router.post('/chats/:phone/log-call-handoff', async (req, res) => {
   const { phone } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
@@ -737,9 +749,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
   if (!req.file) return res.status(400).json({ error: 'No audio file received' });
 
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
@@ -840,9 +850,8 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
   if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
   
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
+    const jid = cleaned + '@s.whatsapp.net';
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`
@@ -901,7 +910,7 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
-          const remoteJid = cleaned + '@s.whatsapp.net';
+          const remoteJid = jid;
           if (!participant) {
             participant = fromMe 
               ? (bot.sock?.user?.id ? bot.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
@@ -916,7 +925,7 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
       }
 
       if (!participant) {
-        participant = cleaned + '@s.whatsapp.net';
+        participant = jid;
       }
 
       verifiedQuote = {
@@ -939,10 +948,16 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     
     const buttonsList = quickReply.buttons && quickReply.buttons.length > 0 ? quickReply.buttons : null;
     const buttonsMode = quickReply.buttons_mode || 'native';
+    let sendResult;
     if (quickReply.media_url && absolutePath) {
-      bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
+      sendResult = await bot.sendMessage(cleaned, resolvedCaption, true, absolutePath, quickReply.media_type, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
     } else {
-      bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
+      sendResult = await bot.sendMessage(cleaned, resolvedCaption, true, null, null, null, clientUuid, verifiedQuote, buttonsList, buttonsMode);
+    }
+
+    if (sendResult && sendResult.success === false) {
+      console.error(`[WA-SEND-QR-ERROR] bot.sendMessage failed: ${sendResult.error}`);
+      return res.status(500).json({ error: sendResult.error || 'Failed to dispatch quick reply via Baileys socket' });
     }
     
     res.json({ 
@@ -1055,9 +1070,7 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
   const { phone } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    let cleaned = phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(phone);
 
     const last10 = cleaned.substring(cleaned.length - 10);
     const order = db.prepare(`
@@ -1129,9 +1142,7 @@ router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
     const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
     
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
     
     let resolvedCaption = quickReply.caption || '';
     resolvedCaption = resolvedCaption
@@ -1178,9 +1189,7 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order or customer phone not found' });
 
-    let cleaned = order.phone.replace(/\D/g, '');
-    if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
-    else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
+    const cleaned = normalizePhone(order.phone);
 
     const invoiceFilename = `invoice_${order.id}_${Date.now()}.pdf`;
     const folderPath = path.join(DB_DIR, 'uploads');
