@@ -188,7 +188,7 @@ async function connectBot(bot) {
       console.warn('⚠️ Could not fetch latest WA version, using fallback');
     }
 
-    bot.sock = makeWASocket({
+    const sock = makeWASocket({
       version,
       auth: state,
       logger: SILENT_LOGGER,
@@ -236,6 +236,7 @@ async function connectBot(bot) {
         }
       },
     });
+    bot.sock = sock;
 
     bot.sock.ev.on('creds.update', saveCreds);
 
