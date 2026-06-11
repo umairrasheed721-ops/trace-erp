@@ -1007,7 +1007,7 @@ export default function useWhatsAppPortal() {
     } catch (err) { console.warn('Call handoff log failed:', err.message) }
   }
 
-  const handleMediaUpload = async (fileOrEvent) => {
+  const handleMediaUpload = async (fileOrEvent, caption = '') => {
     let file
     if (fileOrEvent && fileOrEvent.target && fileOrEvent.target.files) {
       file = fileOrEvent.target.files[0]
@@ -1024,15 +1024,15 @@ export default function useWhatsAppPortal() {
                       file.type.startsWith('audio/') ? 'audio' :
                       file.type.startsWith('video/') ? 'video' : 'document';
     
-    const dbMsgContent = mediaType === 'image' ? `[Image]` : 
-                         mediaType === 'audio' ? `[Audio]` : 
-                         mediaType === 'video' ? `[Video]` : `[Document] ${file.name}`;
+    const dbMsgContent = mediaType === 'image' ? `[Image] ${caption}` : 
+                         mediaType === 'audio' ? `[Audio] ${caption}` : 
+                         mediaType === 'video' ? `[Video] ${caption}` : `[Document] ${file.name} ${caption}`;
 
     const tempMsg = {
       id: clientUuid,
       phone: activeChat.phone,
       direction: 'outgoing',
-      message: dbMsgContent,
+      message: dbMsgContent.trim(),
       media_url: tempUrl,
       media_type: mediaType,
       status: 'pending',
@@ -1045,6 +1045,9 @@ export default function useWhatsAppPortal() {
     const formData = new FormData()
     formData.append('media', file)
     formData.append('clientUuid', clientUuid)
+    if (caption) {
+      formData.append('caption', caption)
+    }
     if (activeQuote) {
       formData.append('quoteContext', JSON.stringify({ 
         id: activeQuote.id, 

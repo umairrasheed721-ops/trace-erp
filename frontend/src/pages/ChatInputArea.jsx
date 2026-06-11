@@ -35,6 +35,9 @@ export default function ChatInputArea({
   customerInfo,
   handleTriggerCODVerification
 }) {
+  const [mediaFile, setMediaFile] = React.useState(null);
+  const [mediaPreview, setMediaPreview] = React.useState(null);
+
   const [quickReplies, setQuickReplies] = React.useState(() => {
     const saved = localStorage.getItem('trace_quick_replies');
     if (saved) {
@@ -77,9 +80,37 @@ export default function ChatInputArea({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (inputText.trim()) {
-        handleSendMessage();
+      if (inputText.trim() || mediaFile) {
+        handleSendWithClipboard();
       }
+    }
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          setMediaFile(file);
+          setMediaPreview(URL.createObjectURL(file));
+          break;
+        }
+      }
+    }
+  };
+
+  const handleSendWithClipboard = () => {
+    if (mediaFile) {
+      handleMediaUpload(mediaFile, inputText);
+      setMediaFile(null);
+      setMediaPreview(null);
+      updateInputText('');
+    } else {
+      handleSendMessage();
     }
   };
 
@@ -197,6 +228,38 @@ export default function ChatInputArea({
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/* Clipboard Image Preview Box */}
+      {mediaPreview && (
+        <div style={{ padding: '10px 20px', margin: '0 15px', display: 'flex', alignItems: 'center' }}>
+          <div className="relative inline-block p-2 bg-gray-100 rounded-lg border border-gray-200" style={{ position: 'relative', display: 'inline-block', padding: '8px', backgroundColor: 'var(--wa-header-bg)', borderRadius: '12px', border: '1px solid var(--wa-border)' }}>
+            <img src={mediaPreview} alt="Paste Preview" className="h-24 w-auto rounded-md object-cover" style={{ height: '96px', width: 'auto', borderRadius: '8px', objectFit: 'cover' }} />
+            <button 
+              onClick={() => { setMediaFile(null); setMediaPreview(null); }}
+              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 shadow-md"
+              style={{
+                position: 'absolute',
+                top: '-8px',
+                right: '-8px',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                borderRadius: '50%',
+                width: '24px',
+                height: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+              }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -337,6 +400,7 @@ export default function ChatInputArea({
                 }
               }}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               rows={1}
               style={{ 
                 flex: 1, 
@@ -353,10 +417,10 @@ export default function ChatInputArea({
             />
 
             {/* Dynamic Action Button on the Far Right */}
-            {inputText.trim() ? (
+            {(inputText.trim() || mediaFile) ? (
               <button 
                 className="wa-portal-send-btn"
-                onClick={() => handleSendMessage()}
+                onClick={handleSendWithClipboard}
                 style={{
                   background: 'var(--brand)',
                   color: '#ffffff',
