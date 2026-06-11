@@ -10,6 +10,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
 const { normalizePhone } = require('../engines/whatsapp_message_processor');
+const whatsappService = require('../services/whatsappService');
 
 // ─── Null-Bot Fallback ────────────────────────────────────────────────────────
 // Used if the real bot module fails to load for any reason.
@@ -176,13 +177,33 @@ router.post('/send', authenticateToken, async (req, res) => {
       console.error('[WA-SEND] Failed to save manual chat message to SQLite:', err.message);
     }
 
-    console.log(`[WA-SEND] Attempting dispatch to JID: ${jid} via botInstance.sendMessage...`);
-    const sendResult = await botInstance.sendMessage(cleaned, textContent, true, null, null, null, uuid, verifiedQuote);
-    console.log('[WA-SEND] botInstance.sendMessage returned result:', sendResult);
-
-    if (sendResult && sendResult.success === false) {
-      console.error(`[WA-SEND-FATAL] sendMessage dispatch reported failure: ${sendResult.error}`);
-      return res.status(500).json({ error: sendResult.error || 'Failed to dispatch message via Baileys socket' });
+    let sendResult;
+    try {
+      console.log(`[WA-SEND] Dispatching message using whatsappService.sendText...`);
+      sendResult = await whatsappService.sendText(cleaned, textContent, uuid);
+      console.log('[WA-SEND] whatsappService.sendText returned result:', sendResult);
+      
+      // Update the logged message ID to the real Baileys message ID in database
+      if (sendResult?.messageId && sendResult.messageId !== uuid) {
+        try {
+          db.prepare(`
+            UPDATE whatsapp_messages 
+            SET message_id = ? 
+            WHERE id = ?
+          `).run(sendResult.messageId, dbMessageId);
+          console.log(`[WA-SEND] Updated SQLite record row ID: ${dbMessageId} with real message ID: ${sendResult.messageId}`);
+        } catch (dbErr) {
+          console.error('[WA-SEND] Failed to update message_id in SQLite:', dbErr.message);
+        }
+      }
+    } catch (sendErr) {
+      console.error(`[WA-SEND-FATAL] whatsappService.sendText threw error:`, sendErr.message);
+      try {
+        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE id = ?").run(dbMessageId);
+      } catch (dbErr) {
+        console.error('[WA-SEND] Failed to set status to failed in SQLite:', dbErr.message);
+      }
+      return res.status(500).json({ error: sendErr.message || 'Failed to dispatch message' });
     }
 
     const newMsg = {
@@ -192,10 +213,24 @@ router.post('/send', authenticateToken, async (req, res) => {
       phone: cleaned,
       direction: 'outgoing',
       message: textContent,
+      message_id: sendResult?.messageId || uuid,
+      clientUuid: uuid,
       status: 'sent',
       quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
       created_at: new Date().toISOString()
     };
+
+    // Broadcast message via WebSocket for instant UI update
+    try {
+      const { broadcast } = require('../websocket');
+      broadcast('message', {
+        order_id: orderId,
+        message: newMsg
+      });
+      console.log('[WA-SEND] Broadcasted manual message via WebSocket');
+    } catch (wsErr) {
+      console.warn('[WA-SEND] WebSocket broadcast failed:', wsErr.message);
+    }
 
     if (order && order.shopify_order_id) {
       try {
