@@ -1136,6 +1136,18 @@ function cleanJid(jid) {
   return `${cleanUser}@${domain || 's.whatsapp.net'}`;
 }
 
+/**
+ * Ensures a value is converted to a Buffer object (supporting base64 strings, arrays, objects).
+ */
+function ensureBuffer(val) {
+  if (!val) return Buffer.alloc(0);
+  if (Buffer.isBuffer(val)) return val;
+  if (typeof val === 'string') return Buffer.from(val, 'base64');
+  if (val.type === 'Buffer' && Array.isArray(val.data)) return Buffer.from(val.data);
+  if (val instanceof Uint8Array || Array.isArray(val)) return Buffer.from(val);
+  return Buffer.from(val);
+}
+
 async function syncPollVoteToShopify(bot, msg, db) {
   try {
     const remoteJid = msg.key?.remoteJid;
@@ -1232,13 +1244,8 @@ async function syncPollVoteToShopify(bot, msg, db) {
           const voterJid = msg.key.participant || remoteJid;
           const vote = pollUpdate.vote;
           
-          const payloadBuf = Buffer.isBuffer(vote.encPayload) 
-            ? vote.encPayload 
-            : (typeof vote.encPayload === 'string' ? Buffer.from(vote.encPayload, 'base64') : Buffer.from(vote.encPayload || ''));
-            
-          const ivBuf = Buffer.isBuffer(vote.encIv) 
-            ? vote.encIv 
-            : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
+          const payloadBuf = ensureBuffer(vote.encPayload);
+          const ivBuf = ensureBuffer(vote.encIv);
           
           const rawCreatorJid = bot.sock?.user?.id || remoteJid;
           const creatorJid = cleanJid(rawCreatorJid);
