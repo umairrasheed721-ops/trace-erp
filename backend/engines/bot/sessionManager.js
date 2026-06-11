@@ -206,7 +206,8 @@ async function connectBot(bot) {
               const msg = list.find(m => m.key?.id === key.id);
               if (msg && msg.message) {
                 console.log('🗳️ [PollNative] getMessage hit in RAM for poll:', key.id);
-                return msg.message;
+                const parsed = msg.message;
+                return parsed.message ? parsed.message : parsed;
               }
             }
           }
@@ -227,7 +228,8 @@ async function connectBot(bot) {
 
           if (dbRow && dbRow.full_message_json) {
             console.log('🗳️ [PollNative] getMessage hit in DB Vault for poll:', key.id);
-            return JSON.parse(dbRow.full_message_json);
+            const parsed = JSON.parse(dbRow.full_message_json);
+            return parsed.message ? parsed.message : parsed;
           }
           return undefined;
         } catch (err) {
