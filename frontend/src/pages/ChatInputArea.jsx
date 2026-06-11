@@ -74,6 +74,15 @@ export default function ChatInputArea({
     setShowManager(false);
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (inputText.trim()) {
+        handleSendMessage();
+      }
+    }
+  };
+
   return (
     <>
       <style>{`
@@ -109,10 +118,13 @@ export default function ChatInputArea({
           background-color: var(--wa-header-bg);
           transform: scale(1.02);
         }
+        .wa-portal-quick-pills::-webkit-scrollbar {
+          display: none;
+        }
       `}</style>
 
       {/* Quick Pills Row */}
-      <div className="wa-portal-quick-pills" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 15px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+      <div className="wa-portal-quick-pills" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 15px', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {customerInfo?.latestOrder && (
           <span 
             className="wa-quick-pill"
@@ -324,7 +336,7 @@ export default function ChatInputArea({
                   setSlashCmd('')
                 }
               }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e); } }}
+              onKeyDown={handleKeyDown}
               rows={1}
               style={{ 
                 flex: 1, 

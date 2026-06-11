@@ -223,4 +223,108 @@ async function dispatchCODVerification(order) {
   }
 }
 
-module.exports = { dispatchCODVerification };
+async function checkAndSendCODFollowUps(customDb, customBot) {
+  const activeDb = customDb || db;
+  const activeBot = customBot || bot;
+
+  console.log('🕵️‍♂️ [COD_FOLLOWUP] Scanning for pending verifications older than 24 hours...');
+
+  try {
+    const pendingVerifications = activeDb.prepare(`
+      SELECT * FROM cod_pending_verifications
+      WHERE status = 'pending'
+        AND (followup_sent = 0 OR followup_sent IS NULL)
+        AND sent_at < datetime('now', '+5 hours', '-24 hours')
+    `).all();
+
+    console.log(`🕵️‍♂️ [COD_FOLLOWUP] Found ${pendingVerifications.length} verifications eligible for follow-up.`);
+
+    for (const verification of pendingVerifications) {
+      const { id, order_id, phone } = verification;
+      const normalizedPhone = normalizePhone(phone);
+
+      let orderRow;
+      try {
+        orderRow = activeDb.prepare('SELECT id, price, ref_number, store_id, customer_name FROM orders WHERE id = ?').get(order_id);
+      } catch (orderErr) {
+        console.error(`❌ [COD_FOLLOWUP] Failed to query order for ID ${order_id}:`, orderErr.message);
+        continue;
+      }
+
+      if (!orderRow) {
+        console.warn(`⚠️ [COD_FOLLOWUP] Order ID ${order_id} not found in DB for verification ID ${id}. Skipping.`);
+        continue;
+      }
+
+      const ref = orderRow.ref_number || `#${orderRow.id}`;
+      const amount = orderRow.price !== undefined && orderRow.price !== null ? orderRow.price : 'N/A';
+      const name = (orderRow.customer_name || 'Customer').split(' ')[0];
+
+      let storeName = 'TracePK';
+      try {
+        const storeRow = activeDb.prepare('SELECT store_name FROM stores WHERE id = ?').get(orderRow.store_id);
+        if (storeRow && storeRow.store_name) {
+          storeName = storeRow.store_name;
+        }
+      } catch (_) {}
+
+      let templateText = '👋 Quick reminder! We are waiting for your confirmation for order {ref} of Rs. {amount}. Please reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size';
+      try {
+        const settings = activeDb.prepare('SELECT cod_followup_template FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
+        if (settings && settings.cod_followup_template) {
+          templateText = settings.cod_followup_template;
+        }
+      } catch (dbErr) {
+        console.error('❌ [COD_FOLLOWUP] Failed to fetch follow-up template setting:', dbErr.message);
+      }
+
+      const finalMessage = templateText
+        .replace(/\{ref\}/gi, ref)
+        .replace(/\{amount\}/gi, amount)
+        .replace(/\{name\}/gi, name)
+        .replace(/\{first_name\}/gi, name)
+        .replace(/\{store_name\}/gi, storeName);
+
+      console.log(`🚀 [COD_FOLLOWUP] Sending reminder to ${normalizedPhone} for order ${ref}...`);
+
+      try {
+        await activeBot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true });
+        console.log(`✅ [COD_FOLLOWUP] Follow-up sent to ${normalizedPhone}`);
+
+        try {
+          activeDb.prepare(`
+            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
+            VALUES (?, ?, ?, 'outgoing', ?, 'sent', 'default')
+          `).run(orderRow.store_id, order_id, normalizedPhone, finalMessage);
+        } catch(e) { 
+          console.error('❌ [COD_FOLLOWUP] Failed to log follow-up message to DB:', e.message); 
+        }
+
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const expiresStr = expiresAt.toISOString().replace('T', ' ').substring(0, 19);
+
+        activeDb.prepare(`
+          UPDATE cod_pending_verifications
+          SET followup_sent = 1, expires_at = ?
+          WHERE id = ?
+        `).run(expiresStr, id);
+
+      } catch (sendErr) {
+        console.error(`❌ [COD_FOLLOWUP] Failed to send reminder to ${normalizedPhone}:`, sendErr.message);
+        try {
+          const { logSystemError } = require('../db');
+          logSystemError('ERROR', `[COD Followup] Failed to send reminder to +${normalizedPhone}: ${sendErr.message}`, 'cod_verifier');
+        } catch (_) {}
+      }
+    }
+  } catch (err) {
+    console.error('❌ [COD_FOLLOWUP] Critical error in follow-up processor:', err.message);
+    try {
+      const { logSystemError } = require('../db');
+      logSystemError('ERROR', `[COD Followup] Critical error: ${err.message}`, 'cod_verifier');
+    } catch (_) {}
+  }
+}
+
+module.exports = { dispatchCODVerification, checkAndSendCODFollowUps };
+

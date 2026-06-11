@@ -589,7 +589,7 @@ export default function ChatMessageList({
                   <div
                     style={{
                       position: 'relative',
-                      maxWidth: '75%',
+                      maxWidth: '70%',
                       width: 'fit-content',
                       display: 'flex',
                       flexDirection: 'column',
@@ -610,7 +610,7 @@ export default function ChatMessageList({
                       }}
                       style={{ 
                         boxShadow: '0 1px 0.5px rgba(11,20,26,.13)',
-                        borderRadius: isOutgoing ? '8px 0px 8px 8px' : '0px 8px 8px 8px',
+                        borderRadius: '12px',
                         backgroundColor: isOutgoing ? '#005c4b' : '#202c33',
                         color: '#e9edef',
                         border: 'none',

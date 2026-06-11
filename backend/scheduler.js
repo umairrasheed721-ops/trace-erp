@@ -379,12 +379,34 @@ module.exports = function schedulerInit() {
     }
   });
 
-  // Fire sniper once on boot (after 60s delay to let bot connect)
+  // 14. Every 30 minutes: 24-Hour COD Verification Follow-up reminder
+  cron.schedule('*/30 * * * *', async () => {
+    console.log('⏰ [CRON] 24-Hour COD Verification Follow-up reminder scan starting...');
+    const tenants = getAllTenants();
+    for (const tenantId of tenants) {
+      await tenantContext.run(tenantId, async () => {
+        try {
+          const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+          const bot = require('./engines/whatsapp_bot');
+          await checkAndSendCODFollowUps(db, bot);
+        } catch (e) {
+          console.error(`[Follow-up Cron Error] (Tenant: ${tenantId}):`, e.message);
+        }
+      });
+    }
+  });
+
+  // Fire sniper & follow-ups once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     const tenants = getAllTenants();
     for (const tenantId of tenants) {
       await tenantContext.run(tenantId, async () => {
         try { await runSniperScan(); } catch(e) {}
+        try {
+          const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+          const bot = require('./engines/whatsapp_bot');
+          await checkAndSendCODFollowUps(db, bot);
+        } catch(e) {}
       });
     }
   }, 60000);

@@ -1242,7 +1242,7 @@ input:checked + .slider:before {
 }
 
 .wa-bubble {
-  max-width: 65%;
+  max-width: 70%;
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 0.9rem;
