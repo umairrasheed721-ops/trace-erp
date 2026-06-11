@@ -226,7 +226,7 @@ async function handleMessagesUpdate(bot, updates) {
                 db.prepare(`UPDATE whatsapp_polls SET order_id = ? WHERE message_id = ?`).run(dbRecord.order_id, pollId);
               } catch (e) {}
 
-              // Execute local SQLite UPDATE query exactly as requested
+              // ── 1. Update whatsapp_polls local erp_status ──────────────────
               const query = `UPDATE whatsapp_polls SET erp_status = ? WHERE order_id = ?`;
               db.run(query, [tagToApply, dbRecord.order_id], function(err) {
                   if (err) {
@@ -235,6 +235,76 @@ async function handleMessagesUpdate(bot, updates) {
                       console.log(`[ERP_DB] ✅ Local ERP status safely updated to "${tagToApply}" for Order ${dbRecord.order_id}`);
                   }
               });
+
+              // ── 2. Sync to main orders table (delivery_status + payment_status) ──
+              // Maps the WA poll tag to the canonical ERP status values used by the
+              // Command Centre dropdown so the order updates live on the dashboard.
+              try {
+                let mainDeliveryStatus = null;
+                let mainPaymentStatus = null;
+
+                if (tagToApply.includes('Confirmed')) {
+                  mainDeliveryStatus = 'Confirmed';
+                  mainPaymentStatus  = 'COD Confirmed';
+                } else if (tagToApply.includes('Cancelled')) {
+                  mainDeliveryStatus = 'Cancelled';
+                  mainPaymentStatus  = 'COD Cancelled';
+                } else if (tagToApply.includes('Edit')) {
+                  // Hold the order for customer edit — do not change delivery_status,
+                  // only flag payment_status so fulfilment team sees it
+                  mainPaymentStatus  = 'On Hold - Customer Edit';
+                }
+
+                if (mainDeliveryStatus || mainPaymentStatus) {
+                  // Build a targeted UPDATE so we only touch the columns we know about
+                  const setClauses = [];
+                  const setParams  = [];
+
+                  if (mainDeliveryStatus) {
+                    setClauses.push(`delivery_status = ?`);
+                    setParams.push(mainDeliveryStatus);
+                  }
+                  if (mainPaymentStatus) {
+                    setClauses.push(`payment_status = ?`);
+                    setParams.push(mainPaymentStatus);
+                  }
+                  // Always stamp status_date and wa_verification_status for audit trail
+                  setClauses.push(`status_date = datetime('now', '+5 hours')`);
+                  if (tagToApply.includes('Confirmed')) {
+                    setClauses.push(`wa_verification_status = 'verified'`);
+                  }
+
+                  setParams.push(dbRecord.order_id);
+
+                  db.prepare(
+                    `UPDATE orders SET ${setClauses.join(', ')} WHERE id = ?`
+                  ).run(...setParams);
+
+                  console.log(`[ERP_DB] 🔄 Main Order ${dbRecord.order_id} auto-synced: delivery_status="${mainDeliveryStatus || '(unchanged)'}", payment_status="${mainPaymentStatus || '(unchanged)'}"`);
+
+                  // ── 3. Fire SSE broadcast so Command Centre updates immediately ──
+                  try {
+                    const orderRow = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(dbRecord.order_id);
+                    if (orderRow) {
+                      const { broadcast } = require('../../sse');
+                      broadcast('order_updated', {
+                        storeId: orderRow.store_id,
+                        shopifyOrderId: orderRow.shopify_order_id,
+                        orderId: dbRecord.order_id,
+                        delivery_status: mainDeliveryStatus,
+                        payment_status: mainPaymentStatus,
+                        source: 'wa_poll'
+                      });
+                      console.log(`[ERP_DB] 📡 SSE broadcast fired for Order ${dbRecord.order_id}`);
+                    }
+                  } catch (sseErr) {
+                    console.warn(`[ERP_DB] ⚠️ SSE broadcast failed (non-fatal):`, sseErr.message);
+                  }
+                }
+              } catch (syncErr) {
+                // Non-fatal: whatsapp_polls is still updated even if main orders sync fails
+                console.error(`[ERP_DB] ❌ Failed to sync WA vote to main orders table:`, syncErr.message);
+              }
             }
           }
         }
