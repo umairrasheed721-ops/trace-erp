@@ -270,29 +270,23 @@ async function processQueue(bot, sock, db) {
         const hasButtons = buttons && Array.isArray(buttons) && buttons.length > 0;
 
         if (poll) {
-          const pollPayload = {
-            poll: {
-              name: poll.name,
-              // values = the option strings shown to the customer (e.g. ['✅ Confirm', '❌ Cancel'])
-              values: poll.values,
-              selectableCount: poll.selectableCount || 1
-            }
-          };
-          sentMsg = await safeSend(jid, pollPayload);
+          const cleaned = normalizePhone(jid);
+          let order;
+          try {
+            order = db.prepare(`SELECT id, name, order_number, total_price, price, ref_number FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, bot.tenantId || 'default');
+          } catch (e) {
+            console.error('⚠️ [whatsapp_message_processor] Failed to query order for poll refactor:', e.message);
+          }
+
+          const orderId = order ? order.id : null;
+          const orderName = order ? (order.name || order.order_number || order.ref_number || order.id) : (poll.name || 'your order');
+          const orderTotal = order ? (order.total_price || order.price || 'your total') : 'your total';
+
+          const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
+
+          sentMsg = await safeSend(jid, { text: codMessage });
 
           // ── POLL VAULT: Write poll metadata to SQLite immediately after send ──
-          //
-          // WHY THIS EXISTS:
-          // Baileys keeps all sent/received messages in bot.store.messages (in-memory only).
-          // When the Railway container restarts, that memory is wiped.
-          // If a customer votes on a poll that was sent BEFORE the restart,
-          // bot.store has no record of it → syncPollVoteToShopify fails silently.
-          //
-          // FIX: Write poll.name + poll.values to the whatsapp_polls SQLite table right
-          // after the poll is sent. This is our "Poll Vault" — a crash-proof backup.
-          // When the in-memory store misses, we fall back to this table.
-          //
-          // ON CONFLICT DO NOTHING = safe if Baileys retries the send on reconnect.
           try {
             const vaultMsgId = sentMsg?.key?.id || uuid;
             let secretBase64 = null;
@@ -302,10 +296,10 @@ async function processQueue(bot, sock, db) {
             }
             const fullMsgJson = sentMsg?.message ? JSON.stringify(sentMsg.message) : null;
             db.prepare(`
-              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id, order_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(message_id) DO NOTHING
-            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, bot.tenantId || 'default');
+            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, bot.tenantId || 'default', orderId);
             console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB with secret and full message JSON for crash resilience.`);
           } catch (vaultErr) {
             // Non-fatal: poll still sent successfully, vault write is best-effort

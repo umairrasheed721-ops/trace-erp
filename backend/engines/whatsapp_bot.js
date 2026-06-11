@@ -208,13 +208,20 @@ class WhatsAppBot {
 
     try {
       if (poll) {
-        payload = {
-          poll: {
-            name: poll.name,
-            values: poll.values,
-            selectableCount: poll.selectableCount || 1
-          }
-        };
+        let order;
+        try {
+          order = db.prepare(`SELECT id, name, order_number, total_price, price, ref_number FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId || 'default');
+        } catch (e) {
+          console.error('⚠️ [directSendMessage] Failed to query order for poll refactor:', e.message);
+        }
+
+        const orderId = order ? order.id : null;
+        const orderName = order ? (order.name || order.order_number || order.ref_number || order.id) : (poll.name || 'your order');
+        const orderTotal = order ? (order.total_price || order.price || 'your total') : 'your total';
+
+        const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
+
+        payload = { text: codMessage };
       } else if (hasButtons && buttonsMode === 'text') {
         const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
         const listText = buttons.map((btn, idx) => {
@@ -479,10 +486,10 @@ class WhatsAppBot {
             }
             const fullMsgJson = sentMsg?.message ? JSON.stringify(sentMsg.message) : null;
             db.prepare(`
-              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id, order_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(message_id) DO NOTHING
-            `).run(messageId, jid, poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, this.tenantId || 'default');
+            `).run(messageId, jid, poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, this.tenantId || 'default', orderId);
             console.log(`🗄️ [PollVault] [DIRECT] Persisted poll "${poll.name}" (id=${messageId}) to DB with secret and full message JSON for crash resilience.`);
           } catch (vaultErr) {
             console.error('⚠️ [PollVault] [DIRECT] Failed to persist poll to DB:', vaultErr.message);
