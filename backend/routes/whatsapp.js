@@ -103,8 +103,8 @@ router.post('/send', authenticateToken, async (req, res) => {
     const targetTenant = req.body.store_id || order?.store_id || 'default';
     const botInstance = whatsappService.getBotForTenant(targetTenant);
 
-    if (!botInstance || !botInstance.sock) {
-        return res.status(500).json({ error: `WhatsApp socket offline for tenant: ${targetTenant}` });
+    if (!botInstance || !botInstance.sock || botInstance.status !== 'CONNECTED') {
+        return res.status(500).json({ error: `WhatsApp socket offline or disconnected for tenant: ${targetTenant}` });
     }
 
     let parsedQuoteContext = quoteContext || null;

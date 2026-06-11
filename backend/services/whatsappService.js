@@ -44,9 +44,9 @@ class WhatsappService {
    */
   async sendText(phone, text, targetTenant = 'default') {
     const botInstance = this.getBotForTenant(targetTenant);
-    if (!botInstance || !botInstance.sock) {
-        console.error('[WA-FATAL] Baileys socket reference is missing in whatsappService!');
-        throw new Error("WhatsApp socket not initialized.");
+    if (!botInstance || !botInstance.sock || botInstance.status !== 'CONNECTED') {
+        console.error('[WA-FATAL] Baileys socket reference is missing or disconnected in whatsappService!');
+        throw new Error("WhatsApp socket not initialized or disconnected.");
     }
 
     let jid = phone.toString().replace(/[^0-9]/g, '');
@@ -71,7 +71,7 @@ class WhatsappService {
    * @returns {Promise<MessageResponse>} Object detailing the success/fail result
    */
   async sendMedia(phone, mediaUrl, caption = '', mediaType = 'image', clientUuid = null) {
-    if (!this.sock) throw new Error("Baileys socket is not connected!");
+    if (!this.sock || bot.status !== 'CONNECTED') throw new Error("Baileys socket is not connected or disconnected!");
 
     // Format JID
     let jid = phone.replace(/[^0-9]/g, '');
