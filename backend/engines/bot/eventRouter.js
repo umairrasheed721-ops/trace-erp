@@ -105,6 +105,69 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
   return null;
 }
 
+/**
+ * Safely extracts the messageSecret from a Baileys message object in RAM.
+ * Handles nested structure, poll message types, and common wrappers (ephemeral, viewOnce, etc.).
+ */
+function extractMessageSecret(pollMsg) {
+  if (!pollMsg || !pollMsg.message) return null;
+  const message = pollMsg.message;
+
+  // 1. Direct messageContextInfo
+  if (message.messageContextInfo?.messageSecret) {
+    return message.messageContextInfo.messageSecret;
+  }
+
+  // 2. Try unwrapping potential wrappers (ephemeral, viewOnce, etc.)
+  const wrappers = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'documentWithCaptionMessage'];
+  for (const wrapper of wrappers) {
+    if (message[wrapper]?.message) {
+      const subMsg = message[wrapper].message;
+      if (subMsg.messageContextInfo?.messageSecret) {
+        return subMsg.messageContextInfo.messageSecret;
+      }
+      if (subMsg.pollCreationMessage?.messageContextInfo?.messageSecret) {
+        return subMsg.pollCreationMessage.messageContextInfo.messageSecret;
+      }
+      if (subMsg.pollCreationMessageV2?.messageContextInfo?.messageSecret) {
+        return subMsg.pollCreationMessageV2.messageContextInfo.messageSecret;
+      }
+      if (subMsg.pollCreationMessage?.messageSecret) {
+        return subMsg.pollCreationMessage.messageSecret;
+      }
+      if (subMsg.pollCreationMessageV2?.messageSecret) {
+        return subMsg.pollCreationMessageV2.messageSecret;
+      }
+    }
+  }
+
+  // 3. Inside pollCreationMessage or pollCreationMessageV2 in top level
+  if (message.pollCreationMessage?.messageContextInfo?.messageSecret) {
+    return message.pollCreationMessage.messageContextInfo.messageSecret;
+  }
+  if (message.pollCreationMessageV2?.messageContextInfo?.messageSecret) {
+    return message.pollCreationMessageV2.messageContextInfo.messageSecret;
+  }
+  if (message.pollCreationMessage?.messageSecret) {
+    return message.pollCreationMessage.messageSecret;
+  }
+  if (message.pollCreationMessageV2?.messageSecret) {
+    return message.pollCreationMessageV2.messageSecret;
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes user JIDs by cleaning the device suffix if present.
+ */
+function cleanJid(jid) {
+  if (!jid) return jid;
+  const [user, domain] = jid.split('@');
+  const cleanUser = user.split(':')[0];
+  return `${cleanUser}@${domain || 's.whatsapp.net'}`;
+}
+
 async function handleMessagesUpdate(bot, updates) {
   for (const { key, update } of updates) {
     const messageId = key.id;
@@ -190,8 +253,8 @@ async function handleMessagesUpdate(bot, updates) {
                 // 1. Try to find the message in RAM first to get the pristine messageSecret
                 if (bot.store?.messages?.[trueRemoteJid]) {
                   const pollMsg = bot.store.messages[trueRemoteJid].find(m => m.key.id === key.id);
-                  if (pollMsg && pollMsg.message) {
-                    const ramSecret = pollMsg.message.messageContextInfo?.messageSecret;
+                  if (pollMsg) {
+                    const ramSecret = extractMessageSecret(pollMsg);
                     if (ramSecret) {
                       secretBuf = Buffer.isBuffer(ramSecret) ? ramSecret : Buffer.from(ramSecret);
                       console.log('🗳️ [PollVault] Found pristine messageSecret in RAM in eventRouter for poll:', key.id);
@@ -220,8 +283,11 @@ async function handleMessagesUpdate(bot, updates) {
                     ? vote.encIv 
                     : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
                   
+                  const rawCreatorJid = bot.sock?.user?.id || remoteJid;
+                  const creatorJid = cleanJid(rawCreatorJid);
+
                   const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
-                    pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                    pollCreatorJid: creatorJid,
                     pollMsgId: key.id,
                     pollEncKey: secretBuf,
                     voterJid: voterJid
