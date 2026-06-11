@@ -10,6 +10,8 @@ export default function useWhatsAppBot() {
     cod_verification_enabled: 1,
     attempted_delivery_enabled: 1,
     dispatch_alerts_enabled: 1,
+    enable_post_delivery_feedback: 1,
+    post_delivery_template: '👋 Hi {first_name}! Kaisa laga aapko TracePK se received aapka parcel? 😍 Apne parcel ki picture ya video hamare sath share karein aur apne next order par payen FLAT 10% OFF! Discount Code: TRACE10 🎁✨',
     min_delay_sec: 5,
     max_delay_sec: 15,
     max_per_hour: 60,

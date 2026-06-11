@@ -103,6 +103,8 @@ module.exports = [
     status TEXT DEFAULT 'DISCONNECTED',
     stuck_threshold_hours INTEGER DEFAULT 36,
     poll_options TEXT DEFAULT NULL,
+    enable_post_delivery_feedback INTEGER DEFAULT 1,
+    post_delivery_template TEXT DEFAULT '👋 Hi {first_name}! Kaisa laga aapko TracePK se received aapka parcel? 😍 Apne parcel ki picture ya video hamare sath share karein aur apne next order par payen FLAT 10% OFF! Discount Code: TRACE10 🎁✨',
     updated_at TEXT DEFAULT (datetime('now'))
   );`,
 
@@ -389,7 +391,9 @@ module.exports = [
       "ALTER TABLE whatsapp_settings ADD COLUMN enable_thank_you_msg INTEGER DEFAULT 1",
       "ALTER TABLE whatsapp_settings ADD COLUMN thank_you_template TEXT DEFAULT '🎉 Thank You! Your order #{ref} is confirmed and will be dispatched via PostEx shortly. 📦👍'",
       "ALTER TABLE whatsapp_settings ADD COLUMN enable_fallback_autoreply INTEGER DEFAULT 0",
-      "ALTER TABLE whatsapp_settings ADD COLUMN fallback_autoreply_template TEXT DEFAULT '👋 Hello! We have received your message. A human agent will reply shortly. For urgent inquiries, please call us.'"
+      "ALTER TABLE whatsapp_settings ADD COLUMN fallback_autoreply_template TEXT DEFAULT '👋 Hello! We have received your message. A human agent will reply shortly. For urgent inquiries, please call us.'",
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_post_delivery_feedback INTEGER DEFAULT 1",
+      "ALTER TABLE whatsapp_settings ADD COLUMN post_delivery_template TEXT DEFAULT '👋 Hi {first_name}! Kaisa laga aapko TracePK se received aapka parcel? 😍 Apne parcel ki picture ya video hamare sath share karein aur apne next order par payen FLAT 10% OFF! Discount Code: TRACE10 🎁✨'"
     ];
 
     alters.forEach(sql => {

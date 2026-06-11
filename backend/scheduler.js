@@ -396,7 +396,24 @@ module.exports = function schedulerInit() {
     }
   });
 
-  // Fire sniper & follow-ups once on boot (after 60s delay to let bot connect)
+  // 15. Every 30 minutes: 24-Hour Post-Delivery Feedback review requests
+  cron.schedule('*/30 * * * *', async () => {
+    console.log('⏰ [CRON] 24-Hour Post-Delivery Feedback scan starting...');
+    const tenants = getAllTenants();
+    for (const tenantId of tenants) {
+      await tenantContext.run(tenantId, async () => {
+        try {
+          const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
+          const bot = require('./engines/whatsapp_bot');
+          await checkAndSendPostDeliveryFeedback(db, bot);
+        } catch (e) {
+          console.error(`[Feedback Cron Error] (Tenant: ${tenantId}):`, e.message);
+        }
+      });
+    }
+  });
+
+  // Fire sniper, follow-ups & feedback once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
     const tenants = getAllTenants();
     for (const tenantId of tenants) {
@@ -406,6 +423,11 @@ module.exports = function schedulerInit() {
           const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
           const bot = require('./engines/whatsapp_bot');
           await checkAndSendCODFollowUps(db, bot);
+        } catch(e) {}
+        try {
+          const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
+          const bot = require('./engines/whatsapp_bot');
+          await checkAndSendPostDeliveryFeedback(db, bot);
         } catch(e) {}
       });
     }
