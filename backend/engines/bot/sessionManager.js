@@ -283,8 +283,6 @@ async function connectBot(bot) {
 
         if (connection === 'open') {
           console.log('✅ WhatsApp CONNECTED!');
-          // THE BRIDGE: Save the living socket globally
-          global.traceLiveSocket = sock; 
           bot.status = 'CONNECTED';
           bot.qrCode = null;
           bot.reconnectAttempts = 0;

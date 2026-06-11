@@ -485,22 +485,9 @@ export default function useWhatsAppPortal() {
           }));
         }
 
-        let newMsg = null;
         if (wsEvent === 'message' && data && data.message) {
-          newMsg = data.message;
-        } else if (wsEvent === 'NEW_MESSAGE' && data) {
-          newMsg = {
-            id: data.id || `msg-${Date.now()}`,
-            message_id: data.id,
-            phone: data.phone,
-            message: data.text || '',
-            direction: data.direction === 'outbound' ? 'outgoing' : 'incoming',
-            status: 'sent',
-            created_at: new Date().toISOString()
-          };
-        }
-
-        if (newMsg) {
+          const newMsg = data.message
+          
           // 1. Update chronological messages list if active chat matched
           if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
             setMessages(prev => {
