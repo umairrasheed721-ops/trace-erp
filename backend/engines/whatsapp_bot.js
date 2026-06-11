@@ -185,6 +185,21 @@ class WhatsAppBot {
 
     const { db } = require('../db');
     let pollMessageText = null;
+    let orderId = options?.orderId || options?.order_id || null;
+    let storeId = options?.storeId || options?.store_id || null;
+    if (!orderId || !storeId) {
+      try {
+        const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId || 'default');
+        if (order) {
+          if (!orderId) orderId = order.id;
+          if (!storeId) storeId = order.store_id;
+        }
+      } catch (e) {
+        console.error('⚠️ [directSendMessage] Failed to pre-resolve order/store:', e.message);
+      }
+    }
+    if (!storeId) storeId = 1;
+
     const adapted = adaptiveStrategy(phone, {
       message, quoteContext, buttons, buttonsMode, poll
     }, db, isManual);
@@ -211,19 +226,18 @@ class WhatsAppBot {
       if (poll) {
         let order;
         try {
-          order = db.prepare(`SELECT id, name, order_number, total_price, price, ref_number FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId || 'default');
+          const specificOrderId = options?.orderId || options?.order_id;
+          if (specificOrderId) {
+            order = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(specificOrderId);
+          } else {
+            order = db.prepare(`SELECT id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId || 'default');
+          }
         } catch (e) {
           console.error('⚠️ [directSendMessage] Failed to query order for poll refactor:', e.message);
         }
 
-        const orderId = order ? order.id : null;
-        const orderName = order ? (order.name || order.order_number || order.ref_number || order.id) : (poll.name || 'your order');
-        const orderTotal = order ? (order.total_price || order.price || 'your total') : 'your total';
-
-        const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
-
-        pollMessageText = codMessage;
-        payload = { text: codMessage };
+        pollMessageText = poll.name;
+        payload = { text: poll.name };
       } else if (hasButtons && buttonsMode === 'text') {
         const numberEmojis = ['1️⃣', '2️⃣', '3️⃣'];
         const listText = buttons.map((btn, idx) => {
@@ -473,10 +487,6 @@ class WhatsAppBot {
       const { db } = require('../db');
       let dbMessageId = null;
       try {
-        const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
-        const orderId = order ? order.id : null;
-        const storeId = order ? order.store_id : 1;
-        
         let dbMessageContent;
         if (poll) {
           dbMessageContent = pollMessageText || `🗳️ Poll: ${poll.name}`;
@@ -584,10 +594,6 @@ class WhatsAppBot {
       // Log failure to DB & broadcast via WebSocket
       const { db } = require('../db');
       try {
-        const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId);
-        const orderId = order ? order.id : null;
-        const storeId = order ? order.store_id : 1;
-        
         let dbMessageContent;
         if (poll) {
           dbMessageContent = pollMessageText || `🗳️ Poll: ${poll.name}`;
@@ -703,7 +709,7 @@ class WhatsAppBot {
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
 
       const isActiveChatSession = this.activeChats.has(cleaned) || this.activeChats.has(phone);
-      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend: options?.fastSend || false };
+      const item = { phone, message: finalMessage, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend: options?.fastSend || false, options };
 
       if (isActiveChatSession) {
         this.priorityQueue.push(item);

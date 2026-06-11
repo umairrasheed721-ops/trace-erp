@@ -45,8 +45,7 @@ export default function BotRulesPanel({
           { id: 'cod_template',   label: '💬 COD Verification Template' },
           { id: 'courier_rescue', label: '⚠️ Courier Rescue Template' },
           { id: 'dispatch_alert', label: '📦 Dispatch Alert Template' },
-          { id: 'thank_you',      label: '🎉 Thank You Template' },
-          { id: 'auto_reply',     label: '🤖 Auto-Reply Template' },
+          { id: 'auto_responder', label: '🔀 Auto-Responder Rules' },
           { id: 'feedback',       label: '⭐ Feedback & Cross-Sell Template' }
         ].map(sub => (
           <button
@@ -133,24 +132,6 @@ export default function BotRulesPanel({
                 <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
                   <input 
                     type="checkbox" 
-                    checked={settings.enable_thank_you_msg !== 0}
-                    onChange={e => handleSettingChange('enable_thank_you_msg', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable 'Thank You' Confirmation Messages</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.enable_fallback_autoreply === 1}
-                    onChange={e => handleSettingChange('enable_fallback_autoreply', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable Fallback Auto-Replies (Unrecognized Text)</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
                     checked={settings.enable_post_delivery_feedback === 1} 
                     onChange={e => handleSettingChange('enable_post_delivery_feedback', e.target.checked)} 
                     style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
@@ -221,53 +202,114 @@ export default function BotRulesPanel({
           </div>
         )}
 
-        {/* Tab A5: Thank You Template */}
-        {activeTab === 'thank_you' && (
-          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
-              <span>🎉 Thank You Confirmation Template</span>
-              <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>Variables: {'{ref}'}, {'{amount}'}, {'{first_name}'}, {'{store_name}'}</span>
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, background: settings.enable_thank_you_msg !== 0 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${settings.enable_thank_you_msg !== 0 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: settings.enable_thank_you_msg !== 0 ? 'var(--green)' : '#ef4444' }}>
-                {settings.enable_thank_you_msg !== 0 ? '🟢 ENABLED' : '🔴 DISABLED'}
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— Toggle in Master Authority tab</span>
+        {/* Tab A5: Auto-Responder Rules */}
+        {activeTab === 'auto_responder' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <h4 style={{ fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>🔀 Dynamic Auto-Responder Rules</h4>
+              <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                Map customer reply keywords to automated response messages. Trigger keywords can be specific replies like <code>1</code>, <code>2</code>, <code>3</code>, custom words, or use <code>fallback</code> for unmatched messages.
+              </p>
             </div>
-            <textarea 
-              className="premium-input" 
-              rows={5}
-              value={settings.thank_you_template}
-              onChange={e => setSettings({ ...settings, thank_you_template: e.target.value })}
-              placeholder="🎉 Thank You! Your order #{ref} is confirmed and will be dispatched via PostEx shortly. 📦👍"
-              style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
-            />
-            <p className="text-muted" style={{ fontSize: '0.8rem' }}>Sent automatically after a customer successfully confirms their COD order via the numeric text-reply system.</p>
-          </div>
-        )}
 
-        {/* Tab A6: Fallback Auto-Reply Template */}
-        {activeTab === 'auto_reply' && (
-          <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ fontWeight: 800, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1rem' }}>
-              <span>🤖 Fallback Auto-Reply Template</span>
-              <span style={{ fontSize: '0.8rem', background: '#334155', padding: '4px 10px', borderRadius: 10, color: '#94a3b8' }}>No variables — plain text only</span>
-            </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderRadius: 10, background: settings.enable_fallback_autoreply === 1 ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)', border: `1px solid ${settings.enable_fallback_autoreply === 1 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}` }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: settings.enable_fallback_autoreply === 1 ? 'var(--green)' : '#ef4444' }}>
-                {settings.enable_fallback_autoreply === 1 ? '🟢 ENABLED' : '🔴 DISABLED'}
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>— Toggle in Master Authority tab</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {(settings.auto_responders || []).map((rule, index) => (
+                <div 
+                  key={index}
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: 12, 
+                    background: 'var(--bg-active)', 
+                    padding: 20, 
+                    borderRadius: 16, 
+                    border: '1px solid var(--border)',
+                    position: 'relative'
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      const updated = (settings.auto_responders || []).filter((_, i) => i !== index);
+                      setSettings({ ...settings, auto_responders: updated });
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 16,
+                      right: 16,
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--red)',
+                      fontSize: '1.1rem',
+                      cursor: 'pointer',
+                      padding: 4
+                    }}
+                    title="Delete Rule"
+                  >
+                    🗑️
+                  </button>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ paddingRight: 32 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontWeight: 700, fontSize: '0.85rem' }}>Trigger Keyword / Reply Key</label>
+                      <input 
+                        type="text"
+                        className="premium-input"
+                        value={rule.trigger || ''}
+                        onChange={e => {
+                          const updated = [...(settings.auto_responders || [])];
+                          updated[index] = { ...updated[index], trigger: e.target.value };
+                          setSettings({ ...settings, auto_responders: updated });
+                        }}
+                        placeholder="e.g. 1, 2, confirm, fallback"
+                        style={{ fontSize: '0.9rem', padding: '10px 14px' }}
+                      />
+                    </div>
+                    <div className="md:col-span-2" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontWeight: 700, fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Response Message Text</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Variables: {'{ref}'}, {'{amount}'}, {'{name}'}, {'{store_name}'}</span>
+                      </label>
+                      <textarea 
+                        className="premium-input"
+                        rows={3}
+                        value={rule.response || ''}
+                        onChange={e => {
+                          const updated = [...(settings.auto_responders || [])];
+                          updated[index] = { ...updated[index], response: e.target.value };
+                          setSettings({ ...settings, auto_responders: updated });
+                        }}
+                        placeholder="Write response message here..."
+                        style={{ fontSize: '0.9rem', padding: '12px 14px', lineHeight: 1.5 }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={() => {
+                  const updated = [...(settings.auto_responders || []), { trigger: '', response: '' }];
+                  setSettings({ ...settings, auto_responders: updated });
+                }}
+                className="btn btn-secondary"
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '10px 20px',
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                  border: '1px dashed var(--border)',
+                  background: 'transparent',
+                  color: 'var(--text-muted)'
+                }}
+              >
+                ➕ Add New Rule
+              </button>
             </div>
-            <textarea 
-              className="premium-input" 
-              rows={5}
-              value={settings.fallback_autoreply_template}
-              onChange={e => setSettings({ ...settings, fallback_autoreply_template: e.target.value })}
-              placeholder="👋 Hello! We have received your message. A human agent will reply shortly. For urgent inquiries, please call us."
-              style={{ fontSize: '0.95rem', padding: 16, lineHeight: 1.6 }}
-            />
-            <p className="text-muted" style={{ fontSize: '0.8rem' }}>Sent when an incoming message does not match any known keyword, reply number, or active conversation session.</p>
           </div>
         )}
 

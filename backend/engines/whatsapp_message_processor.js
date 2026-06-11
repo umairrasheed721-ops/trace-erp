@@ -58,7 +58,7 @@ async function processQueue(bot, sock, db) {
 
       const queueItem = activeQueue[0];
       const adaptedItem = adaptiveStrategy(queueItem.phone, queueItem, db, queueItem.isManual);
-      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend } = adaptedItem;
+      const { phone, message, isManual, mediaUrl, mediaType, fileName, resolve, isActiveChatSession, uuid, quoteContext, buttons, buttonsMode, poll, fastSend, options } = adaptedItem;
       let cleaned = phone.replace(/\D/g, '');
       if (cleaned.startsWith('0')) cleaned = '92' + cleaned.substring(1);
       else if (!cleaned.startsWith('92') && cleaned.length === 10) cleaned = '92' + cleaned;
@@ -274,19 +274,19 @@ async function processQueue(bot, sock, db) {
           const cleaned = normalizePhone(jid);
           let order;
           try {
-            order = db.prepare(`SELECT id, name, order_number, total_price, price, ref_number FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, bot.tenantId || 'default');
+            const specificOrderId = options?.orderId || options?.order_id;
+            if (specificOrderId) {
+              order = db.prepare(`SELECT id FROM orders WHERE id = ?`).get(specificOrderId);
+            } else {
+              order = db.prepare(`SELECT id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, bot.tenantId || 'default');
+            }
           } catch (e) {
             console.error('⚠️ [whatsapp_message_processor] Failed to query order for poll refactor:', e.message);
           }
 
           const orderId = order ? order.id : null;
-          const orderName = order ? (order.name || order.order_number || order.ref_number || order.id) : (poll.name || 'your order');
-          const orderTotal = order ? (order.total_price || order.price || 'your total') : 'your total';
-
-          const codMessage = `👋 Hello from Trace ERP!\nWe have received your COD order #${orderName} for Rs. ${orderTotal}.\n\nPlease reply with:\n*1* - ✅ Confirm Order\n*2* - ❌ Cancel Order\n*3* - ✏️ Edit Address/Size`;
-
-          pollMessageText = codMessage;
-          sentMsg = await safeSend(jid, { text: codMessage });
+          pollMessageText = poll.name;
+          sentMsg = await safeSend(jid, { text: poll.name });
 
           // ── POLL VAULT: Write poll metadata to SQLite immediately after send ──
           try {
@@ -1007,6 +1007,58 @@ async function processIncomingMessage(bot, msg, sock, db) {
     if (profile && profile.opted_out === 1) {
       console.log(`🔕 Skipping bot reply for ${fromPhone} because customer is opted out.`);
       return;
+    }
+
+    // Check dynamic auto-responders before calling Gemini AI (excluding numeric triggers reserved for COD challenge)
+    try {
+      const settings = db.prepare('SELECT auto_responders FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
+      if (settings && settings.auto_responders) {
+        const autoResponders = JSON.parse(settings.auto_responders);
+        const lowerText = text.toLowerCase().trim();
+        
+        // Exclude COD verification triggers 1, 2, 3 so they don't get matched here for general messages
+        const isCodTrigger = ['1', '2', '3'].includes(lowerText);
+        if (!isCodTrigger) {
+          const rule = autoResponders.find(r => r.trigger && String(r.trigger).trim().toLowerCase() === lowerText);
+          if (rule && rule.response) {
+            console.log(`🎯 [AUTO_RESPONDER] Matched custom trigger keyword "${lowerText}" for ${fromPhone}. Sending response.`);
+            
+            // Format variables
+            let orderRef = '';
+            let amount = 'N/A';
+            let name = 'Customer';
+            let storeName = 'TracePK';
+            
+            try {
+              const order = db.prepare(`SELECT id, store_id, ref_number, price, customer_name FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
+              if (order) {
+                orderRef = order.ref_number || `#${order.id}`;
+                amount = order.price !== undefined && order.price !== null ? order.price : 'N/A';
+                name = order.customer_name ? order.customer_name.split(' ')[0] : 'Customer';
+                
+                const storeRow = db.prepare('SELECT store_name FROM stores WHERE id = ?').get(order.store_id);
+                if (storeRow && storeRow.store_name) {
+                  storeName = storeRow.store_name;
+                }
+              }
+            } catch (e) {
+              console.error('Failed to resolve variables for auto_responder:', e.message);
+            }
+            
+            const replyMessage = rule.response
+              .replace(/\{ref\}/gi, orderRef)
+              .replace(/\{amount\}/gi, amount)
+              .replace(/\{name\}/gi, name)
+              .replace(/\{first_name\}/gi, name)
+              .replace(/\{store_name\}/gi, storeName);
+              
+            await bot.sendMessage(fromPhone, replyMessage, false);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('⚠️ Failed to match custom auto-responders:', e.message);
     }
 
     await handleIncomingAIMessage(bot, text, fromPhone, sock, db);

@@ -66,18 +66,8 @@ async function checkAndSendPostDeliveryFeedback(activeDb, activeBot) {
       console.log(`🚀 [POST_DELIVERY_FEEDBACK] Sending review request to ${normalizedPhone} for order ${ref}...`);
 
       try {
-        await activeBot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true });
+        await activeBot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true, orderId: order_id });
         console.log(`✅ [POST_DELIVERY_FEEDBACK] Feedback request sent to ${normalizedPhone}`);
-
-        // Log to whatsapp_messages
-        try {
-          activeDb.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-            VALUES (?, ?, ?, 'outgoing', ?, 'sent', 'default')
-          `).run(orderRow.store_id, order_id, normalizedPhone, finalMessage);
-        } catch(e) { 
-          console.error('❌ [POST_DELIVERY_FEEDBACK] Failed to log feedback message to DB:', e.message); 
-        }
 
         // Update erp_status to avoid double sending
         activeDb.prepare(`

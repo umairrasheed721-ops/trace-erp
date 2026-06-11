@@ -385,7 +385,7 @@ async function handleMessagesUpdate(bot, updates) {
                   const { broadcast } = require('../../sse');
                   broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                 }
-                await bot.sendMessage(fromPhone, `🎉 Thank you! Your order ${orderRef} is confirmed and will be dispatched shortly. 📦`, false);
+                await sendAutoResponderReply(bot, fromPhone, 'Trace: Confirmed', pendingCOD, orderRef);
                 console.log(`🗳️ [POLL] COD Confirmed: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
 
               } else if (isEdit) {
@@ -397,7 +397,7 @@ async function handleMessagesUpdate(bot, updates) {
                   const { broadcast } = require('../../sse');
                   broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                 }
-                await bot.sendMessage(fromPhone, `✏️ No worries! Please reply with your updated size or address, and we will update it for you. 📝`, false);
+                await sendAutoResponderReply(bot, fromPhone, 'Trace: Edit Requested', pendingCOD, orderRef);
                 console.log(`🗳️ [POLL] COD On Hold (Edit): Order ${pendingCOD.order_id} by customer +${fromPhone}`);
 
               } else if (isCancel) {
@@ -409,7 +409,7 @@ async function handleMessagesUpdate(bot, updates) {
                   const { broadcast } = require('../../sse');
                   broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
                 }
-                await bot.sendMessage(fromPhone, `Your order ${orderRef} has been cancelled. We hope to serve you again soon! 🙏`, false);
+                await sendAutoResponderReply(bot, fromPhone, 'Trace: Cancelled', pendingCOD, orderRef);
                 console.log(`🗳️ [POLL] COD Cancelled: Order ${pendingCOD.order_id} by customer +${fromPhone}`);
               }
             }
@@ -438,7 +438,7 @@ async function handleMessagesUpdate(bot, updates) {
 };
 
 
-function handleMessagesUpsert(bot, m) {
+async function handleMessagesUpsert(bot, m) {
   const { messages, type } = m;
   if (type !== 'notify' && type !== 'append') return;
   for (const msg of messages) {
@@ -656,20 +656,13 @@ function handleMessagesUpsert(bot, m) {
           // ── 4. Update cod_pending_verifications and send messages ──
           if (tagToApply === 'Trace: Confirmed') {
             db.prepare(`UPDATE cod_pending_verifications SET status = 'confirmed', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
-            bot.sendMessage(msg.key.remoteJid, `🎉 Thank you! Your order ${orderRef} is confirmed and will be dispatched shortly. 📦`, false).catch(err => {
-              console.error('Failed to send confirmation text reply:', err.message);
-            });
           } else if (tagToApply === 'Trace: Cancelled') {
             db.prepare(`UPDATE cod_pending_verifications SET status = 'cancelled', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
-            bot.sendMessage(msg.key.remoteJid, `Your order ${orderRef} has been cancelled. We hope to serve you again soon! 🙏`, false).catch(err => {
-              console.error('Failed to send cancellation text reply:', err.message);
-            });
           } else if (tagToApply === 'Trace: Edit Requested') {
             db.prepare(`UPDATE cod_pending_verifications SET status = 'on_hold', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
-            bot.sendMessage(msg.key.remoteJid, `✏️ No worries! Please reply with your updated size or address, and we will update it for you. 📝`, false).catch(err => {
-              console.error('Failed to send hold text reply:', err.message);
-            });
           }
+          
+          await sendAutoResponderReply(bot, msg.key.remoteJid, tagToApply, pendingCOD, orderRef);
         }
       } catch (e) {
         console.error('[ERP_DB] Failed to process fuzzy text reply update:', e.message);
@@ -771,6 +764,77 @@ async function fetchHistoryForPhone(bot, phone) {
   } catch (err) {
     console.error('❌ fetchHistory error:', err.message);
     return { success: false, error: err.message };
+  }
+}
+
+async function sendAutoResponderReply(bot, remoteJid, tagToApply, pendingCOD, orderRef) {
+  let autoResponders = [];
+  try {
+    const settings = db.prepare('SELECT auto_responders FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
+    if (settings && settings.auto_responders) {
+      autoResponders = JSON.parse(settings.auto_responders);
+    }
+  } catch (e) {
+    console.error('Failed to fetch auto_responders in eventRouter:', e.message);
+  }
+
+  // Get store name
+  let storeName = 'TracePK';
+  let orderRow;
+  try {
+    orderRow = db.prepare('SELECT store_id, price, customer_name FROM orders WHERE id = ?').get(pendingCOD.order_id);
+    if (orderRow) {
+      const storeRow = db.prepare('SELECT store_name FROM stores WHERE id = ?').get(orderRow.store_id);
+      if (storeRow && storeRow.store_name) {
+        storeName = storeRow.store_name;
+      }
+    }
+  } catch (_) {}
+
+  const name = orderRow && orderRow.customer_name ? orderRow.customer_name.split(' ')[0] : 'Customer';
+  const amount = orderRow && orderRow.price !== undefined && orderRow.price !== null ? orderRow.price : 'N/A';
+
+  const formatAutoReply = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/\{ref\}/gi, orderRef)
+      .replace(/\{amount\}/gi, amount)
+      .replace(/\{name\}/gi, name)
+      .replace(/\{first_name\}/gi, name)
+      .replace(/\{store_name\}/gi, storeName);
+  };
+
+  // Map tag to trigger
+  let triggerKey = '';
+  if (tagToApply === 'Trace: Confirmed') triggerKey = '1';
+  else if (tagToApply === 'Trace: Cancelled') triggerKey = '2';
+  else if (tagToApply === 'Trace: Edit Requested') triggerKey = '3';
+  else if (tagToApply === 'Trace: Manual Review') triggerKey = 'fallback';
+
+  // Try to find matching responder
+  const matchingRule = autoResponders.find(r => String(r.trigger).trim().toLowerCase() === triggerKey);
+  let replyMessage = '';
+  if (matchingRule && matchingRule.response) {
+    replyMessage = formatAutoReply(matchingRule.response);
+  }
+
+  // Fallbacks if no matching rule or response is empty
+  if (!replyMessage) {
+    if (tagToApply === 'Trace: Confirmed') {
+      replyMessage = `🎉 Thank you! Your order ${orderRef} is confirmed and will be dispatched shortly. 📦`;
+    } else if (tagToApply === 'Trace: Cancelled') {
+      replyMessage = `Your order ${orderRef} has been cancelled. We hope to serve you again soon! 🙏`;
+    } else if (tagToApply === 'Trace: Edit Requested') {
+      replyMessage = `✏️ No worries! Please reply with your updated size or address, and we will update it for you. 📝`;
+    }
+  }
+
+  if (replyMessage) {
+    try {
+      await bot.sendMessage(remoteJid, replyMessage, false);
+    } catch (err) {
+      console.error(`Failed to send auto-reply for tag ${tagToApply}:`, err.message);
+    }
   }
 }
 

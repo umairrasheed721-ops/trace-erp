@@ -19,7 +19,8 @@ export default function useWhatsAppBot() {
     cod_template: '',
     attempted_template: '',
     dispatch_template: '',
-    poll_options: ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order']
+    poll_options: ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order'],
+    auto_responders: []
   })
 
   const [loading, setLoading] = useState(true)
@@ -124,6 +125,13 @@ export default function useWhatsAppBot() {
               s.poll_options = JSON.parse(s.poll_options);
             } catch (e) {
               s.poll_options = ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order'];
+            }
+          }
+          if (s.auto_responders && typeof s.auto_responders === 'string') {
+            try {
+              s.auto_responders = JSON.parse(s.auto_responders);
+            } catch (e) {
+              s.auto_responders = [];
             }
           }
           setSettings(prev => ({ ...prev, ...s }));

@@ -179,18 +179,11 @@ async function dispatchCODVerification(order) {
     if (mp4Path && fs.existsSync(mp4Path)) {
       // Force-send the audio
       try {
-        await bot.directSendMessage(normalizedPhone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`, null, null, null, 'native', null, { force: true });
+        await bot.directSendMessage(normalizedPhone, '🎙️ COD Verification Voice Note', true, mp4Path, 'audio', `COD_Verify_${ref}.mp4`, null, null, null, 'native', null, { force: true, orderId: orderId });
         console.log('✅ COD VERIFIER: Audio force-sent successfully to:', normalizedPhone);
       } catch (err) {
         console.error('❌ COD VERIFIER: Critical audio send failure:', err);
       }
-      try {
-        const relativeUrl = mp4Path ? `/uploads/cod_vn/${path.basename(mp4Path)}` : null;
-        db.prepare(`
-          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-          VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', '[Voice Note]', ?, 'audio', 'sent', 'default')
-        `).run(orderId, orderId, normalizedPhone, relativeUrl);
-      } catch(e) { console.error('Failed to log COD VN message:', e.message); }
     }
 
     // Hard-Fix Poll Payload Structure
@@ -201,17 +194,11 @@ async function dispatchCODVerification(order) {
     };
     // Force-send the poll/message
     try {
-      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'native', pollData, { force: true });
+      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'native', pollData, { force: true, orderId: orderId });
       console.log('✅ COD VERIFIER: Force-sent successfully to:', normalizedPhone);
     } catch (err) {
       console.error('❌ COD VERIFIER: Critical send failure:', err);
     }
-    try {
-      db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-        VALUES ((SELECT store_id FROM orders WHERE id = ? LIMIT 1), ?, ?, 'outgoing', ?, 'sent', 'default')
-      `).run(orderId, orderId, normalizedPhone, pollData.name);
-    } catch(e) { console.error('Failed to log COD Poll message:', e.message); }
 
     console.log(`🔐 COD Verifier: Verification dispatched for order ${ref}`);
   } catch (err) {
@@ -304,17 +291,8 @@ async function checkAndSendCODFollowUps(customDb, customBot) {
       console.log(`🚀 [COD_FOLLOWUP] Sending reminder to ${normalizedPhone} for order ${ref}...`);
 
       try {
-        await activeBot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true });
+        await activeBot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true, orderId: order_id });
         console.log(`✅ [COD_FOLLOWUP] Follow-up sent to ${normalizedPhone}`);
-
-        try {
-          activeDb.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-            VALUES (?, ?, ?, 'outgoing', ?, 'sent', 'default')
-          `).run(orderRow.store_id, order_id, normalizedPhone, finalMessage);
-        } catch(e) { 
-          console.error('❌ [COD_FOLLOWUP] Failed to log follow-up message to DB:', e.message); 
-        }
 
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
         const expiresStr = expiresAt.toISOString().replace('T', ' ').substring(0, 19);
