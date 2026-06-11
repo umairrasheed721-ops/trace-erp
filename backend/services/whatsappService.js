@@ -30,22 +30,34 @@ class WhatsappService {
    * @param {string} [clientUuid] - Optional unique client-side message identifier
    * @returns {Promise<MessageResponse>} Object detailing the success/fail result
    */
-  async sendText(phone, text) {
-    if (!this.sock) {
+  getBotForTenant(tenantId) {
+    const { getBot } = require('../engines/whatsapp_bot');
+    return getBot(tenantId);
+  }
+
+  /**
+   * Dispatches a plain text WhatsApp message using the active Baileys socket.
+   * @param {string} phone - The recipient phone number (auto-normalized to JID)
+   * @param {string} text - The text payload body of the message
+   * @param {string} [targetTenant='default'] - The target tenant identifier
+   * @returns {Promise<MessageResponse>} Object detailing the success/fail result
+   */
+  async sendText(phone, text, targetTenant = 'default') {
+    const botInstance = this.getBotForTenant(targetTenant);
+    if (!botInstance || !botInstance.sock) {
         console.error('[WA-FATAL] Baileys socket reference is missing in whatsappService!');
         throw new Error("WhatsApp socket not initialized.");
     }
 
-    // Clean and format JID strictly
     let jid = phone.toString().replace(/[^0-9]/g, '');
     if (!jid.endsWith('@s.whatsapp.net')) jid = `${jid}@s.whatsapp.net`;
 
-    console.log(`[WA-RAW-BYPASS] Firing message directly to Meta for JID: ${jid}`);
-    
-    // RAW DISPATCH - No queues, no delays
-    const result = await this.sock.sendMessage(jid, { text: text });
-    
-    console.log(`[WA-RAW-SUCCESS] Baileys Message ID: ${result?.key?.id}`);
+    console.log(`[WA-REAL-DISPATCH] Firing directly to Meta for JID: ${jid} on Tenant: ${targetTenant}`);
+
+    // RAW SOCKET AWAIT
+    const result = await botInstance.sock.sendMessage(jid, { text: text });
+
+    // Return the ACTUAL Baileys message ID, not the frontend clientUuid
     return { success: true, messageId: result?.key?.id };
   }
 

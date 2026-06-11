@@ -81,16 +81,6 @@ router.post('/send', authenticateToken, async (req, res) => {
   }
 
   try {
-    console.log('[WA-SEND] Retrieving bot instance for tenant:', tenantId);
-    const botInstance = getBot();
-    console.log('[WA-SEND] Bot proxy presence:', !!botInstance, 'Status:', botInstance?.status);
-
-    // Check if socket is actually available in this scope
-    if (!botInstance || !botInstance.sock) {
-      console.error('[WA-SEND-FATAL] botInstance.sock is undefined or null in this controller scope!');
-      return res.status(500).json({ error: 'WhatsApp socket is not connected to this route.' });
-    }
-
     const cleaned = normalizePhone(phone);
     const jid = cleaned + '@s.whatsapp.net';
     console.log(`[WA-SEND] Normalized destination phone: "${cleaned}", JID: "${jid}"`);
@@ -108,6 +98,14 @@ router.post('/send', authenticateToken, async (req, res) => {
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
+
+    // Force the route to fetch the correct tenant bot:
+    const targetTenant = req.body.store_id || order?.store_id || 'default';
+    const botInstance = whatsappService.getBotForTenant(targetTenant);
+
+    if (!botInstance || !botInstance.sock) {
+        return res.status(500).json({ error: `WhatsApp socket offline for tenant: ${targetTenant}` });
+    }
 
     let parsedQuoteContext = quoteContext || null;
     if (typeof parsedQuoteContext === 'string') {
@@ -180,7 +178,7 @@ router.post('/send', authenticateToken, async (req, res) => {
     let sendResult;
     try {
       console.log(`[WA-SEND] Dispatching message using whatsappService.sendText...`);
-      sendResult = await whatsappService.sendText(cleaned, textContent, uuid);
+      sendResult = await whatsappService.sendText(cleaned, textContent, targetTenant);
       console.log('[WA-SEND] whatsappService.sendText returned result:', sendResult);
       
       // Update the logged message ID to the real Baileys message ID in database
