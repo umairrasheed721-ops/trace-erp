@@ -54,14 +54,24 @@ router.post('/send-test', authenticateToken, async (req, res) => {
     const { phone, message } = req.body;
     if (!phone || !message) return res.status(400).json({ error: 'Missing phone or message' });
     
-    const result = await getBot().sendMessage(phone, message);
-    if (result.success) {
-      res.json({ success: true, message: 'Test message sent!' });
-    } else {
-      res.status(500).json({ success: false, error: result.error || 'Failed to send message.' });
+    if (!global.traceLiveSocket) {
+      return res.status(500).json({ success: false, error: "CRITICAL: Live socket is not attached to global memory." });
     }
+
+    let jid = phone.toString().replace(/[^0-9]/g, '');
+    if (!jid.endsWith('@s.whatsapp.net')) jid = `${jid}@s.whatsapp.net`;
+
+    console.log(`[WA-GLOBAL-BRIDGE] Firing test message to ${jid}`);
+
+    const sendPromise = global.traceLiveSocket.sendMessage(jid, { text: message });
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Baileys Socket Timeout')), 10000));
+    
+    const result = await Promise.race([sendPromise, timeoutPromise]);
+    
+    console.log(`[WA-GLOBAL-SUCCESS] Sent test! ID: ${result?.key?.id}`);
+    res.json({ success: true, message: 'Test message sent!' });
   } catch (err) {
-    console.error('WhatsApp /send-test error:', err.message);
+    console.error('[WA-GLOBAL-FAIL] /send-test error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -175,12 +185,22 @@ router.post('/send', authenticateToken, async (req, res) => {
       console.error('[WA-SEND] Failed to save manual chat message to SQLite:', err.message);
     }
 
+    if (!global.traceLiveSocket) {
+      return res.status(500).json({ error: "CRITICAL: Live socket is not attached to global memory." });
+    }
+
     let sendResult;
     try {
-      console.log(`[WA-SEND] Dispatching message using whatsappService.sendText...`);
-      sendResult = await whatsappService.sendText(cleaned, textContent, targetTenant);
-      console.log('[WA-SEND] whatsappService.sendText returned result:', sendResult);
+      console.log(`[WA-GLOBAL-BRIDGE] Firing message to ${jid}`);
       
+      const sendPromise = global.traceLiveSocket.sendMessage(jid, { text: textContent });
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Baileys Socket Timeout')), 10000));
+      
+      const result = await Promise.race([sendPromise, timeoutPromise]);
+      
+      console.log(`[WA-GLOBAL-SUCCESS] Sent! ID: ${result?.key?.id}`);
+      sendResult = { success: true, messageId: result?.key?.id };
+
       // Update the logged message ID to the real Baileys message ID in database
       if (sendResult?.messageId && sendResult.messageId !== uuid) {
         try {
@@ -194,14 +214,14 @@ router.post('/send', authenticateToken, async (req, res) => {
           console.error('[WA-SEND] Failed to update message_id in SQLite:', dbErr.message);
         }
       }
-    } catch (sendErr) {
-      console.error(`[WA-SEND-FATAL] whatsappService.sendText threw error:`, sendErr.message);
+    } catch (error) {
+      console.error('[WA-GLOBAL-FAIL]', error.message);
       try {
         db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE id = ?").run(dbMessageId);
       } catch (dbErr) {
         console.error('[WA-SEND] Failed to set status to failed in SQLite:', dbErr.message);
       }
-      return res.status(500).json({ error: sendErr.message || 'Failed to dispatch message' });
+      return res.status(500).json({ error: error.message });
     }
 
     const newMsg = {
