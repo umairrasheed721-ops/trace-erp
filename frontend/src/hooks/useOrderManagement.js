@@ -318,7 +318,8 @@ export default function useOrderManagement({
         },
         body: JSON.stringify({ 
           phone: editingOrder.phone,
-          text: textToSend 
+          text: textToSend,
+          store_id: editingOrder.store_id
         })
       });
       const data = await res.json();

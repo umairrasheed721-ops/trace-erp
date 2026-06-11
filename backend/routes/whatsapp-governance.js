@@ -284,7 +284,7 @@ router.get('/chats', (req, res) => {
 
       const last10 = chat.phone.substring(chat.phone.length - 10);
       const order = db.prepare(`
-        SELECT id, customer_name, wa_verification_status, financial_status, fulfillment_status, total_price 
+        SELECT id, store_id, customer_name, wa_verification_status, financial_status, fulfillment_status, total_price 
         FROM orders 
         WHERE phone LIKE ? AND tenant_id = ?
         ORDER BY id DESC LIMIT 1

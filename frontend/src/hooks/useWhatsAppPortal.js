@@ -704,6 +704,7 @@ export default function useWhatsAppPortal() {
 
     try {
       const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const activeStoreId = activeChat?.order?.store_id || customerInfo.latestOrder?.store_id || 1;
       const res = await fetch(`/api/whatsapp/send`, {
         method: 'POST',
         headers: { 
@@ -713,6 +714,7 @@ export default function useWhatsAppPortal() {
         body: JSON.stringify({ 
           phone: activeChat.phone,
           text: finalMsg, 
+          store_id: activeStoreId,
           clientUuid,
           quoteContext: activeQuote ? { 
             id: activeQuote.id, 
