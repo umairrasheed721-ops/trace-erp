@@ -171,7 +171,7 @@ tenantContext.run('default', async () => {
             INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, tenant_id)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(message_id) DO NOTHING
-          `).run(messageId, jid, poll.name, JSON.stringify(poll.values), '0102030405', 'default');
+          `).run(messageId, jid, poll.name, JSON.stringify(poll.values), 'AQIDBAU=', 'default');
           console.log(`🗄️ [Mock bot.directSendMessage] Success: Persisted mock poll to DB (message_id=${messageId})`);
           generatedPollMessageId = messageId;
         } catch (err) {

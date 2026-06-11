@@ -295,16 +295,16 @@ async function processQueue(bot, sock, db) {
           // ON CONFLICT DO NOTHING = safe if Baileys retries the send on reconnect.
           try {
             const vaultMsgId = sentMsg?.key?.id || uuid;
-            let secretHex = null;
+            let secretBase64 = null;
             const secretBuf = sentMsg?.message?.messageContextInfo?.messageSecret;
             if (secretBuf) {
-              secretHex = Buffer.from(secretBuf).toString('hex');
+              secretBase64 = Buffer.from(secretBuf).toString('base64');
             }
             db.prepare(`
               INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, tenant_id)
               VALUES (?, ?, ?, ?, ?, ?)
               ON CONFLICT(message_id) DO NOTHING
-            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), secretHex, bot.tenantId || 'default');
+            `).run(vaultMsgId, jid, poll.name, JSON.stringify(poll.values), secretBase64, bot.tenantId || 'default');
             console.log(`🗄️ [PollVault] Persisted poll "${poll.name}" (id=${vaultMsgId}) to DB with secret for crash resilience.`);
           } catch (vaultErr) {
             // Non-fatal: poll still sent successfully, vault write is best-effort
@@ -1143,10 +1143,24 @@ async function syncPollVoteToShopify(bot, msg, db) {
       try {
         console.log(`🗳️ [PollVault] Decrypting poll vote directly for poll ${pollCreationKey.id} using message_secret`);
         const { decryptPollVote } = await import('@whiskeysockets/baileys');
-        const secretBuf = Buffer.from(vaultSecret, 'hex');
-        const voterJid = msg.key.participant || remoteJid;
         
-        const decrypted = decryptPollVote(pollUpdate.vote, {
+        // Hydrate secret
+        const secretBuf = (vaultSecret.length === 64 && /^[0-9a-fA-F]+$/.test(vaultSecret))
+          ? Buffer.from(vaultSecret, 'hex')
+          : Buffer.from(vaultSecret, 'base64');
+          
+        const voterJid = msg.key.participant || remoteJid;
+        const vote = pollUpdate.vote;
+        
+        const payloadBuf = Buffer.isBuffer(vote.encPayload) 
+          ? vote.encPayload 
+          : (typeof vote.encPayload === 'string' ? Buffer.from(vote.encPayload, 'base64') : Buffer.from(vote.encPayload || ''));
+          
+        const ivBuf = Buffer.isBuffer(vote.encIv) 
+          ? vote.encIv 
+          : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
+        
+        const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
           pollCreatorJid: bot.sock?.user?.id || remoteJid,
           pollMsgId: pollCreationKey.id,
           pollEncKey: secretBuf,

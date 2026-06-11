@@ -182,23 +182,41 @@ async function handleMessagesUpdate(bot, updates) {
 
         if (dbPoll && vaultSecret && pollOptions.length > 0) {
           for (const updateItem of update.pollUpdates) {
-            try {
-              const { decryptPollVote } = await import('@whiskeysockets/baileys');
-              const secretBuf = Buffer.from(vaultSecret, 'hex');
-              const voterJid = key.participant || remoteJid;
-              
-              const decrypted = decryptPollVote(updateItem.vote, {
-                pollCreatorJid: bot.sock?.user?.id || remoteJid,
-                pollMsgId: key.id,
-                pollEncKey: secretBuf,
-                voterJid: voterJid
-              });
-              
-              if (decrypted && decrypted.selectedOptions) {
-                selectedOption = resolveSelectedOptionFromHashes(decrypted.selectedOptions, pollOptions);
+            let selectedOptions = updateItem.vote?.selectedOptions || [];
+            if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+              try {
+                const { decryptPollVote } = await import('@whiskeysockets/baileys');
+                const secretBuf = (vaultSecret.length === 64 && /^[0-9a-fA-F]+$/.test(vaultSecret))
+                  ? Buffer.from(vaultSecret, 'hex')
+                  : Buffer.from(vaultSecret, 'base64');
+                  
+                const voterJid = key.participant || remoteJid;
+                const vote = updateItem.vote;
+                
+                const payloadBuf = Buffer.isBuffer(vote.encPayload) 
+                  ? vote.encPayload 
+                  : (typeof vote.encPayload === 'string' ? Buffer.from(vote.encPayload, 'base64') : Buffer.from(vote.encPayload || ''));
+                  
+                const ivBuf = Buffer.isBuffer(vote.encIv) 
+                  ? vote.encIv 
+                  : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
+                
+                const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
+                  pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                  pollMsgId: key.id,
+                  pollEncKey: secretBuf,
+                  voterJid: voterJid
+                });
+                
+                if (decrypted && decrypted.selectedOptions) {
+                  selectedOptions = decrypted.selectedOptions;
+                }
+              } catch (decErr) {
+                console.error('⚠️ [PollVault] Direct poll vote decryption failed in eventRouter:', decErr.message);
               }
-            } catch (decErr) {
-              console.error('⚠️ [PollVault] Direct poll vote decryption failed in eventRouter:', decErr.message);
+            }
+            if (selectedOptions.length > 0) {
+              selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
             }
             if (selectedOption) break;
           }
