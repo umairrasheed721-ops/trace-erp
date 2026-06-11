@@ -85,20 +85,19 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
     return null;
   }
   
-  const rawSel = Array.isArray(selectedOptions) ? selectedOptions[0] : selectedOptions;
-  if (!rawSel) return null;
+  const crypto = require('crypto');
 
-  if (typeof rawSel === 'string') {
-    return rawSel;
-  }
-
-  if (pollOptions && pollOptions.length) {
-    const crypto = require('crypto');
-    const selBuf = Buffer.isBuffer(rawSel) ? rawSel : Buffer.from(rawSel);
-    for (const optionStr of pollOptions) {
-      const hash = crypto.createHash('sha256').update(optionStr).digest();
-      if (Buffer.compare(selBuf, hash) === 0) {
-        return optionStr;
+  for (const sel of selectedOptions) {
+    if (typeof sel === 'string') {
+      return sel;
+    }
+    const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+    if (pollOptions && pollOptions.length) {
+      for (const optionStr of pollOptions) {
+        const hash = crypto.createHash('sha256').update(optionStr).digest();
+        if (Buffer.compare(selBuf, hash) === 0) {
+          return optionStr;
+        }
       }
     }
   }
@@ -181,59 +180,25 @@ async function handleMessagesUpdate(bot, updates) {
           }
         } catch (_) {}
 
-        const pollMsg = bot.store.messages[trueRemoteJid]?.find(m => m.key.id === key.id);
-
-        if (pollMsg && pollMsg.message) {
-          const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
-          const votes = getAggregateVotesInPollMessage({
-            message: pollMsg.message,
-            pollUpdates: update.pollUpdates,
-          });
-          
-          const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
-          const voterJid = key.fromMe ? (bot.sock?.user?.id || '') : remoteJid;
-          const voterBase = getBaseJid(voterJid);
-
-          for (const option of votes) {
-            if (option.voters) {
-              const hasVoted = option.voters.some(voter => getBaseJid(voter) === voterBase);
-              if (hasVoted) {
-                selectedOption = option.name;
-                break;
-              }
-            }
-          }
-        }
-
-        // Force fallback to DB Vault decryption if selectedOption is null/undefined/Unknown
-        if ((!selectedOption || selectedOption === 'Unknown') && dbPoll && pollOptions.length > 0) {
+        if (dbPoll && vaultSecret && pollOptions.length > 0) {
           for (const updateItem of update.pollUpdates) {
-            let selectedOptions = updateItem.vote?.selectedOptions || [];
-            
-            // Decrypt using message_secret if empty or encrypted
-            if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
-              try {
-                const { decryptPollVote } = await import('@whiskeysockets/baileys');
-                const secretBuf = Buffer.from(vaultSecret, 'hex');
-                const voterJid = key.participant || remoteJid;
-                
-                const decrypted = decryptPollVote(updateItem.vote, {
-                  pollCreatorJid: bot.sock?.user?.id || remoteJid,
-                  pollMsgId: key.id,
-                  pollEncKey: secretBuf,
-                  voterJid: voterJid
-                });
-                
-                if (decrypted && decrypted.selectedOptions) {
-                  selectedOptions = decrypted.selectedOptions;
-                }
-              } catch (decErr) {
-                console.error('⚠️ [PollVault] Failed to decrypt poll vote in update handler:', decErr.message);
+            try {
+              const { decryptPollVote } = await import('@whiskeysockets/baileys');
+              const secretBuf = Buffer.from(vaultSecret, 'hex');
+              const voterJid = key.participant || remoteJid;
+              
+              const decrypted = decryptPollVote(updateItem.vote, {
+                pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                pollMsgId: key.id,
+                pollEncKey: secretBuf,
+                voterJid: voterJid
+              });
+              
+              if (decrypted && decrypted.selectedOptions) {
+                selectedOption = resolveSelectedOptionFromHashes(decrypted.selectedOptions, pollOptions);
               }
-            }
-
-            if (selectedOptions.length > 0) {
-              selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
+            } catch (decErr) {
+              console.error('⚠️ [PollVault] Direct poll vote decryption failed in eventRouter:', decErr.message);
             }
             if (selectedOption) break;
           }

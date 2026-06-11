@@ -1053,20 +1053,19 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
     return null;
   }
   
-  const rawSel = Array.isArray(selectedOptions) ? selectedOptions[0] : selectedOptions;
-  if (!rawSel) return null;
+  const crypto = require('crypto');
 
-  if (typeof rawSel === 'string') {
-    return rawSel;
-  }
-
-  if (pollOptions && pollOptions.length) {
-    const crypto = require('crypto');
-    const selBuf = Buffer.isBuffer(rawSel) ? rawSel : Buffer.from(rawSel);
-    for (const optionStr of pollOptions) {
-      const hash = crypto.createHash('sha256').update(optionStr).digest();
-      if (Buffer.compare(selBuf, hash) === 0) {
-        return optionStr;
+  for (const sel of selectedOptions) {
+    if (typeof sel === 'string') {
+      return sel;
+    }
+    const selBuf = Buffer.isBuffer(sel) ? sel : Buffer.from(sel);
+    if (pollOptions && pollOptions.length) {
+      for (const optionStr of pollOptions) {
+        const hash = crypto.createHash('sha256').update(optionStr).digest();
+        if (Buffer.compare(selBuf, hash) === 0) {
+          return optionStr;
+        }
       }
     }
   }
@@ -1138,92 +1137,39 @@ async function syncPollVoteToShopify(bot, msg, db) {
 
     let selectedOption = null;
     let decryptedVotes = null;
+    let selectedOptions = pollUpdate.vote?.selectedOptions || [];
 
-    // ── PATH 1: In-Memory Store (Hot Path) ──
-    const inMemoryCount = bot.store?.messages?.[trueRemoteJid]?.length || 0;
-    console.log(`🔍 [POLL_DIAG] STEP 4: In-memory store has ${inMemoryCount} messages for JID ${trueRemoteJid}`);
-    const pollMsg = bot.store?.messages?.[trueRemoteJid]?.find(m => m.key.id === pollCreationKey.id);
-    console.log(`🔍 [POLL_DIAG] STEP 4b: In-memory poll lookup: ${pollMsg ? '✅ FOUND' : '❌ NOT FOUND (will try DB vault)'}`);
-
-    if (pollMsg && pollMsg.message) {
-      console.log(`🗳️ [PollVault] In-memory hit for poll ${pollCreationKey.id}`);
+    if ((!selectedOptions || !selectedOptions.length) && dbPoll && vaultSecret) {
       try {
-        const { getAggregateVotesInPollMessage } = await import('@whiskeysockets/baileys');
-        const votes = getAggregateVotesInPollMessage({
-          message: pollMsg.message,
-          pollUpdates: [
-            {
-              pollUpdateMessageKey: msg.key,
-              vote: pollUpdate.vote,
-              senderTimestampMs: pollUpdate.senderTimestampMs
-            }
-          ]
+        console.log(`🗳️ [PollVault] Decrypting poll vote directly for poll ${pollCreationKey.id} using message_secret`);
+        const { decryptPollVote } = await import('@whiskeysockets/baileys');
+        const secretBuf = Buffer.from(vaultSecret, 'hex');
+        const voterJid = msg.key.participant || remoteJid;
+        
+        const decrypted = decryptPollVote(pollUpdate.vote, {
+          pollCreatorJid: bot.sock?.user?.id || remoteJid,
+          pollMsgId: pollCreationKey.id,
+          pollEncKey: secretBuf,
+          voterJid: voterJid
         });
+        
+        decryptedVotes = decrypted;
 
-        decryptedVotes = votes;
-
-        const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
-        const botBaseJid = getBaseJid(bot.sock?.user?.id);
-
-        // Find the option that this specific voter (customer or admin) selected
-        for (const option of votes) {
-          if (option.voters) {
-            const hasVoted = option.voters.some(voter => {
-              const voterBase = getBaseJid(voter);
-              if (msg.key.fromMe) {
-                return voterBase === botBaseJid; // Admin vote
-              } else {
-                return voterBase !== botBaseJid; // Customer vote
-              }
-            });
-            if (hasVoted) {
-              selectedOption = option.name;
-              break;
-            }
-          }
+        if (decrypted && decrypted.selectedOptions) {
+          selectedOptions = decrypted.selectedOptions;
+          console.log('✅ [PollVault] Decrypted poll vote options:', selectedOptions);
         }
-      } catch (err) {
-        console.error('⚠️ Error during in-memory poll decryption:', err.message);
+      } catch (decErr) {
+        console.error('⚠️ [PollVault] Direct poll vote decryption failed:', decErr.message);
       }
+    } else if (selectedOptions && selectedOptions.length) {
+      console.log('🗳️ [PollVault] Using pre-decrypted selectedOptions from vote payload:', selectedOptions);
+    } else {
+      console.warn(`⚠️ [PollVault] Cannot decrypt poll vote: poll not found in DB vault or message_secret is missing (poll ID: ${pollCreationKey.id})`);
     }
 
-    // ── FALLBACK PATH: DB Vault Decryption (Cold Path / RAM corruption recovery) ──
-    // Force the code to fall back to the DB Vault decryption using the message_secret if selectedOption is null/undefined/Unknown
-    if (!selectedOption || selectedOption === 'Unknown') {
-      console.log(`⚠️ [PollVault] In-memory decryption failed or returned Unknown for poll ${pollCreationKey.id} — falling back to DB vault decryption.`);
-
-      if (dbPoll) {
-        let selectedOptions = pollUpdate.vote?.selectedOptions || [];
-        
-        // Decrypt using message_secret if empty or encrypted
-        if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
-          try {
-            const { decryptPollVote } = await import('@whiskeysockets/baileys');
-            const secretBuf = Buffer.from(vaultSecret, 'hex');
-            const voterJid = msg.key.participant || remoteJid;
-            
-            const decrypted = decryptPollVote(pollUpdate.vote, {
-              pollCreatorJid: bot.sock?.user?.id || remoteJid,
-              pollMsgId: pollCreationKey.id,
-              pollEncKey: secretBuf,
-              voterJid: voterJid
-            });
-            
-            decryptedVotes = decrypted;
-
-            if (decrypted && decrypted.selectedOptions) {
-              selectedOptions = decrypted.selectedOptions;
-              console.log('✅ [PollVault] Decrypted poll vote options using message_secret:', selectedOptions);
-            }
-          } catch (decErr) {
-            console.error('⚠️ [PollVault] Failed to decrypt poll vote using message_secret:', decErr.message);
-          }
-        }
-
-        if (selectedOptions.length > 0 && pollOptions.length > 0) {
-          selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
-        }
-      }
+    if (selectedOptions.length > 0) {
+      selectedOption = resolveSelectedOptionFromHashes(selectedOptions, pollOptions);
     }
 
     // Log the RAW payload right before Step 5
