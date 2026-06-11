@@ -180,36 +180,58 @@ async function handleMessagesUpdate(bot, updates) {
           }
         } catch (_) {}
 
-        if (dbPoll && vaultSecret && pollOptions.length > 0) {
+        if (dbPoll && pollOptions.length > 0) {
           for (const updateItem of update.pollUpdates) {
             let selectedOptions = updateItem.vote?.selectedOptions || [];
-            if ((!selectedOptions || !selectedOptions.length) && vaultSecret) {
+            if (!selectedOptions || !selectedOptions.length) {
               try {
-                const { decryptPollVote } = await import('@whiskeysockets/baileys');
-                const secretBuf = (vaultSecret.length === 64 && /^[0-9a-fA-F]+$/.test(vaultSecret))
-                  ? Buffer.from(vaultSecret, 'hex')
-                  : Buffer.from(vaultSecret, 'base64');
+                let secretBuf = null;
+
+                // 1. Try to find the message in RAM first to get the pristine messageSecret
+                if (bot.store?.messages?.[trueRemoteJid]) {
+                  const pollMsg = bot.store.messages[trueRemoteJid].find(m => m.key.id === key.id);
+                  if (pollMsg && pollMsg.message) {
+                    const ramSecret = pollMsg.message.messageContextInfo?.messageSecret;
+                    if (ramSecret) {
+                      secretBuf = Buffer.isBuffer(ramSecret) ? ramSecret : Buffer.from(ramSecret);
+                      console.log('🗳️ [PollVault] Found pristine messageSecret in RAM in eventRouter for poll:', key.id);
+                    }
+                  }
+                }
+
+                // 2. Fall back to DB vault message_secret if RAM lookup failed
+                if (!secretBuf && vaultSecret) {
+                  console.log('🗳️ [PollVault] messageSecret not in RAM in eventRouter, falling back to DB vault message_secret for poll:', key.id);
+                  secretBuf = (vaultSecret.length === 64 && /^[0-9a-fA-F]+$/.test(vaultSecret))
+                    ? Buffer.from(vaultSecret, 'hex')
+                    : Buffer.from(vaultSecret, 'base64');
+                }
+
+                if (secretBuf) {
+                  const { decryptPollVote } = await import('@whiskeysockets/baileys');
+                  const voterJid = key.participant || remoteJid;
+                  const vote = updateItem.vote;
                   
-                const voterJid = key.participant || remoteJid;
-                const vote = updateItem.vote;
-                
-                const payloadBuf = Buffer.isBuffer(vote.encPayload) 
-                  ? vote.encPayload 
-                  : (typeof vote.encPayload === 'string' ? Buffer.from(vote.encPayload, 'base64') : Buffer.from(vote.encPayload || ''));
+                  const payloadBuf = Buffer.isBuffer(vote.encPayload) 
+                    ? vote.encPayload 
+                    : (typeof vote.encPayload === 'string' ? Buffer.from(vote.encPayload, 'base64') : Buffer.from(vote.encPayload || ''));
+                    
+                  const ivBuf = Buffer.isBuffer(vote.encIv) 
+                    ? vote.encIv 
+                    : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
                   
-                const ivBuf = Buffer.isBuffer(vote.encIv) 
-                  ? vote.encIv 
-                  : (typeof vote.encIv === 'string' ? Buffer.from(vote.encIv, 'base64') : Buffer.from(vote.encIv || ''));
-                
-                const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
-                  pollCreatorJid: bot.sock?.user?.id || remoteJid,
-                  pollMsgId: key.id,
-                  pollEncKey: secretBuf,
-                  voterJid: voterJid
-                });
-                
-                if (decrypted && decrypted.selectedOptions) {
-                  selectedOptions = decrypted.selectedOptions;
+                  const decrypted = decryptPollVote({ encPayload: payloadBuf, encIv: ivBuf }, {
+                    pollCreatorJid: bot.sock?.user?.id || remoteJid,
+                    pollMsgId: key.id,
+                    pollEncKey: secretBuf,
+                    voterJid: voterJid
+                  });
+                  
+                  if (decrypted && decrypted.selectedOptions) {
+                    selectedOptions = decrypted.selectedOptions;
+                  }
+                } else {
+                  console.warn(`⚠️ [PollVault] No messageSecret found in RAM or DB in eventRouter for poll ${key.id}`);
                 }
               } catch (decErr) {
                 console.error('⚠️ [PollVault] Direct poll vote decryption failed in eventRouter:', decErr.message);
