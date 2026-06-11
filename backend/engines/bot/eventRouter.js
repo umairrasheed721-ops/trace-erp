@@ -427,6 +427,180 @@ function handleMessagesUpsert(bot, m) {
   const { messages, type } = m;
   if (type !== 'notify' && type !== 'append') return;
   for (const msg of messages) {
+    const isFromCustomer = !msg.key.fromMe && msg.key.remoteJid && !msg.key.remoteJid.includes('@g.us');
+    const msgText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+
+    if (isFromCustomer && msgText) {
+      const cleanPhone = msg.key.remoteJid.split('@')[0].replace(/\D/g, '');
+      try {
+        const pendingCOD = db.prepare(
+          `SELECT * FROM cod_pending_verifications WHERE phone = ? AND status = 'pending'
+           AND expires_at > datetime('now', '+5 hours') ORDER BY id DESC LIMIT 1`
+        ).get(cleanPhone);
+
+        if (pendingCOD) {
+          // Normalize the text: lowercase, remove punctuation, remove extra spaces
+          const normalizedText = msgText.toLowerCase().replace(/[.,!?'"]/g, '').trim();
+          
+          // Robust Keyword Dictionaries (English + Roman Urdu)
+          const confirmWords = ['1', 'confirm', 'ok', 'yes', 'han', 'kardo', 'bhej do', 'done', 'cnf', 'right', 'bhejdain', 'jee', 'ji'];
+          const cancelWords = ['2', 'cancel', 'no', 'nahi', 'cancel kardo', 'not order', 'cancel it', 'cancel order', 'cancl', 'cncl', 'cancel krdo'];
+          const editWords = ['3', 'edit', 'change', 'size', 'address', 'galat', 'ghalat', 'mistake', 'update'];
+
+          let tagToApply = '';
+
+          // Helper function to check if any keyword exists in the normalized text
+          const matches = (keywordsArray) => keywordsArray.some(keyword => normalizedText.includes(keyword) || normalizedText === keyword);
+
+          if (matches(confirmWords)) {
+              tagToApply = 'Trace: Confirmed';
+          } else if (matches(cancelWords)) {
+              tagToApply = 'Trace: Cancelled';
+          } else if (matches(editWords)) {
+              tagToApply = 'Trace: Edit Requested';
+          } else {
+              // FALLBACK: Customer wrote something complex (e.g. "kal delivery de dena")
+              tagToApply = 'Trace: Manual Review'; 
+          }
+
+          const dbRecord = {
+            order_id: pendingCOD.order_id,
+            tenant_id: bot.tenantId || 'default'
+          };
+          
+          let pollId = null;
+          try {
+            const pollRow = db.prepare(
+              `SELECT message_id FROM whatsapp_polls WHERE remote_jid = ? ORDER BY id DESC LIMIT 1`
+            ).get(msg.key.remoteJid);
+            if (pollRow) pollId = pollRow.message_id;
+          } catch (_) {}
+
+          // Polyfill db.run if it doesn't exist
+          if (typeof db.run !== 'function') {
+            db.run = function(sql, params, callback) {
+              try {
+                const stmt = this.prepare(sql);
+                stmt.run(...params);
+                if (typeof callback === 'function') callback(null);
+              } catch (err) {
+                if (typeof callback === 'function') callback(err);
+              }
+            };
+          }
+
+          if (pollId) {
+            try {
+              db.prepare(`UPDATE whatsapp_polls SET order_id = ? WHERE message_id = ?`).run(dbRecord.order_id, pollId);
+            } catch (e) {}
+          }
+
+          // Fetch the order ref for use in auto-reply messages
+          let orderRef = `#${pendingCOD.order_id}`;
+          try {
+            const orderRow = db.prepare('SELECT ref_number FROM orders WHERE id = ?').get(pendingCOD.order_id);
+            if (orderRow && orderRow.ref_number) orderRef = orderRow.ref_number;
+          } catch (_) {}
+
+          console.log(`🎯 [TEXT_REPLY_MATCH] Customer +${cleanPhone} matched: "${tagToApply}" for Order ${pendingCOD.order_id} (input: "${msgText}")`);
+
+          // ── 1. Update whatsapp_polls local erp_status ──────────────────
+          const query = `UPDATE whatsapp_polls SET erp_status = ? WHERE order_id = ?`;
+          db.run(query, [tagToApply, dbRecord.order_id], function(err) {
+              if (err) {
+                  console.error(`[ERP_DB] ❌ Failed to update local status:`, err);
+              } else {
+                  console.log(`[ERP_DB] ✅ Local ERP status safely updated to "${tagToApply}" for Order ${dbRecord.order_id} via text reply`);
+              }
+          });
+
+          // ── 2. Sync to main orders table (delivery_status + payment_status) ──
+          try {
+            let mainDeliveryStatus = null;
+            let mainPaymentStatus = null;
+
+            if (tagToApply.includes('Confirmed')) {
+              mainDeliveryStatus = 'Confirmed';
+              mainPaymentStatus  = 'COD Confirmed';
+            } else if (tagToApply.includes('Cancelled')) {
+              mainDeliveryStatus = 'Cancelled';
+              mainPaymentStatus  = 'COD Cancelled';
+            } else if (tagToApply.includes('Edit')) {
+              mainPaymentStatus  = 'On Hold - Customer Edit';
+            } else if (tagToApply.includes('Manual')) {
+              mainPaymentStatus  = 'On Hold - Customer Edit';
+            }
+
+            if (mainDeliveryStatus || mainPaymentStatus) {
+              const setClauses = [];
+              const setParams  = [];
+
+              if (mainDeliveryStatus) {
+                setClauses.push(`delivery_status = ?`);
+                setParams.push(mainDeliveryStatus);
+              }
+              if (mainPaymentStatus) {
+                setClauses.push(`payment_status = ?`);
+                setParams.push(mainPaymentStatus);
+              }
+              setClauses.push(`status_date = datetime('now', '+5 hours')`);
+              if (tagToApply.includes('Confirmed')) {
+                setClauses.push(`wa_verification_status = 'verified'`);
+              }
+
+              setParams.push(dbRecord.order_id);
+
+              db.prepare(
+                `UPDATE orders SET ${setClauses.join(', ')} WHERE id = ?`
+              ).run(...setParams);
+
+              console.log(`[ERP_DB] 🔄 Main Order ${dbRecord.order_id} auto-synced via text: delivery_status="${mainDeliveryStatus || '(unchanged)'}", payment_status="${mainPaymentStatus || '(unchanged)'}"`);
+
+              // ── 3. Fire SSE broadcast so Command Centre updates immediately ──
+              try {
+                const orderRow = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(dbRecord.order_id);
+                if (orderRow) {
+                  const { broadcast } = require('../../sse');
+                  broadcast('order_updated', {
+                    storeId: orderRow.store_id,
+                    shopifyOrderId: orderRow.shopify_order_id,
+                    orderId: dbRecord.order_id,
+                    delivery_status: mainDeliveryStatus,
+                    payment_status: mainPaymentStatus,
+                    source: 'wa_text_reply'
+                  });
+                  console.log(`[ERP_DB] 📡 SSE broadcast fired for Order ${dbRecord.order_id}`);
+                }
+              } catch (sseErr) {
+                console.warn(`[ERP_DB] ⚠️ SSE broadcast failed (non-fatal):`, sseErr.message);
+              }
+            }
+          } catch (syncErr) {
+            console.error(`[ERP_DB] ❌ Failed to sync WA vote to main orders table:`, syncErr.message);
+          }
+
+          // ── 4. Update cod_pending_verifications and send messages ──
+          if (tagToApply === 'Trace: Confirmed') {
+            db.prepare(`UPDATE cod_pending_verifications SET status = 'confirmed', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+            bot.sendMessage(msg.key.remoteJid, `🎉 Thank you! Your order ${orderRef} is confirmed and will be dispatched shortly. 📦`, false).catch(err => {
+              console.error('Failed to send confirmation text reply:', err.message);
+            });
+          } else if (tagToApply === 'Trace: Cancelled') {
+            db.prepare(`UPDATE cod_pending_verifications SET status = 'cancelled', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+            bot.sendMessage(msg.key.remoteJid, `Your order ${orderRef} has been cancelled. We hope to serve you again soon! 🙏`, false).catch(err => {
+              console.error('Failed to send cancellation text reply:', err.message);
+            });
+          } else if (tagToApply === 'Trace: Edit Requested') {
+            db.prepare(`UPDATE cod_pending_verifications SET status = 'on_hold', replied_at = datetime('now', '+5 hours') WHERE id = ?`).run(pendingCOD.id);
+            bot.sendMessage(msg.key.remoteJid, `✏️ No worries! Please reply with your updated size or address, and we will update it for you. 📝`, false).catch(err => {
+              console.error('Failed to send hold text reply:', err.message);
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[ERP_DB] Failed to process fuzzy text reply update:', e.message);
+      }
+    }
 
     // ── CRITICAL: Poll votes MUST bypass the portal-hook HTTP path ──
     // pollUpdate.vote.selectedOptions contains raw Uint8Array/Buffer SHA-256 hashes.
