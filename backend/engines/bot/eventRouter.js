@@ -420,7 +420,22 @@ async function handleMessagesUpdate(bot, updates) {
       }
     }
   }
-}
+}const downloadMediaAndUpload = async (message) => {
+  const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
+  const cloudinary = require('../../cloudinaryConfig');
+  const buffer = await downloadMediaMessage(message, 'buffer', {});
+  
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'trace_erp_whatsapp' },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result.secure_url);
+      }
+    );
+    uploadStream.end(buffer);
+  });
+};
 
 
 function handleMessagesUpsert(bot, m) {
@@ -429,6 +444,65 @@ function handleMessagesUpsert(bot, m) {
   for (const msg of messages) {
     const isFromCustomer = !msg.key.fromMe && msg.key.remoteJid && !msg.key.remoteJid.includes('@g.us');
     const msgText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+
+    // Direct Cloudinary Ingestion for incoming media messages
+    if (isFromCustomer) {
+      const mediaDetails = getMessageMediaDetails(msg);
+      if (mediaDetails && (mediaDetails.type === 'image' || mediaDetails.type === 'audio' || mediaDetails.type === 'video')) {
+        setImmediate(() => {
+          tenantContext.run(bot.tenantId, async () => {
+            try {
+              console.log(`📸 [Cloudinary EventRouter] Uploading incoming media (${mediaDetails.type}) to Cloudinary...`);
+              const secure_url = await downloadMediaAndUpload(msg);
+              console.log(`✅ [Cloudinary EventRouter] secure_url = ${secure_url}`);
+
+              const cleanPhone = msg.key.remoteJid.split('@')[0].replace(/\D/g, '');
+              const order = db.prepare(`SELECT id, store_id FROM orders WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${cleanPhone.substring(Math.max(0, cleanPhone.length - 10))}%`);
+              const orderId = order ? order.id : null;
+              const storeId = order ? order.store_id : 1;
+              const finalMessage = `[${mediaDetails.type.toUpperCase()}]`;
+
+              let dbMessageId = null;
+              const existing = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
+              if (!existing) {
+                const result = db.prepare(`
+                  INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+                  VALUES (?, ?, ?, 'incoming', ?, ?, ?, ?, 'sent', ?)
+                `).run(storeId, orderId, cleanPhone, finalMessage, msg.key.id, secure_url, mediaDetails.type, bot.tenantId || 'default');
+                dbMessageId = result.lastInsertRowid;
+              } else {
+                db.prepare('UPDATE whatsapp_messages SET media_url = ?, media_type = ? WHERE message_id = ?').run(secure_url, mediaDetails.type, msg.key.id);
+                dbMessageId = existing.id;
+              }
+
+              try {
+                const { broadcast } = require('../../websocket');
+                broadcast('message', {
+                  order_id: orderId,
+                  message: {
+                    id: dbMessageId,
+                    store_id: storeId,
+                    order_id: orderId,
+                    phone: cleanPhone,
+                    direction: 'incoming',
+                    message: finalMessage,
+                    message_id: msg.key.id,
+                    media_url: secure_url,
+                    media_type: mediaDetails.type,
+                    status: 'sent',
+                    created_at: new Date().toISOString()
+                  }
+                });
+              } catch (wsErr) {
+                console.error('⚠️ [Cloudinary EventRouter] WebSocket broadcast failed:', wsErr.message);
+              }
+            } catch (err) {
+              console.error('❌ [Cloudinary EventRouter] Stream upload failed:', err.message);
+            }
+          });
+        });
+      }
+    }
 
     if (isFromCustomer && msgText) {
       const cleanPhone = msg.key.remoteJid.split('@')[0].replace(/\D/g, '');
