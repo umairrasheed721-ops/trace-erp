@@ -214,6 +214,19 @@ router.post('/send', authenticateToken, async (req, res) => {
           console.error('[WA-SEND] Failed to update message_id in SQLite:', dbErr.message);
         }
       }
+
+      const safeId = result?.key?.id || `msg-${Date.now()}`;
+      const { broadcast } = require('../websocket');
+      const broadcastToClients = (payload) => {
+        if (typeof broadcast === 'function') {
+          broadcast(payload.type, payload.data);
+        }
+      };
+
+      // Broadcast the outgoing message to the React UI instantly
+      if (typeof broadcastToClients === 'function') {
+        broadcastToClients({ type: 'NEW_MESSAGE', data: { id: safeId, text: textContent, direction: 'outbound' }});
+      }
     } catch (error) {
       console.error('[WA-GLOBAL-FAIL]', error.message);
       try {

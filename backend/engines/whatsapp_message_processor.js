@@ -832,6 +832,24 @@ async function processIncomingMessage(bot, msg, sock, db) {
           intent: tag
         }
       });
+
+      const broadcastToClients = (payload) => {
+        if (typeof broadcast === 'function') {
+          broadcast(payload.type, payload.data);
+        }
+      };
+
+      if (typeof broadcastToClients === 'function') {
+        broadcastToClients({
+          type: 'NEW_MESSAGE',
+          data: {
+            id: msg.key.id,
+            phone: fromPhone,
+            text: finalMessage,
+            direction: isOutgoing ? 'outbound' : 'inbound'
+          }
+        });
+      }
     } catch (e) {}
   }
 
