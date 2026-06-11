@@ -1126,16 +1126,20 @@ async function syncPollVoteToShopify(bot, msg, db) {
         ]
       });
 
-      // getBaseJid strips device suffixes: "92300...@s.whatsapp.net:5" → "92300...@s.whatsapp.net"
-      // Needed because fromMe votes carry the bot's multi-device JID which has a colon suffix
       const getBaseJid = (jid) => jid ? jid.split(':')[0].split('@')[0] : '';
-      const botJid = bot.sock?.user?.id;
-      const targetBaseJid = getBaseJid(msg.key.fromMe ? botJid : remoteJid);
+      const botBaseJid = getBaseJid(bot.sock?.user?.id);
 
       // Find the option that this specific voter (customer or admin) selected
       for (const option of votes) {
         if (option.voters) {
-          const hasVoted = option.voters.some(voter => getBaseJid(voter) === targetBaseJid);
+          const hasVoted = option.voters.some(voter => {
+            const voterBase = getBaseJid(voter);
+            if (msg.key.fromMe) {
+              return voterBase === botBaseJid; // Admin vote
+            } else {
+              return voterBase !== botBaseJid; // Customer vote
+            }
+          });
           if (hasVoted) {
             selectedOption = option.name;
             break;
@@ -1220,20 +1224,18 @@ async function syncPollVoteToShopify(bot, msg, db) {
     console.log(`🔍 [POLL_DIAG] STEP 5: selectedOption resolved = "${selectedOption || 'NULL — no match found'}"`); 
 
     if (selectedOption) {
-      const lowerVote = selectedOption.toLowerCase();
-      const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
-      const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
-      const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
-      console.log(`🔍 [POLL_DIAG] STEP 5b: isConfirm=${isConfirm}, isCancel=${isCancel}, isEdit=${isEdit}`);
-
+      const opt = selectedOption.toLowerCase();
       let statusTag = null;
-      if (isConfirm) {
+
+      if (opt.includes('confirm')) {
         statusTag = 'Trace: Confirmed';
-      } else if (isCancel) {
+      } else if (opt.includes('cancel')) {
         statusTag = 'Trace: Cancelled';
-      } else if (isEdit) {
-        statusTag = 'Trace: Edit Required';
+      } else if (opt.includes('edit') || opt.includes('size') || opt.includes('address')) {
+        statusTag = 'Trace: Edit Requested';
       }
+
+      console.log(`🔍 [POLL_DIAG] STEP 5b: selectedOption="${selectedOption}", statusTag="${statusTag}"`);
 
       console.log(`🔍 [POLL_DIAG] STEP 6: statusTag = "${statusTag || 'NULL — vote option did not match confirm/cancel/edit keywords'}"`); 
 

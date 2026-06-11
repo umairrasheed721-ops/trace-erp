@@ -235,9 +235,9 @@ async function handleMessagesUpdate(bot, updates) {
             
             if (pendingCOD) {
               const lowerVote = selectedOption.toLowerCase();
-              const isConfirm = lowerVote.includes('confirm') || selectedOption.includes('✅');
-              const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address') || selectedOption.includes('✏️');
-              const isCancel = lowerVote.includes('cancel') || selectedOption.includes('❌');
+              const isConfirm = lowerVote.includes('confirm');
+              const isEdit = lowerVote.includes('edit') || lowerVote.includes('size') || lowerVote.includes('address');
+              const isCancel = lowerVote.includes('cancel');
 
               // Fetch the order ref for use in auto-reply messages
               let orderRef = `#${pendingCOD.order_id}`;

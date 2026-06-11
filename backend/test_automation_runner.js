@@ -209,8 +209,8 @@ tenantContext.run('default', async () => {
 
     // 6. STEP 3: Construct the fake incoming WhatsApp vote casting payload
     console.log('🗳️ [TestStep 3] Casting mock incoming WhatsApp vote...');
-    const cancelOption = "❌ Cancel Order";
-    const cancelOptionHash = crypto.createHash('sha256').update(cancelOption).digest();
+    const editOption = "✏️ Edit Size / Address";
+    const editOptionHash = crypto.createHash('sha256').update(editOption).digest();
 
     const mockMsg = {
       key: {
@@ -227,7 +227,7 @@ tenantContext.run('default', async () => {
           },
           vote: {
             selectedOptions: [
-              cancelOptionHash
+              editOptionHash
             ],
             senderTimestampMs: String(Date.now())
           }
