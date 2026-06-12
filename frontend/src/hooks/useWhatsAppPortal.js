@@ -23,6 +23,17 @@ export default function useWhatsAppPortal() {
     removeQuotedMessageGlobally 
   } = useQuoteDraft()
 
+  // --- REFS (Moved to top to prevent temporal dead zone hoisting issues in production build) ---
+  const timelineEndRef = useRef(null)
+  const cmdPaletteInputRef = useRef(null)
+  const inputRef = useRef(null)
+
+  function scrollToBottom() {
+    setTimeout(() => {
+      timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
+  }
+
   const getMediaUrlWithToken = (mediaUrl) => {
     if (!mediaUrl) return ''
     if (mediaUrl.startsWith('http') || mediaUrl.startsWith('blob:')) return mediaUrl
@@ -206,11 +217,6 @@ export default function useWhatsAppPortal() {
     { icon: '📋', label: 'Filter: All', desc: 'Show all conversations', section: 'Filters', shortcut: null, action: () => { setActiveFilter('all'); setShowCmdPalette(false); } },
   ]
 
-  // --- REFS ---
-  const timelineEndRef = useRef(null)
-  const cmdPaletteInputRef = useRef(null)
-  const inputRef = useRef(null)
-  
   // --- SUB-HOOKS INITIALIZATION ---
   const socketHook = useWhatsAppSocket({
     activeChatRef,
@@ -221,7 +227,7 @@ export default function useWhatsAppPortal() {
     removeQuotedMessageGlobally,
     addToast,
     fetchChats: (silent) => fetchChats(silent),
-    scrollToBottom
+    scrollToBottom: () => scrollToBottom()
   })
 
   const audioHook = useWhatsAppAudio({
@@ -231,7 +237,7 @@ export default function useWhatsAppPortal() {
     setMessages,
     setChats,
     addToast,
-    scrollToBottom
+    scrollToBottom: () => scrollToBottom()
   })
   
   // --- FETCH CHATS ---
@@ -729,12 +735,6 @@ export default function useWhatsAppPortal() {
   }
 
   // --- HELPERS ---
-  function scrollToBottom() {
-    setTimeout(() => {
-      timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
-  }
-
   const formatTime = (isoString) => {
     if (!isoString) return ''
     const date = new Date(isoString)
