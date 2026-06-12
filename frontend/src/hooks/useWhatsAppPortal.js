@@ -729,7 +729,7 @@ export default function useWhatsAppPortal() {
   }
 
   // --- HELPERS ---
-  const scrollToBottom = () => {
+  function scrollToBottom() {
     setTimeout(() => {
       timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
