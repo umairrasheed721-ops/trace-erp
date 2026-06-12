@@ -55,6 +55,12 @@ router.use('/', require('./whatsapp/wa-broadcasts'));
 router.use('/', require('./whatsapp/wa-optouts'));
 router.use('/', require('./whatsapp/wa-rules'));
 
+// POST /api/whatsapp-governance/webhook/whatsapp (Evolution API Webhook)
+router.post('/webhook/whatsapp', async (req, res) => {
+  console.log('Evolution API Webhook received:', req.body);
+  return res.status(200).send('OK');
+});
+
 // GET /api/whatsapp-governance/chat/:order_id
 router.get('/chat/:order_id', async (req, res) => {
   const { order_id } = req.params;

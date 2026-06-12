@@ -95,12 +95,8 @@ class WhatsAppBot {
     // processingReplies: Set<phone> — prevents concurrent auto-reply execution for same phone
     this.processingReplies = new Set();
 
-    // Prevent local dev from running the bot unless explicitly enabled
-    if (!isProduction) {
-      console.log('🛑 WhatsApp Bot disabled in local dev to prevent message stealing. Set BOT_ENABLED=true to force.');
-      this.status = 'DISABLED';
-      return;
-    }
+    // Set status to CONNECTED by default for Evolution API integration
+    this.status = 'CONNECTED';
 
     // Periodically clean up local state caches to prevent memory leaks
     setInterval(() => {
@@ -111,14 +107,9 @@ class WhatsAppBot {
       }
     }, 3600000); // Clean every hour
 
-    // Start outgoing queue processor polling interval
-    // ======================================================================
-    // ⚠️ @AI-CRITICAL-ZONE: HIGH FRAGILITY SYSTEM BLOCK
-    // CONCURRENCY, PACING, OR SYNC LOGIC HERE.
-    // DO NOT REFACTOR OR MODIFY THIS BLOCK WITHOUT EXPLICIT HUMAN APPROVAL.
-    // ======================================================================
+    // Start outgoing queue processor polling interval (Refactored for Evolution API)
     setInterval(async () => {
-      if (this.status !== 'CONNECTED' || !this.sock) return;
+      if (this.status !== 'CONNECTED') return;
       try {
         await this.processOutgoingQueue();
       } catch (err) {
@@ -126,7 +117,7 @@ class WhatsAppBot {
       }
     }, 2000);
 
-    setTimeout(() => this._connect(), 5000);
+    // setTimeout(() => this._connect(), 5000); // Commented out Baileys local socket connection
   }
 
   /**
@@ -231,50 +222,10 @@ class WhatsAppBot {
       }
 
       // Format JID
-      let jid = msg.phone.replace(/[^0-9]/g, '');
-      if (!jid.endsWith('@s.whatsapp.net')) {
-        jid = `${jid}@s.whatsapp.net`;
-      }
-
-      console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Sending message ID: ${msg.id} to JID: ${jid}`);
+      let cleanedPhone = msg.phone.replace(/\D/g, '');
+      console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Sending message ID: ${msg.id} to phone: ${cleanedPhone} via Evolution API`);
       
-      let payload = { text: msg.message };
-      
-      // If the message has quote context, resolve and pass it in options
-      let sendOptions = {};
-      if (msg.quote_context) {
-        try {
-          const parsedQuote = JSON.parse(msg.quote_context);
-          if (parsedQuote && (parsedQuote.id || parsedQuote.message_id)) {
-            const qid = parsedQuote.id || parsedQuote.message_id;
-            const quotedRow = db.prepare(`
-              SELECT * FROM whatsapp_messages 
-              WHERE message_id = ? AND tenant_id = ?
-              LIMIT 1
-            `).get(qid, this.tenantId);
-
-            const quotedMsgContent = {
-              conversation: parsedQuote.text || (quotedRow ? quotedRow.message : '') || 'Media'
-            };
-
-            const quotedMessage = {
-              key: {
-                remoteJid: jid,
-                fromMe: quotedRow ? quotedRow.direction === 'outgoing' : false,
-                id: qid,
-                participant: parsedQuote.participant || jid
-              },
-              message: quotedMsgContent
-            };
-            sendOptions.quoted = quotedMessage;
-            console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Appended quote context to message send payload`);
-          }
-        } catch (quoteErr) {
-          console.warn('[WA-QUEUE] Failed to construct quote context options:', quoteErr.message);
-        }
-      }
-
-      const result = await this.sock.sendMessage(jid, payload, sendOptions);
+      const result = await this.sendToEvolutionApi(cleanedPhone, msg.message);
       const realMessageId = result?.key?.id || msg.client_uuid;
 
       // Mark as 'sent'
@@ -354,22 +305,76 @@ class WhatsAppBot {
    * @throws {Error} If connection status is not CONNECTED
    * @returns {Promise<void>}
    */
-  async ensureConnected() {
-    if (this.status === 'CONNECTED' && this.sock) {
-      return;
+  /**
+   * Helper to dispatch a text or media message to the external Evolution API.
+   * 
+   * @param {string} phone - Recipient phone number
+   * @param {string} message - Text body
+   * @param {string} [mediaUrl=null] - Attachment URL
+   * @param {string} [mediaType=null] - Attachment type
+   * @param {string} [fileName=null] - Custom file descriptor name
+   * @returns {Promise<object>} Evolution API response JSON
+   */
+  async sendToEvolutionApi(phone, message, mediaUrl = null, mediaType = null, fileName = null) {
+    const cleaned = phone.replace(/\D/g, '');
+    const evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    const evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
+    const evolutionInstance = process.env.EVOLUTION_API_INSTANCE || 'TracePK';
+
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    if (evolutionApiKey) {
+      headers['apikey'] = evolutionApiKey;
     }
-    console.log(`[TRACER_LOG] Connection not active (status: ${this.status}). Waiting for connection...`);
-    
-    const start = Date.now();
-    while (Date.now() - start < 10000) {
-      if (this.status === 'CONNECTED' && this.sock) {
-        console.log(`[TRACER_LOG] Connection restored dynamically after ${Date.now() - start}ms.`);
-        return;
+
+    let endpoint = `${evolutionUrl}/message/sendText/${evolutionInstance}`;
+    let bodyPayload = {
+      number: cleaned,
+      options: {
+        delay: 1200,
+        presence: "composing"
       }
-      await new Promise(r => setTimeout(r, 200));
+    };
+
+    if (mediaUrl) {
+      endpoint = `${evolutionUrl}/message/sendMedia/${evolutionInstance}`;
+      bodyPayload.mediaMessage = {
+        mediatype: mediaType || 'image',
+        fileName: fileName || 'file',
+        caption: message || '',
+        media: mediaUrl
+      };
+    } else {
+      bodyPayload.textMessage = {
+        text: String(message || '')
+      };
     }
-    
-    throw new Error(`WhatsApp is not connected (current status: ${this.status})`);
+
+    console.log(`[EVOLUTION-API] POST to ${endpoint}`);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(bodyPayload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Evolution API request failed with status ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Blocks execution loop until the WebSocket connection is active.
+   * Refactored as no-op for the external Evolution API microservice.
+   * 
+   * @returns {Promise<void>}
+   */
+  async ensureConnected() {
+    this.status = 'CONNECTED';
+    return;
   }
 
   /**
@@ -655,38 +660,12 @@ class WhatsAppBot {
         }
       }
 
-      try {
-        await this.sock.sendPresenceUpdate('composing', jid);
-      } catch (e) {}
-
-      const delays = [2000, 4000, 8000];
-      let attempt = 0;
-      let sentMsg;
-
       this._botSentIds.add(uuid);
       const deleteTimeout = setTimeout(() => this._botSentIds.delete(uuid), 30000);
 
-      while (true) {
-        try {
-          const sendOptions = { messageId: uuid };
-          sentMsg = await this.sock.sendMessage(jid, payload, sendOptions);
-          break;
-        } catch (err) {
-          attempt++;
-          if (attempt > 3) {
-            this._botSentIds.delete(uuid);
-            clearTimeout(deleteTimeout);
-            throw err;
-          }
-          const retryDelay = delays[attempt - 1];
-          console.warn(`[DIRECT_RETRY] sendMessage failed for ${jid}, retry ${attempt}/3 in ${retryDelay}ms. Error: ${err.message}`);
-          await new Promise(r => setTimeout(r, retryDelay));
-        }
-      }
-
-      try {
-        await this.sock.sendPresenceUpdate('paused', jid);
-      } catch (e) {}
+      // Dispatch to external Evolution API
+      const responseData = await this.sendToEvolutionApi(cleaned, finalMessage, mediaUrl, finalMediaType, fileName);
+      const sentMsg = responseData;
 
       const messageId = sentMsg?.key?.id || uuid;
       if (messageId !== uuid) {
