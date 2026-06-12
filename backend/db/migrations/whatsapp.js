@@ -112,6 +112,9 @@ Please reply with:
     enable_post_delivery_feedback INTEGER DEFAULT 1,
     post_delivery_template TEXT DEFAULT '👋 Hi {first_name}! Kaisa laga aapko TracePK se received aapka parcel? 😍 Apne parcel ki picture ya video hamare sath share karein aur apne next order par payen FLAT 10% OFF! Discount Code: TRACE10 🎁✨',
     auto_responders TEXT DEFAULT '[]',
+    enable_manual_chat_dispatch INTEGER DEFAULT 1,
+    enable_automated_broadcasts INTEGER DEFAULT 1,
+    vip_bypass_manual INTEGER DEFAULT 1,
     updated_at TEXT DEFAULT (datetime('now'))
   );`,
 
@@ -349,9 +352,29 @@ Please reply with:
     tenant_id
   FROM orders;`,
 
+  // 26. CREATE whatsapp_message_queue TABLE & INDEXES
+  `CREATE TABLE IF NOT EXISTS whatsapp_message_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER DEFAULT 1,
+    order_id INTEGER,
+    phone TEXT NOT NULL,
+    message TEXT NOT NULL,
+    direction TEXT DEFAULT 'outgoing',
+    message_id TEXT,
+    client_uuid TEXT,
+    is_manual INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'pending',
+    tenant_id TEXT DEFAULT 'default',
+    quote_context TEXT DEFAULT NULL,
+    created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_wa_msg_queue_status ON whatsapp_message_queue(status, tenant_id);`,
+
   // 24. Idempotent Schema Alterations
   (db) => {
     const alters = [
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_automated_broadcasts INTEGER DEFAULT 1",
+      "ALTER TABLE whatsapp_settings ADD COLUMN vip_bypass_manual INTEGER DEFAULT 1",
       "ALTER TABLE whatsapp_settings ADD COLUMN ai_responder_enabled INTEGER DEFAULT 1",
       "ALTER TABLE whatsapp_settings ADD COLUMN ai_tracking_template TEXT DEFAULT '🤖 [AI Support] Aapka parcel ({tracking}) {courier} ke paas hai. Current status: {status}. Track link: {link}'",
       "ALTER TABLE whatsapp_settings ADD COLUMN ai_landmark_template TEXT DEFAULT '🤖 [AI Support] Shukriya! Aapka nearest landmark ({landmark}) record kar liya gaya hai aur rider ko update kar diya gaya hai.'",
@@ -404,7 +427,8 @@ Please reply with:
       "ALTER TABLE whatsapp_settings DROP COLUMN thank_you_template",
       "ALTER TABLE whatsapp_settings DROP COLUMN fallback_autoreply_template",
       "ALTER TABLE whatsapp_settings DROP COLUMN enable_thank_you_msg",
-      "ALTER TABLE whatsapp_settings DROP COLUMN enable_fallback_autoreply"
+      "ALTER TABLE whatsapp_settings DROP COLUMN enable_fallback_autoreply",
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_manual_chat_dispatch INTEGER DEFAULT 1"
     ];
 
     alters.forEach(sql => {

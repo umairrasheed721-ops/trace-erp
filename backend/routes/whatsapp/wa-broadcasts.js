@@ -131,14 +131,14 @@ router.post('/settings', (req, res) => {
     // Merge req.body with current settings
     const merged = { ...current, ...req.body };
 
-    const { mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, enable_cod_reminders, enable_post_delivery_feedback, post_delivery_template, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min, cod_template, attempted_template, dispatch_template, ai_responder_enabled, ai_tracking_template, ai_landmark_template, poll_options, auto_responders } = merged;
+    const { mode, cod_verification_enabled, attempted_delivery_enabled, dispatch_alerts_enabled, enable_cod_reminders, enable_post_delivery_feedback, post_delivery_template, min_delay_sec, max_delay_sec, max_per_hour, cooling_period_min, cod_template, attempted_template, dispatch_template, ai_responder_enabled, ai_tracking_template, ai_landmark_template, poll_options, auto_responders, enable_manual_chat_dispatch, enable_automated_broadcasts, vip_bypass_manual } = merged;
 
     const pollOptionsStr = Array.isArray(poll_options) ? JSON.stringify(poll_options) : (typeof poll_options === 'string' ? poll_options : '[]');
     const autoRespondersStr = Array.isArray(auto_responders) ? JSON.stringify(auto_responders) : (typeof auto_responders === 'string' ? auto_responders : '[]');
 
     db.prepare(`
       UPDATE whatsapp_settings SET
-        mode = ?, cod_verification_enabled = ?, attempted_delivery_enabled = ?, dispatch_alerts_enabled = ?, enable_cod_reminders = ?, enable_post_delivery_feedback = ?, post_delivery_template = ?, min_delay_sec = ?, max_delay_sec = ?, max_per_hour = ?, cooling_period_min = ?, cod_template = ?, attempted_template = ?, dispatch_template = ?, ai_responder_enabled = ?, ai_tracking_template = ?, ai_landmark_template = ?, poll_options = ?, auto_responders = ?, updated_at = datetime('now')
+        mode = ?, cod_verification_enabled = ?, attempted_delivery_enabled = ?, dispatch_alerts_enabled = ?, enable_cod_reminders = ?, enable_post_delivery_feedback = ?, post_delivery_template = ?, min_delay_sec = ?, max_delay_sec = ?, max_per_hour = ?, cooling_period_min = ?, cod_template = ?, attempted_template = ?, dispatch_template = ?, ai_responder_enabled = ?, ai_tracking_template = ?, ai_landmark_template = ?, poll_options = ?, auto_responders = ?, enable_manual_chat_dispatch = ?, enable_automated_broadcasts = ?, vip_bypass_manual = ?, updated_at = datetime('now')
     `).run(
       mode,
       cod_verification_enabled ? 1 : 0,
@@ -158,7 +158,10 @@ router.post('/settings', (req, res) => {
       ai_tracking_template || '',
       ai_landmark_template || '',
       pollOptionsStr,
-      autoRespondersStr
+      autoRespondersStr,
+      enable_manual_chat_dispatch !== undefined ? (enable_manual_chat_dispatch ? 1 : 0) : 1,
+      enable_automated_broadcasts !== undefined ? (enable_automated_broadcasts ? 1 : 0) : 1,
+      vip_bypass_manual !== undefined ? (vip_bypass_manual ? 1 : 0) : 1
     );
 
     // Update bot in memory

@@ -81,12 +81,22 @@ router.post('/send', authenticateToken, async (req, res) => {
   }
 
   try {
+    const { db } = require('../db');
+
+    // Check if manual chat dispatch is explicitly disabled in settings
+    const waSettings = db.prepare('SELECT enable_manual_chat_dispatch, vip_bypass_manual FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+    if (waSettings.enable_manual_chat_dispatch === 0 || waSettings.vip_bypass_manual === 0) {
+      console.warn('[WA-SEND] Blocking manual send: Manual ERP Chat Dispatch is disabled.');
+      return res.status(403).json({
+        error: "Manual ERP Chat Dispatch is currently disabled in the Master Settings."
+      });
+    }
+
     const cleaned = normalizePhone(phone);
     const jid = cleaned + '@s.whatsapp.net';
     console.log(`[WA-SEND] Normalized destination phone: "${cleaned}", JID: "${jid}"`);
 
     const last10 = cleaned.substring(cleaned.length - 10);
-    const { db } = require('../db');
     
     console.log('[WA-SEND] Querying order metadata matching phone search pattern:', `%${last10}%`);
     const order = db.prepare(`
@@ -98,14 +108,6 @@ router.post('/send', authenticateToken, async (req, res) => {
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
-
-    // Force the route to fetch the correct tenant bot:
-    const targetTenant = req.body.store_id || order?.store_id || 'default';
-    const botInstance = whatsappService.getBotForTenant(targetTenant);
-
-    if (!botInstance || !botInstance.sock || botInstance.status !== 'CONNECTED') {
-        return res.status(500).json({ error: `WhatsApp socket offline or disconnected for tenant: ${targetTenant}` });
-    }
 
     let parsedQuoteContext = quoteContext || null;
     if (typeof parsedQuoteContext === 'string') {
@@ -132,12 +134,8 @@ router.post('/send', authenticateToken, async (req, res) => {
 
         if (quotedRow) {
           console.log('[WA-SEND] Quoted message row fetched:', quotedRow);
-          const fromMe = quotedRow.direction === 'outgoing';
-          const remoteJid = jid;
           if (!participant) {
-            participant = fromMe 
-              ? (botInstance.sock?.user?.id ? botInstance.sock.user.id.split(':')[0] + '@s.whatsapp.net' : remoteJid)
-              : remoteJid;
+            participant = jid;
           }
           if (!qtext) {
             qtext = quotedRow.message || '';
@@ -164,10 +162,10 @@ router.post('/send', authenticateToken, async (req, res) => {
     
     let dbMessageId = null;
     try {
-      console.log('[WA-SEND] Logging manual outgoing message into SQLite database...');
+      console.log('[WA-SEND] Logging manual outgoing message into main whatsapp_messages table with pending status...');
       const result = db.prepare(`
         INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?, ?)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, 'pending', ?, ?)
       `).run(storeId, orderId, cleaned, textContent, uuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
       dbMessageId = result.lastInsertRowid;
       console.log('[WA-SEND] Logged manual outgoing message successfully, SQLite row ID:', dbMessageId);
@@ -175,33 +173,15 @@ router.post('/send', authenticateToken, async (req, res) => {
       console.error('[WA-SEND] Failed to save manual chat message to SQLite:', err.message);
     }
 
-    let sendResult;
     try {
-      console.log(`[WA-SEND] Dispatching message using whatsappService.sendText...`);
-      sendResult = await whatsappService.sendText(cleaned, textContent, targetTenant);
-      console.log('[WA-SEND] whatsappService.sendText returned result:', sendResult);
-      
-      // Update the logged message ID to the real Baileys message ID in database
-      if (sendResult?.messageId && sendResult.messageId !== uuid) {
-        try {
-          db.prepare(`
-            UPDATE whatsapp_messages 
-            SET message_id = ? 
-            WHERE id = ?
-          `).run(sendResult.messageId, dbMessageId);
-          console.log(`[WA-SEND] Updated SQLite record row ID: ${dbMessageId} with real message ID: ${sendResult.messageId}`);
-        } catch (dbErr) {
-          console.error('[WA-SEND] Failed to update message_id in SQLite:', dbErr.message);
-        }
-      }
-    } catch (sendErr) {
-      console.error(`[WA-SEND-FATAL] whatsappService.sendText threw error:`, sendErr.message);
-      try {
-        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE id = ?").run(dbMessageId);
-      } catch (dbErr) {
-        console.error('[WA-SEND] Failed to set status to failed in SQLite:', dbErr.message);
-      }
-      return res.status(500).json({ error: sendErr.message || 'Failed to dispatch message' });
+      console.log('[WA-SEND] Enqueuing outgoing message into whatsapp_message_queue...');
+      db.prepare(`
+        INSERT INTO whatsapp_message_queue (store_id, order_id, phone, message, direction, message_id, client_uuid, is_manual, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, ?, 'outgoing', ?, ?, 1, 'pending', ?, ?)
+      `).run(storeId, orderId, cleaned, textContent, uuid, uuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      console.log('[WA-SEND] Message enqueued in queue successfully.');
+    } catch (err) {
+      console.error('[WA-SEND] Failed to enqueue message to whatsapp_message_queue:', err.message);
     }
 
     const newMsg = {
@@ -211,9 +191,9 @@ router.post('/send', authenticateToken, async (req, res) => {
       phone: cleaned,
       direction: 'outgoing',
       message: textContent,
-      message_id: sendResult?.messageId || uuid,
+      message_id: uuid,
       clientUuid: uuid,
-      status: 'sent',
+      status: 'pending',
       quote_context: verifiedQuote ? JSON.stringify(verifiedQuote) : null,
       created_at: new Date().toISOString()
     };
@@ -240,7 +220,7 @@ router.post('/send', authenticateToken, async (req, res) => {
       }
     }
 
-    console.log('[WA-SEND] Manual message dispatch procedure finished successfully.');
+    console.log('[WA-SEND] Manual message queued successfully.');
     return res.status(200).json({ success: true, message: newMsg });
   } catch (error) {
     console.error('[WA-SEND-ERROR] Try/Catch triggered:', error.message, error.stack);

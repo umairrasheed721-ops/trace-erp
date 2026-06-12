@@ -101,6 +101,16 @@ class WhatsAppBot {
       }
     }, 3600000); // Clean every hour
 
+    // Start outgoing queue processor polling interval
+    setInterval(async () => {
+      if (this.status !== 'CONNECTED' || !this.sock) return;
+      try {
+        await this.processOutgoingQueue();
+      } catch (err) {
+        console.error(`[WA-QUEUE-ERR] [Tenant: ${this.tenantId}]`, err.message);
+      }
+    }, 2000);
+
     setTimeout(() => this._connect(), 5000);
   }
 
@@ -122,6 +132,128 @@ class WhatsAppBot {
 
   async _wipeCreds() {
     return sessionManager._wipeCreds(this);
+  }
+
+  async processOutgoingQueue() {
+    // Fetch 1 oldest pending message from queue DB for this tenant
+    const msg = db.prepare(`
+      SELECT * FROM whatsapp_message_queue 
+      WHERE status = 'pending' AND tenant_id = ?
+      ORDER BY id ASC LIMIT 1
+    `).get(this.tenantId);
+
+    if (!msg) return;
+
+    console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Found pending outgoing message ID: ${msg.id}`);
+
+    // Fetch current settings
+    const settings = db.prepare('SELECT enable_automated_broadcasts, vip_bypass_manual, min_delay_sec, max_delay_sec FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+
+    // SMART ROUTING LOGIC:
+    if (msg.is_manual === 1 && settings.vip_bypass_manual === 0) {
+      console.warn(`[WA-QUEUE] [Tenant: ${this.tenantId}] Manual dispatch disabled. Cancelling message ID: ${msg.id}`);
+      db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
+      db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      return;
+    }
+
+    if (msg.is_manual !== 1 && settings.enable_automated_broadcasts === 0) {
+      console.warn(`[WA-QUEUE] [Tenant: ${this.tenantId}] Automated broadcast disabled. Cancelling message ID: ${msg.id}`);
+      db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
+      db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      return;
+    }
+
+    try {
+      // Mark as 'processing' to prevent double sends
+      db.prepare("UPDATE whatsapp_message_queue SET status = 'processing' WHERE id = ?").run(msg.id);
+      db.prepare("UPDATE whatsapp_messages SET status = 'processing' WHERE message_id = ?").run(msg.client_uuid);
+
+      // If it's an automated marketing bot, apply the Anti-Ban Pacing Delay
+      if (msg.is_manual !== 1) {
+        const minDelay = settings.min_delay_sec || 5;
+        const maxDelay = settings.max_delay_sec || 15;
+        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Applying automated anti-ban pacing delay of ${delay}s...`);
+        await new Promise(res => setTimeout(res, delay * 1000));
+      }
+
+      // Format JID
+      let jid = msg.phone.replace(/[^0-9]/g, '');
+      if (!jid.endsWith('@s.whatsapp.net')) {
+        jid = `${jid}@s.whatsapp.net`;
+      }
+
+      console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Sending message ID: ${msg.id} to JID: ${jid}`);
+      
+      let payload = { text: msg.message };
+      
+      // If the message has quote context, resolve and pass it in options
+      let sendOptions = {};
+      if (msg.quote_context) {
+        try {
+          const parsedQuote = JSON.parse(msg.quote_context);
+          if (parsedQuote && (parsedQuote.id || parsedQuote.message_id)) {
+            const qid = parsedQuote.id || parsedQuote.message_id;
+            const quotedRow = db.prepare(`
+              SELECT * FROM whatsapp_messages 
+              WHERE message_id = ? AND tenant_id = ?
+              LIMIT 1
+            `).get(qid, this.tenantId);
+
+            const quotedMsgContent = {
+              conversation: parsedQuote.text || (quotedRow ? quotedRow.message : '') || 'Media'
+            };
+
+            const quotedMessage = {
+              key: {
+                remoteJid: jid,
+                fromMe: quotedRow ? quotedRow.direction === 'outgoing' : false,
+                id: qid,
+                participant: parsedQuote.participant || jid
+              },
+              message: quotedMsgContent
+            };
+            sendOptions.quoted = quotedMessage;
+            console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Appended quote context to message send payload`);
+          }
+        } catch (quoteErr) {
+          console.warn('[WA-QUEUE] Failed to construct quote context options:', quoteErr.message);
+        }
+      }
+
+      const result = await this.sock.sendMessage(jid, payload, sendOptions);
+      const realMessageId = result?.key?.id || msg.client_uuid;
+
+      // Mark as 'sent'
+      db.prepare("UPDATE whatsapp_message_queue SET status = 'sent', message_id = ? WHERE id = ?").run(realMessageId, msg.id);
+      db.prepare("UPDATE whatsapp_messages SET status = 'sent', message_id = ? WHERE message_id = ?").run(realMessageId, msg.client_uuid);
+
+      console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Message ID: ${msg.id} successfully sent! Real ID: ${realMessageId}`);
+
+      // Broadcast message status update via WebSocket for instant UI update
+      try {
+        const { broadcast } = require('../websocket');
+        broadcast('messages.update', {
+          id: msg.client_uuid,
+          status: 'sent'
+        });
+        broadcast('messages.update', {
+          id: realMessageId,
+          status: 'sent'
+        });
+      } catch (wsErr) {
+        console.warn('[WA-QUEUE] WebSocket status update broadcast failed:', wsErr.message);
+      }
+    } catch (err) {
+      console.error(`[WA-QUEUE-ERR] Failed to process queue message ID: ${msg.id}`, err);
+      try {
+        db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
+        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      } catch (dbErr) {
+        console.error(`[WA-QUEUE-ERR] Failed to mark message ID: ${msg.id} as failed:`, dbErr.message);
+      }
+    }
   }
 
   variateTemplateMessage(text) {

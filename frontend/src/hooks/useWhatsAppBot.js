@@ -20,7 +20,10 @@ export default function useWhatsAppBot() {
     attempted_template: '',
     dispatch_template: '',
     poll_options: ['✅ Confirm Order', '✏️ Edit Size / Address', '❌ Cancel Order'],
-    auto_responders: []
+    auto_responders: [],
+    enable_manual_chat_dispatch: 1,
+    enable_automated_broadcasts: 1,
+    vip_bypass_manual: 1
   })
 
   const [loading, setLoading] = useState(true)

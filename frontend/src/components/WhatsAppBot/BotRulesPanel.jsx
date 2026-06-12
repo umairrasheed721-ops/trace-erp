@@ -92,52 +92,90 @@ export default function BotRulesPanel({
                 </select>
                 <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: 8 }}>Simulation mode is excellent for testing workflows without messaging actual customers.</p>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.cod_verification_enabled === 1}
-                    onChange={e => handleSettingChange('cod_verification_enabled', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable COD Order Verification Challenge</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.attempted_delivery_enabled === 1}
-                    onChange={e => handleSettingChange('attempted_delivery_enabled', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable Courier Attempted Delivery Rescue Alerts</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.dispatch_alerts_enabled === 1}
-                    onChange={e => handleSettingChange('dispatch_alerts_enabled', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable Order Dispatch &amp; Tracking Alerts</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.enable_cod_reminders !== 0}
-                    onChange={e => handleSettingChange('enable_cod_reminders', e.target.checked)}
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable 24-Hour COD Follow-up Reminders</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={settings.enable_post_delivery_feedback === 1} 
-                    onChange={e => handleSettingChange('enable_post_delivery_feedback', e.target.checked)} 
-                    style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
-                  />
-                  <span>Enable Post-Delivery Review Requests</span>
-                </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Automated Controls */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+                  <h5 style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px 0' }}>🤖 Automated Bot Controls</h5>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.enable_automated_broadcasts !== 0} 
+                      onChange={e => handleSettingChange('enable_automated_broadcasts', e.target.checked)} 
+                      style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                    />
+                    <span>Enable Automated Broadcasts (Follows Pacing Rules)</span>
+                  </label>
+                  <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 12, opacity: settings.enable_automated_broadcasts !== 0 ? 1 : 0.5, pointerEvents: settings.enable_automated_broadcasts !== 0 ? 'auto' : 'none', transition: 'all 0.2s ease-in-out' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={settings.cod_verification_enabled === 1}
+                        onChange={e => handleSettingChange('cod_verification_enabled', e.target.checked)}
+                        style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable COD Order Verification Challenge</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={settings.attempted_delivery_enabled === 1}
+                        onChange={e => handleSettingChange('attempted_delivery_enabled', e.target.checked)}
+                        style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable Courier Attempted Delivery Rescue Alerts</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={settings.dispatch_alerts_enabled === 1}
+                        onChange={e => handleSettingChange('dispatch_alerts_enabled', e.target.checked)}
+                        style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable Order Dispatch &amp; Tracking Alerts</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={settings.enable_cod_reminders !== 0}
+                        onChange={e => handleSettingChange('enable_cod_reminders', e.target.checked)}
+                        style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable 24-Hour COD Follow-up Reminders</span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={settings.enable_post_delivery_feedback === 1} 
+                        onChange={e => handleSettingChange('enable_post_delivery_feedback', e.target.checked)} 
+                        style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                      />
+                      <span>Enable Post-Delivery Review Requests</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Manual Controls */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <h5 style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--green)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px 0' }}>👤 Manual Human Chat Controls</h5>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.enable_manual_chat_dispatch !== 0} 
+                      onChange={e => handleSettingChange('enable_manual_chat_dispatch', e.target.checked)} 
+                      style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                    />
+                    <span>Enable Manual ERP Chat Dispatch</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.vip_bypass_manual !== 0} 
+                      onChange={e => handleSettingChange('vip_bypass_manual', e.target.checked)} 
+                      style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                    />
+                    <span>VIP Bypass for Manual ERP Chat (Instant Dispatch, Ignores Pacing)</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
