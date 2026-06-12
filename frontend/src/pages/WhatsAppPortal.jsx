@@ -1,12 +1,25 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import useWhatsAppPortal from '../hooks/useWhatsAppPortal'
 import ChatContactSidebar from '../components/WhatsAppPortal/ChatContactSidebar'
 import ChatMessageList from './ChatMessageList'
 import ChatInputArea from './ChatInputArea'
 import MediaUploadOverlay from '../components/MediaUploadOverlay'
 import SettingsModal from '../components/SettingsModal'
+import { useApp } from '../context/AppContext'
 
 export default function WhatsAppPortal() {
+  const { setSidebarCollapsed } = useApp()
+
+  useEffect(() => {
+    // Save original sidebar state
+    const originalCollapsed = localStorage.getItem('sidebar_collapsed') === 'true'
+    setSidebarCollapsed(true)
+
+    return () => {
+      setSidebarCollapsed(originalCollapsed)
+    }
+  }, [setSidebarCollapsed])
+
   const {
     chats,
     activeChat,

@@ -175,7 +175,7 @@ export default function AppProvider({ children }) {
   const value = {
     stores, setStores, activeStoreId, setActiveStoreId, activeStore,
     toasts, addToast, badgeCounts, setBadgeCounts,
-    sidebarCollapsed, toggleSidebar,
+    sidebarCollapsed, setSidebarCollapsed, toggleSidebar,
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
     permissions, setPermissions, fetchPermissions,

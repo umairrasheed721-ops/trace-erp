@@ -62,6 +62,18 @@ export default function useWhatsAppPortal() {
     }
   }, [activeQuote])
 
+  // Auto-focus chat input when a new chat is selected
+  useEffect(() => {
+    if (activeChat && inputRef.current) {
+      const timer = setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+        }
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [activeChat])
+
   // Helper to update both local state and context state
   const updateInputText = (val) => {
     setInputText(val)
