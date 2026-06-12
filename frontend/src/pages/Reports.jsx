@@ -8,9 +8,17 @@ import PnLMetricsPanel from '../components/Reports/PnLMetricsPanel';
 import ReportsChartSection from '../components/Reports/ReportsChartSection';
 
 export default function Reports() {
-  const { activeStoreId } = useApp();
+  const { activeStoreId, setSidebarCollapsed } = useApp();
   const navigate = useNavigate();
   const toast = useToast();
+
+  useEffect(() => {
+    const originalCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+    setSidebarCollapsed(true);
+    return () => {
+      setSidebarCollapsed(originalCollapsed);
+    };
+  }, [setSidebarCollapsed]);
   
   const reportsData = useReportsData(activeStoreId, toast);
   const { view, datePreset, customStart, customEnd, showCustom, setView, setDatePreset, setCustomStart, setCustomEnd, setShowCustom, hiddenColumns } = reportsData;
