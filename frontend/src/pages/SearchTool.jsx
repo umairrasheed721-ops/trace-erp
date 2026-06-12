@@ -3,12 +3,11 @@ import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
-import CommandCenterTable from '../components/CommandCenter/Layout/CommandCenterTable'
+import CommandTable from '../components/CommandCenter/CommandTable'
 import BulkActions from '../components/BulkActions'
 import EditOrderModal from '../components/EditOrderModal'
 import CustomerHistoryModal from '../components/CustomerHistoryModal'
 import { SaveViewModal, ColumnPickerModal, AgingConfigModal, NameRulesModal } from '../components/Modals'
-import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell } from '../components/OrderCells'
 import OrderHistoryModal from '../components/OrderHistoryModal'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 import ErrorBoundary from '../components/ErrorBoundary'
@@ -1493,7 +1492,7 @@ export default function SearchTool() {
         </div>
       )}
 
-      <CommandCenterTable
+      <CommandTable
         loading={loading}
         filteredOrders={filteredOrders}
         allOrders={allOrders}

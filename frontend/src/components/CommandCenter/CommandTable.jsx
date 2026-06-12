@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { getStatusColor, ERP_STATUSES } from '../utils/orderUtils'
-import { useApp } from '../context/AppContext'
-import { TABLE_CONSTANTS } from '../config/uiConstants'
+import { getStatusColor, ERP_STATUSES } from '../../utils/orderUtils'
+import { useApp } from '../../context/AppContext'
+import { TABLE_CONSTANTS } from '../../config/uiConstants'
 
 // Subcomponents
-import TableHeader from './OrderTableParts/TableHeader'
-import TableRow from './OrderTableParts/TableRow'
-import TablePagination from './OrderTableParts/TablePagination'
+import TableHeader from '../OrderTableParts/TableHeader'
+import CommandTableRow from './CommandTableRow'
+import TablePagination from '../OrderTableParts/TablePagination'
 
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
@@ -165,7 +165,7 @@ const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose 
   )
 }
 
-export default function OrderTable({
+export default function CommandTable({
   loading,
   filteredOrders,
   allOrders,
@@ -201,8 +201,8 @@ export default function OrderTable({
   setPage,
   limit,
   setLimit,
-  keyword,
-  status,
+  keyword: parentKeyword,
+  status: parentStatus,
   onViewHistory,
   clearAllFilters,
   onForceResync,
@@ -319,7 +319,7 @@ export default function OrderTable({
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
             {debugWhere && <span style={{ marginLeft: 10, color: 'var(--text-muted)', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
           </span>
-          {(keyword || status !== 'All Statuses') && (
+          {(parentKeyword || parentStatus !== 'All Statuses') && (
             <button 
               onClick={clearAllFilters || (() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); })}
               className="btn btn-primary btn-sm"
@@ -378,7 +378,7 @@ export default function OrderTable({
             {visibleOrders.map((o, index) => {
               const actualIndex = startIndex + index;
               return (
-                <TableRow 
+                <CommandTableRow 
                   key={o.id} o={o} cols={cols}
                   isSelected={selectedIds.includes(o.id)}
                   currentIndex={actualIndex}

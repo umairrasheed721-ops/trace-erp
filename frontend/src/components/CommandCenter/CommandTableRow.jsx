@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from '../OrderCells'
+import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './CommandEditableCell'
 import { useApp } from '../../context/AppContext'
 
 const formatPhone = (phoneVal) => {
@@ -12,7 +12,7 @@ const formatPhone = (phoneVal) => {
   return phoneStr;
 };
 
-const TableRow = React.memo(({ 
+const CommandTableRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
   handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getCustomerOrderCount,
@@ -641,4 +641,4 @@ const TableRow = React.memo(({
          ((prev.activeRowId === prev.o.id) === (next.activeRowId === next.o.id));
 });
 
-export default TableRow;
+export default CommandTableRow;
