@@ -5,6 +5,9 @@ import { useTenant } from '../context/TenantContext'
 import { useQuoteDraft } from '../context/QuoteDraftContext'
 import { handleApiError } from '../utils/errorHandler'
 
+import useWhatsAppSocket from './useWhatsAppSocket'
+import useWhatsAppAudio from './useWhatsAppAudio'
+
 export default function useWhatsAppPortal() {
   const { addToast } = useApp()
   const { tenantId } = useTenant()
@@ -84,37 +87,8 @@ export default function useWhatsAppPortal() {
 
   // Module 8: Rich Media states
   const [isDragging, setIsDragging] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const shouldDiscardRef = useRef(false)
-  const mediaRecorderRef = useRef(null)
-  const audioChunksRef = useRef([])
   const dragCounterRef = useRef(0)
 
-  useEffect(() => {
-    let interval
-    if (isRecording) {
-      setRecordingTime(0)
-      interval = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
-    } else {
-      setRecordingTime(0)
-    }
-    return () => clearInterval(interval)
-  }, [isRecording])
-
-  const formatRecordingTime = (secs) => {
-    const m = Math.floor(secs / 60)
-    const s = secs % 60
-    return `${m}:${s < 10 ? '0' : ''}${s}`
-  }
-
-  const handleDiscardRecording = () => {
-    shouldDiscardRef.current = true
-    mediaRecorderRef.current?.stop()
-  }
-  
   // --- SUBDATA STATES ---
   const [customerInfo, setCustomerInfo] = useState({
     latestOrder: null,
@@ -127,14 +101,11 @@ export default function useWhatsAppPortal() {
   const [sendingReply, setSendingReply] = useState(null)
   
   // --- REAL-TIME & STATUS STATES ---
-  const [wsStatus, setWsStatus] = useState('CONNECTING') // CONNECTING, CONNECTED, DISCONNECTED
   const [typingStatus, setTypingStatus] = useState({}) // { phone: boolean }
   const [zoomedImage, setZoomedImage] = useState(null)
-  const [activeNumber, setActiveNumber] = useState(null) // Bot's own WA number from Baileys
   const [activeFilter, setActiveFilter] = useState('all') // 'all' | 'unread' | 'high_risk' | 'stuck'
   const [slashCmd, setSlashCmd] = useState('')
   const [showSlashMenu, setShowSlashMenu] = useState(false)
-  const [syncingMessages, setSyncingMessages] = useState(false)
   
   // --- MODULE 7: COMMAND PALETTE STATE ---
   const [showCmdPalette, setShowCmdPalette] = useState(false)
@@ -237,12 +208,31 @@ export default function useWhatsAppPortal() {
 
   // --- REFS ---
   const timelineEndRef = useRef(null)
-  const wsRef = useRef(null)
-  const typingTimersRef = useRef({})
   const cmdPaletteInputRef = useRef(null)
-  const reconnectTimeoutRef = useRef(null)
   const inputRef = useRef(null)
-  const lastWsActivityRef = useRef(Date.now())
+  
+  // --- SUB-HOOKS INITIALIZATION ---
+  const socketHook = useWhatsAppSocket({
+    activeChatRef,
+    setMessages,
+    setChats,
+    setTypingStatus,
+    setCustomerInfo,
+    removeQuotedMessageGlobally,
+    addToast,
+    fetchChats: (silent) => fetchChats(silent),
+    scrollToBottom
+  })
+
+  const audioHook = useWhatsAppAudio({
+    activeChat,
+    getDraft,
+    clearQuote,
+    setMessages,
+    setChats,
+    addToast,
+    scrollToBottom
+  })
   
   // --- FETCH CHATS ---
   const fetchChats = async (silent = false) => {
@@ -320,7 +310,7 @@ export default function useWhatsAppPortal() {
     // Reset the messages state array when switching chats
     setMessages([])
     setLoadingMessages(true)
-    setSyncingMessages(true)
+    socketHook.setSyncingMessages(true)
 
     let isMounted = true
 
@@ -344,7 +334,7 @@ export default function useWhatsAppPortal() {
       } finally {
         if (isMounted) {
           setLoadingMessages(false)
-          setSyncingMessages(false)
+          socketHook.setSyncingMessages(false)
           scrollToBottom()
         }
       }
@@ -398,279 +388,6 @@ export default function useWhatsAppPortal() {
     } catch (err) {}
   }
 
-  // --- FETCH BOT STATUS (active number) ---
-  const fetchBotStatus = async () => {
-    try {
-      const res = await fetch('/api/whatsapp-governance/status')
-      const data = await res.json()
-      if (data.activeNumber) setActiveNumber(data.activeNumber)
-      else if (data.status !== 'CONNECTED') setActiveNumber(null)
-    } catch (_) {}
-  }
-
-  // --- WEBSOCKET CLIENT CONFIGURATION ---
-  const connectWebSocket = () => {
-    if (wsRef.current) {
-      wsRef.current.onclose = null
-      wsRef.current.onerror = null
-      wsRef.current.onmessage = null
-      wsRef.current.onopen = null
-      try {
-        wsRef.current.close()
-      } catch (e) {}
-    }
-
-    const token = localStorage.getItem('trace_token')
-    if (!token) return
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/?token=${token}`
-    
-    setWsStatus('CONNECTING')
-    const socket = new WebSocket(wsUrl)
-    wsRef.current = socket
-
-    socket.onopen = () => {
-      console.log('🔌 WhatsApp Portal connected to WS')
-      setWsStatus('CONNECTED')
-      if (lastWsActivityRef.current !== undefined) {
-        lastWsActivityRef.current = Date.now()
-      }
-    }
-
-    socket.onmessage = (event) => {
-      if (lastWsActivityRef.current !== undefined) {
-        lastWsActivityRef.current = Date.now()
-      }
-      try {
-        const payload = JSON.parse(event.data)
-        const { event: wsEvent, data } = payload
-        const currentActive = activeChatRef.current
-
-        if (wsEvent === 'message_deleted' && data) {
-          const { message_id, phone } = data
-          if (currentActive && String(currentActive.phone) === String(phone)) {
-            setMessages(prev => prev.map(m => {
-              if (m.id === message_id || String(m.message_id) === String(message_id)) {
-                return {
-                  ...m,
-                  message: "🚫 This message was deleted",
-                  media_url: null,
-                  media_type: null
-                }
-              }
-              return m
-            }))
-          }
-          setChats(prevChats => prevChats.map(c => {
-            if (String(c.phone) === String(phone) && c.lastMessage && (c.lastMessage.id === message_id || String(c.lastMessage.message_id) === String(message_id))) {
-              return {
-                ...c,
-                lastMessage: {
-                  ...c.lastMessage,
-                  message: "🚫 This message was deleted",
-                  media_url: null,
-                  media_type: null
-                }
-              }
-            }
-            return c
-          }))
-          removeQuotedMessageGlobally(message_id)
-        }
-
-        if (wsEvent === 'messages.update' && data) {
-          const { id, status } = data;
-          setMessages(prev => prev.map(msg => 
-            (msg.message_id === id || msg.id === id || String(msg.id) === String(id) || String(msg.message_id) === String(id)) 
-              ? { ...msg, status: status } 
-              : msg
-          ));
-          setChats(prevChats => prevChats.map(c => {
-            if (c.lastMessage && (c.lastMessage.id === id || String(c.lastMessage.message_id) === String(id))) {
-              return {
-                ...c,
-                lastMessage: { ...c.lastMessage, status: status }
-              };
-            }
-            return c;
-          }));
-        }
-
-        if (wsEvent === 'message' && data && data.message) {
-          const newMsg = data.message
-          
-          // 1. Update chronological messages list if active chat matched
-          if (currentActive && String(currentActive.phone) === String(newMsg.phone)) {
-            setMessages(prev => {
-              // Deduplicate strictly
-              const idx = prev.findIndex(m => {
-                const uuidMatch = (newMsg.clientUuid && (m.id === newMsg.clientUuid || m.clientUuid === newMsg.clientUuid));
-                const idMatch = (newMsg.id && (m.id === newMsg.id || String(m.message_id) === String(newMsg.id)));
-                const msgIdMatch = (newMsg.message_id && (m.message_id === newMsg.message_id || m.id === newMsg.message_id));
-                
-                if (uuidMatch || idMatch || msgIdMatch) return true;
-  
-                // Fallback Match (Aggressive Content + Time check)
-                if (m.direction === 'outgoing' && newMsg.direction === 'outgoing') {
-                  const contentMatch = (m.message && newMsg.message && m.message.trim() === newMsg.message.trim());
-                  
-                  const t1 = m.created_at ? new Date(m.created_at).getTime() : Date.now();
-                  const t2 = newMsg.created_at ? new Date(newMsg.created_at).getTime() : Date.now();
-                  const timeMatch = Math.abs(t1 - t2) < 5000;
-
-                  if (contentMatch && timeMatch) return true;
-                }
-
-                return false;
-              });
-
-              if (idx !== -1) {
-                // Update in-place safely preserving media properties
-                const updated = [...prev];
-                const existing = updated[idx];
-                const merged = { ...existing };
-                
-                // Copy non-empty/non-null properties
-                Object.keys(newMsg).forEach(key => {
-                  const val = newMsg[key];
-                  if (val !== null && val !== undefined && val !== '') {
-                    merged[key] = val;
-                  }
-                });
-                
-                // Keep existing truthy media properties if the incoming is falsy
-                if (existing.media_url && !merged.media_url) merged.media_url = existing.media_url;
-                if (existing.media_type && !merged.media_type) merged.media_type = existing.media_type;
-                if (existing.message && !merged.message) merged.message = existing.message;
-                
-                merged.clientUuid = existing.clientUuid || newMsg.clientUuid;
-                
-                updated[idx] = merged;
-                return updated;
-              } else {
-                // Append if new
-                return [...prev, newMsg];
-              }
-            });
-            scrollToBottom();
-          }
-
-          // 2. Update list preview or unread count
-          setChats(prevChats => {
-            let updated = prevChats.map(c => {
-              if (String(c.phone) === String(newMsg.phone)) {
-                const isCurrentlyActive = currentActive && String(currentActive.phone) === String(newMsg.phone)
-                return {
-                  ...c,
-                  lastMessage: newMsg,
-                  unreadCount: isCurrentlyActive ? 0 : (c.unreadCount || 0) + 1
-                }
-              }
-              return c
-            })
-
-            // If chat phone isn't in current list, fetch full list to get its metadata
-            const exists = updated.some(c => String(c.phone) === String(newMsg.phone))
-            if (!exists) {
-              fetchChats(true)
-            } else {
-              // Move matching conversation to top of list
-              const index = updated.findIndex(c => String(c.phone) === String(newMsg.phone))
-              if (index > 0) {
-                const target = updated[index]
-                updated.splice(index, 1)
-                updated.unshift(target)
-              }
-            }
-
-            return updated
-          })
-        }
-
-        if (wsEvent === 'typing' && data) {
-          const { phone, isTyping } = data
-          setTypingStatus(prev => ({ ...prev, [phone]: isTyping }))
-          
-          // Auto clear typing status after 3.5 seconds
-          if (isTyping) {
-            if (typingTimersRef.current[phone]) {
-              clearTimeout(typingTimersRef.current[phone])
-            }
-            typingTimersRef.current[phone] = setTimeout(() => {
-              setTypingStatus(prev => ({ ...prev, [phone]: false }))
-            }, 3500)
-          }
-        }
-
-        if (wsEvent === 'transcript' && data) {
-          // Update message transcript inline without refetching
-          setMessages(prev => prev.map(m =>
-            String(m.id) === String(data.messageId) ? { ...m, transcript: data.transcript, status: data.status, ai_processed: data.ai_processed } : m
-          ))
-        }
-
-        if (wsEvent === 'ocr_result' && data) {
-          // Update message OCR transcript inline
-          setMessages(prev => prev.map(m =>
-            String(m.id) === String(data.messageId) ? { ...m, transcript: data.transcript, status: data.msgStatus, ai_processed: data.ai_processed } : m
-          ))
-
-          // Show a toast notification for OCR results
-          if (data.status === 'matched') {
-            addToast(`✅ Payment verified! Rs.${data.detectedAmount} matched — ${data.detectedBank || 'Bank'} TXN ${data.detectedTxnId || 'N/A'}`, 'success')
-            
-            // Dynamically refresh order history and latest order status
-            if (data.orderId) {
-              setCustomerInfo(prev => {
-                const updatedHistory = prev.orderHistory.map(o => {
-                  if (Number(o.id) === Number(data.orderId)) {
-                    return { ...o, payment_status: 'OCR Verified', paid_amount: data.detectedAmount }
-                  }
-                  return o
-                })
-                const updatedLatest = prev.latestOrder && Number(prev.latestOrder.id) === Number(data.orderId)
-                  ? { ...prev.latestOrder, payment_status: 'OCR Verified', paid_amount: data.detectedAmount }
-                  : prev.latestOrder
-                return {
-                  ...prev,
-                  orderHistory: updatedHistory,
-                  latestOrder: updatedLatest
-                }
-              })
-            }
-          } else if (data.status === 'mismatch') {
-            addToast(`⚠️ Payment amount mismatch — Rs.${data.detectedAmount} received. Manual review needed.`, 'warning')
-          } else if (data.status === 'manual_review') {
-            addToast(`🔍 Payment receipt detected. Please verify manually.`, 'info')
-          }
-        }
-
-        if (wsEvent === 'memory_update' && data) {
-          if (currentActive && String(currentActive.phone) === String(data.phone)) {
-            setCustomerInfo(prev => ({
-              ...prev,
-              geminiMemory: data.memoryText
-            }))
-          }
-        }
-      } catch (err) {
-        console.error('Error handling WebSocket message:', err)
-      }
-    }
-
-    socket.onclose = () => {
-      console.log('🔌 WebSocket disconnected. Retrying in 3 seconds...')
-      setWsStatus('DISCONNECTED')
-      reconnectTimeoutRef.current = setTimeout(connectWebSocket, 3000)
-    }
-
-    socket.onerror = (err) => {
-      console.error('WebSocket Error:', err)
-      setWsStatus('DISCONNECTED')
-    }
-  }
-
   // --- ACTIONS ---
   const handleQuoteClick = (msg) => {
     if (!activeChat) return
@@ -680,7 +397,7 @@ export default function useWhatsAppPortal() {
       type: msg.media_type || 'text',
       participant_jid: msg.direction === 'outgoing' ? 'Me' : (activeChat.customerName || activeChat.phone),
       participant: msg.direction === 'outgoing'
-        ? (activeNumber ? activeNumber.split(':')[0] + '@s.whatsapp.net' : 'me@s.whatsapp.net')
+        ? (socketHook.activeNumber ? socketHook.activeNumber.split(':')[0] + '@s.whatsapp.net' : 'me@s.whatsapp.net')
         : (activeChat.phone + '@s.whatsapp.net')
     })
   }
@@ -920,98 +637,6 @@ export default function useWhatsAppPortal() {
     await handleMediaUpload(file)
   }
 
-  // --- MODULE 8: PUSH-TO-TALK VOICE NOTE ---
-  const handleVoiceNote = async () => {
-    if (isRecording) {
-      // Stop recording
-      mediaRecorderRef.current?.stop()
-      return
-    }
-    if (!activeChat) return addToast('Select a chat to send a voice note', 'warning')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-      audioChunksRef.current = []
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        setIsRecording(false)
-        if (shouldDiscardRef.current) {
-          shouldDiscardRef.current = false
-          addToast('Recording discarded', 'info')
-          return
-        }
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        if (blob.size < 1000) return addToast('Recording too short', 'warning')
-        
-        const activeQuote = getDraft(activeChat.phone).quotedMessage
-
-        const clientUuid = 'client-opt-' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const tempUrl = URL.createObjectURL(blob);
-        const tempMsg = {
-          id: clientUuid,
-          phone: activeChat.phone,
-          direction: 'outgoing',
-          message: '[Voice Note]',
-          media_url: tempUrl,
-          media_type: 'audio',
-          status: 'pending',
-          created_at: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, tempMsg]);
-        scrollToBottom();
-
-        const formData = new FormData()
-        formData.append('audio', blob, `voice_${Date.now()}.webm`)
-        formData.append('clientUuid', clientUuid)
-        if (activeQuote) {
-          formData.append('quoteContext', JSON.stringify({ 
-            id: activeQuote.id, 
-            participant: activeQuote.participant, 
-            text: activeQuote.text 
-          }))
-        }
-        addToast('⏳ Sending voice note...', 'info')
-        try {
-          const res = await fetch(`/api/whatsapp-governance/chats/${activeChat.phone}/upload-voice`, {
-            method: 'POST', body: formData
-          })
-          const data = await res.json()
-          if (data.success && data.message) {
-            setMessages(prev => {
-              const idx = prev.findIndex(m => m.id === clientUuid);
-              if (idx !== -1) {
-                const next = [...prev];
-                next[idx] = { ...next[idx], ...data.message, status: 'sent' };
-                return next;
-              }
-              if (!prev.some(m => m.id === data.message.id)) {
-                return [...prev, data.message];
-              }
-              return prev;
-            });
-            setChats(prev => prev.map(c => c.phone === activeChat.phone ? { ...c, lastMessage: data.message } : c))
-            addToast('✅ Voice note sent!', 'success')
-            clearQuote(activeChat.phone)
-            scrollToBottom()
-          } else { 
-            setMessages(prev => prev.filter(m => m.id !== clientUuid));
-            addToast(data.error || 'Failed to send voice note', 'error') 
-          }
-        } catch (err) { 
-          setMessages(prev => prev.filter(m => m.id !== clientUuid));
-          handleApiError(err, addToast, 'VOICE_NOTE') 
-        }
-      }
-      recorder.start()
-      mediaRecorderRef.current = recorder
-      setIsRecording(true)
-    } catch (err) {
-      console.error('Mic access error:', err)
-      addToast('Microphone access denied. Check browser permissions.', 'error')
-    }
-  }
-
   // --- MODULE 8: SMART CALL HANDOFF ---
   const handleCallHandoff = async () => {
     if (!activeChat) return
@@ -1146,41 +771,6 @@ export default function useWhatsAppPortal() {
     fetchChats()
     fetchQuickReplies()
     fetchQuickPills()
-    fetchBotStatus()
-    connectWebSocket()
-
-    // Poll bot status every 10 seconds to keep active number fresh
-    const statusInterval = setInterval(fetchBotStatus, 10000)
-
-    // Setup heartbeat ping loop
-    const pingInterval = setInterval(() => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        try {
-          wsRef.current.send(JSON.stringify({ type: 'ping' }))
-        } catch (e) {}
-      }
-
-      // Check for half-open connection (no server response/activity for 60 seconds)
-      const lastActivity = lastWsActivityRef.current || 0
-      if (Date.now() - lastActivity > 60000) {
-        console.warn('⚠️ No WebSocket activity for 60s (half-open connection). Reconnecting...')
-        connectWebSocket()
-      }
-    }, 30000)
-
-    return () => {
-      clearInterval(statusInterval)
-      clearInterval(pingInterval)
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.onclose = null
-        wsRef.current.close()
-      }
-      // Clear typing timers
-      Object.values(typingTimersRef.current).forEach(clearTimeout)
-    }
   }, [])
 
   // Handle auto-selection of chat passed in routing state
@@ -1239,10 +829,10 @@ export default function useWhatsAppPortal() {
     setUploading,
     isDragging,
     setIsDragging,
-    isRecording,
-    setIsRecording,
-    recordingTime,
-    setRecordingTime,
+    isRecording: audioHook.isRecording,
+    setIsRecording: audioHook.setIsRecording,
+    recordingTime: audioHook.recordingTime,
+    setRecordingTime: audioHook.setRecordingTime,
     customerInfo,
     setCustomerInfo,
     quickReplies,
@@ -1253,22 +843,22 @@ export default function useWhatsAppPortal() {
     setShowQuickReplies,
     sendingReply,
     setSendingReply,
-    wsStatus,
-    setWsStatus,
+    wsStatus: socketHook.wsStatus,
+    setWsStatus: socketHook.setWsStatus,
     typingStatus,
     setTypingStatus,
     zoomedImage,
     setZoomedImage,
-    activeNumber,
-    setActiveNumber,
+    activeNumber: socketHook.activeNumber,
+    setActiveNumber: socketHook.setActiveNumber,
     activeFilter,
     setActiveFilter,
     slashCmd,
     setSlashCmd,
     showSlashMenu,
     setShowSlashMenu,
-    syncingMessages,
-    setSyncingMessages,
+    syncingMessages: socketHook.syncingMessages,
+    setSyncingMessages: socketHook.setSyncingMessages,
     showCmdPalette,
     setShowCmdPalette,
     cmdQuery,
@@ -1290,7 +880,7 @@ export default function useWhatsAppPortal() {
     timelineEndRef,
     inputRef,
     cmdPaletteInputRef,
-    connectWebSocket,
+    connectWebSocket: socketHook.connectWebSocket,
     fetchChats,
     selectChat,
     handleQuoteClick,
@@ -1302,8 +892,8 @@ export default function useWhatsAppPortal() {
     handleDragLeave,
     handleDragOver,
     handleDrop,
-    handleVoiceNote,
-    handleDiscardRecording,
+    handleVoiceNote: audioHook.handleVoiceNote,
+    handleDiscardRecording: audioHook.handleDiscardRecording,
     handleCallHandoff,
     handleMediaUpload,
     scrollToBottom,

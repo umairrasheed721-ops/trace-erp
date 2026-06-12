@@ -162,7 +162,8 @@ function applySpecialMode(order, mode, today) {
 }
 
 export default function SearchTool() {
-  const { activeStoreId, addToast, user, isFocusMode } = useApp()
+  const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed } = useApp()
+  const [activeRowId, setActiveRowId] = useState(null)
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
@@ -348,10 +349,11 @@ export default function SearchTool() {
       sortKey,
       sortDir,
       sortMode,
+      activeRowId,
       scrollY,
       scrollLeft
     })
-  }, [persistModuleState, preset, customStart, customEnd, status, keyword, colFilters, page, sort, sortKey, sortDir, sortMode])
+  }, [persistModuleState, preset, customStart, customEnd, status, keyword, colFilters, page, sort, sortKey, sortDir, sortMode, activeRowId])
 
   const restoreState = useCallback(() => {
     // If location.state is present, we are performing a drill-down. Skip restoring CommandCenter's cached state.
@@ -372,6 +374,7 @@ export default function SearchTool() {
       if (state.sortKey !== undefined) setSortKey(state.sortKey)
       if (state.sortDir !== undefined) setSortDir(state.sortDir)
       if (state.sortMode !== undefined) setSortMode(state.sortMode)
+      if (state.activeRowId !== undefined) setActiveRowId(state.activeRowId)
 
       pendingScrollRestoreRef.current = {
         scrollY: state.scrollY || 0,
@@ -390,6 +393,15 @@ export default function SearchTool() {
   useEffect(() => {
     restoreState()
   }, [])
+
+  // Auto-collapse sidebar on mount and restore on unmount
+  useEffect(() => {
+    const originalCollapsed = localStorage.getItem('sidebar_collapsed') === 'true'
+    setSidebarCollapsed(true)
+    return () => {
+      setSidebarCollapsed(originalCollapsed)
+    }
+  }, [setSidebarCollapsed])
 
   // Restore scroll positions once data loading is complete and component is rendered
   useEffect(() => {
@@ -1520,6 +1532,8 @@ export default function SearchTool() {
         setLimit={setLimit}
         onViewHistory={(o) => setHistoryOrder(o)}
         clearAllFilters={handleClear}
+        activeRowId={activeRowId}
+        setActiveRowId={setActiveRowId}
       />
 
       {/* MODALS */}

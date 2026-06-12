@@ -36,7 +36,17 @@ const sessionManager = require('./bot/sessionManager');
 const eventRouter = require('./bot/eventRouter');
 const groupHandler = require('./bot/groupHandler');
 
+/**
+ * Core engine representing a WhatsApp Bot session connection using the Baileys library.
+ * Manages automated message dispatching, priority queues, session lifecycle,
+ * and smart anti-ban pacing rules.
+ */
 class WhatsAppBot {
+  /**
+   * Initializes the WhatsAppBot session instance.
+   * 
+   * @param {string} [tenantId='default'] - Active tenant ID for partitioning configurations/databases
+   */
   constructor(tenantId) {
     this.tenantId = tenantId || 'default';
     this.sock = null;
@@ -102,6 +112,11 @@ class WhatsAppBot {
     }, 3600000); // Clean every hour
 
     // Start outgoing queue processor polling interval
+    // ======================================================================
+    // ⚠️ @AI-CRITICAL-ZONE: HIGH FRAGILITY SYSTEM BLOCK
+    // CONCURRENCY, PACING, OR SYNC LOGIC HERE.
+    // DO NOT REFACTOR OR MODIFY THIS BLOCK WITHOUT EXPLICIT HUMAN APPROVAL.
+    // ======================================================================
     setInterval(async () => {
       if (this.status !== 'CONNECTED' || !this.sock) return;
       try {
@@ -114,26 +129,58 @@ class WhatsAppBot {
     setTimeout(() => this._connect(), 5000);
   }
 
+  /**
+   * Retrieves the absolute filesystem directory path where Baileys stores authentication keys.
+   * 
+   * @returns {string} The path to authentication session credentials
+   */
   getSessionPath() {
     return sessionManager.getSessionPath(this);
   }
 
+  /**
+   * Schedules a delayed reconnect attempt using pacing timers.
+   * 
+   * @returns {void}
+   */
   _scheduleReconnect() {
     return sessionManager._scheduleReconnect(this);
   }
 
+  /**
+   * Attempts connection to WhatsApp socket servers via the session manager.
+   * 
+   * @returns {Promise<void>}
+   */
   async _connect() {
     return sessionManager.connectBot(this);
   }
 
+  /**
+   * Wipes cached message stores in database session contexts.
+   * 
+   * @returns {Promise<void>}
+   */
   async _clearSessionStore() {
     return sessionManager._clearSessionStore(this);
   }
 
+  /**
+   * Deletes local Baileys session files from storage.
+   * 
+   * @returns {Promise<void>}
+   */
   async _wipeCreds() {
     return sessionManager._wipeCreds(this);
   }
 
+  /**
+   * Fetches pending messages from the outbound database queue, formats the JID,
+   * handles quick replies/pasting, applies automated pacing intervals,
+   * and fires message dispatches over the active socket.
+   * 
+   * @returns {Promise<void>}
+   */
   async processOutgoingQueue() {
     // Fetch 1 oldest pending message from queue DB for this tenant
     const msg = db.prepare(`
@@ -170,6 +217,11 @@ class WhatsAppBot {
       db.prepare("UPDATE whatsapp_messages SET status = 'processing' WHERE message_id = ?").run(msg.client_uuid);
 
       // If it's an automated marketing bot, apply the Anti-Ban Pacing Delay
+      // ======================================================================
+      // ⚠️ @AI-CRITICAL-ZONE: HIGH FRAGILITY SYSTEM BLOCK
+      // CONCURRENCY, PACING, OR SYNC LOGIC HERE.
+      // DO NOT REFACTOR OR MODIFY THIS BLOCK WITHOUT EXPLICIT HUMAN APPROVAL.
+      // ======================================================================
       if (msg.is_manual !== 1) {
         const minDelay = settings.min_delay_sec || 5;
         const maxDelay = settings.max_delay_sec || 15;
@@ -256,6 +308,12 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Applies random variations to greeting text templates to minimize ban detection.
+   * 
+   * @param {string} text - Raw template text
+   * @returns {string} Text with micro-variations
+   */
   variateTemplateMessage(text) {
     if (!text || typeof text !== 'string') return text;
     let modified = text;
@@ -290,6 +348,12 @@ class WhatsAppBot {
     return modified;
   }
 
+  /**
+   * Blocks execution loop until the WebSocket connection is active, timing out after 10s.
+   * 
+   * @throws {Error} If connection status is not CONNECTED
+   * @returns {Promise<void>}
+   */
   async ensureConnected() {
     if (this.status === 'CONNECTED' && this.sock) {
       return;
@@ -308,6 +372,24 @@ class WhatsAppBot {
     throw new Error(`WhatsApp is not connected (current status: ${this.status})`);
   }
 
+  /**
+   * Bypasses the pacing queue to immediately dispatch a message to WhatsApp.
+   * Logs transaction to db, broadcasts event to web socket, handles failures.
+   * 
+   * @param {string} phone - Target recipient phone number
+   * @param {string} message - Text body
+   * @param {boolean} [isManual=false] - Manual dispatch vs automated template
+   * @param {string} [mediaUrl=null] - Attachment URL
+   * @param {string} [mediaType=null] - Attachment type (image, video, etc.)
+   * @param {string} [fileName=null] - Custom name for file
+   * @param {string} [customMessageId=null] - Tracking identifier
+   * @param {object} [quoteContext=null] - Quoted message details
+   * @param {object} [buttons=null] - Custom buttons configuration
+   * @param {string} [buttonsMode='native'] - Native buttons mode flag
+   * @param {object} [poll=null] - Poll structure config
+   * @param {object} [options={}] - Query context options
+   * @returns {Promise<object>} Result payload returned by Baileys
+   */
   async directSendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null, options = {}) {
     await this.ensureConnected();
 
@@ -805,6 +887,24 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Enqueues an outgoing message, routing immediately if manual/forced,
+   * otherwise inserting it into priority or bulk anti-ban pacing queues.
+   * 
+   * @param {string} phone - Recipient phone number
+   * @param {string} message - Text body
+   * @param {boolean} [isManual=false] - Manual override flag
+   * @param {string} [mediaUrl=null] - Media file URL
+   * @param {string} [mediaType=null] - Media classification type
+   * @param {string} [fileName=null] - Custom file descriptor name
+   * @param {string} [customMessageId=null] - Local message tracking UUID
+   * @param {object} [quoteContext=null] - Message context to quote
+   * @param {object} [buttons=null] - Dynamic response buttons
+   * @param {string} [buttonsMode='native'] - Button renderer protocol
+   * @param {object} [poll=null] - Poll structure configuration
+   * @param {object} [options={}] - Optional request attributes
+   * @returns {Promise<object>} Promise resolving to transaction results
+   */
   async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null, options = {}) {
     if (isManual || options?.force) {
       console.log(`⚡ [DIRECT_SEND_ROUTING] Manual/forced message to ${phone}. Routing directly to directSendMessage.`);
@@ -854,6 +954,11 @@ class WhatsAppBot {
     });
   }
 
+  /**
+   * Invokes queue execution handlers within the active tenant execution context.
+   * 
+   * @returns {Promise<void>}
+   */
   async _processQueue() {
     try {
       await tenantContext.run(this.tenantId, async () => {
@@ -864,6 +969,13 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Periodically cleans up stale state tracking caches (cooldowns, rate metrics)
+   * to avoid continuous memory growth.
+   * 
+   * @private
+   * @returns {void}
+   */
   _cleanOldStates() {
     const now = Date.now();
     
@@ -900,6 +1012,15 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Appends an audit check item to the rolling log buffers.
+   * 
+   * @private
+   * @param {string} phone - Checked phone number
+   * @param {string} status - Verification status tag
+   * @param {string} [error] - Associated error text, if any
+   * @returns {void}
+   */
   _addAuditLog(phone, status, error) {
     this.auditLogs.unshift({
       time: new Date().toLocaleTimeString(),
@@ -910,6 +1031,13 @@ class WhatsAppBot {
     if (this.auditLogs.length > 100) this.auditLogs.pop();
   }
 
+  /**
+   * Configures human intervention flag to pause bot responses for a specific phone contact.
+   * 
+   * @param {string} phone - Recipient phone number
+   * @param {boolean} active - Status of human intervention mode
+   * @returns {void}
+   */
   setHumanHandoff(phone, active) {
     const normalized = normalizePhone(phone);
     if (!this.humanHandoffContacts) this.humanHandoffContacts = new Set();
@@ -922,6 +1050,13 @@ class WhatsAppBot {
     }
   }
 
+  /**
+   * Instantly enqueues an automated payment verification confirmation reply template.
+   * 
+   * @param {string} phone - Destination phone number
+   * @param {number|string} orderId - Associated ERP order database identifier
+   * @returns {void}
+   */
   triggerPaymentReceivedReply(phone, orderId) {
     const normalized = normalizePhone(phone);
     if (this.processingReplies && this.processingReplies.has(normalized)) {
@@ -945,6 +1080,19 @@ class WhatsAppBot {
     console.log(`💳 PAYMENT_RECEIVED auto-reply queued for ${phone} for order #${orderId}`);
   }
 
+  /**
+   * Dynamically updates session throttle properties, delay ceilings, and template contexts.
+   * 
+   * @param {object} settings - Map of settings updates
+   * @param {number} settings.minDelaySec - Minimal message delay pacing seconds
+   * @param {number} settings.maxDelaySec - Maximal message delay pacing seconds
+   * @param {number} settings.maxPerHour - Hourly dispatch limit threshold
+   * @param {number} settings.coolingPeriodMin - Session sleep recovery threshold minutes
+   * @param {number} settings.aiResponderEnabled - Boolean responder enabled flag
+   * @param {string} settings.aiTrackingTemplate - Active tracking response content
+   * @param {string} settings.aiLandmarkTemplate - Active landmark lookup query content
+   * @returns {void}
+   */
   setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate }) {
     if (minDelaySec !== undefined) this.minDelaySec = Number(minDelaySec);
     if (maxDelaySec !== undefined) this.maxDelaySec = Number(maxDelaySec);
@@ -956,6 +1104,11 @@ class WhatsAppBot {
     console.log(`🎛️ Bot pacing & AI updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m | AI Responder: ${this.aiResponderEnabled}`);
   }
 
+  /**
+   * Emergency master switch callback. Toggles active execution of queue processing.
+   * 
+   * @returns {boolean} Current queue pause state
+   */
   togglePause() {
     this.isPaused = !this.isPaused;
     console.log(`🎛️ Master Emergency Switch: isPaused = ${this.isPaused}`);
@@ -965,6 +1118,11 @@ class WhatsAppBot {
     return this.isPaused;
   }
 
+  /**
+   * Purges pending outbound queues.
+   * 
+   * @returns {number} Count of purged items
+   */
   clearQueue() {
     const bulkCount = this.queue.length;
     const priorityCount = this.priorityQueue?.length || 0;
@@ -974,6 +1132,11 @@ class WhatsAppBot {
     return bulkCount + priorityCount;
   }
 
+  /**
+   * Computes a snapshot containing bottleneck states, queues list sizes, and configuration limits.
+   * 
+   * @returns {object} Queue state parameters structure
+   */
   getQueueDetails() {
     const bottleneck = this.status !== 'CONNECTED' ? 'WAITING_SOCKET'
       : this.isPaused ? 'WAITING_QUEUE'
@@ -996,34 +1159,76 @@ class WhatsAppBot {
     };
   }
 
+  /**
+   * Resets active credentials and reconnects bot socket.
+   * 
+   * @returns {Promise<void>}
+   */
   async resetSession() {
     return sessionManager.resetSession(this);
   }
 
+  /**
+   * Disconnects current socket and logs out WhatsApp credentials store.
+   * 
+   * @returns {Promise<void>}
+   */
   async logoutSession() {
     return sessionManager.logoutSession(this);
   }
 
+  /**
+   * Triggers a soft reconnection to WhatsApp network.
+   * 
+   * @returns {Promise<void>}
+   */
   async softReconnect() {
     return sessionManager.softReconnect(this);
   }
 
+  /**
+   * Retrieves active chat logs in memory.
+   * 
+   * @param {string} phone - Contact target phone number
+   * @returns {Array<object>} Processed messages history array
+   */
   getChatHistory(phone) {
     return eventRouter.getChatHistory(this, phone);
   }
 
+  /**
+   * Retrieves full chat message log segments from server history.
+   * 
+   * @param {string} phone - Contact target phone number
+   * @returns {Promise<object>} Status code wrapper containing messages array
+   */
   async fetchHistoryForPhone(phone) {
     return eventRouter.fetchHistoryForPhone(this, phone);
   }
 
+  /**
+   * Resolves connection sync pipelines.
+   * 
+   * @returns {Promise<void>}
+   */
   async syncDeepHistory() {
     return eventRouter.syncDeepHistory(this);
   }
 
+  /**
+   * Checks connection status value.
+   * 
+   * @returns {boolean} True if Bot is currently connected
+   */
   isOnline() {
     return this.status === 'CONNECTED';
   }
 
+  /**
+   * Resolves current connection state fields, QR codes string, and active identity mapping.
+   * 
+   * @returns {object} Identity status parameters
+   */
   getStatus() {
     let activeNumber = this.activeNumber || null;
     if (!activeNumber && this.status === 'CONNECTED') {
@@ -1047,6 +1252,12 @@ class WhatsAppBot {
 
 const sessions = new Map();
 
+/**
+ * Resolves or creates a session instance for the given tenant ID.
+ * 
+ * @param {string} [tenantId='default'] - Partition tenant identifier
+ * @returns {WhatsAppBot} A partitioning session instance
+ */
 function getBotInstance(tenantId = 'default') {
   if (!sessions.has(tenantId)) {
     sessions.set(tenantId, new WhatsAppBot(tenantId));
@@ -1079,6 +1290,12 @@ const botProxy = new Proxy({}, {
 module.exports = botProxy;
 module.exports.sessions = sessions;
 
+/**
+ * Resolves the primary session instance for a given tenant.
+ * 
+ * @param {string} tenantId - Partition tenant identifier
+ * @returns {WhatsAppBot} WhatsApp bot instance mapping
+ */
 module.exports.getBot = function(tenantId) {
   return getBotInstance(tenantId || 'default');
 };

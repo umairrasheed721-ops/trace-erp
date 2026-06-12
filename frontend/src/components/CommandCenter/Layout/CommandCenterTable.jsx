@@ -56,6 +56,8 @@ export default function CommandCenterTable({
   // ── Misc ──────────────────────────────────────────────────────────────
   onViewHistory,
   clearAllFilters,
+  activeRowId,
+  setActiveRowId,
 }) {
   return (
     <OrderTable
@@ -97,6 +99,8 @@ export default function CommandCenterTable({
       setLimit={setLimit}
       onViewHistory={onViewHistory}
       clearAllFilters={clearAllFilters}
+      activeRowId={activeRowId}
+      setActiveRowId={setActiveRowId}
     />
   )
 }

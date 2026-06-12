@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 
-export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
+const handleKeyDown = (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    e.target.blur()
+  }
+}
+
+export const AddressCell = React.memo(function AddressCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.address || '')
   const [isEditing, setIsEditing] = useState(false)
   const inputRef = useRef(null)
@@ -21,6 +28,8 @@ export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
@@ -28,7 +37,10 @@ export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
 
   return (
     <div 
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setIsEditing(true)
+        if (onInteraction) onInteraction()
+      }}
       style={{ cursor: 'pointer', minHeight: 20, whiteSpace: 'normal', fontSize: '0.72rem', color: 'var(--text-secondary)' }}
       title="Click to edit address"
     >
@@ -37,7 +49,7 @@ export const AddressCell = React.memo(function AddressCell({ order, onSave }) {
   )
 })
 
-export const CityCell = React.memo(function CityCell({ order, onSave }) {
+export const CityCell = React.memo(function CityCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.city || '')
   const [isEditing, setIsEditing] = useState(false)
   const inputRef = useRef(null)
@@ -81,7 +93,8 @@ export const CityCell = React.memo(function CityCell({ order, onSave }) {
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
-        onKeyDown={e => { if(e.key === 'Enter') inputRef.current.blur() }}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
@@ -89,7 +102,10 @@ export const CityCell = React.memo(function CityCell({ order, onSave }) {
 
   return (
     <div 
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setIsEditing(true)
+        if (onInteraction) onInteraction()
+      }}
       style={{ cursor: 'pointer', minHeight: 20, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)' }}
       title="Click to edit city"
     >
@@ -98,7 +114,7 @@ export const CityCell = React.memo(function CityCell({ order, onSave }) {
   )
 })
 
-export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave }) {
+export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.paid_amount || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -118,19 +134,21 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
   }
 
   return (
-    <div onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', fontWeight: 600 }}>
+    <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', fontWeight: 600 }}>
       Rs {Math.round(parseFloat(order.paid_amount)||0).toLocaleString()}
     </div>
   )
 })
 
-export const CourierFeeCell = React.memo(function CourierFeeCell({ order, onSave }) {
+export const CourierFeeCell = React.memo(function CourierFeeCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.courier_fee || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -150,19 +168,21 @@ export const CourierFeeCell = React.memo(function CourierFeeCell({ order, onSave
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
   }
 
   return (
-    <div onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+    <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
       Rs {Math.round(parseFloat(order.courier_fee)||0).toLocaleString()}
     </div>
   )
 })
 
-export const CostCell = React.memo(function CostCell({ order, onSave }) {
+export const CostCell = React.memo(function CostCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.cost || 0)
   const [isEditing, setIsEditing] = useState(false)
 
@@ -182,19 +202,21 @@ export const CostCell = React.memo(function CostCell({ order, onSave }) {
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
   }
 
   return (
-    <div onClick={() => setIsEditing(true)} style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+    <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
       Rs {Math.round(parseFloat(order.cost)||0).toLocaleString()}
     </div>
   )
 })
 
-export const NoteCell = React.memo(function NoteCell({ order, onSave }) {
+export const NoteCell = React.memo(function NoteCell({ order, onSave, onInteraction }) {
   const [val, setVal] = useState(order.notes || '')
   const [isEditing, setIsEditing] = useState(false)
 
@@ -213,6 +235,8 @@ export const NoteCell = React.memo(function NoteCell({ order, onSave }) {
         value={val}
         onChange={e => setVal(e.target.value)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onFocus={onInteraction}
         autoFocus
       />
     )
@@ -220,7 +244,10 @@ export const NoteCell = React.memo(function NoteCell({ order, onSave }) {
 
   return (
     <div 
-      onClick={() => setIsEditing(true)}
+      onClick={() => {
+        setIsEditing(true)
+        if (onInteraction) onInteraction()
+      }}
       style={{ cursor: 'pointer', minHeight: 20, whiteSpace: 'normal', fontSize: '0.72rem', color: 'var(--text-muted)' }}
     >
       {order.notes || <span style={{ color: 'var(--text-muted)' }}>No Notes</span>}

@@ -205,7 +205,9 @@ export default function OrderTable({
   status,
   onViewHistory,
   clearAllFilters,
-  onForceResync
+  onForceResync,
+  activeRowId,
+  setActiveRowId
 }) {
   const { user } = useApp()
   const canSeeFinancials = user?.role === 'admin'
@@ -396,6 +398,8 @@ export default function OrderTable({
                   activeShopDomain={localStorage.getItem('trace_active_shop')}
                   setTooltipTriggerEl={setTooltipTriggerEl}
                   onForceResync={onForceResync}
+                  activeRowId={activeRowId}
+                  setActiveRowId={setActiveRowId}
                 />
               )
             })}

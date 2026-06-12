@@ -18,7 +18,7 @@ const TableRow = React.memo(({
   handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getCustomerOrderCount,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
-  activeShopDomain, setTooltipTriggerEl, onForceResync
+  activeShopDomain, setTooltipTriggerEl, onForceResync, activeRowId, setActiveRowId
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
@@ -35,9 +35,10 @@ const TableRow = React.memo(({
   const rowClassName = useMemo(() => {
     let classes = [];
     if (isSelected) classes.push('row-selected');
+    if (activeRowId === o.id) classes.push('row-active');
     if (o.payment_status === 'COD Cancelled') classes.push('cod-cancelled-row');
     return classes.join(' ');
-  }, [isSelected, o.payment_status]);
+  }, [isSelected, activeRowId, o.id, o.payment_status]);
 
   return (
     <tr key={o.id} className={rowClassName}>
@@ -72,7 +73,7 @@ const TableRow = React.memo(({
           <td key={col.id}>
             <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
               <button 
-                onClick={() => fetchOrderDetails(o.id)}
+                onClick={() => { setActiveRowId(o.id); fetchOrderDetails(o.id); }}
                 className="btn btn-primary btn-sm"
                 style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
                 title="Edit Full Order"
@@ -81,7 +82,7 @@ const TableRow = React.memo(({
               </button>
 
               <button 
-                onClick={(e) => { e.stopPropagation(); onViewHistory(o); }}
+                onClick={(e) => { e.stopPropagation(); setActiveRowId(o.id); onViewHistory(o); }}
                 className="btn btn-secondary btn-sm"
                 style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
                 title="View History Timeline"
@@ -93,6 +94,7 @@ const TableRow = React.memo(({
                 href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
                 target="_blank" 
                 rel="noreferrer" 
+                onClick={() => setActiveRowId(o.id)}
                 style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
               >
                 {o.ref_number || o.shopify_order_id}
@@ -187,10 +189,11 @@ const TableRow = React.memo(({
               title={o.customer_name}
               style={{ verticalAlign: 'middle' }}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                 <span
                   onClick={hasIdentifier ? (e) => {
                     e.stopPropagation();
+                    setActiveRowId(o.id);
                     setCustomerHistoryPhone({ phone: formattedPhone, email: o.email, name: o.customer_name });
                   } : undefined}
                   style={hasIdentifier ? { 
@@ -217,6 +220,7 @@ const TableRow = React.memo(({
                 <span
                   onClick={hasIdentifier ? (e) => {
                     e.stopPropagation();
+                    setActiveRowId(o.id);
                     setCustomerHistoryPhone({ phone: formattedPhone, email: o.email, name: o.customer_name });
                   } : undefined}
                   style={{
@@ -249,7 +253,7 @@ const TableRow = React.memo(({
               {formattedPhone ? (
                 <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                    <a href={`tel:${formattedPhone}`} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
+                    <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
                     
                     {(() => {
                       const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
@@ -258,6 +262,7 @@ const TableRow = React.memo(({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              setActiveRowId(o.id);
                               navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
                             }}
                             style={{
@@ -279,9 +284,10 @@ const TableRow = React.memo(({
                         </div>
                       );
                     })()}
-
+ 
                     <select 
                       className="wa-template-select"
+                      onClick={() => setActiveRowId(o.id)}
                       style={{ 
                         background: 'none', 
                         border: 'none', 
@@ -357,16 +363,16 @@ const TableRow = React.memo(({
                     </select>
                   </div>
 
-                  <a href={`tel:${formattedPhone}`} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
                 </div>
               ) : '—'}
             </td>
           )
         }
-        if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} /></td>
+        if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'address') return (
           <td key={col.id} className="break-words whitespace-normal">
-            <AddressCell order={o} onSave={updateOrderField} />
+            <AddressCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} />
           </td>
         )
         if (col.id === 'items') return (
@@ -377,7 +383,7 @@ const TableRow = React.memo(({
           </td>
         )
         if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
-        if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} /></td>
+        if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'diff') return (
           <td key={col.id} style={{ color: diff > 1 && s.includes('delivered') ? 'var(--red)' : 'var(--text-muted)', fontWeight: diff > 1 && s.includes('delivered') ? 700 : 400 }}>
             {!isClear ? `Rs ${Math.round(diff).toLocaleString()}` : <span style={{color:'var(--green)'}}>✅ Clear</span>}
@@ -397,7 +403,10 @@ const TableRow = React.memo(({
                     ) : (
                       <select
                         value={o.delivery_status || 'Pending'}
-                        onChange={(e) => handleManualStatusChange(o.id, e.target.value)}
+                        onChange={(e) => {
+                          setActiveRowId(o.id);
+                          handleManualStatusChange(o.id, e.target.value);
+                        }}
                         className="badge-select"
                         style={{ 
                           background: bg, 
@@ -481,7 +490,7 @@ const TableRow = React.memo(({
             </td>
           )
         }
-        if (col.id === 'courier_fee') return canSeeFinancials ? <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} /></td> : <td key={col.id}>—</td>
+        if (col.id === 'courier_fee') return canSeeFinancials ? <td key={col.id}><CourierFeeCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td> : <td key={col.id}>—</td>
         if (col.id === 'payment_status') return <td key={col.id}><span style={{ color: o.payment_status === 'Paid' ? 'var(--green)' : 'var(--orange)', fontWeight: 600 }}>{o.payment_status || 'Unpaid'}</span></td>
         if (col.id === 'cost') return canSeeFinancials ? (
           <td 
@@ -489,10 +498,11 @@ const TableRow = React.memo(({
             style={{ position: 'relative', overflow: 'visible' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CostCell order={o} onSave={updateOrderField} />
+              <CostCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} />
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
+                  setActiveRowId(o.id);
                   if (String(activeTooltipOrderId) === String(o.id)) {
                     setActiveTooltipOrderId(null);
                     setBreakdown(null);
@@ -535,7 +545,7 @@ const TableRow = React.memo(({
         if (col.id === 'status_date') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.status_date ? new Date(o.status_date).toLocaleDateString() : '—'}</td>
         if (col.id === 'payment_ref') return <td key={col.id} style={{ fontSize: '0.7rem' }}>{o.payment_ref || '—'}</td>
         if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
-        if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} /></td>
+        if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'wa_erp_status') {
           const status = o.wa_status || o.wa_erp_status;
           let badgeBg = 'rgba(100,116,139,0.2)';
@@ -627,7 +637,8 @@ const TableRow = React.memo(({
          prev.bookingId === next.bookingId &&
          prev.activeTooltipOrderId === next.activeTooltipOrderId &&
          prev.cols === next.cols &&
-         prev.onForceResync === next.onForceResync;
+         prev.onForceResync === next.onForceResync &&
+         ((prev.activeRowId === prev.o.id) === (next.activeRowId === next.o.id));
 });
 
 export default TableRow;

@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { db, DB_DIR } = require('../db');
+const { DB_DIR } = require('../db');
 const bot = require('../engines/whatsapp_bot');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
+const waGovernanceService = require('../services/waGovernanceService');
 
 // STRICT JID NORMALIZATION UTILITY
 function normalizePhone(raw) {
@@ -55,11 +56,11 @@ router.use('/', require('./whatsapp/wa-optouts'));
 router.use('/', require('./whatsapp/wa-rules'));
 
 // GET /api/whatsapp-governance/chat/:order_id
-router.get('/chat/:order_id', (req, res) => {
+router.get('/chat/:order_id', async (req, res) => {
   const { order_id } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, wa_verification_status FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderById(order_id, tenantId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     if (!order.phone) {
@@ -68,11 +69,7 @@ router.get('/chat/:order_id', (req, res) => {
 
     const cleaned = normalizePhone(order.phone);
 
-    const dbMessages = db.prepare(`
-      SELECT * FROM whatsapp_messages 
-      WHERE (phone LIKE ? OR order_id = ?) AND tenant_id = ? 
-      ORDER BY id ASC
-    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id, tenantId);
+    const dbMessages = await waGovernanceService.getMessagesForChat(cleaned, order.id, tenantId);
 
     const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
 
@@ -101,7 +98,7 @@ router.post('/chat/:order_id/send', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'Message cannot be empty' });
 
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderForSend(order_id, tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     console.log(`[WA-SEND-ORDER-MANUAL] Inbound payload: orderId="${order_id}", phone="${order.phone}", message_length=${message?.length}`);
@@ -116,10 +113,14 @@ router.post('/chat/:order_id/send', async (req, res) => {
     let dbMessageId = null;
 
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?)
-      `).run(order.store_id, order.id, cleaned, message, clientUuid, tenantId);
+      const result = await waGovernanceService.saveOutgoingMessage({
+        storeId: order.store_id,
+        orderId: order.id,
+        phone: cleaned,
+        message,
+        messageId: clientUuid,
+        tenantId
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to save manual order message in DB:', err.message);
@@ -159,7 +160,7 @@ router.post('/chat/:order_id/upload-media', upload.single('media'), async (req, 
   if (!req.file) return res.status(400).json({ error: 'No media file provided' });
 
   try {
-    const order = db.prepare('SELECT id, store_id, phone FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderForUploadMedia(order_id, tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     const cleaned = normalizePhone(order.phone);
@@ -183,7 +184,7 @@ router.post('/chat/:order_id/send-images', async (req, res) => {
   const { order_id } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, line_items FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderForSendImages(order_id, tenantId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (!order.phone) return res.status(400).json({ error: 'Order phone not found' });
 
@@ -208,10 +209,13 @@ router.post('/chat/:order_id/send-images', async (req, res) => {
       const dbMessageContent = `[Image: ${item.image_url}] ${caption}`;
 
       try {
-        db.prepare(`
-          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-          VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
-        `).run(order.store_id, order.id, cleaned, dbMessageContent, tenantId);
+        await waGovernanceService.saveOutgoingTextMessageSimple({
+          storeId: order.store_id,
+          orderId: order.id,
+          phone: cleaned,
+          message: dbMessageContent,
+          tenantId
+        });
       } catch (err) {}
 
       bot.sendMessage(cleaned, caption, true, item.image_url);
@@ -229,7 +233,7 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
   const { order_id } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderForSend(order_id, tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
 
     const cleaned = normalizePhone(order.phone);
@@ -241,11 +245,7 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
       }
     }
 
-    const dbMessages = db.prepare(`
-      SELECT * FROM whatsapp_messages 
-      WHERE (phone LIKE ? OR order_id = ?) AND tenant_id = ? 
-      ORDER BY id ASC
-    `).all(`%${cleaned.substring(cleaned.length - 10)}%`, order.id, tenantId);
+    const dbMessages = await waGovernanceService.getMessagesForChat(cleaned, order.id, tenantId);
 
     const baileysMessages = typeof bot.getChatHistory === 'function' ? bot.getChatHistory(cleaned) : [];
 
@@ -266,38 +266,10 @@ router.post('/chat/:order_id/fetch-history', async (req, res) => {
 });
 
 // GET /api/whatsapp-governance/chats
-router.get('/chats', (req, res) => {
+router.get('/chats', async (req, res) => {
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const uniqueChats = db.prepare(`
-      SELECT phone, MAX(id) as max_id 
-      FROM whatsapp_messages 
-      WHERE tenant_id = ?
-      GROUP BY phone 
-      ORDER BY max_id DESC
-    `).all(tenantId);
-
-    const chats = [];
-    for (const chat of uniqueChats) {
-      const msg = db.prepare('SELECT * FROM whatsapp_messages WHERE id = ? AND tenant_id = ?').get(chat.max_id, tenantId);
-      if (!msg) continue;
-
-      const last10 = chat.phone.substring(chat.phone.length - 10);
-      const order = db.prepare(`
-        SELECT id, store_id, customer_name, wa_verification_status, financial_status, fulfillment_status, total_price 
-        FROM orders 
-        WHERE phone LIKE ? AND tenant_id = ?
-        ORDER BY id DESC LIMIT 1
-      `).get(`%${last10}%`, tenantId);
-
-      chats.push({
-        phone: chat.phone,
-        lastMessage: msg,
-        order: order || null,
-        customerName: order ? order.customer_name : null
-      });
-    }
-
+    const chats = await waGovernanceService.getRecentChats(tenantId);
     res.json({ success: true, chats });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -310,23 +282,10 @@ router.get('/chats/:phone', async (req, res) => {
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
     const normalized = normalizePhone(phone);
-    const last10 = normalized.substring(normalized.length - 10);
 
     let dbMessages = [];
     try {
-      dbMessages = db.prepare(`
-        SELECT * FROM whatsapp_messages 
-        WHERE phone = ? AND tenant_id = ?
-        ORDER BY id ASC
-      `).all(normalized, tenantId);
-
-      if (dbMessages.length === 0) {
-        dbMessages = db.prepare(`
-          SELECT * FROM whatsapp_messages 
-          WHERE phone = ? AND tenant_id = ?
-          ORDER BY id ASC
-        `).all('+' + normalized, tenantId);
-      }
+      dbMessages = await waGovernanceService.getChatMessages(normalized, tenantId);
     } catch (err) {
       throw err;
     }
@@ -345,12 +304,7 @@ router.get('/chats/:phone', async (req, res) => {
 
     let orderHistory = [];
     try {
-      orderHistory = db.prepare(`
-        SELECT id, store_id, customer_name, total_price, financial_status, fulfillment_status, wa_verification_status, created_timestamp AS created_at, phone
-        FROM orders 
-        WHERE phone LIKE ? AND tenant_id = ?
-        ORDER BY id DESC
-      `).all(`%${last10}%`, tenantId);
+      orderHistory = await waGovernanceService.getOrderHistoryByPhone(normalized, tenantId);
     } catch (err) {
       throw err;
     }
@@ -363,7 +317,7 @@ router.get('/chats/:phone', async (req, res) => {
 
     let geminiMemoryText = null;
     try {
-      const profile = db.prepare('SELECT size_preference, is_big_and_tall, preferences, ad_source, risk_flag FROM customer_profiles WHERE phone = ?').get(normalized);
+      const profile = await waGovernanceService.getCustomerProfile(normalized);
       if (profile) {
         let lines = [];
         if (profile.size_preference) {
@@ -412,25 +366,12 @@ router.post('/chats/:phone/read', async (req, res) => {
   try {
     const normalized = normalizePhone(phone);
     
-    const latestIncoming = db.prepare(`
-      SELECT id FROM whatsapp_messages 
-      WHERE phone = ? AND direction = 'incoming' AND tenant_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(normalized, tenantId);
+    const latestIncoming = await waGovernanceService.getLatestIncomingMessage(normalized, tenantId);
 
     if (latestIncoming) {
-      db.prepare(`
-        UPDATE whatsapp_messages 
-        SET status = 'read' 
-        WHERE id = ?
-      `).run(latestIncoming.id);
+      await waGovernanceService.updateMessageStatus(latestIncoming.id, 'read');
       
-      const last10 = normalized.substring(normalized.length - 10);
-      const order = db.prepare(`
-        SELECT store_id, shopify_order_id FROM orders 
-        WHERE phone LIKE ? AND tenant_id = ?
-        ORDER BY id DESC LIMIT 1
-      `).get(`%${last10}%`, tenantId);
+      const order = await waGovernanceService.getLatestOrderByPhone(normalized, tenantId);
       
       if (order && order.shopify_order_id) {
         try {
@@ -462,12 +403,7 @@ router.post('/chats/:phone/send', async (req, res) => {
     console.log(`[WA-SEND-MANUAL] Formatted JID: "${jid}"`);
     console.log(`[WA-SEND-MANUAL] Active Baileys socket connected: ${!!bot.sock}, status: "${bot.status}"`);
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`
-      SELECT id, store_id, shopify_order_id FROM orders 
-      WHERE phone LIKE ? AND tenant_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
@@ -486,11 +422,7 @@ router.post('/chats/:phone/send', async (req, res) => {
       let participant = quoteContext.participant;
       let text = quoteContext.text;
       try {
-        const quotedRow = db.prepare(`
-          SELECT * FROM whatsapp_messages 
-          WHERE message_id = ? AND tenant_id = ?
-          LIMIT 1
-        `).get(qid, tenantId);
+        const quotedRow = await waGovernanceService.getMessageByMessageId(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
@@ -521,10 +453,15 @@ router.post('/chats/:phone/send', async (req, res) => {
 
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'sent', ?, ?)
-      `).run(storeId, orderId, cleaned, message, clientUuid, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      const result = await waGovernanceService.saveOutgoingMessage({
+        storeId,
+        orderId,
+        phone: cleaned,
+        message,
+        messageId: clientUuid,
+        tenantId,
+        quoteContext: verifiedQuote
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to save manual chat message:', err.message);
@@ -573,12 +510,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
   try {
     const cleaned = normalizePhone(phone);
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`
-      SELECT id, store_id, shopify_order_id FROM orders 
-      WHERE phone LIKE ? AND tenant_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
 
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
@@ -608,11 +540,7 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
       let participant = quoteContext.participant;
       let text = quoteContext.text;
       try {
-        const quotedRow = db.prepare(`
-          SELECT * FROM whatsapp_messages 
-          WHERE message_id = ? AND tenant_id = ?
-          LIMIT 1
-        `).get(qid, tenantId);
+        const quotedRow = await waGovernanceService.getMessageByMessageId(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
@@ -643,10 +571,17 @@ router.post('/chats/:phone/upload-media', upload.single('media'), async (req, re
 
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?, ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, relativeUrl, mediaType, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      const result = await waGovernanceService.saveOutgoingMediaMessage({
+        storeId,
+        orderId,
+        phone: cleaned,
+        message: dbMsgContent,
+        messageId: clientUuid,
+        mediaUrl: relativeUrl,
+        mediaType,
+        tenantId,
+        quoteContext: verifiedQuote
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log manual media message:', err.message);
@@ -689,18 +624,20 @@ router.post('/chats/:phone/log-call-handoff', async (req, res) => {
   try {
     const cleaned = normalizePhone(phone);
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
 
     const systemMsg = '📞 Agent initiated native WhatsApp handoff call.';
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, 'sent', ?)
-      `).run(storeId, orderId, cleaned, systemMsg, tenantId);
+      const result = await waGovernanceService.saveOutgoingTextMessageSimple({
+        storeId,
+        orderId,
+        phone: cleaned,
+        message: systemMsg,
+        tenantId
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log call handoff message:', err.message);
@@ -751,8 +688,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
   try {
     const cleaned = normalizePhone(phone);
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
     const storeId = order ? order.store_id : 1;
     const orderId = order ? order.id : null;
 
@@ -772,11 +708,7 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
       let participant = quoteContext.participant;
       let text = quoteContext.text;
       try {
-        const quotedRow = db.prepare(`
-          SELECT * FROM whatsapp_messages 
-          WHERE message_id = ? AND tenant_id = ?
-          LIMIT 1
-        `).get(qid, tenantId);
+        const quotedRow = await waGovernanceService.getMessageByMessageId(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
@@ -807,10 +739,17 @@ router.post('/chats/:phone/upload-voice', voiceUpload.single('audio'), async (re
 
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', '[Voice Note]', ?, ?, 'audio', 'sent', ?, ?)
-      `).run(storeId, orderId, cleaned, clientUuid, relativeUrl, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      const result = await waGovernanceService.saveOutgoingMediaMessage({
+        storeId,
+        orderId,
+        phone: cleaned,
+        message: '[Voice Note]',
+        messageId: clientUuid,
+        mediaUrl: relativeUrl,
+        mediaType: 'audio',
+        tenantId,
+        quoteContext: verifiedQuote
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log voice note:', err.message);
@@ -853,20 +792,14 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
     const cleaned = normalizePhone(phone);
     const jid = cleaned + '@s.whatsapp.net';
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`
-      SELECT id, store_id, customer_name, tracking_number, courier FROM orders 
-      WHERE phone LIKE ? AND tenant_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
 
-    const quickReply = db.prepare('SELECT * FROM quick_replies WHERE id = ? AND tenant_id = ?').get(Number(replyId), tenantId) ||
-                       db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
+    const quickReply = await waGovernanceService.getQuickReplyTemplate(replyId, tenantId);
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
     
     quickReply.buttons = [];
     try {
-      quickReply.buttons = db.prepare('SELECT * FROM quick_reply_buttons WHERE quick_reply_id = ? ORDER BY position ASC, id ASC').all(quickReply.id);
+      quickReply.buttons = await waGovernanceService.getQuickReplyButtons(quickReply.id);
     } catch (_) {}
 
     let resolvedCaption = quickReply.text || quickReply.caption || '';
@@ -902,11 +835,7 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
       let participant = quoteContext.participant;
       let text = quoteContext.text;
       try {
-        const quotedRow = db.prepare(`
-          SELECT * FROM whatsapp_messages 
-          WHERE message_id = ? AND tenant_id = ?
-          LIMIT 1
-        `).get(qid, tenantId);
+        const quotedRow = await waGovernanceService.getMessageByMessageId(qid, tenantId);
 
         if (quotedRow) {
           const fromMe = quotedRow.direction === 'outgoing';
@@ -937,10 +866,17 @@ router.post('/chats/:phone/send-quick-reply', async (req, res) => {
 
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?, ?)
-      `).run(storeId, orderId, cleaned, dbMsgContent, clientUuid, quickReply.media_url || null, quickReply.media_type || null, tenantId, verifiedQuote ? JSON.stringify(verifiedQuote) : null);
+      const result = await waGovernanceService.saveOutgoingMediaMessage({
+        storeId,
+        orderId,
+        phone: cleaned,
+        message: dbMsgContent,
+        messageId: clientUuid,
+        mediaUrl: quickReply.media_url || null,
+        mediaType: quickReply.media_type || null,
+        tenantId,
+        quoteContext: verifiedQuote
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
@@ -1072,12 +1008,7 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
   try {
     const cleaned = normalizePhone(phone);
 
-    const last10 = cleaned.substring(cleaned.length - 10);
-    const order = db.prepare(`
-      SELECT * FROM orders 
-      WHERE phone LIKE ? AND tenant_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(`%${last10}%`, tenantId);
+    const order = await waGovernanceService.getLatestOrderByPhone(cleaned, tenantId);
 
     if (!order) return res.status(404).json({ error: 'No order found for this phone number to generate an invoice' });
 
@@ -1096,10 +1027,15 @@ router.post('/chats/:phone/send-invoice', async (req, res) => {
 
     let dbMessageId = null;
     try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent', ?)
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl, tenantId);
+      const result = await waGovernanceService.saveOutgoingMediaMessageSimple({
+        storeId: order.store_id,
+        orderId: order.id,
+        phone: cleaned,
+        message: dbMsgContent,
+        mediaUrl: relativeUrl,
+        mediaType: 'document',
+        tenantId
+      });
       dbMessageId = result.lastInsertRowid;
     } catch (err) {
       console.error('Failed to log invoice message:', err.message);
@@ -1136,10 +1072,10 @@ router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
   if (!replyId) return res.status(400).json({ error: 'Quick reply ID is required' });
   
   try {
-    const order = db.prepare('SELECT id, store_id, phone, customer_name, tracking_number, courier FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getOrderForSendQuickReply(order_id, tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order phone not found' });
     
-    const quickReply = db.prepare('SELECT * FROM whatsapp_quick_replies WHERE id = ?').get(Number(replyId));
+    const quickReply = await waGovernanceService.getGlobalQuickReplyTemplate(replyId);
     if (!quickReply) return res.status(404).json({ error: 'Quick reply template not found' });
     
     const cleaned = normalizePhone(order.phone);
@@ -1161,10 +1097,15 @@ router.post('/chat/:order_id/send-quick-reply', async (req, res) => {
       : resolvedCaption;
       
     try {
-      db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, 'sent', ?)
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, quickReply.media_url || null, quickReply.media_type || null, tenantId);
+      await waGovernanceService.saveOutgoingMediaMessageSimple({
+        storeId: order.store_id,
+        orderId: order.id,
+        phone: cleaned,
+        message: dbMsgContent,
+        mediaUrl: quickReply.media_url || null,
+        mediaType: quickReply.media_type || null,
+        tenantId
+      });
     } catch (err) {
       console.error('Failed to log quick reply message:', err.message);
     }
@@ -1186,7 +1127,7 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
   const { order_id } = req.params;
   const tenantId = req.user?.tenant_id || req.tenantId || 'default';
   try {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ? AND tenant_id = ?').get(Number(order_id), tenantId);
+    const order = await waGovernanceService.getFullOrderById(order_id, tenantId);
     if (!order || !order.phone) return res.status(404).json({ error: 'Order or customer phone not found' });
 
     const cleaned = normalizePhone(order.phone);
@@ -1205,10 +1146,15 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
     const dbMsgContent = `[DOCUMENT] ${caption}`;
 
     try {
-      db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, media_url, media_type, status, tenant_id)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, 'document', 'sent', ?)
-      `).run(order.store_id, order.id, cleaned, dbMsgContent, relativeUrl, tenantId);
+      await waGovernanceService.saveOutgoingMediaMessageSimple({
+        storeId: order.store_id,
+        orderId: order.id,
+        phone: cleaned,
+        message: dbMsgContent,
+        mediaUrl: relativeUrl,
+        mediaType: 'document',
+        tenantId
+      });
     } catch (err) {
       console.error('Failed to log invoice message:', err.message);
     }
@@ -1225,7 +1171,7 @@ router.post('/chat/:order_id/send-invoice', async (req, res) => {
 router.post('/test-poll', async (req, res) => {
   const { phone, order_id } = req.body;
   try {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order_id);
+    const order = await waGovernanceService.getOrderByIdNoTenant(order_id);
     const { dispatchCODVerification } = require('../engines/cod_verifier');
     
     await dispatchCODVerification(order);

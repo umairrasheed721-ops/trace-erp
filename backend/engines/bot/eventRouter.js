@@ -10,6 +10,16 @@ const {
   processIncomingMessage
 } = require('../whatsapp_message_processor');
 
+/**
+ * Handles incoming presence updates from WhatsApp (e.g., typing/recording states)
+ * and broadcasts them via global WebSockets.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} update - The presence update object
+ * @param {string} update.id - The contact JID
+ * @param {object} update.presences - The map of presence states per device
+ * @returns {void}
+ */
 function handlePresenceUpdate(bot, update) {
   const { id, presences } = update;
   if (!presences) return;
@@ -32,6 +42,17 @@ function handlePresenceUpdate(bot, update) {
   }
 }
 
+/**
+ * Processes initial history sync event payload from Baileys, inserting
+ * historical messages into the SQLite DB.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} payload - The history sync payload
+ * @param {Array<object>} payload.chats - Synchronized chats array
+ * @param {Array<object>} payload.messages - Synchronized historical messages array
+ * @param {boolean} payload.isLatest - Flag if this is the latest sync chunk
+ * @returns {Promise<void>}
+ */
 async function handleMessagingHistorySet(bot, { chats, messages, isLatest }) {
   console.log(`📦 WhatsApp History Sync received: ${chats?.length || 0} chats, ${messages?.length || 0} messages`);
   if (messages) {
@@ -79,6 +100,10 @@ async function handleMessagingHistorySet(bot, { chats, messages, isLatest }) {
 
 /**
  * Resolves a selected poll option string from its raw SHA-256 hashes.
+ * 
+ * @param {Array<string|Buffer>} selectedOptions - Selection hashes or string labels
+ * @param {Array<string>} pollOptions - Possible choices string array
+ * @returns {string|null} Resolved option name or null
  */
 function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
   if (!selectedOptions || !selectedOptions.length) {
@@ -108,6 +133,14 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
 /**
  * Safely extracts the messageSecret from a Baileys message object in RAM.
  * Handles nested structure, poll message types, and common wrappers (ephemeral, viewOnce, etc.).
+ */
+/**
+ * Handles message status changes, poll votes, and message reaction events.
+ * Updates message status columns (e.g., delivered/sent) in the DB.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {Array<object>} updates - Array of message update objects
+ * @returns {Promise<void>}
  */
 async function handleMessagesUpdate(bot, updates) {
   // LOG EVERYTHING unconditionally to find the real structure
@@ -438,6 +471,16 @@ async function handleMessagesUpdate(bot, updates) {
 };
 
 
+/**
+ * Main incoming/outgoing message handler. Validates type, processes media downloads,
+ * checks trigger intents, matches auto-responders, and runs the AI response loop.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} m - Message upsert payload from Baileys socket
+ * @param {Array<object>} m.messages - Array of received message structures
+ * @param {string} m.type - Event notify type ('notify' or 'append')
+ * @returns {Promise<void>}
+ */
 async function handleMessagesUpsert(bot, m) {
   const { messages, type } = m;
   if (type !== 'notify' && type !== 'append') return;
@@ -725,6 +768,13 @@ async function handleMessagesUpsert(bot, m) {
   }
 }
 
+/**
+ * Retrieves list of processed WhatsApp messages from Bot stores in memory.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {string} phone - Target phone number
+ * @returns {Array<object>} Array of mapped historical message items
+ */
 function getChatHistory(bot, phone) {
   if (!bot.store || !bot.store.messages) return [];
   let cleaned = phone.replace(/\D/g, '');
@@ -752,6 +802,13 @@ function getChatHistory(bot, phone) {
   }).filter(Boolean);
 }
 
+/**
+ * Orchestrates fetching historical message logs for a specific phone number.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {string} phone - Target phone number
+ * @returns {Promise<object>} Object indicating success status, count, and fetched messages
+ */
 async function fetchHistoryForPhone(bot, phone) {
   if (!bot.sock) return { success: false, error: 'Bot not connected' };
   let cleaned = phone.replace(/\D/g, '');
@@ -767,6 +824,16 @@ async function fetchHistoryForPhone(bot, phone) {
   }
 }
 
+/**
+ * Evaluates configured auto-responders against incoming messages and sends matching replies.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {string} remoteJid - Destination WhatsApp JID
+ * @param {string} tagToApply - Associated Shopify flag to apply
+ * @param {boolean} pendingCOD - Whether this order has pending cash on delivery
+ * @param {string} orderRef - Shopify order reference ID/Number
+ * @returns {Promise<void>}
+ */
 async function sendAutoResponderReply(bot, remoteJid, tagToApply, pendingCOD, orderRef) {
   let autoResponders = [];
   try {
@@ -838,6 +905,12 @@ async function sendAutoResponderReply(bot, remoteJid, tagToApply, pendingCOD, or
   }
 }
 
+/**
+ * Initiates complete history sync from WhatsApp servers (deprecated in current layout).
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @returns {Promise<void>}
+ */
 async function syncDeepHistory(bot) {
   if (!bot.sock) return;
   console.log('🔄 Deep History Sync bypassed (legacy fetchMessagesFromWA is deprecated).');

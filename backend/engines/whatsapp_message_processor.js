@@ -19,6 +19,16 @@ const {
   handleIncomingAIMessage
 } = require('./processors/aiDispatcher');
 
+/**
+ * Processes the bulk and priority message queues for a specific bot instance.
+ * Iterates through queues, respects cooling off states, anti-ban hourly counts,
+ * and passes individual messages to the underlying dispatchers.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} sock - The active Baileys socket object
+ * @param {object} db - SQLite database client instance
+ * @returns {Promise<void>}
+ */
 async function processQueue(bot, sock, db) {
   const totalPending = (bot.priorityQueue?.length || 0) + bot.queue.length;
   if (bot.isProcessing || totalPending === 0) return;
@@ -646,6 +656,17 @@ async function processQueue(bot, sock, db) {
   }
 }
 
+/**
+ * Parses and indexes incoming WhatsApp messages. Runs intent analysis engines,
+ * OCR processors on payment receipts, updates the local contact cache,
+ * and coordinates replies.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} msg - The raw message object from Baileys
+ * @param {object} sock - The active Baileys socket object
+ * @param {object} db - SQLite database client instance
+ * @returns {Promise<void>}
+ */
 async function processIncomingMessage(bot, msg, sock, db) {
   if (!msg.message) return;
   
@@ -1100,7 +1121,11 @@ async function processIncomingMessage(bot, msg, sock, db) {
  * In that case, the tag gets an "(Admin)" suffix → "Trace: Confirmed (Admin)".
  */
 /**
- * Resolves a selected poll option string from its raw SHA-256 hashes.
+ * Decrypts a voter option string from its raw SHA-256 hashes matching poll option text.
+ * 
+ * @param {Array<string|Buffer>} selectedOptions - Option selections represented as hashes or strings
+ * @param {Array<string>} pollOptions - Original choice strings array
+ * @returns {string|null} The resolved choice name string, or null
  */
 function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
   if (!selectedOptions || !selectedOptions.length) {
@@ -1127,6 +1152,15 @@ function resolveSelectedOptionFromHashes(selectedOptions, pollOptions) {
   return null;
 }
 
+/**
+ * Syncs incoming poll responses (e.g. COD confirmation/cancellations)
+ * to order status tags in the database and pushes updates to Shopify.
+ * 
+ * @param {object} bot - The WhatsApp bot instance
+ * @param {object} msg - The poll update message event
+ * @param {object} db - SQLite database client instance
+ * @returns {Promise<void>}
+ */
 async function syncPollVoteToShopify(bot, msg, db) {
   try {
     const remoteJid = msg.key?.remoteJid;
@@ -1243,7 +1277,14 @@ async function syncPollVoteToShopify(bot, msg, db) {
 }
 
 /**
- * Updates Shopify order tags asynchronously (non-blocking, fire-and-forget)
+ * Updates Shopify order tags asynchronously using a fire-and-forget setImmediate strategy.
+ * Retrieves store context, fetches active tags, merges the new tag, and updates via Shopify API.
+ * 
+ * @param {string} tenantId - The active tenant identifier
+ * @param {number|string} erpOrderId - The ERP order identifier
+ * @param {string} newTag - The new tag to append/update
+ * @param {object} db - SQLite database client instance
+ * @returns {void}
  */
 function updateShopifyOrderTagsNonBlocking(tenantId, erpOrderId, newTag, db) {
   setImmediate(async () => {
