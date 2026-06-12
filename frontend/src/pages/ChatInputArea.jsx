@@ -35,8 +35,17 @@ export default function ChatInputArea({
   customerInfo,
   handleTriggerCODVerification
 }) {
-  const [mediaFile, setMediaFile] = React.useState(null);
-  const [mediaPreview, setMediaPreview] = React.useState(null);
+  const [pastedMedia, setPastedMedia] = React.useState([]);
+
+  const removeMedia = (id) => {
+    setPastedMedia(prev => {
+      const target = prev.find(m => m.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter(m => m.id !== id);
+    });
+  };
 
   const [quickReplies, setQuickReplies] = React.useState(() => {
     const saved = localStorage.getItem('trace_quick_replies');
@@ -80,34 +89,41 @@ export default function ChatInputArea({
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (inputText.trim() || mediaFile) {
+      if (inputText.trim() || pastedMedia.length > 0) {
         handleSendWithClipboard();
       }
     }
   };
 
   const handlePaste = (e) => {
-    const items = e.clipboardData?.items;
+    const items = e.clipboardData?.items || e.clipboardData?.files;
     if (!items) return;
-
+    const newMedia = [];
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
+      const item = items[i];
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile ? item.getAsFile() : item;
         if (file) {
-          e.preventDefault();
-          setMediaFile(file);
-          setMediaPreview(URL.createObjectURL(file));
-          break;
+          const previewUrl = URL.createObjectURL(file);
+          newMedia.push({ file, previewUrl, id: Date.now() + i });
         }
       }
     }
+    if (newMedia.length > 0) {
+      e.preventDefault();
+      setPastedMedia(prev => [...prev, ...newMedia]);
+    }
   };
 
-  const handleSendWithClipboard = () => {
-    if (mediaFile) {
-      handleMediaUpload(mediaFile, inputText);
-      setMediaFile(null);
-      setMediaPreview(null);
+  const handleSendWithClipboard = async () => {
+    if (pastedMedia.length > 0) {
+      const mediaToSend = [...pastedMedia];
+      setPastedMedia([]);
+      for (let i = 0; i < mediaToSend.length; i++) {
+        const caption = i === 0 ? inputText : '';
+        await handleMediaUpload(mediaToSend[i].file, caption);
+        URL.revokeObjectURL(mediaToSend[i].previewUrl);
+      }
       updateInputText('');
     } else {
       handleSendMessage();
@@ -231,35 +247,37 @@ export default function ChatInputArea({
         </div>
       )}
 
-      {/* Clipboard Image Preview Box */}
-      {mediaPreview && (
-        <div style={{ padding: '10px 20px', margin: '0 15px', display: 'flex', alignItems: 'center' }}>
-          <div className="relative inline-block p-2 bg-gray-100 rounded-lg border border-gray-200" style={{ position: 'relative', display: 'inline-block', padding: '8px', backgroundColor: 'var(--wa-header-bg)', borderRadius: '12px', border: '1px solid var(--wa-border)' }}>
-            <img src={mediaPreview} alt="Paste Preview" className="h-24 w-auto rounded-md object-cover" style={{ height: '96px', width: 'auto', borderRadius: '8px', objectFit: 'cover' }} />
-            <button 
-              onClick={() => { setMediaFile(null); setMediaPreview(null); }}
-              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 shadow-md"
-              style={{
-                position: 'absolute',
-                top: '-8px',
-                right: '-8px',
-                backgroundColor: '#ef4444',
-                color: '#ffffff',
-                borderRadius: '50%',
-                width: '24px',
-                height: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '12px',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-              }}
-            >
-              ✕
-            </button>
-          </div>
+      {/* Clipboard Multi-Image Preview Box */}
+      {pastedMedia.length > 0 && (
+        <div style={{ padding: '10px 20px', margin: '0 15px', display: 'flex', gap: '12px', overflowX: 'auto', backgroundColor: 'var(--wa-header-bg)', borderRadius: '12px', border: '1px solid var(--wa-border)', alignItems: 'center' }}>
+          {pastedMedia.map((media) => (
+            <div key={media.id} style={{ position: 'relative', display: 'inline-block', padding: '4px', flexShrink: 0 }}>
+              <img src={media.previewUrl} alt="Pasted Preview" style={{ height: '80px', width: 'auto', borderRadius: '8px', objectFit: 'cover', border: '1px solid var(--wa-border)' }} />
+              <button 
+                onClick={() => removeMedia(media.id)}
+                style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  backgroundColor: '#ef4444',
+                  color: '#ffffff',
+                  borderRadius: '50%',
+                  width: '20px',
+                  height: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '10px',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                }}
+                title="Remove Image"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -417,7 +435,7 @@ export default function ChatInputArea({
             />
 
             {/* Dynamic Action Button on the Far Right */}
-            {(inputText.trim() || mediaFile) ? (
+            {(inputText.trim() || pastedMedia.length > 0) ? (
               <button 
                 className="wa-portal-send-btn"
                 onClick={handleSendWithClipboard}
