@@ -317,7 +317,10 @@ class WhatsAppBot {
    */
   async sendToEvolutionApi(phone, message, mediaUrl = null, mediaType = null, fileName = null) {
     const cleaned = phone.replace(/\D/g, '');
-    const evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    let evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+    if (evolutionUrl && !evolutionUrl.startsWith('http://') && !evolutionUrl.startsWith('https://')) {
+      evolutionUrl = 'https://' + evolutionUrl;
+    }
     const evolutionApiKey = process.env.EVOLUTION_API_KEY || '';
     const evolutionInstance = process.env.EVOLUTION_API_INSTANCE || 'TracePK';
 

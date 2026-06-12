@@ -18,7 +18,10 @@ if (fs.existsSync(envPath)) {
   console.warn('⚠️ Warning: backend/.env file not found. Using current process environment.');
 }
 
-const evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+let evolutionUrl = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+if (evolutionUrl && !evolutionUrl.startsWith('http://') && !evolutionUrl.startsWith('https://')) {
+  evolutionUrl = 'https://' + evolutionUrl;
+}
 const evolutionApiKey = process.env.EVOLUTION_API_KEY || 'TracePK_Secret_Key_123';
 const instanceName = process.env.EVOLUTION_API_INSTANCE || 'TracePK';
 
