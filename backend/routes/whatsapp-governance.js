@@ -57,8 +57,85 @@ router.use('/', require('./whatsapp/wa-rules'));
 
 // POST /api/whatsapp-governance/webhook/whatsapp (Evolution API Webhook)
 router.post('/webhook/whatsapp', async (req, res) => {
-  console.log('Evolution API Webhook received:', req.body);
-  return res.status(200).send('OK');
+  try {
+    const { event, data } = req.body;
+    console.log(`[EVOLUTION-WEBHOOK] Received event: "${event}"`);
+
+    // Verify apikey header matches EVOLUTION_API_KEY
+    if (process.env.EVOLUTION_API_KEY && req.headers.apikey !== process.env.EVOLUTION_API_KEY) {
+      console.warn(`[EVOLUTION-WEBHOOK] Unauthorized webhook request: invalid apikey header`);
+      return res.status(401).json({ error: 'Unauthorized key' });
+    }
+
+    if (!event || !data) {
+      return res.status(200).send('OK');
+    }
+
+    const eventType = String(event).toLowerCase();
+    const eventRouter = require('../engines/bot/eventRouter');
+    const tenantContext = require('../tenant-context');
+
+    if (eventType === 'qrcode.updated' || eventType === 'qrcode_updated') {
+      if (data.qrcode?.base64) {
+        bot.qrCode = data.qrcode.base64;
+        bot.status = 'QR_READY';
+        console.log('[EVOLUTION-WEBHOOK] Set QR code status to QR_READY');
+      }
+    } 
+    else if (eventType === 'connection.update' || eventType === 'connection_update') {
+      const state = data.state;
+      const sender = req.body.sender || data.sender;
+      if (sender) {
+        const digits = sender.split('@')[0].replace(/\D/g, '');
+        bot.activeNumber = `+${digits}`;
+      }
+      if (state === 'open' || state === 'connected') {
+        bot.status = 'CONNECTED';
+        bot.qrCode = null;
+        console.log(`[EVOLUTION-WEBHOOK] WhatsApp Bot Connected: number ${bot.activeNumber}`);
+      } else if (state === 'close' || state === 'disconnected') {
+        bot.status = 'DISCONNECTED';
+        console.log('[EVOLUTION-WEBHOOK] WhatsApp Bot Disconnected');
+      } else if (state === 'connecting') {
+        bot.status = 'CONNECTING';
+        console.log('[EVOLUTION-WEBHOOK] WhatsApp Bot Connecting...');
+      }
+    } 
+    else if (eventType === 'messages.upsert' || eventType === 'messages_upsert') {
+      if (data.key) {
+        const payload = {
+          messages: [data],
+          type: 'notify'
+        };
+        tenantContext.run('default', async () => {
+          try {
+            await eventRouter.handleMessagesUpsert(bot, payload);
+            console.log(`[EVOLUTION-WEBHOOK] Inbound message upsert processed successfully for msg ID ${data.key.id}`);
+          } catch (err) {
+            console.error('[EVOLUTION-WEBHOOK] Failed to process message upsert event:', err.message);
+          }
+        });
+      }
+    } 
+    else if (eventType === 'messages.update' || eventType === 'messages_update') {
+      if (data.key) {
+        const updates = [data];
+        tenantContext.run('default', async () => {
+          try {
+            await eventRouter.handleMessagesUpdate(bot, updates);
+            console.log(`[EVOLUTION-WEBHOOK] Inbound message update processed successfully for msg ID ${data.key.id}`);
+          } catch (err) {
+            console.error('[EVOLUTION-WEBHOOK] Failed to process message update event:', err.message);
+          }
+        });
+      }
+    }
+
+    return res.status(200).send('OK');
+  } catch (error) {
+    console.error('[EVOLUTION-WEBHOOK-FATAL]:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 // GET /api/whatsapp-governance/chat/:order_id
