@@ -61,9 +61,10 @@ router.post('/webhook/whatsapp', async (req, res) => {
     const { event, data } = req.body;
     console.log(`[EVOLUTION-WEBHOOK] Received event: "${event}"`);
 
-    // Verify apikey header matches EVOLUTION_API_KEY
-    if (process.env.EVOLUTION_API_KEY && req.headers.apikey !== process.env.EVOLUTION_API_KEY) {
-      console.warn(`[EVOLUTION-WEBHOOK] Unauthorized webhook request: invalid apikey header`);
+    // Verify apikey in headers or body matches EVOLUTION_API_KEY
+    const receivedKey = req.headers.apikey || req.body.apikey;
+    if (process.env.EVOLUTION_API_KEY && receivedKey !== process.env.EVOLUTION_API_KEY) {
+      console.warn(`[EVOLUTION-WEBHOOK] Unauthorized webhook request: invalid apikey`);
       return res.status(401).json({ error: 'Unauthorized key' });
     }
 
