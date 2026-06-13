@@ -16,7 +16,7 @@ const COLUMN_WIDTHS = {
   order_date: 125,
   customer_name: 140,
   customer_history: 100,
-  phone: 160,
+  phone: 190,
   address: 240,
   city: 90,
   items: 220,

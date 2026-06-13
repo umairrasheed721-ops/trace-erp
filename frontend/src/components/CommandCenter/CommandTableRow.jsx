@@ -423,7 +423,7 @@ const CommandTableRow = React.memo(({
                   </div>
  
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
-                    <span className="whitespace-nowrap tabular-nums text-sm">{formattedPhone}</span>
+                    <span className="whitespace-nowrap tabular-nums text-sm font-medium">{formattedPhone}</span>
                   </a>
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '4px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
                 </div>
