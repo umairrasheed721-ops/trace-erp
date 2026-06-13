@@ -276,13 +276,13 @@ const CommandTableRow = React.memo(({
             <td key={col.id} className="min-w-[160px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem' }}>
               {formattedPhone ? (
                 <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                    <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Call via SIM">📞</a>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }} className="flex-shrink-0">
+                    <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} className="flex-shrink-0" title="Call via SIM">📞</a>
                     
                     {(() => {
                       const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
                       return (
-                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }} className="flex-shrink-0">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -300,17 +300,18 @@ const CommandTableRow = React.memo(({
                               justifyContent: 'center',
                               position: 'relative'
                             }}
+                            className="flex-shrink-0"
                             title="Open Chat in Portal"
                           >
                             💬
-                            {isUnread && <span className="wa-unread-badge"></span>}
+                            {isUnread && <span className="absolute -top-1 -right-1 wa-unread-badge"></span>}
                           </button>
                         </div>
                       );
                     })()}
  
                     <select 
-                      className="wa-template-select"
+                      className="wa-template-select flex-shrink-0"
                       onClick={() => setActiveRowId(o.id)}
                       style={{ 
                         background: 'none', 
@@ -419,7 +420,7 @@ const CommandTableRow = React.memo(({
                   </div>
  
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
-                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '8px', fontWeight: 600 }} title="Call via SIM">Call</a>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '8px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
                 </div>
               ) : '—'}
             </td>
