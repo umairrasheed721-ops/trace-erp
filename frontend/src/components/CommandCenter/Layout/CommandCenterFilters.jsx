@@ -46,118 +46,111 @@ export default function CommandCenterFilters({
     <div style={{ marginBottom: 16 }}>
       {/* ── Primary Filters Row ─────────────────────────────────────────── */}
       <div className="card" style={{ padding: compactMode ? '8px 12px' : '14px 16px', marginBottom: 10 }}>
-        <div className="flex justify-between items-end gap-4 flex-wrap" style={{
+        <div className="flex flex-wrap items-end gap-3" style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          flexWrap: 'wrap',
           alignItems: 'end',
-          gap: 16,
-          flexWrap: 'wrap'
+          gap: 12
         }}>
-          {/* Left Group (Search & Primary Filters) */}
-          <div className="flex items-end gap-3 flex-wrap" style={{ display: 'flex', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
-            {/* Keyword Search */}
-            <div className="w-80" style={{ width: '320px', minWidth: '320px' }}>
-              <label className="form-label">🔑 Keyword</label>
-              <input
-                ref={searchInputRef}
-                className="form-input"
-                placeholder="Search Order, Name, Phone..."
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && runSearch()}
-              />
-            </div>
+          {/* Keyword Search */}
+          <div className="w-80" style={{ width: '320px', minWidth: '320px' }}>
+            <label className="form-label">🔑 Keyword</label>
+            <input
+              ref={searchInputRef}
+              className="form-input"
+              placeholder="Search Order, Name, Phone..."
+              value={keyword}
+              onChange={e => setKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && runSearch()}
+            />
+          </div>
 
-            {/* Date Preset */}
-            <div style={{ width: '180px', minWidth: '180px' }}>
-              <label className="form-label">📅 Date Preset</label>
-              <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
-                {DATE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
+          {/* Date Preset */}
+          <div style={{ width: '180px', minWidth: '180px' }}>
+            <label className="form-label">📅 Date Preset</label>
+            <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
+              {DATE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
 
-            {/* Custom date pickers */}
-            {preset === 'Custom Range' && (
-              <>
-                <div style={{ width: '130px', minWidth: '130px' }}>
-                  <label className="form-label">📆 Start</label>
-                  <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
-                </div>
-                <div style={{ width: '130px', minWidth: '130px' }}>
-                  <label className="form-label">🏁 End</label>
-                  <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
-                </div>
-              </>
-            )}
+          {/* Custom date pickers */}
+          {preset === 'Custom Range' && (
+            <>
+              <div style={{ width: '130px', minWidth: '130px' }}>
+                <label className="form-label">📆 Start</label>
+                <input type="date" className="form-input" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+              </div>
+              <div style={{ width: '130px', minWidth: '130px' }}>
+                <label className="form-label">🏁 End</label>
+                <input type="date" className="form-input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              </div>
+            </>
+          )}
 
-            {/* Status / Mode */}
-            <div style={{ width: '180px', minWidth: '180px' }}>
-              <label className="form-label">🏷️ Status / Mode</label>
-              <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+          {/* Status / Mode */}
+          <div style={{ width: '180px', minWidth: '180px' }}>
+            <label className="form-label">🏷️ Status / Mode</label>
+            <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
 
-            {/* Aging Filter Dropdown */}
-            <div style={{ width: '180px', minWidth: '180px' }}>
-              <label className="form-label">⏳ Aging Filter</label>
-              <select 
-                className="form-select" 
-                value={activeAgingBucket || ''} 
-                onChange={e => setActiveAgingBucket(e.target.value || null)}
-              >
-                <option value="">— All Aging —</option>
-                {agingBuckets.map(b => (
-                  <option key={b.label} value={b.label}>{b.label}</option>
+          {/* Aging Filter Dropdown */}
+          <div style={{ width: '180px', minWidth: '180px' }}>
+            <label className="form-label">⏳ Aging Filter</label>
+            <select 
+              className="form-select" 
+              value={activeAgingBucket || ''} 
+              onChange={e => setActiveAgingBucket(e.target.value || null)}
+            >
+              <option value="">— All Aging —</option>
+              {agingBuckets.map(b => (
+                <option key={b.label} value={b.label}>{b.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sort */}
+          <div style={{ width: '140px', minWidth: '140px' }}>
+            <label className="form-label">🗂️ Sort</label>
+            <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
+              {SORT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          {/* Saved Views */}
+          <div style={{ width: '180px', minWidth: '180px' }}>
+            <label className="form-label">⭐ Saved Views</label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <select className="form-select" style={{ flex: 1 }} value={selectedView} onChange={e => loadView(e.target.value)}>
+                <option value="">— Default Layout —</option>
+                {savedViews.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.is_locked ? '🔒' : '👤'} {v.view_name}
+                  </option>
                 ))}
               </select>
+              {selectedView && (
+                <button className="btn btn-secondary btn-sm" onClick={deleteView} title="Delete View">🗑️</button>
+              )}
             </div>
           </div>
 
-          {/* Right Group (View Controls & Actions) */}
-          <div className="flex items-end gap-3 ml-auto" style={{ display: 'flex', alignItems: 'end', gap: 12, marginLeft: 'auto' }}>
-            {/* Sort */}
-            <div style={{ width: '140px', minWidth: '140px' }}>
-              <label className="form-label">🗂️ Sort</label>
-              <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
-                {SORT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            {/* Saved Views */}
-            <div style={{ width: '180px', minWidth: '180px' }}>
-              <label className="form-label">⭐ Saved Views</label>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <select className="form-select" style={{ flex: 1 }} value={selectedView} onChange={e => loadView(e.target.value)}>
-                  <option value="">— Default Layout —</option>
-                  {savedViews.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.is_locked ? '🔒' : '👤'} {v.view_name}
-                    </option>
-                  ))}
-                </select>
-                {selectedView && (
-                  <button className="btn btn-secondary btn-sm" onClick={deleteView} title="Delete View">🗑️</button>
-                )}
-              </div>
-            </div>
-
-            {/* Clear / Refresh */}
-            <button
-              className="btn btn-secondary"
-              onClick={onClear}
-              style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, height: '36px' }}
-            >
-              🧹 Clear
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => runSearch()}
-              style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, height: '36px' }}
-            >
-              🔄 Refresh
-            </button>
-          </div>
+          {/* Clear / Refresh */}
+          <button
+            className="btn btn-secondary"
+            onClick={onClear}
+            style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, height: '36px' }}
+          >
+            🧹 Clear
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => runSearch()}
+            style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, height: '36px' }}
+          >
+            🔄 Refresh
+          </button>
         </div>
       </div>
 
