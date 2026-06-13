@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import useOrderManagement from '../hooks/useOrderManagement';
 import OrderHeader from './OrderHeader';
 import ItemsList from './ItemsList';
 import PaymentSummary from './PaymentSummary';
 import CourierBooking from './CourierBooking';
+import { useApp } from '../context/AppContext';
 
 export default function EditOrderModal({
   editingOrder,
@@ -98,6 +99,93 @@ export default function EditOrderModal({
     filteredGroups,
     addrScore
   } = management;
+
+  const { addToast } = useApp();
+  const [waTemplates, setWATemplates] = useState([]);
+
+  useEffect(() => {
+    if (editingOrder) {
+      fetch('/api/whatsapp/templates', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setWATemplates(data);
+        })
+        .catch(err => console.error('Failed to fetch templates:', err));
+    }
+  }, [editingOrder]);
+
+  const handleAutoCODConfirm = async () => {
+    addToast("⏳ Triggering Auto COD confirmation...", "info");
+    try {
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch('/api/whatsapp-governance/cod-verify/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ order_id: editingOrder.id })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast("✅ Auto COD confirmation message triggered successfully!", "success");
+      } else {
+        addToast(`❌ Failed to trigger Auto COD: ${data.error || 'Unknown error'}`, "error");
+      }
+    } catch (err) {
+      addToast(`❌ Failed to trigger Auto COD: ${err.message || err}`, "error");
+    }
+  };
+
+  const handleManualAction = (e) => {
+    const actionValue = e.target.value;
+    if (!actionValue) return;
+
+    const formattedPhone = editingOrder.phone || '';
+    const name = editingOrder.customer_name || 'Customer';
+    const orderId = editingOrder.ref_number || editingOrder.shopify_order_id;
+    const price = Math.round(parseFloat(editingOrder.price) || 0);
+
+    if (actionValue === 'manual_cod') {
+      e.target.value = ""; // Reset
+      const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${price}. Reply 1 to Confirm, 2 to Cancel.`;
+      const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+      window.open(waLink, '_blank');
+      return;
+    }
+
+    if (actionValue.startsWith('template_')) {
+      e.target.value = ""; // Reset
+      const templateId = actionValue.replace('template_', '');
+      const template = waTemplates.find(t => t.id === parseInt(templateId));
+      if (!template) return;
+
+      const courier = editingOrder.courier || 'our courier';
+      const tracking = editingOrder.tracking_number || '';
+      
+      let msg = template.content
+         .replace(/\[Name\]/g, name)
+         .replace(/\[OrderID\]/g, orderId)
+         .replace(/\[Price\]/g, price)
+         .replace(/\[Courier\]/g, courier)
+         .replace(/\[Tracking\]/g, tracking);
+
+      if (editingOrder.confirmation_token) {
+        const appUrl = window.location.origin;
+        const link = `${appUrl}/api/public/confirm-order/${editingOrder.confirmation_token}`;
+        msg = msg.replace(/\[Link\]/g, link);
+      } else {
+        msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+      }
+
+      const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      window.open(waLink, '_blank');
+    }
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(8px)', fontFamily: 'sans-serif' }}>
@@ -314,80 +402,262 @@ export default function EditOrderModal({
 
               {/* Right Side: WhatsApp Verification Hub & Notes */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                
+                {/* 1. WhatsApp Native App Actions (Manual Dispatch) */}
                 <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>💬 WhatsApp Success Hub</div>
-                  
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '1.1rem' }}>💬</span> WhatsApp Native App (Manual)
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Simulate Interactive Customer Actions</label>
-                    <button 
-                      type="button"
-                      onClick={() => handleWaSimulate('SEND_VERIFICATION')} 
-                      disabled={waSimulating}
-                      style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
+                    <select 
+                      onChange={handleManualAction}
+                      defaultValue=""
+                      style={{ 
+                        width: '100%', 
+                        background: '#0f172a', 
+                        border: '1px solid #334155', 
+                        borderRadius: 12, 
+                        padding: '10px 12px', 
+                        color: '#fff', 
+                        fontSize: '0.85rem', 
+                        outline: 'none', 
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                        transition: 'border-color 0.2s, box-shadow 0.2s'
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#6366f1';
+                        e.target.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.2)';
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#334155';
+                        e.target.style.boxShadow = 'none';
+                      }}
                     >
-                      <span>📲 Send Verification WA Template</span>
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => handleWaSimulate('SIMULATE_CONFIRM')} 
-                      disabled={waSimulating}
-                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
-                    >
-                      <span>✅ Simulate Customer Confirm</span>
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => handleWaSimulate('SIMULATE_CANCEL')} 
-                      disabled={waSimulating}
-                      style={{ background: '#f43f5e', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: 12, fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center', gap: 8 }}
-                    >
-                      <span>❌ Simulate Customer Cancel</span>
-                    </button>
+                      <option value="" disabled>Select template / manual action...</option>
+                      <option value="manual_cod">Manual COD Confirm</option>
+                      {waTemplates.length > 0 && (
+                        <optgroup label="Saved WhatsApp Templates">
+                          {waTemplates.map(t => (
+                            <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>
+                      Launches your device's native WhatsApp desktop or mobile client with custom variables pre-filled.
+                    </span>
+                  </div>
+                </div>
 
-                    <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Manual CS Media Actions</label>
+                {/* 2. Baileys WebSocket API Actions (Auto Dispatch) */}
+                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '1.1rem' }}>⚡</span> WhatsApp API Actions (Auto)
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button 
+                      type="button"
+                      onClick={handleAutoCODConfirm}
+                      style={{ 
+                        background: '#5b21b6', 
+                        color: '#fff', 
+                        border: 'none', 
+                        padding: '12px 14px', 
+                        borderRadius: 12, 
+                        fontSize: '0.78rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        transition: 'transform 0.1s, opacity 0.2s, background-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#6d28d9';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#5b21b6';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <span>🚀 Auto COD Confirm</span>
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      onClick={handleSendItemImages} 
+                      disabled={sendingImages || waSimulating}
+                      style={{ 
+                        background: 'linear-gradient(135deg, #a855f7, #ec4899)', 
+                        color: '#fff', 
+                        border: 'none', 
+                        padding: '12px 14px', 
+                        borderRadius: 12, 
+                        fontSize: '0.78rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: 6,
+                        transition: 'transform 0.1s, opacity 0.2s',
+                        opacity: (sendingImages || waSimulating) ? 0.7 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!sendingImages && !waSimulating) {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!sendingImages && !waSimulating) {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                        }
+                      }}
+                    >
+                      <span>{sendingImages ? '⏳ Sending...' : '📸 Send Images'}</span>
+                    </button>
+                  </div>
+
+                  {/* Simulation Sub-Panel */}
+                  <div style={{ marginTop: 4, background: '#0f172a', padding: '14px', borderRadius: 12, border: '1px solid #334155', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>API Simulation Actions</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <button 
                         type="button"
-                        onClick={handleSendItemImages} 
-                        disabled={sendingImages || waSimulating}
+                        onClick={() => handleWaSimulate('SEND_VERIFICATION')} 
+                        disabled={waSimulating}
                         style={{ 
-                          background: 'linear-gradient(135deg, #a855f7, #ec4899)', 
-                          color: '#fff', 
-                          border: 'none', 
-                          padding: '12px 16px', 
-                          borderRadius: 12, 
-                          fontSize: '0.8rem', 
-                          fontWeight: 700, 
+                          background: '#3b82f620', 
+                          color: '#60a5fa', 
+                          border: '1px solid #3b82f640', 
+                          padding: '10px 12px', 
+                          borderRadius: 8, 
+                          fontSize: '0.75rem', 
+                          fontWeight: 600, 
                           cursor: 'pointer', 
                           display: 'flex', 
                           alignItems: 'center', 
                           justifyContent: 'center', 
-                          gap: 8,
-                          boxShadow: '0 4px 12px rgba(236, 72, 153, 0.3)',
-                          transition: 'transform 0.15s ease, opacity 0.15s ease',
-                          opacity: (sendingImages || waSimulating) ? 0.7 : 1
+                          gap: 6,
+                          transition: 'background-color 0.2s, border-color 0.2s'
                         }}
-                        onMouseEnter={(e) => { if (!sendingImages && !waSimulating) e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                        onMouseLeave={(e) => { if (!sendingImages && !waSimulating) e.currentTarget.style.transform = 'translateY(0)'; }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#3b82f630';
+                          e.currentTarget.style.borderColor = '#3b82f660';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#3b82f620';
+                          e.currentTarget.style.borderColor = '#3b82f640';
+                        }}
                       >
-                        <span>{sendingImages ? '⏳ Sending Images...' : '📸 Send Item Images to Customer'}</span>
+                        📲 Send Verification WA Template
                       </button>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <button 
+                          type="button"
+                          onClick={() => handleWaSimulate('SIMULATE_CONFIRM')} 
+                          disabled={waSimulating}
+                          style={{ 
+                            background: '#10b98120', 
+                            color: '#34d399', 
+                            border: '1px solid #10b98140', 
+                            padding: '10px 12px', 
+                            borderRadius: 8, 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600, 
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: 6,
+                            transition: 'background-color 0.2s, border-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#10b98130';
+                            e.currentTarget.style.borderColor = '#10b98160';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#10b98120';
+                            e.currentTarget.style.borderColor = '#10b98140';
+                          }}
+                        >
+                          ✅ Confirm
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleWaSimulate('SIMULATE_CANCEL')} 
+                          disabled={waSimulating}
+                          style={{ 
+                            background: '#f43f5e20', 
+                            color: '#f87171', 
+                            border: '1px solid #f43f5e40', 
+                            padding: '10px 12px', 
+                            borderRadius: 8, 
+                            fontSize: '0.75rem', 
+                            fontWeight: 600, 
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: 6,
+                            transition: 'background-color 0.2s, border-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#f43f5e30';
+                            e.currentTarget.style.borderColor = '#f43f5e60';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#f43f5e20';
+                            e.currentTarget.style.borderColor = '#f43f5e40';
+                          }}
+                        >
+                          ❌ Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  <div style={{ borderTop: '1px solid #334155', paddingTop: 16, marginTop: 8 }}>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', marginBottom: 8 }}>📝 Shopify Customer Notes</label>
-                    <textarea 
-                      rows={4} 
-                      value={editingOrder.notes || ''} 
-                      onChange={e => setEditingOrder({ ...editingOrder, notes: e.target.value })}
-                      onBlur={() => updateOrderField && updateOrderField(editingOrder.id, 'notes', editingOrder.notes)}
-                      style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: '10px 12px', color: '#fff', fontSize: '0.85rem', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
-                      placeholder="Enter customer notes..."
-                    />
-                    <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '4px 0 0' }}>Notes sync live with Shopify.</p>
-                  </div>
                 </div>
+
+                {/* 3. Shopify Customer Notes */}
+                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '1.1rem' }}>📝</span> Shopify Customer Notes
+                  </div>
+                  <textarea 
+                    rows={4} 
+                    value={editingOrder.notes || ''} 
+                    onChange={e => setEditingOrder({ ...editingOrder, notes: e.target.value })}
+                    style={{ 
+                      width: '100%', 
+                      background: '#0f172a', 
+                      border: '1px solid #334155', 
+                      borderRadius: 12, 
+                      padding: '10px 12px', 
+                      color: '#fff', 
+                      fontSize: '0.85rem', 
+                      outline: 'none', 
+                      resize: 'none', 
+                      boxSizing: 'border-box',
+                      transition: 'border-color 0.2s, box-shadow 0.2s'
+                    }}
+                    placeholder="Enter customer notes..."
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#6366f1';
+                      e.target.style.boxShadow = '0 0 0 2px rgba(99, 102, 241, 0.2)';
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#334155';
+                      e.target.style.boxShadow = 'none';
+                      updateOrderField && updateOrderField(editingOrder.id, 'notes', editingOrder.notes);
+                    }}
+                  />
+                  <p style={{ fontSize: '0.7rem', color: '#64748b', margin: '4px 0 0' }}>Notes sync live with Shopify.</p>
+                </div>
+
               </div>
             </div>
           )}
