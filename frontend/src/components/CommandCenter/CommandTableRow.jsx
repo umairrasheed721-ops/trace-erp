@@ -275,7 +275,7 @@ const CommandTableRow = React.memo(({
           return (
             <td key={col.id} className="min-w-[250px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem', width: 250, minWidth: 250, maxWidth: 250, overflow: 'visible' }}>
               {formattedPhone ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <a 
                       href={`tel:${formattedPhone}`} 
@@ -289,25 +289,18 @@ const CommandTableRow = React.memo(({
                     
                     {(() => {
                       const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
+                      const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                      const encodedMessage = "";
                       return (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveRowId(o.id);
-                            navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            cursor: 'pointer'
-                          }}
+                        <a
+                          href={`whatsapp://send?phone=${waPhone}&text=${encodedMessage}`}
+                          onClick={() => setActiveRowId(o.id)}
                           className="relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                          title="Open Chat in Portal"
+                          title="Open WhatsApp Chat"
                         >
                           💬
                           {isUnread && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
-                        </button>
+                        </a>
                       );
                     })()}
  
@@ -425,7 +418,6 @@ const CommandTableRow = React.memo(({
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none' }} className="flex-shrink-0">
                     <span className="whitespace-nowrap tabular-nums text-sm font-medium">{formattedPhone}</span>
                   </a>
-                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '4px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
                 </div>
               ) : '—'}
             </td>
