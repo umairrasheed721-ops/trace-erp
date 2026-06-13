@@ -617,6 +617,72 @@ tbody tr:last-child td {
 .ultra-compact .kpi-value { font-size: 1.2rem; }
 .ultra-compact .card { padding: 10px 14px; }
 
+/* Phone Action Buttons */
+.phone-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 6px;
+  text-decoration: none;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+.phone-action-btn.btn-call {
+  color: var(--text-secondary);
+}
+.phone-action-btn.btn-call:hover {
+  background: var(--bg-hover);
+}
+.phone-action-btn.btn-wa {
+  color: var(--green);
+}
+.phone-action-btn.btn-wa:hover {
+  background: var(--green-dim);
+}
+.phone-action-btn.btn-chat {
+  color: var(--blue);
+}
+.phone-action-btn.btn-chat:hover {
+  background: var(--blue-dim);
+}
+
+.wa-template-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0;
+  text-align: center;
+  text-align-last: center;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+.wa-template-select:hover {
+  background: var(--bg-hover);
+}
+.wa-template-select:focus {
+  box-shadow: none !important;
+}
+
 /* ─── Status Badges ─── */
 .badge {
   display: inline-flex;
