@@ -768,7 +768,8 @@ export default function SearchTool() {
       }
     }
 
-    const waLink = `https://wa.me/${o.phone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
+    const waPhone = o.phone.replace(/\D/g,'').replace(/^0/,'92');
+    const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
     window.open(waLink, '_blank');
 
     if (waQueueIndex < selectedIds.length - 1) {

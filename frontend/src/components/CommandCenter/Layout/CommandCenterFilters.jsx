@@ -52,6 +52,19 @@ export default function CommandCenterFilters({
           gap: 12,
           alignItems: 'end'
         }}>
+          {/* Keyword (Prominent Search Bar) */}
+          <div style={{ flex: '2 1 280px', minWidth: '280px' }}>
+            <label className="form-label">🔑 Keyword</label>
+            <input
+              ref={searchInputRef}
+              className="form-input"
+              placeholder="Search Order, Name, Phone..."
+              value={keyword}
+              onChange={e => setKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && runSearch()}
+            />
+          </div>
+
           {/* Date Preset */}
           <div style={{ flex: '1 0 160px', minWidth: '160px' }}>
             <label className="form-label">📅 Date Preset</label>
@@ -113,19 +126,6 @@ export default function CommandCenterFilters({
             >
               🔄 Refresh
             </button>
-          </div>
-
-          {/* Keyword */}
-          <div style={{ flex: '1 0 180px', minWidth: '180px' }}>
-            <label className="form-label">🔑 Keyword</label>
-            <input
-              ref={searchInputRef}
-              className="form-input"
-              placeholder="name, city, tracking..."
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && runSearch()}
-            />
           </div>
 
           {/* Sort */}

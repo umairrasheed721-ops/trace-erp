@@ -218,6 +218,12 @@ export default function CommandTable({
     setLocalFilters(colFilters || {})
   }, [colFilters])
 
+  useEffect(() => {
+    if (debugWhere) {
+      console.log('CommandCenter SQL:', debugWhere);
+    }
+  }, [debugWhere]);
+
   const tableRef = useRef(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
@@ -317,7 +323,6 @@ export default function CommandTable({
         <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
-            {debugWhere && <span style={{ marginLeft: 10, color: 'var(--text-muted)', fontSize: '0.65rem', fontStyle: 'italic' }}>SQL: {debugWhere}</span>}
           </span>
           {(parentKeyword || parentStatus !== 'All Statuses') && (
             <button 

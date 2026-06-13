@@ -23,6 +23,30 @@ const CommandTableRow = React.memo(({
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
   const { addToast } = useApp();
+
+  const handleAutoCODConfirm = async () => {
+    addToast("⏳ Triggering Auto COD confirmation...", "info");
+    try {
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch('/api/whatsapp-governance/cod-verify/trigger', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ order_id: o.id })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast("✅ Auto COD confirmation message triggered successfully!", "success");
+      } else {
+        addToast(`❌ Failed to trigger Auto COD: ${data.error || 'Unknown error'}`, "error");
+      }
+    } catch (err) {
+      addToast(`❌ Error triggering Auto COD: ${err.message || err}`, "error");
+    }
+  };
+
   const isClear = Math.abs(diff) <= 1;
   const { bg, color } = getStatusColor(o.delivery_status);
   const s = (o.delivery_status||'').toLowerCase();
@@ -300,16 +324,19 @@ const CommandTableRow = React.memo(({
                       }}
                       value=""
                       onChange={(e) => {
-                        const templateId = e.target.value;
-                        if (!templateId) return;
+                        const actionValue = e.target.value;
+                        if (!actionValue) return;
                         
-                        if (templateId === 'send_images') {
+                        if (actionValue === 'send_images') {
                           e.target.value = ""; // Reset
                           addToast("Sending actual images...", "info");
                           
                           fetch('/api/whatsapp/send-order-images', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 
+                              'Content-Type': 'application/json',
+                              'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+                            },
                             body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
                           })
                           .then(async (res) => {
@@ -326,48 +353,77 @@ const CommandTableRow = React.memo(({
                           return;
                         }
 
-                        const template = waTemplates.find(t => t.id === parseInt(templateId));
-                        if (!template) return;
-
-                        const name = formatCustomerName(o.customer_name);
-                        const orderId = o.ref_number || o.shopify_order_id;
-                        const price = Math.round(parseFloat(o.price)||0);
-                        const courier = o.courier || 'our courier';
-                        const tracking = o.tracking_number || '';
-                        
-                        let msg = template.content
-                           .replace(/\[Name\]/g, name)
-                           .replace(/\[OrderID\]/g, orderId)
-                           .replace(/\[Price\]/g, price)
-                           .replace(/\[Courier\]/g, courier)
-                           .replace(/\[Tracking\]/g, tracking);
-
-                        if (o.confirmation_token) {
-                          const appUrl = window.location.origin;
-                          const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-                          msg = msg.replace(/\[Link\]/g, link);
-                        } else {
-                          msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+                        if (actionValue === 'auto_cod') {
+                          e.target.value = ""; // Reset
+                          handleAutoCODConfirm();
+                          return;
                         }
 
-                        const waLink = `https://wa.me/${formattedPhone.replace(/\D/g,'').replace(/^0/,'92')}?text=${encodeURIComponent(msg)}`;
-                        window.open(waLink, '_blank');
-                        e.target.value = ""; // Reset
+                        if (actionValue === 'manual_cod') {
+                          e.target.value = ""; // Reset
+                          const name = formatCustomerName(o.customer_name);
+                          const orderId = o.ref_number || o.shopify_order_id;
+                          const amount = Math.round(parseFloat(o.price) || 0);
+                          const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
+                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                          const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+                          window.open(waLink, '_blank');
+                          return;
+                        }
+
+                        if (actionValue.startsWith('template_')) {
+                          e.target.value = ""; // Reset
+                          const templateId = actionValue.replace('template_', '');
+                          const template = waTemplates.find(t => t.id === parseInt(templateId));
+                          if (!template) return;
+
+                          const name = formatCustomerName(o.customer_name);
+                          const orderId = o.ref_number || o.shopify_order_id;
+                          const price = Math.round(parseFloat(o.price)||0);
+                          const courier = o.courier || 'our courier';
+                          const tracking = o.tracking_number || '';
+                          
+                          let msg = template.content
+                             .replace(/\[Name\]/g, name)
+                             .replace(/\[OrderID\]/g, orderId)
+                             .replace(/\[Price\]/g, price)
+                             .replace(/\[Courier\]/g, courier)
+                             .replace(/\[Tracking\]/g, tracking);
+
+                          if (o.confirmation_token) {
+                            const appUrl = window.location.origin;
+                            const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+                            msg = msg.replace(/\[Link\]/g, link);
+                          } else {
+                            msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+                          }
+
+                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                          const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+                          window.open(waLink, '_blank');
+                        }
                       }}
                     >
                       <option value="" disabled>▼</option>
-                      <option value="send_images">🖼️ Send Product Images</option>
-                      {waTemplates.map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
+                      <optgroup label="Auto Dispatch (API)">
+                        <option value="auto_cod">Auto COD Confirm</option>
+                        <option value="send_images">🖼️ Send Product Images</option>
+                      </optgroup>
+                      <optgroup label="Manual Dispatch (Native App)">
+                        <option value="manual_cod">Manual COD Confirm</option>
+                        {waTemplates.map(t => (
+                          <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </div>
-
+ 
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '8px', fontWeight: 600 }} title="Call via SIM">Call</a>
                 </div>
               ) : '—'}
             </td>
-          )
+          );
         }
         if (col.id === 'city') return <td key={col.id}><CityCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'address') return (
