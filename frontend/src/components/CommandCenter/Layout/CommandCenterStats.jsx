@@ -42,11 +42,6 @@ export default function CommandCenterStats({
           <div className="kpi-value">Rs {Math.round(kpi.sum).toLocaleString()}</div>
           <div className="kpi-icon">💰</div>
         </div>
-        <div className="kpi-card green" style={{ flex: 1 }}>
-          <div className="kpi-label">Delivery Rate</div>
-          <div className="kpi-value">{deliveryRate}%</div>
-          <div className="kpi-icon">🎯</div>
-        </div>
         {missingCostCount > 0 && (
           <div
             className="kpi-card red"
