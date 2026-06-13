@@ -272,39 +272,23 @@ const CommandTableRow = React.memo(({
         }
         if (col.id === 'phone') {
           const formattedPhone = formatPhone(o.phone);
+          const phone = formattedPhone;
+          const waPhone = formattedPhone ? formattedPhone.replace(/\D/g,'').replace(/^0/,'92') : '';
           return (
             <td key={col.id} className="min-w-[250px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem', width: 250, minWidth: 250, maxWidth: 250, overflow: 'visible' }}>
               {formattedPhone ? (
-                <div className="flex items-center gap-2">
-                  {/* Icon 1: SIM Call */}
-                  <a 
-                    href={"tel:" + formattedPhone} 
-                    onClick={() => setActiveRowId(o.id)}
-                    className="flex items-center justify-center w-7 h-7 rounded hover:bg-gray-200 text-gray-600 no-underline flex-shrink-0"
-                    style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
-                    title="Call via SIM"
-                  >
-                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
-                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                    </svg>
+                <div className="flex items-center justify-start gap-2 w-full">
+                  {/* 1. SIM Call Icon */}
+                  <a href={"tel:" + phone} onClick={() => setActiveRowId(o.id)} className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded hover:bg-gray-200 text-gray-600" style={{ color: 'inherit', textDecoration: 'none' }}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                   </a>
 
-                  {/* Icon 2: Native WhatsApp App */}
-                  <a 
-                    href={"whatsapp://send?phone=" + formattedPhone.replace(/\D/g,'').replace(/^0/,'92')} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    onClick={() => setActiveRowId(o.id)}
-                    className="flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 no-underline flex-shrink-0"
-                    style={{ color: '#16a34a', textDecoration: 'none' }}
-                    title="Open WhatsApp desktop app"
-                  >
-                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.455 5.716 1.457h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                    </svg>
+                  {/* 2. Native WhatsApp App Icon (Green) */}
+                  <a href={"whatsapp://send?phone=" + waPhone} target="_blank" rel="noreferrer" onClick={() => setActiveRowId(o.id)} className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600" style={{ color: '#16a34a', textDecoration: 'none' }}>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
                   </a>
 
-                  {/* Icon 3: ERP Live Chat Portal */}
+                  {/* 3. ERP Live Chat Portal */}
                   {(() => {
                     const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
                     return (
@@ -314,130 +298,131 @@ const CommandTableRow = React.memo(({
                           setActiveRowId(o.id);
                           navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
                         }} 
-                        className="relative flex items-center justify-center w-7 h-7 rounded hover:bg-blue-100 text-blue-600 flex-shrink-0"
+                        className="relative flex-shrink-0 flex items-center justify-center w-7 h-7 rounded hover:bg-blue-100 text-blue-600"
                         style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
                         title="Open ERP Chat Portal"
                       >
-                        <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none">
-                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
                         {isUnread && <span className="absolute w-2.5 h-2.5 bg-red-500 rounded-full" style={{ border: '2px solid var(--bg-elevated)', top: '-2px', right: '-2px' }}></span>}
                       </button>
                     );
                   })()}
- 
-                    <select 
-                      className="wa-template-select relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                      onClick={() => setActiveRowId(o.id)}
-                      style={{ 
-                        background: 'none', 
-                        border: 'none', 
-                        color: 'var(--text-muted)', 
-                        cursor: 'pointer', 
-                        fontSize: '0.75rem',
-                        padding: 0,
-                        textAlign: 'center',
-                        textAlignLast: 'center',
-                        appearance: 'none',
-                        outline: 'none'
-                      }}
-                      value=""
-                      onChange={(e) => {
-                        const actionValue = e.target.value;
-                        if (!actionValue) return;
+
+                  {/* 4. Action Dropdown Menu */}
+                  <select 
+                    className="wa-template-select relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                    onClick={() => setActiveRowId(o.id)}
+                    style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      color: 'var(--text-muted)', 
+                      cursor: 'pointer', 
+                      fontSize: '0.75rem',
+                      padding: 0,
+                      textAlign: 'center',
+                      textAlignLast: 'center',
+                      appearance: 'none',
+                      outline: 'none'
+                    }}
+                    value=""
+                    onChange={(e) => {
+                      const actionValue = e.target.value;
+                      if (!actionValue) return;
+                      
+                      if (actionValue === 'send_images') {
+                        e.target.value = ""; // Reset
+                        addToast("Sending actual images...", "info");
                         
-                        if (actionValue === 'send_images') {
-                          e.target.value = ""; // Reset
-                          addToast("Sending actual images...", "info");
-                          
-                          fetch('/api/whatsapp/send-order-images', {
-                            method: 'POST',
-                            headers: { 
-                              'Content-Type': 'application/json',
-                              'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
-                            },
-                            body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
-                          })
-                          .then(async (res) => {
-                            const data = await res.json();
-                            if (res.ok && data.success) {
-                              addToast(`✅ Images sent successfully! (Sent ${data.sentCount} items)`, 'success');
-                            } else {
-                              addToast(`❌ Failed to send images: ${data.error || 'Unknown error'}`, 'error');
-                            }
-                          })
-                          .catch((err) => {
-                            addToast(`❌ Failed to send images: ${err.message || err}`, 'error');
-                          });
-                          return;
-                        }
-
-                        if (actionValue === 'auto_cod') {
-                          e.target.value = ""; // Reset
-                          handleAutoCODConfirm();
-                          return;
-                        }
-
-                        if (actionValue === 'manual_cod') {
-                          e.target.value = ""; // Reset
-                          const name = formatCustomerName(o.customer_name);
-                          const orderId = o.ref_number || o.shopify_order_id;
-                          const amount = Math.round(parseFloat(o.price) || 0);
-                          const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
-                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                          const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
-                          window.open(waLink, '_blank');
-                          return;
-                        }
-
-                        if (actionValue.startsWith('template_')) {
-                          e.target.value = ""; // Reset
-                          const templateId = actionValue.replace('template_', '');
-                          const template = waTemplates.find(t => t.id === parseInt(templateId));
-                          if (!template) return;
-
-                          const name = formatCustomerName(o.customer_name);
-                          const orderId = o.ref_number || o.shopify_order_id;
-                          const price = Math.round(parseFloat(o.price)||0);
-                          const courier = o.courier || 'our courier';
-                          const tracking = o.tracking_number || '';
-                          
-                          let msg = template.content
-                             .replace(/\[Name\]/g, name)
-                             .replace(/\[OrderID\]/g, orderId)
-                             .replace(/\[Price\]/g, price)
-                             .replace(/\[Courier\]/g, courier)
-                             .replace(/\[Tracking\]/g, tracking);
-
-                          if (o.confirmation_token) {
-                            const appUrl = window.location.origin;
-                            const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-                            msg = msg.replace(/\[Link\]/g, link);
+                        fetch('/api/whatsapp/send-order-images', {
+                          method: 'POST',
+                          headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+                          },
+                          body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
+                        })
+                        .then(async (res) => {
+                          const data = await res.json();
+                          if (res.ok && data.success) {
+                            addToast(`✅ Images sent successfully! (Sent ${data.sentCount} items)`, 'success');
                           } else {
-                            msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+                            addToast(`❌ Failed to send images: ${data.error || 'Unknown error'}`, 'error');
                           }
+                        })
+                        .catch((err) => {
+                          addToast(`❌ Failed to send images: ${err.message || err}`, 'error');
+                        });
+                        return;
+                      }
 
-                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                          const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
-                          window.open(waLink, '_blank');
+                      if (actionValue === 'auto_cod') {
+                        e.target.value = ""; // Reset
+                        handleAutoCODConfirm();
+                        return;
+                      }
+
+                      if (actionValue === 'manual_cod') {
+                        e.target.value = ""; // Reset
+                        const name = formatCustomerName(o.customer_name);
+                        const orderId = o.ref_number || o.shopify_order_id;
+                        const amount = Math.round(parseFloat(o.price) || 0);
+                        const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
+                        const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                        const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+                        window.open(waLink, '_blank');
+                        return;
+                      }
+
+                      if (actionValue.startsWith('template_')) {
+                        e.target.value = ""; // Reset
+                        const templateId = actionValue.replace('template_', '');
+                        const template = waTemplates.find(t => t.id === parseInt(templateId));
+                        if (!template) return;
+
+                        const name = formatCustomerName(o.customer_name);
+                        const orderId = o.ref_number || o.shopify_order_id;
+                        const price = Math.round(parseFloat(o.price)||0);
+                        const courier = o.courier || 'our courier';
+                        const tracking = o.tracking_number || '';
+                        
+                        let msg = template.content
+                           .replace(/\[Name\]/g, name)
+                           .replace(/\[OrderID\]/g, orderId)
+                           .replace(/\[Price\]/g, price)
+                           .replace(/\[Courier\]/g, courier)
+                           .replace(/\[Tracking\]/g, tracking);
+
+                        if (o.confirmation_token) {
+                          const appUrl = window.location.origin;
+                          const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+                          msg = msg.replace(/\[Link\]/g, link);
+                        } else {
+                          msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
                         }
-                      }}
-                    >
-                      <option value="" disabled>▼</option>
-                      <optgroup label="Auto Dispatch (API)">
-                        <option value="auto_cod">Auto COD Confirm</option>
-                        <option value="send_images">🖼️ Send Product Images</option>
-                      </optgroup>
-                      <optgroup label="Manual Dispatch (Native App)">
-                        <option value="manual_cod">Manual COD Confirm</option>
-                        {waTemplates.map(t => (
-                          <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
-                        ))}
-                      </optgroup>
-                    </select>
 
-                  {/* Phone Number Text */}
-                  <span className="tabular-nums whitespace-nowrap text-sm font-medium ml-1 flex-shrink-0">{formattedPhone}</span>
+                        const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                        const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+                        window.open(waLink, '_blank');
+                      }
+                    }}
+                  >
+                    <option value="" disabled>▼</option>
+                    <optgroup label="Auto Dispatch (API)">
+                      <option value="auto_cod">Auto COD Confirm</option>
+                      <option value="send_images">🖼️ Send Product Images</option>
+                    </optgroup>
+                    <optgroup label="Manual Dispatch (Native App)">
+                      <option value="manual_cod">Manual COD Confirm</option>
+                      {waTemplates.map(t => (
+                        <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+
+                  {/* 5. Phone Number Text */}
+                  <span className="tabular-nums whitespace-nowrap text-sm font-medium ml-1 text-gray-800 flex-shrink-0">
+                    {phone}
+                  </span>
                 </div>
               ) : '—'}
             </td>
