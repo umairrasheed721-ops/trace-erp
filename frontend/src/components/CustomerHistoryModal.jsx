@@ -84,7 +84,7 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
     >
-      <div className="card" style={{ width: '100%', maxWidth: 740, maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out' }}>
+      <div className="card" style={{ width: '100%', maxWidth: 740, maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.3s ease-out', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: '0 20px 45px rgba(0, 0, 0, 0.4)' }}>
 
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)' }}>
           <div>
@@ -121,7 +121,7 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
           </div>
         </div>
 
-        <div style={{ padding: '14px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+        <div style={{ padding: '14px 24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
           {[
             { label: 'Total Orders', value: orders.length, icon: '📦', color: 'blue' },
             { label: 'Delivered', value: delivered, icon: '✅', color: 'green' },
@@ -151,15 +151,15 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
           </span>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200" style={{ flex: 1, overflowY: 'auto' }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
           {orders.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No orders found for this customer.</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
                   {['REF #', 'DATE', 'STATUS', 'COURIER', 'TRACKING', 'PRICE'].map(h => (
-                    <th key={h} className="text-gray-500 dark:text-gray-400" style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>{h}</th>
+                    <th key={h} style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -167,22 +167,22 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
                 {orders.map((o) => {
                   const { bg, color } = getStatusColor(o.delivery_status)
                   return (
-                    <tr key={o.id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50" style={{ background: 'transparent' }}>
-                      <td className="text-indigo-600 dark:text-indigo-400" style={{ padding: '9px 14px', fontWeight: 700 }}>{o.ref_number || o.shopify_order_id || '—'}</td>
-                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
-                      <td style={{ padding: '9px 14px' }}>
+                    <tr key={o.id} style={{ background: 'transparent' }}>
+                      <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--brand)', borderBottom: '1px solid var(--border)' }}>{o.ref_number || o.shopify_order_id || '—'}</td>
+                      <td style={{ padding: '9px 14px', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
+                      <td style={{ padding: '9px 14px', borderBottom: '1px solid var(--border)' }}>
                         <span style={{ background: bg, color, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
                           {o.delivery_status || 'Pending'}
                         </span>
                       </td>
-                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>{o.courier || '—'}</td>
-                      <td className="text-gray-600 dark:text-gray-300" style={{ padding: '9px 14px', fontSize: '0.72rem' }}>
+                      <td style={{ padding: '9px 14px', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>{o.courier || '—'}</td>
+                      <td style={{ padding: '9px 14px', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>
                         {o.tracking_number
-                          ? <span className="text-blue-600 dark:text-blue-400">🚚 {o.tracking_number}</span>
+                          ? <span style={{ color: 'var(--blue)' }}>🚚 {o.tracking_number}</span>
                           : <span style={{ opacity: 0.3 }}>—</span>
                         }
                       </td>
-                      <td className="text-gray-900 dark:text-gray-100" style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)' }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
                     </tr>
                   )
                 })}
