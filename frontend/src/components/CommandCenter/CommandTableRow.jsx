@@ -273,7 +273,7 @@ const CommandTableRow = React.memo(({
         if (col.id === 'phone') {
           const formattedPhone = formatPhone(o.phone);
           return (
-            <td key={col.id} className="min-w-[160px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem' }}>
+            <td key={col.id} className="min-w-[250px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem', width: 250, minWidth: 250, maxWidth: 250, overflow: 'visible' }}>
               {formattedPhone ? (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -422,7 +422,7 @@ const CommandTableRow = React.memo(({
                     </select>
                   </div>
  
-                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none' }} className="flex-shrink-0">
                     <span className="whitespace-nowrap tabular-nums text-sm font-medium">{formattedPhone}</span>
                   </a>
                   <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '4px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
