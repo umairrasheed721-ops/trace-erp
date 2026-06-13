@@ -275,53 +275,56 @@ const CommandTableRow = React.memo(({
           return (
             <td key={col.id} className="min-w-[160px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem' }}>
               {formattedPhone ? (
-                <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }} className="flex-shrink-0">
-                    <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} className="flex-shrink-0" title="Call via SIM">📞</a>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <a 
+                      href={`tel:${formattedPhone}`} 
+                      onClick={() => setActiveRowId(o.id)} 
+                      style={{ color: 'var(--blue)', textDecoration: 'none' }} 
+                      className="relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700" 
+                      title="Call via SIM"
+                    >
+                      📞
+                    </a>
                     
                     {(() => {
                       const isUnread = o.last_wa_direction === 'incoming' && o.last_wa_status !== 'read';
                       return (
-                        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }} className="flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveRowId(o.id);
-                              navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              cursor: 'pointer',
-                              fontSize: '0.95rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              position: 'relative'
-                            }}
-                            className="flex-shrink-0"
-                            title="Open Chat in Portal"
-                          >
-                            💬
-                            {isUnread && <span className="absolute -top-1 -right-1 wa-unread-badge"></span>}
-                          </button>
-                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveRowId(o.id);
+                            navigate('/whatsapp-portal', { state: { selectPhone: formattedPhone } });
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer'
+                          }}
+                          className="relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+                          title="Open Chat in Portal"
+                        >
+                          💬
+                          {isUnread && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full"></span>}
+                        </button>
                       );
                     })()}
  
                     <select 
-                      className="wa-template-select flex-shrink-0"
+                      className="wa-template-select relative flex items-center justify-center w-7 h-7 flex-shrink-0 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                       onClick={() => setActiveRowId(o.id)}
                       style={{ 
                         background: 'none', 
                         border: 'none', 
                         color: 'var(--text-muted)', 
                         cursor: 'pointer', 
-                        fontSize: '0.65rem',
+                        fontSize: '0.75rem',
                         padding: 0,
-                        width: '12px',
-                        marginLeft: '-2px'
+                        textAlign: 'center',
+                        textAlignLast: 'center',
+                        appearance: 'none',
+                        outline: 'none'
                       }}
                       value=""
                       onChange={(e) => {
@@ -419,8 +422,10 @@ const CommandTableRow = React.memo(({
                     </select>
                   </div>
  
-                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none', flexShrink: 0 }}>{formattedPhone}</a>
-                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '8px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'inherit', textDecoration: 'none' }}>
+                    <span className="whitespace-nowrap tabular-nums text-sm">{formattedPhone}</span>
+                  </a>
+                  <a href={`tel:${formattedPhone}`} onClick={() => setActiveRowId(o.id)} style={{ color: 'var(--blue)', textDecoration: 'none', marginLeft: '4px', fontWeight: 600 }} className="flex-shrink-0" title="Call via SIM">Call</a>
                 </div>
               ) : '—'}
             </td>
