@@ -21,8 +21,6 @@ export default function EditOrderModal({
     updateOrderField
   });
 
-  if (!editingOrder) return null;
-
   const {
     getMediaUrlWithToken,
     activeTab,
@@ -115,6 +113,8 @@ export default function EditOrderModal({
         .catch(err => console.error('Failed to fetch templates:', err));
     }
   }, [editingOrder]);
+
+  if (!editingOrder) return null;
 
   const handleAutoCODConfirm = async () => {
     addToast("⏳ Triggering Auto COD confirmation...", "info");
