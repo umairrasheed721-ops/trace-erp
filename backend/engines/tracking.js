@@ -34,7 +34,10 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   console.log(`[Manual Sync] PostEx: ${postexOrders.length}, Others: ${otherOrders.length}`);
 
   if (postexOrders.length && store.postex_token) {
-    let rawUrl = store.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+    let rawUrl = store.postex_track_url;
+    if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
+      rawUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+    }
     const baseUrl = rawUrl.replace(/\/?$/, '/');
     
     const batchSize = 5;
