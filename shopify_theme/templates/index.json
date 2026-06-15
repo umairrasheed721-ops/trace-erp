@@ -469,6 +469,10 @@
         "padding_bottom": 80
       }
     },
+    "trace_reviews_home": {
+      "type": "trace-reviews",
+      "settings": {}
+    }
   },
   "order": [
     "custom_hero_slider_home",
@@ -482,6 +486,7 @@
     "video_GWHzYX",
     "featured_blog_NadGLL",
     "featured_product_P4JPfA",
-    "video_7pqzUr"
+    "video_7pqzUr",
+    "trace_reviews_home"
   ]
 }

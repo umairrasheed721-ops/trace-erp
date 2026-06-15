@@ -39,35 +39,59 @@ router.get('/reviews', (req, res) => {
       handleList = [handle.trim()];
     }
 
-    if (handleList.length === 0) {
-      return res.json({ success: true, data: { reviews: [], summary: { total: 0, avg: 0, distribution: {} } } });
+    let summary;
+    let reviews;
+
+    if (handleList.length > 0) {
+      // Build placeholder string for SQL IN clause
+      const placeholders = handleList.map(() => '?').join(',');
+
+      // Summary: avg rating + total + distribution
+      summary = db.prepare(`
+        SELECT 
+          COUNT(*) as total,
+          ROUND(AVG(rating), 1) as avg,
+          SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as r5,
+          SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as r4,
+          SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as r3,
+          SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as r2,
+          SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as r1
+        FROM product_reviews
+        WHERE product_handle IN (${placeholders}) AND status = 'approved'
+      `).get(...handleList);
+
+      // Reviews paginated, newest first
+      reviews = db.prepare(`
+        SELECT id, product_handle, reviewer_name, rating, title, body, review_date, location, picture_urls
+        FROM product_reviews
+        WHERE product_handle IN (${placeholders}) AND status = 'approved'
+        ORDER BY review_date DESC, id DESC
+        LIMIT ? OFFSET ?
+      `).all(...handleList, parseInt(limit), offset);
+    } else {
+      // Summary for all products
+      summary = db.prepare(`
+        SELECT 
+          COUNT(*) as total,
+          ROUND(AVG(rating), 1) as avg,
+          SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as r5,
+          SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as r4,
+          SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as r3,
+          SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as r2,
+          SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as r1
+        FROM product_reviews
+        WHERE status = 'approved'
+      `).get();
+
+      // Reviews paginated, newest first across all products
+      reviews = db.prepare(`
+        SELECT id, product_handle, reviewer_name, rating, title, body, review_date, location, picture_urls
+        FROM product_reviews
+        WHERE status = 'approved'
+        ORDER BY review_date DESC, id DESC
+        LIMIT ? OFFSET ?
+      `).all(parseInt(limit), offset);
     }
-
-    // Build placeholder string for SQL IN clause
-    const placeholders = handleList.map(() => '?').join(',');
-
-    // Summary: avg rating + total + distribution
-    const summary = db.prepare(`
-      SELECT 
-        COUNT(*) as total,
-        ROUND(AVG(rating), 1) as avg,
-        SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as r5,
-        SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as r4,
-        SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as r3,
-        SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as r2,
-        SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as r1
-      FROM product_reviews
-      WHERE product_handle IN (${placeholders}) AND status = 'approved'
-    `).get(...handleList);
-
-    // Reviews paginated, newest first
-    const reviews = db.prepare(`
-      SELECT id, product_handle, reviewer_name, rating, title, body, review_date, location, picture_urls
-      FROM product_reviews
-      WHERE product_handle IN (${placeholders}) AND status = 'approved'
-      ORDER BY review_date DESC, id DESC
-      LIMIT ? OFFSET ?
-    `).all(...handleList, parseInt(limit), offset);
 
     return res.json({
       success: true,

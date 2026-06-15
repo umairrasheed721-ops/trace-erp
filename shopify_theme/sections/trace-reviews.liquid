@@ -22,6 +22,12 @@
      linked_handles: tr_linked_handles,
      combined: tr_combined
   %}
+{%- else -%}
+  {% render 'trace-reviews',
+     product: nil,
+     linked_handles: '',
+     combined: false
+  %}
 {%- endif -%}
 
 {% schema %}

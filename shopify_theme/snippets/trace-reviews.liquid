@@ -15,7 +15,8 @@
 {%- endcomment -%}
 
 {%- assign _backend_url = 'https://trace-erp-production.up.railway.app' -%}
-{%- assign _this_handle = product.handle -%}
+{%- assign _this_handle = product.handle | default: '' -%}
+{%- assign _product_id = product.id | default: 'global' -%}
 
 {%- comment -%} Build handles list for API call {%- endcomment -%}
 {%- if combined and linked_handles != blank -%}
@@ -27,14 +28,14 @@
   {%- assign _all_handles = _this_handle -%}
 {%- endif -%}
 
-<section class="trace-reviews-section" id="trace-reviews-{{ product.id }}" aria-label="Customer Reviews">
+<section class="trace-reviews-section" id="trace-reviews-{{ _product_id }}" aria-label="Customer Reviews">
   <div class="trace-reviews-wrap">
 
     <h2 class="tr-title">Customer Reviews</h2>
 
     <!-- Centered Summary Box -->
-    <div class="tr-summary-box" id="tr-summary-grid-{{ product.id }}">
-      <div class="tr-summary-score-wrap" id="tr-summary-{{ product.id }}">
+    <div class="tr-summary-box" id="tr-summary-grid-{{ _product_id }}">
+      <div class="tr-summary-score-wrap" id="tr-summary-{{ _product_id }}">
         <!-- Skeleton before loading -->
         <div class="tr-skeleton-line" style="width:120px;height:48px;margin-bottom:8px;margin: 0 auto;"></div>
         <div class="tr-skeleton-line" style="width:180px;height:20px;margin: 0 auto;"></div>
@@ -42,7 +43,7 @@
     </div>
 
     <!-- Reviews List -->
-    <div class="tr-reviews-list" id="tr-list-{{ product.id }}">
+    <div class="tr-reviews-list" id="tr-list-{{ _product_id }}">
       <div class="tr-loading">
         <div class="tr-spinner"></div>
         <span>Loading reviews...</span>
@@ -50,12 +51,12 @@
     </div>
 
     <!-- Load More -->
-    <div class="tr-load-more-wrap" id="tr-loadmore-wrap-{{ product.id }}" style="display:none;">
-      <button class="tr-load-more-btn" id="tr-loadmore-{{ product.id }}">Load More Reviews</button>
+    <div class="tr-load-more-wrap" id="tr-loadmore-wrap-{{ _product_id }}" style="display:none;">
+      <button class="tr-load-more-btn" id="tr-loadmore-{{ _product_id }}">Load More Reviews</button>
     </div>
 
     <!-- Empty State -->
-    <div class="tr-empty" id="tr-empty-{{ product.id }}" style="display:none;">
+    <div class="tr-empty" id="tr-empty-{{ _product_id }}" style="display:none;">
       <div class="tr-empty-stars">★ ★ ★ ★ ★</div>
       <p class="tr-empty-title">Customer Reviews</p>
       <p class="tr-empty-text">No reviews yet. Be the first to review this product!</p>
@@ -369,7 +370,7 @@
 (function() {
   var BACKEND = 'https://trace-erp-production.up.railway.app';
   var HANDLES = '{{ _all_handles | escape }}';
-  var PRODUCT_ID = '{{ product.id }}';
+  var PRODUCT_ID = '{{ _product_id }}';
   var PAGE = 1;
   var LIMIT = 10;
   var totalLoaded = 0;
