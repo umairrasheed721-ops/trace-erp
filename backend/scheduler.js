@@ -185,6 +185,9 @@ async function sendReviewEmails() {
         if (sent) {
           db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
         }
+
+        // Add 3 seconds delay between emails to protect Gmail limits
+        await new Promise(resolve => setTimeout(resolve, 3000));
       } catch (e) {
         console.error(`[Review Email] Failed for order #${order.id}:`, e.message);
       }
