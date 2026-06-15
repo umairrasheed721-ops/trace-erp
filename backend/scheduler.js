@@ -135,6 +135,7 @@ async function sendReviewEmails() {
     try { db.exec("ALTER TABLE orders ADD COLUMN review_email_sent INTEGER DEFAULT 0"); } catch (_) {}
 
     // Find delivered orders 24–72h ago where we haven't sent a review email
+    // Safety check: order_date must be on or after 2026-06-15 (launch date)
     const orders = db.prepare(`
       SELECT id, customer_name, phone, product_titles, line_items,
              delivery_status, status_date
@@ -144,6 +145,7 @@ async function sendReviewEmails() {
         AND status_date IS NOT NULL
         AND status_date <= datetime('now', '+5 hours', '-24 hours')
         AND status_date >= datetime('now', '+5 hours', '-72 hours')
+        AND order_date >= '2026-06-15'
     `).all();
 
     console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails`);
