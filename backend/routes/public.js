@@ -3,6 +3,10 @@ const router = express.Router();
 const { db, logAction } = require('../db');
 const { addClient } = require('../sse');
 
+// ── Reviews public endpoints (sub-mount) ──
+const reviewsRouter = require('./reviews');
+router.use('/', reviewsRouter);
+
 // SSE Endpoint for Global Progress and Notifications
 router.get('/sse', (req, res) => addClient(req, res));
 

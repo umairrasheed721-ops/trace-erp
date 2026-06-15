@@ -10,6 +10,7 @@ const ordersMigrations = require('./db/migrations/orders');
 const whatsappMigrations = require('./db/migrations/whatsapp');
 const financeMigrations = require('./db/migrations/finance');
 const trackingMigrations = require('./db/migrations/tracking');
+const reviewsMigrations = require('./db/migrations/reviews');
 
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
@@ -111,7 +112,8 @@ function initDb(db) {
       ordersMigrations,
       whatsappMigrations,
       financeMigrations,
-      trackingMigrations
+      trackingMigrations,
+      reviewsMigrations
     ];
 
     for (const batch of migrationBatches) {

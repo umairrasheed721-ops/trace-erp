@@ -7,6 +7,7 @@ const { getShopifyInventoryCosts } = require('./engines/shopify_finance');
 const { runSniperScan } = require('./engines/sniper');
 const tenantContext = require('./tenant-context');
 const fs = require('fs');
+const { sendReviewRequestEmail } = require('./services/reviewEmailService');
 
 function getAllTenants() {
   const tenants = ['default'];
@@ -125,6 +126,71 @@ async function runDynamicScheduler() {
     }
   } catch (err) {
     console.error('Dynamic Scheduler Error:', err.message);
+  }
+}
+
+async function sendReviewEmails() {
+  try {
+    // Ensure column exists (idempotent)
+    try { db.exec("ALTER TABLE orders ADD COLUMN review_email_sent INTEGER DEFAULT 0"); } catch (_) {}
+
+    // Find delivered orders 24–72h ago where we haven't sent a review email
+    const orders = db.prepare(`
+      SELECT id, customer_name, phone, product_titles, line_items,
+             delivery_status, status_date
+      FROM orders
+      WHERE delivery_status IN ('Delivered', 'delivered')
+        AND (review_email_sent IS NULL OR review_email_sent = 0)
+        AND status_date IS NOT NULL
+        AND status_date <= datetime('now', '+5 hours', '-24 hours')
+        AND status_date >= datetime('now', '+5 hours', '-72 hours')
+    `).all();
+
+    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails`);
+
+    for (const order of orders) {
+      try {
+        // Try to get customer email from line_items JSON or skip if no email
+        let customerEmail = null;
+        let productHandle = 'general';
+        let productTitle = order.product_titles || 'your recent purchase';
+
+        // Try to parse line_items for email and product handle
+        if (order.line_items) {
+          try {
+            const items = JSON.parse(order.line_items);
+            if (Array.isArray(items) && items.length > 0) {
+              const first = items[0];
+              if (first.email) customerEmail = first.email;
+              if (first.handle) productHandle = first.handle;
+              if (first.title) productTitle = first.title;
+            }
+          } catch (_) {}
+        }
+
+        if (!customerEmail) {
+          // Mark as sent to avoid re-checking (no email available)
+          db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
+          continue;
+        }
+
+        const sent = await sendReviewRequestEmail({
+          orderId: order.id,
+          customerName: order.customer_name,
+          customerEmail,
+          productHandle,
+          productTitle,
+        });
+
+        if (sent) {
+          db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
+        }
+      } catch (e) {
+        console.error(`[Review Email] Failed for order #${order.id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[Review Email Scan] Error:', e.message);
   }
 }
 
@@ -432,4 +498,18 @@ module.exports = function schedulerInit() {
       });
     }
   }, 60000);
+  // 16. Every day at 10:00 AM PKT (5:00 AM UTC): Send review request emails
+  cron.schedule('0 5 * * *', async () => {
+    console.log('⭐ [CRON] Review request email scan starting...');
+    const tenants = getAllTenants();
+    for (const tenantId of tenants) {
+      await tenantContext.run(tenantId, async () => {
+        try {
+          await sendReviewEmails();
+        } catch (e) {
+          console.error(`[Review Email Cron Error] (Tenant: ${tenantId}):`, e.message);
+        }
+      });
+    }
+  }, { timezone: 'UTC' });
 };
