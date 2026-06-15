@@ -17,6 +17,8 @@
 {%- assign _backend_url = 'https://trace-erp-production.up.railway.app' -%}
 {%- assign _this_handle = product.handle | default: '' -%}
 {%- assign _product_id = product.id | default: 'global' -%}
+{%- assign _layout_type = layout_type | default: 'list' -%}
+{%- assign _title = title | default: 'Customer Reviews' -%}
 
 {%- comment -%} Build handles list for API call {%- endcomment -%}
 {%- if combined and linked_handles != blank -%}
@@ -28,11 +30,12 @@
   {%- assign _all_handles = _this_handle -%}
 {%- endif -%}
 
-<section class="trace-reviews-section" id="trace-reviews-{{ _product_id }}" aria-label="Customer Reviews">
+<section class="trace-reviews-section tr-layout-{{ _layout_type }}" id="trace-reviews-{{ _product_id }}" aria-label="Customer Reviews">
   <div class="trace-reviews-wrap">
 
-    <h2 class="tr-title">Customer Reviews</h2>
+    <h2 class="tr-title">{{ _title }}</h2>
 
+    {%- unless _layout_type == 'carousel' -%}
     <!-- Centered Summary Box -->
     <div class="tr-summary-box" id="tr-summary-grid-{{ _product_id }}">
       <div class="tr-summary-score-wrap" id="tr-summary-{{ _product_id }}">
@@ -41,24 +44,40 @@
         <div class="tr-skeleton-line" style="width:180px;height:20px;margin: 0 auto;"></div>
       </div>
     </div>
+    {%- endunless -%}
 
-    <!-- Reviews List -->
+    {%- if _layout_type == 'carousel' -%}
+    <!-- Carousel Layout -->
+    <div class="tr-carousel-viewport">
+      <div class="tr-reviews-list" id="tr-list-{{ _product_id }}">
+        <div class="tr-loading">
+          <div class="tr-spinner"></div>
+          <span>Loading reviews...</span>
+        </div>
+      </div>
+    </div>
+    <div class="tr-carousel-dots" id="tr-dots-{{ _product_id }}"></div>
+    {%- else -%}
+    <!-- List Layout -->
     <div class="tr-reviews-list" id="tr-list-{{ _product_id }}">
       <div class="tr-loading">
         <div class="tr-spinner"></div>
         <span>Loading reviews...</span>
       </div>
     </div>
+    {%- endif -%}
 
+    {%- unless _layout_type == 'carousel' -%}
     <!-- Load More -->
     <div class="tr-load-more-wrap" id="tr-loadmore-wrap-{{ _product_id }}" style="display:none;">
       <button class="tr-load-more-btn" id="tr-loadmore-{{ _product_id }}">Load More Reviews</button>
     </div>
+    {%- endunless -%}
 
     <!-- Empty State -->
     <div class="tr-empty" id="tr-empty-{{ _product_id }}" style="display:none;">
       <div class="tr-empty-stars">★ ★ ★ ★ ★</div>
-      <p class="tr-empty-title">Customer Reviews</p>
+      <p class="tr-empty-title">{{ _title }}</p>
       <p class="tr-empty-text">No reviews yet. Be the first to review this product!</p>
     </div>
 
@@ -364,6 +383,143 @@
   .tr-avg-score { font-size: 48px; }
   .tr-review-card { padding: 18px; }
 }
+
+/* ── Carousel Layout Styles ── */
+.tr-layout-carousel {
+  padding: 48px 0;
+  border-top: none;
+  margin-top: 0;
+}
+.tr-layout-carousel .tr-title {
+  text-align: center;
+  font-family: 'Playfair Display', 'Didot', 'Georgia', serif;
+  text-transform: none;
+  font-weight: 500;
+  font-size: 32px;
+  letter-spacing: 0.5px;
+  margin-bottom: 40px;
+  color: var(--tr-text-color);
+}
+
+.tr-layout-carousel .tr-carousel-viewport {
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 10px 0;
+}
+
+.tr-layout-carousel .tr-carousel-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.tr-layout-carousel .tr-reviews-list {
+  display: flex;
+  flex-direction: row;
+  gap: 24px;
+  width: max-content;
+  padding: 0 40px;
+}
+
+.tr-layout-carousel .tr-review-card {
+  width: 320px;
+  min-height: 280px;
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 36px 28px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid var(--tr-card-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+}
+
+.tr-layout-carousel .tr-card-stars {
+  font-size: 20px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.tr-layout-carousel .tr-card-star-filled {
+  color: var(--tr-star-color);
+}
+
+.tr-layout-carousel .tr-card-star-empty {
+  color: var(--tr-star-empty-color);
+}
+
+.tr-layout-carousel .tr-card-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #4a4a4a;
+  margin: 0 0 24px;
+  font-weight: 400;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tr-layout-carousel .tr-card-author-wrap {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tr-layout-carousel .tr-reviewer-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tr-text-color);
+}
+
+.tr-layout-carousel .tr-card-location {
+  font-size: 13px;
+  color: var(--tr-text-muted);
+  text-transform: capitalize;
+}
+
+/* Dots Pagination */
+.tr-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.tr-carousel-dots .tr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5e5e5;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tr-carousel-dots .tr-dot.active {
+  background: #121212;
+  transform: scale(1.2);
+}
+
+@media (max-width: 640px) {
+  .tr-layout-carousel .tr-reviews-list {
+    padding: 0 16px;
+  }
+  .tr-layout-carousel .tr-review-card {
+    width: calc(100vw - 32px) !important;
+    padding: 28px 20px;
+  }
+}
 </style>
 
 <script>
@@ -371,6 +527,7 @@
   var BACKEND = 'https://trace-erp-production.up.railway.app';
   var HANDLES = '{{ _all_handles | escape }}';
   var PRODUCT_ID = '{{ _product_id }}';
+  var LAYOUT_TYPE = '{{ _layout_type }}';
   var PAGE = 1;
   var LIMIT = 10;
   var totalLoaded = 0;
@@ -442,28 +599,43 @@
       card.style.animationDelay = (idx * 0.05) + 's';
 
       var dateStr = formatDate(r.date);
-      var location = r.location ? ('<span class="tr-meta-sep">·</span><span>' + r.location + '</span>') : '';
-      var titleHtml = r.title ? '<p class="tr-card-title">' + escHtml(r.title) + '</p>' : '';
+      var locationHtml = r.location ? '<div class="tr-card-location">' + escHtml(r.location) + '</div>' : '';
 
-      card.innerHTML =
-        '<div class="tr-card-top">' +
-          '<div class="tr-card-left">' +
-            '<div class="tr-reviewer-name">' +
-              escHtml(r.name || 'Anonymous') +
-              '<span class="tr-verified-badge">Verified</span>' +
+      if (LAYOUT_TYPE === 'carousel') {
+        card.innerHTML =
+          '<div class="tr-card-stars">' + makeStars(r.rating) + '</div>' +
+          '<p class="tr-card-body">' + escHtml(r.body || '') + '</p>' +
+          '<div class="tr-card-author-wrap">' +
+            '<div class="tr-reviewer-name">' + escHtml(r.name || 'Anonymous') + '</div>' +
+            locationHtml +
+          '</div>';
+      } else {
+        var location = r.location ? ('<span class="tr-meta-sep">·</span><span>' + r.location + '</span>') : '';
+        var titleHtml = r.title ? '<p class="tr-card-title">' + escHtml(r.title) + '</p>' : '';
+        card.innerHTML =
+          '<div class="tr-card-top">' +
+            '<div class="tr-card-left">' +
+              '<div class="tr-reviewer-name">' +
+                escHtml(r.name || 'Anonymous') +
+                '<span class="tr-verified-badge">Verified</span>' +
+              '</div>' +
+              '<div class="tr-card-stars">' + makeStars(r.rating) + '</div>' +
             '</div>' +
-            '<div class="tr-card-stars">' + makeStars(r.rating) + '</div>' +
+            '<div class="tr-card-meta">' +
+              (dateStr ? '<span>' + dateStr + '</span>' : '') +
+              location +
+            '</div>' +
           '</div>' +
-          '<div class="tr-card-meta">' +
-            (dateStr ? '<span>' + dateStr + '</span>' : '') +
-            location +
-          '</div>' +
-        '</div>' +
-        titleHtml +
-        '<p class="tr-card-body">' + escHtml(r.body || '') + '</p>';
+          titleHtml +
+          '<p class="tr-card-body">' + escHtml(r.body || '') + '</p>';
+      }
 
       listEl.appendChild(card);
     });
+
+    if (LAYOUT_TYPE === 'carousel' && !append) {
+      initCarousel();
+    }
   }
 
   // Escape HTML helper
@@ -484,6 +656,88 @@
     var wrap = document.getElementById('tr-loadmore-wrap-' + PRODUCT_ID);
     if (!wrap) return;
     wrap.style.display = totalLoaded < totalAvailable ? 'block' : 'none';
+  }
+
+  function initCarousel() {
+    var viewportEl = document.querySelector('#trace-reviews-' + PRODUCT_ID + ' .tr-carousel-viewport');
+    var listEl = document.getElementById('tr-list-' + PRODUCT_ID);
+    var dotsEl = document.getElementById('tr-dots-' + PRODUCT_ID);
+    if (!viewportEl || !listEl || !dotsEl) return;
+
+    var cards = listEl.querySelectorAll('.tr-review-card');
+    if (cards.length === 0) return;
+
+    var cardWidth = cards[0].offsetWidth;
+    var gap = 24;
+    var dots = [];
+
+    function setupDots() {
+      dotsEl.innerHTML = '';
+      dots = [];
+      
+      var viewportWidth = viewportEl.offsetWidth;
+      var cardsPerPage = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));
+      var numPages = Math.ceil(cards.length / cardsPerPage);
+
+      for (var i = 0; i < numPages; i++) {
+        var dot = document.createElement('span');
+        dot.className = 'tr-dot' + (i === 0 ? ' active' : '');
+        dot.dataset.page = i;
+        dot.addEventListener('click', function(e) {
+          var pageIdx = parseInt(e.target.dataset.page);
+          scrollToPage(pageIdx, cardsPerPage);
+        });
+        dotsEl.appendChild(dot);
+        dots.push(dot);
+      }
+    }
+
+    function scrollToPage(pageIdx, cardsPerPage) {
+      var cardIndex = pageIdx * cardsPerPage;
+      if (cardIndex >= cards.length) {
+        cardIndex = cards.length - 1;
+      }
+      var card = cards[cardIndex];
+      if (!card) return;
+      
+      var scrollLeftOffset = card.offsetLeft - 40;
+      if (scrollLeftOffset < 0) scrollLeftOffset = 0;
+
+      viewportEl.scrollTo({
+        left: scrollLeftOffset,
+        behavior: 'smooth'
+      });
+    }
+
+    var scrollTimeout;
+    viewportEl.addEventListener('scroll', function() {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(updateActiveDot, 50);
+    });
+
+    function updateActiveDot() {
+      var viewportWidth = viewportEl.offsetWidth;
+      var cardsPerPage = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));
+      
+      var scrollFraction = viewportEl.scrollLeft / (cardWidth + gap);
+      var currentPage = Math.round(scrollFraction / cardsPerPage);
+
+      dots.forEach(function(dot, idx) {
+        if (idx === currentPage) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+    }
+
+    setupDots();
+    
+    var resizeTimeout;
+    window.addEventListener('resize', function() {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(setupDots, 150);
+    });
   }
 
   function fetchReviews(page, append) {

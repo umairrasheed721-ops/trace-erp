@@ -20,13 +20,17 @@
   {% render 'trace-reviews',
      product: product,
      linked_handles: tr_linked_handles,
-     combined: tr_combined
+     combined: tr_combined,
+     layout_type: section.settings.layout_type,
+     title: section.settings.title
   %}
 {%- else -%}
   {% render 'trace-reviews',
      product: nil,
      linked_handles: '',
-     combined: false
+     combined: false,
+     layout_type: section.settings.layout_type,
+     title: section.settings.title
   %}
 {%- endif -%}
 
@@ -35,7 +39,24 @@
   "name": "Trace Reviews Widget",
   "tag": "section",
   "class": "section",
-  "settings": [],
+  "settings": [
+    {
+      "type": "select",
+      "id": "layout_type",
+      "label": "Layout Type",
+      "options": [
+        { "value": "list", "label": "Vertical List" },
+        { "value": "carousel", "label": "Horizontal Carousel" }
+      ],
+      "default": "list"
+    },
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Widget Title",
+      "default": "Customer Reviews"
+    }
+  ],
   "presets": [
     {
       "name": "Trace Reviews Widget"

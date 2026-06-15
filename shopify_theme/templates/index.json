@@ -471,7 +471,10 @@
     },
     "trace_reviews_home": {
       "type": "trace-reviews",
-      "settings": {}
+      "settings": {
+        "layout_type": "carousel",
+        "title": "What Our Customers Are Saying"
+      }
     }
   },
   "order": [
