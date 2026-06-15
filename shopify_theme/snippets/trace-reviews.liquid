@@ -32,32 +32,13 @@
 
     <h2 class="tr-title">Customer Reviews</h2>
 
-    <!-- Grid Container for Summary & Breakdown -->
-    <div class="tr-summary-grid" id="tr-summary-grid-{{ product.id }}">
-      
-      <!-- Left Column: Score and Star Summary -->
-      <div class="tr-summary-col">
-        <div class="tr-summary-score-wrap" id="tr-summary-{{ product.id }}">
-          <!-- Skeleton before loading -->
-          <div class="tr-skeleton-line" style="width:120px;height:48px;margin-bottom:8px;"></div>
-          <div class="tr-skeleton-line" style="width:180px;height:20px;"></div>
-        </div>
+    <!-- Centered Summary Box -->
+    <div class="tr-summary-box" id="tr-summary-grid-{{ product.id }}">
+      <div class="tr-summary-score-wrap" id="tr-summary-{{ product.id }}">
+        <!-- Skeleton before loading -->
+        <div class="tr-skeleton-line" style="width:120px;height:48px;margin-bottom:8px;margin: 0 auto;"></div>
+        <div class="tr-skeleton-line" style="width:180px;height:20px;margin: 0 auto;"></div>
       </div>
-
-      <!-- Right Column: Rating Bars Breakdown -->
-      <div class="tr-rating-breakdown" id="tr-breakdown-{{ product.id }}" style="opacity: 0.5; pointer-events: none;">
-        {% for i in (1..5) %}
-          {%- assign star = 6 | minus: i -%}
-          <div class="tr-bar-row">
-            <span class="tr-bar-label">{{ star }}★</span>
-            <div class="tr-bar-track">
-              <div class="tr-bar-fill" data-star="{{ star }}" style="width:0%"></div>
-            </div>
-            <span class="tr-bar-count" data-star-count="{{ star }}">0</span>
-          </div>
-        {% endfor %}
-      </div>
-
     </div>
 
     <!-- Reviews List -->
@@ -90,8 +71,6 @@
   --tr-text-muted: #767676;
   --tr-star-color: #ffb400; /* Premium Gold */
   --tr-star-empty-color: #e5e5e5; /* Light grey for empty stars */
-  --tr-bar-track-bg: #f5f5f5; /* Light gray track */
-  --tr-bar-fill-bg: #121212; /* Sleek black fill for rating bars */
   --tr-card-bg: #ffffff;
   --tr-card-border: #f0f0f0;
   --tr-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
@@ -121,46 +100,17 @@
   text-align: left;
 }
 
-/* 2-Column Summary Grid */
-.tr-summary-grid {
-  display: grid;
-  grid-template-columns: 260px 1fr;
-  gap: 48px;
-  align-items: center;
+/* Centered Summary Box */
+.tr-summary-box {
   background: #ffffff;
   border: 1px solid var(--tr-card-border);
   padding: 32px;
   border-radius: 16px;
   margin-bottom: 40px;
   box-shadow: var(--tr-card-shadow);
-}
-@media (max-width: 768px) {
-  .tr-summary-grid {
-    grid-template-columns: 1fr;
-    gap: 32px;
-    padding: 24px;
-  }
-}
-
-/* Left Column: Summary Info */
-.tr-summary-col {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  border-right: 1px solid var(--tr-border-color);
-  padding-right: 48px;
   justify-content: center;
-  min-height: 120px;
-}
-@media (max-width: 768px) {
-  .tr-summary-col {
-    border-right: none;
-    padding-right: 0;
-    border-bottom: 1px solid var(--tr-border-color);
-    padding-bottom: 24px;
-    min-height: auto;
-  }
+  align-items: center;
 }
 
 .tr-summary-score-wrap {
@@ -168,7 +118,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  text-align: center;
 }
 
 .tr-avg-score {
@@ -220,57 +170,6 @@
   font-weight: 500;
   color: var(--tr-text-muted);
   letter-spacing: 0.5px;
-}
-
-/* Right Column: Breakdown bars */
-.tr-rating-breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-  transition: opacity 0.4s ease;
-}
-
-.tr-bar-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-}
-
-.tr-bar-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--tr-text-muted);
-  width: 28px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.tr-bar-track {
-  flex: 1;
-  height: 8px;
-  background-color: #f5f5f5 !important;
-  border-radius: 99px;
-  overflow: hidden;
-  position: relative;
-}
-
-.tr-bar-fill {
-  height: 100%;
-  background-color: #121212 !important;
-  border-radius: 99px;
-  width: 0%;
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.tr-bar-count {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--tr-text-muted);
-  width: 20px;
-  text-align: left;
-  flex-shrink: 0;
 }
 
 /* Review Cards List */
@@ -520,7 +419,7 @@
       return;
     }
 
-    if (gridEl) gridEl.style.display = 'grid';
+    if (gridEl) gridEl.style.display = 'flex';
 
     summaryEl.innerHTML =
       '<div class="tr-avg-score">' + (summary.avg || 0).toFixed(1) + '</div>' +
@@ -528,38 +427,6 @@
         '<div class="tr-stars-row">' + makeSummaryStars(summary.avg || 0) + '</div>' +
         '<div class="tr-total-count">Based on ' + summary.total + ' review' + (summary.total !== 1 ? 's' : '') + '</div>' +
       '</div>';
-  }
-
-  function renderBreakdown(summary) {
-    var el = document.getElementById('tr-breakdown-' + PRODUCT_ID);
-    if (!el) return;
-
-    if (!summary || summary.total === 0) {
-      el.style.display = 'none';
-      return;
-    }
-
-    // Enable/show breakdown bars
-    el.style.opacity = '1';
-    el.style.pointerEvents = 'auto';
-
-    for (var s = 1; s <= 5; s++) {
-      var fill = el.querySelector('[data-star="' + s + '"]');
-      var count = el.querySelector('[data-star-count="' + s + '"]');
-      
-      var n = 0;
-      if (summary.distribution) {
-        n = summary.distribution[s] || summary.distribution[s.toString()] || 0;
-      }
-      var pct = summary.total > 0 ? Math.round((n / summary.total) * 100) : 0;
-      
-      if (fill) {
-        fill.style.width = pct + '%';
-      }
-      if (count) {
-        count.textContent = n;
-      }
-    }
   }
 
   function renderReviews(reviews, append) {
@@ -598,6 +465,7 @@
     });
   }
 
+  // Escape HTML helper
   function escHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -629,7 +497,6 @@
 
         if (!append) {
           renderSummary(data.summary);
-          renderBreakdown(data.summary);
         }
 
         if (data.reviews.length === 0 && !append) {
