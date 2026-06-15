@@ -386,18 +386,20 @@
 
 /* ── Carousel Layout Styles ── */
 .tr-layout-carousel {
-  padding: 48px 0;
-  border-top: none;
-  margin-top: 0;
+  padding: 60px 0;
+  background: #fafafa;
+  border-top: 1px solid var(--tr-border-color);
+  border-bottom: 1px solid var(--tr-border-color);
+  margin: 40px 0;
 }
 .tr-layout-carousel .tr-title {
   text-align: center;
   font-family: 'Playfair Display', 'Didot', 'Georgia', serif;
   text-transform: none;
   font-weight: 500;
-  font-size: 32px;
+  font-size: 36px;
   letter-spacing: 0.5px;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
   color: var(--tr-text-color);
 }
 
@@ -408,7 +410,7 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding: 10px 0;
+  padding: 20px 0;
 }
 
 .tr-layout-carousel .tr-carousel-viewport::-webkit-scrollbar {
@@ -433,19 +435,36 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 36px 28px;
+  padding: 40px 32px;
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid var(--tr-card-border);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Faint quote mark in the background */
+.tr-layout-carousel .tr-review-card::before {
+  content: '“';
+  position: absolute;
+  top: 10px;
+  left: 20px;
+  font-size: 110px;
+  font-family: 'Playfair Display', 'Didot', 'Georgia', serif;
+  color: rgba(0, 0, 0, 0.035);
+  line-height: 1;
+  pointer-events: none;
 }
 
 .tr-layout-carousel .tr-card-stars {
-  font-size: 20px;
-  margin-bottom: 16px;
+  font-size: 18px;
+  margin-bottom: 24px;
   display: flex;
   justify-content: center;
   gap: 4px;
+  position: relative;
+  z-index: 1;
 }
 
 .tr-layout-carousel .tr-card-star-filled {
@@ -458,15 +477,17 @@
 
 .tr-layout-carousel .tr-card-body {
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.8;
   color: #4a4a4a;
-  margin: 0 0 24px;
+  margin: 0 0 28px;
   font-weight: 400;
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  position: relative;
+  z-index: 1;
 }
 
 .tr-layout-carousel .tr-card-author-wrap {
@@ -474,19 +495,23 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
 }
 
 .tr-layout-carousel .tr-reviewer-name {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--tr-text-color);
+  letter-spacing: 0.2px;
 }
 
 .tr-layout-carousel .tr-card-location {
   font-size: 13px;
   color: var(--tr-text-muted);
   text-transform: capitalize;
+  letter-spacing: 0.5px;
 }
 
 /* Dots Pagination */
@@ -599,7 +624,7 @@
       card.style.animationDelay = (idx * 0.05) + 's';
 
       var dateStr = formatDate(r.date);
-      var locationHtml = r.location ? '<div class="tr-card-location">' + escHtml(r.location) + '</div>' : '';
+      var locationHtml = '<div class="tr-card-location">' + escHtml(r.location || 'Pakistan') + '</div>';
 
       if (LAYOUT_TYPE === 'carousel') {
         card.innerHTML =
