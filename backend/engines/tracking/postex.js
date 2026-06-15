@@ -105,7 +105,34 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             }
             
             const mappedStatus = applyMap(statusMap, 'PostEx', rawStatus);
-            return { id: order.id, oldStatus: order.delivery_status, rawStatus, mappedStatus };
+            
+            // Extract status date from PostEx response
+            let statusDate = null;
+            const history = data?.dist?.trackingHistory || data?.trackingHistory || data?.data?.trackingHistory || [];
+            if (Array.isArray(history) && history.length > 0) {
+              const sorted = [...history].sort((a, b) => new Date(a.dateTime || a.date || a.timestamp) - new Date(b.dateTime || b.date || b.timestamp));
+              const latest = sorted[sorted.length - 1];
+              statusDate = latest?.dateTime || latest?.date || latest?.timestamp || null;
+            }
+            if (!statusDate) {
+              statusDate = data?.dist?.statusDateTime 
+                || data?.statusDateTime 
+                || data?.dist?.transactionDateTime 
+                || data?.transactionDateTime 
+                || data?.dist?.dateTime 
+                || data?.dateTime 
+                || null;
+            }
+            let formattedStatusDate = null;
+            if (statusDate) {
+              const d = new Date(statusDate);
+              if (!isNaN(d.getTime())) {
+                const pad = n => String(n).padStart(2, '0');
+                formattedStatusDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+              }
+            }
+
+            return { id: order.id, oldStatus: order.delivery_status, rawStatus, mappedStatus, statusDate: formattedStatusDate };
           } catch (err) {
             await sleep(1000);
           }
@@ -116,7 +143,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value) {
-        const { id, rawStatus, mappedStatus, oldStatus } = r.value;
+        const { id, rawStatus, mappedStatus, oldStatus, statusDate } = r.value;
         if (!rawStatus) continue;
         const isProtected = DEAD_STATUSES.includes((oldStatus||'').toLowerCase());
         const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((rawStatus||'').toLowerCase());
@@ -124,7 +151,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
           id,
           courier_status: rawStatus,
           erp_status: (!isProtected && mappedStatus) ? mappedStatus : null,
-          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
+          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
+          status_date: statusDate
         });
       }
     }
@@ -140,7 +168,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     UPDATE orders
     SET courier_status = ?,
         delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
-        status_date = CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE status_date END,
+        status_date = CASE WHEN ? IS NOT NULL THEN COALESCE(?, datetime('now')) ELSE status_date END,
         failed_attempts = failed_attempts + ?
     WHERE id = ?
   `);
@@ -148,7 +176,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const lookupStmt = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
-      updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment || 0, u.id);
+      updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment || 0, u.id);
     }
   });
   updateMany(updatesToApply);

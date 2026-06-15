@@ -122,7 +122,38 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
          newStatus = 'Returned';
       }
 
-      return { status: 200, order, newStatus, rawStatus, courierName };
+      // Extract status date from Instaworld / Leopards / TCS response
+      let statusDate = null;
+      let lastEvent = null;
+      if (Array.isArray(data) && data.length > 0) {
+        lastEvent = data[data.length - 1];
+      } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
+        lastEvent = data.data[data.data.length - 1];
+      } else {
+        lastEvent = data;
+      }
+      
+      if (lastEvent) {
+        statusDate = lastEvent.dateTime 
+          || lastEvent.dateTimeString 
+          || lastEvent.status_date 
+          || lastEvent.status_datetime 
+          || lastEvent.time 
+          || lastEvent.timestamp 
+          || lastEvent.created_at 
+          || null;
+      }
+      
+      let formattedStatusDate = null;
+      if (statusDate) {
+        const d = new Date(statusDate);
+        if (!isNaN(d.getTime())) {
+          const pad = n => String(n).padStart(2, '0');
+          formattedStatusDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+      }
+
+      return { status: 200, order, newStatus, rawStatus, courierName, statusDate: formattedStatusDate };
     } catch (err) {
       return { status: 0, order, newStatus: null };
     }
@@ -156,7 +187,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
           courier_status: r.rawStatus,
           erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
           courier: r.courierName || 'Instaworld',
-          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0
+          failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
+          status_date: r.statusDate
         });
       }
     }
@@ -172,7 +204,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     SET courier_status = COALESCE(?, courier_status),
         courier = COALESCE(?, courier),
         delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
-        status_date = CASE WHEN ? IS NOT NULL THEN datetime('now') ELSE status_date END,
+        status_date = CASE WHEN ? IS NOT NULL THEN COALESCE(?, datetime('now')) ELSE status_date END,
         failed_attempts = failed_attempts + ?
     WHERE id = ?
   `);
@@ -181,7 +213,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const lookupStmt2 = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
-      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.failed_attempt_increment||0, u.id);
+      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.id);
     }
   });
   updateMany(updatesToApply);
