@@ -1,0 +1,505 @@
+{
+  "sections": {
+    "custom_hero_slider_home": {
+      "type": "custom-hero-slider",
+      "blocks": {
+        "slide_1": {
+          "type": "slide",
+          "settings": {
+            "image": "shopify:\/\/shop_images\/1775082555990.png",
+            "title": "Polo Shirts",
+            "link": "shopify:\/\/collections\/crew-polos"
+          }
+        },
+        "slide_2": {
+          "type": "slide",
+          "settings": {
+            "image": "shopify:\/\/shop_images\/Picsart-26-04-10_00-59-30-163.jpg",
+            "title": "Active wear",
+            "link": "shopify:\/\/collections\/drifit"
+          }
+        },
+        "slide_3": {
+          "type": "slide",
+          "settings": {
+            "image": "shopify:\/\/shop_images\/1767792059647.jpg",
+            "title": "Semi Formals",
+            "link": "shopify:\/\/collections\/semi-casual"
+          }
+        },
+        "slide_4": {
+          "type": "slide",
+          "settings": {
+            "image": "shopify:\/\/shop_images\/Picsart-26-04-08_06-56-26-552.jpg",
+            "title": "Crew Neck",
+            "link": "shopify:\/\/collections\/crew-neck"
+          }
+        }
+      },
+      "block_order": [
+        "slide_1",
+        "slide_2",
+        "slide_3",
+        "slide_4"
+      ],
+      "settings": {
+        "color_scheme": "scheme-1"
+      }
+    },
+    "custom_video_carousel_home": {
+      "type": "custom-video-carousel",
+      "blocks": {
+        "video_1": {
+          "type": "video_slide",
+          "settings": {
+            "video": "shopify:\/\/files\/videos\/Shirt Video.mp4",
+            "product_url": ""
+          }
+        },
+        "video_2": {
+          "type": "video_slide",
+          "settings": {
+            "video": "shopify:\/\/files\/videos\/Dryfit Tees Text Video.mp4",
+            "product_url": ""
+          }
+        },
+        "video_3": {
+          "type": "video_slide",
+          "settings": {
+            "video": "shopify:\/\/files\/videos\/WhatsApp Video 2025-07-12 at 2.06.15 PM (1).mp4",
+            "product_url": ""
+          }
+        }
+      },
+      "block_order": [
+        "video_1",
+        "video_2",
+        "video_3"
+      ],
+      "settings": {
+        "title": "Top Seller Videos",
+        "color_scheme": "scheme-1"
+      }
+    },
+    "image_banner_CiqKG8": {
+      "type": "image-banner",
+      "blocks": {
+        "heading_CiqKG8_1": {
+          "type": "heading",
+          "settings": {
+            "heading": "live in. pants.",
+            "heading_size": "h1"
+          }
+        }
+      },
+      "block_order": [
+        "heading_CiqKG8_1"
+      ],
+      "disabled": true,
+      "settings": {
+        "image": "shopify:\/\/shop_images\/Gemini_Generated_Image_ztnr2ztnr2ztnr2z_4f1878b1-4e18-40da-92d2-5467c3d0ac05.png",
+        "image_overlay_opacity": 0,
+        "image_height": "adapt",
+        "image_behavior": "none",
+        "desktop_content_position": "middle-center",
+        "desktop_content_alignment": "center",
+        "show_text_box": false,
+        "color_scheme": "scheme-1",
+        "stack_images_on_mobile": true,
+        "mobile_content_alignment": "center",
+        "show_text_below": false
+      }
+    },
+    "slideshow_Mb4CPJ": {
+      "type": "slideshow",
+      "blocks": {
+        "slide_FbUiVr": {
+          "type": "slide",
+          "disabled": true,
+          "settings": {
+            "image": "shopify:\/\/shop_images\/c630ccb7-21d6-40e7-b1a4-377c08c4028e.webp",
+            "image_overlay_opacity": 0,
+            "heading": "",
+            "heading_size": "h1",
+            "subheading": "",
+            "button_label": "",
+            "link": "",
+            "button_style_secondary": false,
+            "show_text_box": false,
+            "box_align": "middle-center",
+            "text_alignment": "center",
+            "text_alignment_mobile": "center",
+            "color_scheme": "scheme-1"
+          }
+        },
+        "slide_iT7QrY": {
+          "type": "slide",
+          "disabled": true,
+          "settings": {
+            "image": "shopify:\/\/shop_images\/7fa9d925-ca66-4958-a92b-54fb8efe8e98_86655dcb-a515-4585-a003-9ee41bfc4aa5.webp",
+            "image_overlay_opacity": 0,
+            "heading": "",
+            "heading_size": "h1",
+            "subheading": "",
+            "button_label": "",
+            "link": "",
+            "button_style_secondary": false,
+            "show_text_box": false,
+            "box_align": "middle-center",
+            "text_alignment": "center",
+            "text_alignment_mobile": "center",
+            "color_scheme": "scheme-1"
+          }
+        },
+        "slide_8rUfHt": {
+          "type": "slide",
+          "disabled": true,
+          "settings": {
+            "image": "shopify:\/\/shop_images\/55d6b8f2-46cb-4033-9d82-cd245eeff7eb.webp",
+            "image_overlay_opacity": 0,
+            "heading": "",
+            "heading_size": "h1",
+            "subheading": "",
+            "button_label": "",
+            "link": "",
+            "button_style_secondary": false,
+            "show_text_box": false,
+            "box_align": "middle-center",
+            "text_alignment": "center",
+            "text_alignment_mobile": "center",
+            "color_scheme": "scheme-1"
+          }
+        }
+      },
+      "block_order": [
+        "slide_FbUiVr",
+        "slide_iT7QrY",
+        "slide_8rUfHt"
+      ],
+      "settings": {
+        "layout": "full_bleed",
+        "slide_height": "adapt_image",
+        "slider_visual": "dots",
+        "auto_rotate": true,
+        "change_slides_speed": 5,
+        "image_behavior": "none",
+        "show_text_below": false,
+        "accessibility_info": "Slideshow about our brand"
+      }
+    },
+    "collection_list_MKErxp": {
+      "type": "collection-list",
+      "blocks": {
+        "featured_collection_bGCWBh": {
+          "type": "featured_collection",
+          "settings": {
+            "collection": "semi-casual"
+          }
+        },
+        "featured_collection_GgUh4N": {
+          "type": "featured_collection",
+          "settings": {
+            "collection": "drifit-copy"
+          }
+        },
+        "featured_collection_rTTRbG": {
+          "type": "featured_collection",
+          "settings": {
+            "collection": "crew-polos"
+          }
+        },
+        "featured_collection_HaTwmt": {
+          "type": "featured_collection",
+          "settings": {
+            "collection": "01-sale-is-live-🔥-copy"
+          }
+        }
+      },
+      "block_order": [
+        "featured_collection_bGCWBh",
+        "featured_collection_GgUh4N",
+        "featured_collection_rTTRbG",
+        "featured_collection_HaTwmt"
+      ],
+      "disabled": true,
+      "custom_css": [
+        "h2,a {text-align: center; width: 100%;}"
+      ],
+      "settings": {
+        "title": "SHOP ON TRACE",
+        "heading_size": "h2",
+        "image_ratio": "square",
+        "columns_desktop": 2,
+        "color_scheme": "scheme-2",
+        "show_view_all": false,
+        "columns_mobile": "2",
+        "swipe_on_mobile": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "rich_text_fW6Enr": {
+      "type": "rich-text",
+      "blocks": {
+        "heading_QtHPTc": {
+          "type": "heading",
+          "settings": {
+            "heading": "TRACE",
+            "heading_size": "h1"
+          }
+        },
+        "text_gJ7QcX": {
+          "type": "text",
+          "settings": {
+            "text": "<p>Immersed in Fashion, Trends, & Luxury.<br\/>Quality with <strong>Easy Exchange Policy.<\/strong><\/p>"
+          }
+        }
+      },
+      "block_order": [
+        "heading_QtHPTc",
+        "text_gJ7QcX"
+      ],
+      "custom_css": [
+        "p {color: black;}"
+      ],
+      "settings": {
+        "desktop_content_position": "center",
+        "content_alignment": "center",
+        "color_scheme": "",
+        "full_width": true,
+        "padding_top": 40,
+        "padding_bottom": 52
+      }
+    },
+    "collapsible_content_EAFqYK": {
+      "type": "collapsible-content",
+      "blocks": {
+        "collapsible_row_ibT7j8": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "Collapsible row",
+            "icon": "check_mark",
+            "row_content": "",
+            "page": ""
+          }
+        },
+        "collapsible_row_CdVppP": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "Collapsible row",
+            "icon": "check_mark",
+            "row_content": "",
+            "page": ""
+          }
+        },
+        "collapsible_row_iakk4Y": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "Collapsible row",
+            "icon": "check_mark",
+            "row_content": "",
+            "page": ""
+          }
+        },
+        "collapsible_row_wjAmLW": {
+          "type": "collapsible_row",
+          "settings": {
+            "heading": "Collapsible row",
+            "icon": "check_mark",
+            "row_content": "",
+            "page": ""
+          }
+        }
+      },
+      "block_order": [
+        "collapsible_row_ibT7j8",
+        "collapsible_row_CdVppP",
+        "collapsible_row_iakk4Y",
+        "collapsible_row_wjAmLW"
+      ],
+      "disabled": true,
+      "settings": {
+        "caption": "",
+        "heading": "Collapsible content",
+        "heading_size": "h1",
+        "heading_alignment": "center",
+        "layout": "none",
+        "container_color_scheme": "",
+        "color_scheme": "",
+        "open_first_collapsible_row": false,
+        "image_ratio": "adapt",
+        "desktop_layout": "image_second",
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "video_wV4rB9": {
+      "type": "video",
+      "disabled": true,
+      "settings": {
+        "heading": "Top Sellers",
+        "heading_size": "h2",
+        "enable_video_looping": true,
+        "video": "shopify:\/\/files\/videos\/Shirt Video.mp4",
+        "video_url": "",
+        "description": "",
+        "full_width": false,
+        "color_scheme": "scheme-1",
+        "padding_top": 80,
+        "padding_bottom": 80
+      }
+    },
+    "video_GWHzYX": {
+      "type": "video",
+      "disabled": true,
+      "settings": {
+        "heading": "",
+        "heading_size": "h2",
+        "enable_video_looping": false,
+        "video": "shopify:\/\/files\/videos\/rn-image_picker_lib_temp_d2de9ee4-fc6c-4a07-9b22-18db8a5cf55b.mp4",
+        "video_url": "https:\/\/www.youtube.com\/watch?v=_9VUPq3SxOc",
+        "description": "",
+        "full_width": false,
+        "color_scheme": "scheme-1",
+        "padding_top": 80,
+        "padding_bottom": 80
+      }
+    },
+    "featured_blog_NadGLL": {
+      "type": "featured-blog",
+      "disabled": true,
+      "settings": {
+        "blog": "",
+        "post_limit": 3,
+        "heading": "Blog posts",
+        "heading_size": "h1",
+        "columns_desktop": 3,
+        "show_view_all": true,
+        "show_image": true,
+        "show_date": true,
+        "show_author": false,
+        "color_scheme": "",
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "featured_product_P4JPfA": {
+      "type": "featured-product",
+      "blocks": {
+        "text_4T4W7C": {
+          "type": "text",
+          "settings": {
+            "text": "{{ section.settings.product.vendor }}",
+            "text_style": "uppercase"
+          }
+        },
+        "title_N77Ft4": {
+          "type": "title",
+          "settings": {
+            "heading_size": "h1"
+          }
+        },
+        "price_tWDMPU": {
+          "type": "price",
+          "settings": {}
+        },
+        "variant_picker_ACezQj": {
+          "type": "variant_picker",
+          "settings": {
+            "picker_type": "button",
+            "swatch_shape": "circle"
+          }
+        },
+        "quantity_selector_yVCwgw": {
+          "type": "quantity_selector",
+          "settings": {}
+        },
+        "buy_buttons_jHDB9n": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_dynamic_checkout": true,
+            "show_gift_card_recipient": true
+          }
+        },
+        "share_jXVjyf": {
+          "type": "share",
+          "settings": {
+            "share_label": "Share"
+          }
+        }
+      },
+      "block_order": [
+        "text_4T4W7C",
+        "title_N77Ft4",
+        "price_tWDMPU",
+        "variant_picker_ACezQj",
+        "quantity_selector_yVCwgw",
+        "buy_buttons_jHDB9n",
+        "share_jXVjyf"
+      ],
+      "disabled": true,
+      "settings": {
+        "product": "imported-tipping-crew",
+        "color_scheme": "scheme-1",
+        "secondary_background": false,
+        "media_size": "medium",
+        "constrain_to_viewport": true,
+        "media_fit": "contain",
+        "media_position": "left",
+        "image_zoom": "lightbox",
+        "hide_variants": false,
+        "enable_video_looping": false,
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "video_7pqzUr": {
+      "type": "video",
+      "disabled": true,
+      "settings": {
+        "heading": "Imported Product",
+        "heading_size": "h2",
+        "enable_video_looping": false,
+        "video": "shopify:\/\/files\/videos\/lv_0_20240918192139.mp4",
+        "video_url": "https:\/\/www.youtube.com\/watch?v=_9VUPq3SxOc",
+        "description": "",
+        "full_width": false,
+        "color_scheme": "scheme-1",
+        "padding_top": 80,
+        "padding_bottom": 80
+      }
+    },
+    "173833358595e2f240": {
+      "type": "apps",
+      "blocks": {
+        "judge_me_reviews_featured_carousel_6qdMTx": {
+          "type": "shopify:\/\/apps\/judge-me-reviews\/blocks\/featured_carousel\/61ccd3b1-a9f2-4160-9fe9-4fec8413e5d8",
+          "settings": {
+            "maxwidth": 1080
+          }
+        }
+      },
+      "block_order": [
+        "judge_me_reviews_featured_carousel_6qdMTx"
+      ],
+      "settings": {
+        "include_margins": true
+      }
+    }
+  },
+  "order": [
+    "custom_hero_slider_home",
+    "custom_video_carousel_home",
+    "image_banner_CiqKG8",
+    "slideshow_Mb4CPJ",
+    "collection_list_MKErxp",
+    "rich_text_fW6Enr",
+    "collapsible_content_EAFqYK",
+    "video_wV4rB9",
+    "video_GWHzYX",
+    "featured_blog_NadGLL",
+    "featured_product_P4JPfA",
+    "video_7pqzUr",
+    "173833358595e2f240"
+  ]
+}

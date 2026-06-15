@@ -29,11 +29,19 @@
     var handleMap = {};
     cards.forEach(function (el) {
       var h = el.getAttribute('data-handle');
-      if (h && !handleMap[h]) {
-        handles.push(h);
-        handleMap[h] = [];
+      var combined = el.getAttribute('data-combined') === 'true';
+      var linked = el.getAttribute('data-linked-handles');
+      
+      var queryHandles = h;
+      if (combined && linked) {
+        queryHandles = h + ',' + linked;
       }
-      if (h) handleMap[h].push(el);
+
+      if (queryHandles && !handleMap[queryHandles]) {
+        handles.push(queryHandles);
+        handleMap[queryHandles] = [];
+      }
+      if (queryHandles) handleMap[queryHandles].push(el);
     });
 
     if (!handles.length) return;
@@ -59,7 +67,7 @@
 
             var badge =
               renderMiniStars(avg) +
-              '<span style="font-size:12px;color:#888;font-weight:500;letter-spacing:0.3px;">' +
+              ' <span style="font-size:12px;color:#888;font-weight:500;letter-spacing:0.3px;margin-left:4px;">' +
               avg.toFixed(1) +
               ' <span style="opacity:0.5;">(' + total + ')</span></span>';
 

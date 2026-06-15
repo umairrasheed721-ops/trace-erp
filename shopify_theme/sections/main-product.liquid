@@ -486,43 +486,28 @@
                   show_pickup_availability: true
                 -%}
               {%- when 'rating' -%}
-                {%- if product.metafields.reviews.rating.value != blank -%}
-                  <div class="rating-wrapper">
-                    {% liquid
-                      assign rating_decimal = 0
-                      assign decimal = product.metafields.reviews.rating.value.rating | modulo: 1
-                      if decimal >= 0.3 and decimal <= 0.7
-                        assign rating_decimal = 0.5
-                      elsif decimal > 0.7
-                        assign rating_decimal = 1
-                      endif
-                    %}
-                    <div
-                      class="rating"
-                      role="img"
-                      aria-label="{{ 'accessibility.star_reviews_info' | t: rating_value: product.metafields.reviews.rating.value, rating_max: product.metafields.reviews.rating.value.scale_max }}"
-                    >
-                      <span
-                        aria-hidden="true"
-                        class="rating-star"
-                        style="--rating: {{ product.metafields.reviews.rating.value.rating | floor }}; --rating-max: {{ product.metafields.reviews.rating.value.scale_max }}; --rating-decimal: {{ rating_decimal }};"
-                      ></span>
-                    </div>
-                    <p class="rating-text caption">
-                      <span aria-hidden="true">
-                        {{- product.metafields.reviews.rating.value }} /
-                        {{ product.metafields.reviews.rating.value.scale_max -}}
-                      </span>
-                    </p>
-                    <p class="rating-count caption">
-                      <span aria-hidden="true">({{ product.metafields.reviews.rating_count }})</span>
-                      <span class="visually-hidden">
-                        {{- product.metafields.reviews.rating_count }}
-                        {{ 'accessibility.total_reviews' | t -}}
-                      </span>
-                    </p>
-                  </div>
-                {%- endif -%}
+                {%- liquid
+                  assign tr_combined = false
+                  assign tr_linked_handles = ''
+                  if product.metafields.custom.linked_color_products != blank
+                    assign tr_combined = true
+                    assign tr_linked_ids = product.metafields.custom.linked_color_products.value
+                    for linked_prod in tr_linked_ids
+                      unless linked_prod.handle == product.handle
+                        if tr_linked_handles == ''
+                          assign tr_linked_handles = linked_prod.handle
+                        else
+                          assign tr_linked_handles = tr_linked_handles | append: ',' | append: linked_prod.handle
+                        endif
+                      endunless
+                    endfor
+                  endif
+                -%}
+                <div class="trace-product-rating-wrapper" style="margin: 12px 0;">
+                  <a href="#trace-reviews-{{ product.id }}" class="trace-card-rating" data-handle="{{ product.handle }}" data-linked-handles="{{ tr_linked_handles }}" data-combined="{{ tr_combined }}" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 8px;">
+                    <!-- Dynamically populated by trace-ratings.js -->
+                  </a>
+                </div>
               {%- when 'complementary' -%}
                 <product-recommendations
                   class="complementary-products quick-add-hidden{% if block.settings.make_collapsible_row %} is-accordion{% endif %}{% if block.settings.enable_quick_add %} complementary-products-contains-quick-add{% endif %}"
