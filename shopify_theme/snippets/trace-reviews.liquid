@@ -30,26 +30,34 @@
 <section class="trace-reviews-section" id="trace-reviews-{{ product.id }}" aria-label="Customer Reviews">
   <div class="trace-reviews-wrap">
 
-    <!-- Header -->
-    <div class="tr-header">
-      <h2 class="tr-title">Customer Reviews</h2>
-      <div class="tr-summary-row" id="tr-summary-{{ product.id }}">
-        <div class="tr-skeleton-line" style="width:180px;height:40px;"></div>
-      </div>
-    </div>
+    <h2 class="tr-title">Customer Reviews</h2>
 
-    <!-- Rating Bars -->
-    <div class="tr-rating-breakdown" id="tr-breakdown-{{ product.id }}" style="display:none;">
-      {% for i in (1..5) %}
-        {%- assign star = 6 | minus: i -%}
-        <div class="tr-bar-row">
-          <span class="tr-bar-label">{{ star }}★</span>
-          <div class="tr-bar-track">
-            <div class="tr-bar-fill" data-star="{{ star }}" style="width:0%"></div>
-          </div>
-          <span class="tr-bar-count" data-star-count="{{ star }}">0</span>
+    <!-- Grid Container for Summary & Breakdown -->
+    <div class="tr-summary-grid" id="tr-summary-grid-{{ product.id }}">
+      
+      <!-- Left Column: Score and Star Summary -->
+      <div class="tr-summary-col">
+        <div class="tr-summary-score-wrap" id="tr-summary-{{ product.id }}">
+          <!-- Skeleton before loading -->
+          <div class="tr-skeleton-line" style="width:120px;height:48px;margin-bottom:8px;"></div>
+          <div class="tr-skeleton-line" style="width:180px;height:20px;"></div>
         </div>
-      {% endfor %}
+      </div>
+
+      <!-- Right Column: Rating Bars Breakdown -->
+      <div class="tr-rating-breakdown" id="tr-breakdown-{{ product.id }}" style="opacity: 0.5; pointer-events: none;">
+        {% for i in (1..5) %}
+          {%- assign star = 6 | minus: i -%}
+          <div class="tr-bar-row">
+            <span class="tr-bar-label">{{ star }}★</span>
+            <div class="tr-bar-track">
+              <div class="tr-bar-fill" data-star="{{ star }}" style="width:0%"></div>
+            </div>
+            <span class="tr-bar-count" data-star-count="{{ star }}">0</span>
+          </div>
+        {% endfor %}
+      </div>
+
     </div>
 
     <!-- Reviews List -->
@@ -67,19 +75,34 @@
 
     <!-- Empty State -->
     <div class="tr-empty" id="tr-empty-{{ product.id }}" style="display:none;">
-      <div class="tr-empty-icon">✍️</div>
-      <p>No reviews yet. Be the first to review this product!</p>
+      <div class="tr-empty-stars">★ ★ ★ ★ ★</div>
+      <p class="tr-empty-title">Customer Reviews</p>
+      <p class="tr-empty-text">No reviews yet. Be the first to review this product!</p>
     </div>
 
   </div>
 </section>
 
 <style>
-/* ── TRACE Reviews Widget ─────────────────────────────────────── */
+/* ── TRACE Reviews Widget Color Tokens ── */
+:root {
+  --tr-text-color: #121212;
+  --tr-text-muted: #767676;
+  --tr-star-color: #ffb400; /* Premium Gold */
+  --tr-star-empty-color: #e5e5e5; /* Light grey for empty stars */
+  --tr-bar-track-bg: #f5f5f5; /* Light gray track */
+  --tr-bar-fill-bg: #121212; /* Sleek black fill for rating bars */
+  --tr-card-bg: #ffffff;
+  --tr-card-border: #f0f0f0;
+  --tr-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  --tr-border-color: #f0f0f0;
+}
+
 .trace-reviews-section {
   padding: 60px 0 40px;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  border-top: 1px solid var(--tr-border-color);
   margin-top: 60px;
+  background: transparent;
 }
 
 .trace-reviews-wrap {
@@ -88,82 +111,189 @@
   padding: 0 20px;
 }
 
-/* Header */
-.tr-header { margin-bottom: 32px; }
 .tr-title {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 2px;
   text-transform: uppercase;
-  margin: 0 0 20px;
-  color: inherit;
+  margin: 0 0 32px;
+  color: var(--tr-text-color);
+  text-align: left;
 }
 
-/* Summary row */
-.tr-summary-row {
-  display: flex;
+/* 2-Column Summary Grid */
+.tr-summary-grid {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 48px;
   align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  background: #ffffff;
+  border: 1px solid var(--tr-card-border);
+  padding: 32px;
+  border-radius: 16px;
+  margin-bottom: 40px;
+  box-shadow: var(--tr-card-shadow);
+}
+@media (max-width: 768px) {
+  .tr-summary-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding: 24px;
+  }
+}
+
+/* Left Column: Summary Info */
+.tr-summary-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-right: 1px solid var(--tr-border-color);
+  padding-right: 48px;
+  justify-content: center;
+  min-height: 120px;
+}
+@media (max-width: 768px) {
+  .tr-summary-col {
+    border-right: none;
+    padding-right: 0;
+    border-bottom: 1px solid var(--tr-border-color);
+    padding-bottom: 24px;
+    min-height: auto;
+  }
+}
+
+.tr-summary-score-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .tr-avg-score {
-  font-size: 52px;
+  font-size: 56px;
   font-weight: 900;
   line-height: 1;
-  color: inherit;
+  color: var(--tr-text-color);
 }
 
-.tr-avg-right { display: flex; flex-direction: column; gap: 4px; }
+.tr-avg-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
 
-.tr-stars-row { display: flex; gap: 3px; }
-.tr-star-filled { color: #FFD700; font-size: 20px; }
-.tr-star-half { color: #FFD700; font-size: 20px; opacity: 0.5; }
-.tr-star-empty { color: #444; font-size: 20px; }
+.tr-stars-row {
+  display: flex;
+  gap: 3px;
+}
+
+/* Stars Styling */
+.tr-star-filled, .tr-card-star-filled {
+  color: var(--tr-star-color);
+  font-size: 20px;
+}
+.tr-star-empty, .tr-card-star-empty {
+  color: var(--tr-star-empty-color);
+  font-size: 20px;
+}
+.tr-star-half {
+  position: relative;
+  display: inline-block;
+  color: var(--tr-star-empty-color);
+  font-size: 20px;
+}
+.tr-star-half::before {
+  content: '★';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 50%;
+  overflow: hidden;
+  color: var(--tr-star-color);
+}
 
 .tr-total-count {
   font-size: 13px;
-  color: #888;
-  letter-spacing: 1px;
+  font-weight: 500;
+  color: var(--tr-text-muted);
+  letter-spacing: 0.5px;
 }
 
-/* Rating Bars */
+/* Right Column: Breakdown bars */
 .tr-rating-breakdown {
-  margin-bottom: 36px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  width: 100%;
+  transition: opacity 0.4s ease;
 }
 
-.tr-bar-row { display: flex; align-items: center; gap: 12px; }
-.tr-bar-label { font-size: 13px; color: #888; width: 24px; text-align: right; flex-shrink: 0; }
+.tr-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.tr-bar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tr-text-muted);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 .tr-bar-track {
   flex: 1;
-  height: 6px;
-  background: rgba(255,255,255,0.08);
+  height: 8px;
+  background: var(--tr-bar-track-bg);
   border-radius: 99px;
   overflow: hidden;
+  position: relative;
 }
+
 .tr-bar-fill {
   height: 100%;
-  background: #FFD700;
+  background: var(--tr-bar-fill-bg);
   border-radius: 99px;
-  transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+  width: 0%;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.tr-bar-count { font-size: 12px; color: #666; width: 20px; flex-shrink: 0; }
 
-/* Review Cards */
-.tr-reviews-list { display: flex; flex-direction: column; gap: 20px; }
+.tr-bar-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tr-text-muted);
+  width: 20px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+/* Review Cards List */
+.tr-reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
 .tr-review-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--tr-card-bg);
+  border: 1px solid var(--tr-card-border);
   border-radius: 14px;
   padding: 24px;
-  transition: border-color 0.2s;
+  box-shadow: var(--tr-card-shadow);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   animation: trFadeIn 0.4s ease both;
 }
-.tr-review-card:hover { border-color: rgba(255,255,255,0.14); }
+.tr-review-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+}
 
 @keyframes trFadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -175,16 +305,20 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
-.tr-card-left { display: flex; flex-direction: column; gap: 4px; }
+.tr-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
 .tr-reviewer-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
-  color: inherit;
+  color: var(--tr-text-color);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -193,58 +327,71 @@
 .tr-verified-badge {
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1px;
-  background: rgba(74,222,128,0.15);
-  color: #4ade80;
-  border: 1px solid rgba(74,222,128,0.25);
+  letter-spacing: 0.5px;
+  background: #ecfdf5;
+  color: #10b981;
+  border: 1px solid #d1fae5;
   border-radius: 99px;
   padding: 2px 8px;
   text-transform: uppercase;
 }
 
-.tr-card-stars { display: flex; gap: 2px; }
-.tr-card-star-filled { color: #FFD700; font-size: 14px; }
-.tr-card-star-empty  { color: #333; font-size: 14px; }
+.tr-card-stars {
+  display: flex;
+  gap: 2px;
+}
+.tr-card-star-filled {
+  color: var(--tr-star-color);
+  font-size: 14px;
+}
+.tr-card-star-empty {
+  color: var(--tr-star-empty-color);
+  font-size: 14px;
+}
 
 .tr-card-meta {
-  font-size: 12px;
-  color: #555;
+  font-size: 13px;
+  color: var(--tr-text-muted);
   display: flex;
   gap: 8px;
   align-items: center;
 }
-.tr-meta-sep { color: #333; }
+.tr-meta-sep {
+  color: #ddd;
+}
 
 .tr-card-title {
   font-size: 15px;
   font-weight: 700;
-  color: inherit;
+  color: var(--tr-text-color);
   margin: 0 0 8px;
 }
 
 .tr-card-body {
   font-size: 14px;
   line-height: 1.65;
-  color: #aaa;
+  color: #4a4a4a;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* Loading */
+/* Loading Spinner */
 .tr-loading {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 32px 0;
-  color: #666;
+  color: var(--tr-text-muted);
   font-size: 14px;
+  justify-content: center;
 }
 
 .tr-spinner {
-  width: 20px; height: 20px;
-  border: 2px solid rgba(255,255,255,0.1);
-  border-top-color: #888;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0,0,0,0.05);
+  border-top-color: var(--tr-text-color);
   border-radius: 50%;
   animation: trSpin 0.8s linear infinite;
   flex-shrink: 0;
@@ -253,22 +400,25 @@
 
 /* Skeleton */
 .tr-skeleton-line {
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background: linear-gradient(90deg, rgba(0,0,0,0.03) 25%, rgba(0,0,0,0.06) 50%, rgba(0,0,0,0.03) 25%);
   background-size: 200% 100%;
   animation: trShimmer 1.5s infinite;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 @keyframes trShimmer { to { background-position: -200% 0; } }
 
-/* Load more */
-.tr-load-more-wrap { text-align: center; margin-top: 28px; }
+/* Load More Button */
+.tr-load-more-wrap {
+  text-align: center;
+  margin-top: 28px;
+}
 .tr-load-more-btn {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.15);
-  color: #aaa;
+  border: 1px solid rgba(0,0,0,0.15);
+  color: var(--tr-text-color);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 1.5px;
+  letter-spacing: 1px;
   text-transform: uppercase;
   padding: 13px 32px;
   border-radius: 8px;
@@ -276,29 +426,49 @@
   transition: all 0.2s;
 }
 .tr-load-more-btn:hover {
-  border-color: rgba(255,255,255,0.3);
-  color: #fff;
+  border-color: var(--tr-text-color);
+  background: rgba(0,0,0,0.02);
 }
 
-/* Empty */
+/* Premium Empty State */
 .tr-empty {
   text-align: center;
-  padding: 48px 0;
-  color: #555;
+  padding: 64px 32px;
+  background: #ffffff;
+  border: 1px solid var(--tr-card-border);
+  border-radius: 16px;
+  box-shadow: var(--tr-card-shadow);
 }
-.tr-empty-icon { font-size: 36px; margin-bottom: 12px; }
-.tr-empty p { font-size: 14px; }
+.tr-empty-stars {
+  font-size: 24px;
+  color: var(--tr-star-empty-color);
+  margin-bottom: 16px;
+  letter-spacing: 4px;
+}
+.tr-empty-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tr-text-color);
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.tr-empty-text {
+  font-size: 14px;
+  margin: 0;
+  color: var(--tr-text-muted);
+}
 
-/* Responsive */
+/* Responsive adjustments */
 @media (max-width: 640px) {
-  .tr-avg-score { font-size: 40px; }
+  .tr-avg-score { font-size: 48px; }
   .tr-review-card { padding: 18px; }
 }
 </style>
 
 <script>
 (function() {
-  var BACKEND = '{{ _backend_url }}';
+  var BACKEND = 'https://trace-erp-production.up.railway.app';
   var HANDLES = '{{ _all_handles | escape }}';
   var PRODUCT_ID = '{{ product.id }}';
   var PAGE = 1;
@@ -306,14 +476,13 @@
   var totalLoaded = 0;
   var totalAvailable = 0;
 
-  function makeStars(rating, size) {
-    size = size || 'card';
+  function makeStars(rating) {
     var html = '';
     for (var i = 1; i <= 5; i++) {
       if (i <= rating) {
-        html += '<span class="tr-' + size + '-star-filled">★</span>';
+        html += '<span class="tr-card-star-filled">★</span>';
       } else {
-        html += '<span class="tr-' + size + '-star-empty">★</span>';
+        html += '<span class="tr-card-star-empty">★</span>';
       }
     }
     return html;
@@ -343,33 +512,46 @@
 
   function renderSummary(summary) {
     var summaryEl = document.getElementById('tr-summary-' + PRODUCT_ID);
+    var gridEl = document.getElementById('tr-summary-grid-' + PRODUCT_ID);
     if (!summaryEl) return;
 
     if (!summary || summary.total === 0) {
-      summaryEl.innerHTML = '<span style="color:#666;font-size:14px;">No reviews yet</span>';
+      if (gridEl) gridEl.style.display = 'none';
       return;
     }
+
+    if (gridEl) gridEl.style.display = 'grid';
 
     summaryEl.innerHTML =
       '<div class="tr-avg-score">' + (summary.avg || 0).toFixed(1) + '</div>' +
       '<div class="tr-avg-right">' +
         '<div class="tr-stars-row">' + makeSummaryStars(summary.avg || 0) + '</div>' +
-        '<div class="tr-total-count">' + summary.total + ' review' + (summary.total !== 1 ? 's' : '') + '</div>' +
+        '<div class="tr-total-count">Based on ' + summary.total + ' review' + (summary.total !== 1 ? 's' : '') + '</div>' +
       '</div>';
   }
 
   function renderBreakdown(summary) {
     var el = document.getElementById('tr-breakdown-' + PRODUCT_ID);
-    if (!el || !summary || summary.total === 0) return;
+    if (!el) return;
 
-    el.style.display = 'flex';
+    if (!summary || summary.total === 0) {
+      el.style.display = 'none';
+      return;
+    }
+
+    // Enable/show breakdown bars
+    el.style.opacity = '1';
+    el.style.pointerEvents = 'auto';
+
     for (var s = 1; s <= 5; s++) {
       var fill = el.querySelector('[data-star="' + s + '"]');
       var count = el.querySelector('[data-star-count="' + s + '"]');
       var n = (summary.distribution && summary.distribution[s]) || 0;
       var pct = summary.total > 0 ? Math.round((n / summary.total) * 100) : 0;
       if (fill) {
-        setTimeout((function(f, p) { return function() { f.style.width = p + '%'; }; })(fill, pct), 100);
+        (function(f, p) {
+          setTimeout(function() { f.style.width = p + '%'; }, 100);
+        })(fill, pct);
       }
       if (count) count.textContent = n;
     }
@@ -386,7 +568,6 @@
       card.className = 'tr-review-card';
       card.style.animationDelay = (idx * 0.05) + 's';
 
-      var nameInitial = (r.name || 'A').charAt(0).toUpperCase();
       var dateStr = formatDate(r.date);
       var location = r.location ? ('<span class="tr-meta-sep">·</span><span>' + r.location + '</span>') : '';
       var titleHtml = r.title ? '<p class="tr-card-title">' + escHtml(r.title) + '</p>' : '';
@@ -418,8 +599,10 @@
 
   function showEmpty() {
     var listEl = document.getElementById('tr-list-' + PRODUCT_ID);
+    var gridEl = document.getElementById('tr-summary-grid-' + PRODUCT_ID);
     var emptyEl = document.getElementById('tr-empty-' + PRODUCT_ID);
     if (listEl) listEl.innerHTML = '';
+    if (gridEl) gridEl.style.display = 'none';
     if (emptyEl) emptyEl.style.display = 'block';
   }
 
@@ -455,7 +638,7 @@
       })
       .catch(function() {
         var listEl = document.getElementById('tr-list-' + PRODUCT_ID);
-        if (listEl) listEl.innerHTML = '<p style="color:#555;font-size:14px;padding:20px 0;">Could not load reviews. Please refresh the page.</p>';
+        if (listEl) listEl.innerHTML = '<p style="color:#767676;font-size:14px;padding:20px 0;text-align:center;">Could not load reviews. Please refresh the page.</p>';
       });
   }
 
