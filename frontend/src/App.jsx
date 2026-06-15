@@ -37,6 +37,7 @@ const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
 const PayoutReconciler = lazy(() => import('./pages/PayoutReconciler'))
 const TrackingPortal = lazy(() => import('./pages/TrackingPortal'))
 const WhatsAppPortal = lazy(() => import('./pages/WhatsAppPortal'))
+const ReviewsManager = lazy(() => import('./pages/ReviewsManager'))
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -100,6 +101,7 @@ function AppContent() {
                   <Route path="/diagnostics" element={<DiagnosticCenter />} />
                   <Route path="/system-status" element={<SystemStatus />} />
                   <Route path="/status-mappings" element={<StatusMappingManager />} />
+                  <Route path="/reviews" element={<ReviewsManager />} />
                 </Routes>
               </ErrorBoundary>
             </Suspense>
