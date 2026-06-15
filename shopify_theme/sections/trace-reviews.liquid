@@ -1,0 +1,39 @@
+{%- if product -%}
+  {%- liquid
+    assign tr_combined = false
+    assign tr_linked_handles = ''
+    if product.metafields.custom.linked_color_products != blank
+      assign tr_combined = true
+      assign tr_linked_ids = product.metafields.custom.linked_color_products.value
+      for linked_prod in tr_linked_ids
+        unless linked_prod.handle == product.handle
+          if tr_linked_handles == ''
+            assign tr_linked_handles = linked_prod.handle
+          else
+            assign tr_linked_handles = tr_linked_handles | append: ',' | append: linked_prod.handle
+          endif
+        endunless
+      endfor
+    endif
+  -%}
+
+  {% render 'trace-reviews',
+     product: product,
+     linked_handles: tr_linked_handles,
+     combined: tr_combined
+  %}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Trace Reviews Widget",
+  "tag": "section",
+  "class": "section",
+  "settings": [],
+  "presets": [
+    {
+      "name": "Trace Reviews Widget"
+    }
+  ]
+}
+{% endschema %}

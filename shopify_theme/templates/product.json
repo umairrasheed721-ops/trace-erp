@@ -1,0 +1,271 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "title": {
+          "type": "title",
+          "settings": {}
+        },
+        "judge_me_reviews_preview_badge_NxF44e": {
+          "type": "shopify://apps/judge-me-reviews/blocks/preview_badge/61ccd3b1-a9f2-4160-9fe9-4fec8413e5d8",
+          "settings": {}
+        },
+        "quantity_selector_td9Adk": {
+          "type": "quantity_selector",
+          "disabled": true,
+          "settings": {}
+        },
+        "price": {
+          "type": "price",
+          "settings": {}
+        },
+        "custom_liquid_7HbDWT": {
+          "type": "custom_liquid",
+          "disabled": true,
+          "settings": {
+            "custom_liquid": "<style>\n\n.modal {\n  display: none; \n  position: fixed; \n  z-index: 10000; \n  padding-top: 100px; \n  left: 0;\n  top: 0;\n  width: 100%; \n  height: 100%; \n  overflow: auto; \n  background-color: rgb(0,0,0); \n  background-color: rgba(0,0,0,0.4); \n}\n\n.modal-content {\n  background-color: #fefefe;\n  margin: auto;\n  padding: 20px;\n  border: 1px solid #888;\n  width: 80%;\n}\n\n.close {\n  color: #aaaaaa;\n  float: right;\n  font-size: 28px;\n  font-weight: bold;\n}\n\n.close:hover,\n.close:focus {\n  color: #000;\n  text-decoration: none;\n  cursor: pointer;\n}\n</style>\n\n\n<div>\n<button style=\"background:transparent;border:none;border-bottom:1px solid black;padding:0px;\" id=\"myBtn\">Size Chart</button>\n</div>\n\n<!-- The Modal -->\n<div id=\"myModal\" class=\"modal\">\n\n  <!-- Modal content -->\n  <div class=\"modal-content\">\n    <span class=\"close\">&times;</span>\n    <img width=\"100%\" src=\"{{ product.metafields.custom.sizechart | img_url:'master' }}\"/>\n  </div>\n\n</div>\n\n<script>\nvar modal = document.getElementById(\"myModal\");\n\nvar btn = document.getElementById(\"myBtn\");\n\nvar span = document.getElementsByClassName(\"close\")[0];\n\nbtn.onclick = function() {\n  modal.style.display = \"block\";\n}\n\nspan.onclick = function() {\n  modal.style.display = \"none\";\n}\n\nwindow.onclick = function(event) {\n  if (event.target == modal) {\n    modal.style.display = \"none\";\n  }\n}\n</script>"
+          }
+        },
+        "variant_picker": {
+          "type": "variant_picker",
+          "settings": {
+            "picker_type": "button",
+            "swatch_shape": "circle"
+          }
+        },
+        "buy_buttons": {
+          "type": "buy_buttons",
+          "settings": {
+            "show_dynamic_checkout": true,
+            "show_gift_card_recipient": true
+          }
+        },
+        "description": {
+          "type": "description",
+          "settings": {}
+        },
+        "collapsible_tab_N7r7VF": {
+          "type": "collapsible_tab",
+          "disabled": true,
+          "settings": {
+            "heading": "Size chart & Product Specs",
+            "icon": "check_mark",
+            "content": "<p>{{ product.description }}</p>",
+            "page": ""
+          }
+        },
+        "collapsible_tab_rzXfWc": {
+          "type": "collapsible_tab",
+          "disabled": true,
+          "settings": {
+            "heading": "First Check then Pay Policy",
+            "icon": "check_mark",
+            "content": "<h6>We provide our customers first check then pay policy but customers have to pay delivery charges in advance to confirm order.<br/>Procedure: customer have to choose First check and then pay policy on  checkout page and deposit the charges in the given account on checkout page. </h6>",
+            "page": ""
+          }
+        },
+        "collapsible_tab_Nfm6eK": {
+          "type": "collapsible_tab",
+          "disabled": true,
+          "settings": {
+            "heading": "DoorStep Size Exchange Policy",
+            "icon": "check_mark",
+            "content": "<h6>We provide our customers with a doorstep size exchange policy for their convenience.<br/>In case of size exchange, just contact our WhatsApp support <a href=\"https://wa.me/923034070779\" target=\"_blank\" title=\"Trace Customer Care\">+923034070779</a></h6>",
+            "page": ""
+          }
+        },
+        "complementary_AyE6ze": {
+          "type": "complementary",
+          "disabled": true,
+          "settings": {
+            "block_heading": "Pairs well with",
+            "make_collapsible_row": false,
+            "icon": "price_tag",
+            "product_list_limit": 10,
+            "products_per_page": 3,
+            "pagination_style": "counter",
+            "image_ratio": "square",
+            "enable_quick_add": false
+          }
+        },
+        "collapsible_tab_8ppKxK": {
+          "type": "collapsible_tab",
+          "disabled": true,
+          "settings": {
+            "heading": "text",
+            "icon": "check_mark",
+            "content": "<p>{{ product.metafields.custom.accordion_2.value }}</p>",
+            "page": ""
+          }
+        },
+        "collapsible_tab_B8MKgK": {
+          "type": "collapsible_tab",
+          "disabled": true,
+          "settings": {
+            "heading": "Accordion 3",
+            "icon": "check_mark",
+            "content": "<p>{{ product.metafields.custom.accordion_3.value }}</p>",
+            "page": ""
+          }
+        }
+      },
+      "block_order": [
+        "title",
+        "judge_me_reviews_preview_badge_NxF44e",
+        "quantity_selector_td9Adk",
+        "price",
+        "custom_liquid_7HbDWT",
+        "variant_picker",
+        "buy_buttons",
+        "description",
+        "collapsible_tab_N7r7VF",
+        "collapsible_tab_rzXfWc",
+        "collapsible_tab_Nfm6eK",
+        "complementary_AyE6ze",
+        "collapsible_tab_8ppKxK",
+        "collapsible_tab_B8MKgK"
+      ],
+      "custom_css": [
+        "p {color: black;}",
+        ".product-form__buttons {width: 100% !important; max-width: 100%;}"
+      ],
+      "settings": {
+        "enable_sticky_info": true,
+        "color_scheme": "scheme-1",
+        "media_size": "medium",
+        "constrain_to_viewport": true,
+        "media_fit": "contain",
+        "gallery_layout": "thumbnail_slider",
+        "mobile_thumbnails": "show",
+        "media_position": "left",
+        "image_zoom": "none",
+        "hide_variants": false,
+        "enable_video_looping": true,
+        "padding_top": 36,
+        "padding_bottom": 12
+      }
+    },
+    "1735939009e4a9e18c": {
+      "type": "apps",
+      "blocks": {
+        "judge_me_reviews_review_widget_R36UpP": {
+          "type": "shopify://apps/judge-me-reviews/blocks/review_widget/61ccd3b1-a9f2-4160-9fe9-4fec8413e5d8",
+          "settings": {
+            "review_data": "sample_data",
+            "max_width": 1200,
+            "show_shop_reviews": false,
+            "empty_state": "empty_widget"
+          }
+        }
+      },
+      "block_order": [
+        "judge_me_reviews_review_widget_R36UpP"
+      ],
+      "settings": {
+        "include_margins": true
+      }
+    },
+    "image_with_text_btFB3m": {
+      "type": "image-with-text",
+      "blocks": {
+        "heading_ngiQ9g": {
+          "type": "heading",
+          "settings": {
+            "heading": "REVIEWS ⭐⭐⭐⭐⭐",
+            "heading_size": "h1"
+          }
+        },
+        "text_r7GWj7": {
+          "type": "text",
+          "settings": {
+            "text": "<p>Here are the original screenshots of our value customers who got parcels at their doorstep. Visit our Instagram for more reviews.</p>",
+            "text_style": "body"
+          }
+        }
+      },
+      "block_order": [
+        "heading_ngiQ9g",
+        "text_r7GWj7"
+      ],
+      "disabled": true,
+      "settings": {
+        "image": "shopify://shop_images/Screenshot_2024-10-23_070456.png",
+        "height": "adapt",
+        "desktop_image_width": "medium",
+        "layout": "text_first",
+        "image_behavior": "none",
+        "content_layout": "no-overlap",
+        "desktop_content_position": "middle",
+        "desktop_content_alignment": "left",
+        "mobile_content_alignment": "left",
+        "section_color_scheme": "",
+        "color_scheme": "",
+        "padding_top": 36,
+        "padding_bottom": 36
+      }
+    },
+    "related-products": {
+      "type": "related-products",
+      "custom_css": [
+        "h2 {text-align: center; width: 100%;}"
+      ],
+      "settings": {
+        "heading": "You may also like",
+        "heading_size": "h2",
+        "products_to_show": 4,
+        "columns_desktop": 4,
+        "columns_mobile": "2",
+        "color_scheme": "scheme-1",
+        "image_ratio": "adapt",
+        "image_shape": "default",
+        "show_secondary_image": true,
+        "show_vendor": false,
+        "show_rating": false,
+        "padding_top": 36,
+        "padding_bottom": 28
+      }
+    },
+    "17810088577864ff5c": {
+      "type": "apps",
+      "blocks": {
+        "whatflow_chat_automation_whatsapp_product_button_nFrhtj": {
+          "type": "shopify://apps/whatflow-chat-automation/blocks/whatsapp_product_button/ea957967-ac26-4ed9-a3f0-e749fab355ab",
+          "settings": {
+            "button_text": "Ask about this product",
+            "button_style": "default",
+            "show_whatsapp_icon": true,
+            "icon_size": 20,
+            "custom_background_color": "",
+            "custom_text_color": "",
+            "button_width": 100,
+            "button_border_radius": 4,
+            "button_padding": 12,
+            "button_margin": 20,
+            "message_title": "Ask about this product",
+            "message_text": "Have questions about this product? Contact us via WhatsApp!",
+            "default_message": "Hi, I'm interested in [PRODUCT_NAME]"
+          }
+        }
+      },
+      "block_order": [
+        "whatflow_chat_automation_whatsapp_product_button_nFrhtj"
+      ],
+      "settings": {
+        "include_margins": true
+      }
+    },
+    "trace-reviews": {
+      "type": "trace-reviews",
+      "settings": {}
+    }
+  },
+  "order": [
+    "main",
+    "trace-reviews",
+    "1735939009e4a9e18c",
+    "image_with_text_btFB3m",
+    "related-products",
+    "17810088577864ff5c"
+  ]
+}
