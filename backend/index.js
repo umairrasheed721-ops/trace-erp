@@ -18,8 +18,25 @@ try {
   console.warn('⚠️ compression module not found, running without gzip');
 }
 
+
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'https://tracepk.com',
+  'https://www.tracepk.com',
+  /\.myshopify\.com$/,   // Shopify theme previews
+  /\.shopifypreview\.com$/,
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Check if origin matches any allowed origin
+    const allowed = ALLOWED_ORIGINS.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    callback(null, allowed ? origin : false);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
