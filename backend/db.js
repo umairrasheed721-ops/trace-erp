@@ -56,6 +56,8 @@ function getDbInstance() {
 
 const db = new Proxy({}, {
   get(target, prop) {
+    if (prop === 'transaction') return transaction;
+    if (prop === 'prepare') return prepare;
     const conn = getDbInstance();
     const val = conn[prop];
     if (typeof val === 'function') {
