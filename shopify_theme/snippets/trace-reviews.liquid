@@ -250,7 +250,7 @@
 .tr-bar-track {
   flex: 1;
   height: 8px;
-  background: var(--tr-bar-track-bg);
+  background-color: #f5f5f5 !important;
   border-radius: 99px;
   overflow: hidden;
   position: relative;
@@ -258,7 +258,7 @@
 
 .tr-bar-fill {
   height: 100%;
-  background: var(--tr-bar-fill-bg);
+  background-color: #121212 !important;
   border-radius: 99px;
   width: 0%;
   transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
@@ -546,14 +546,19 @@
     for (var s = 1; s <= 5; s++) {
       var fill = el.querySelector('[data-star="' + s + '"]');
       var count = el.querySelector('[data-star-count="' + s + '"]');
-      var n = (summary.distribution && summary.distribution[s]) || 0;
-      var pct = summary.total > 0 ? Math.round((n / summary.total) * 100) : 0;
-      if (fill) {
-        (function(f, p) {
-          setTimeout(function() { f.style.width = p + '%'; }, 100);
-        })(fill, pct);
+      
+      var n = 0;
+      if (summary.distribution) {
+        n = summary.distribution[s] || summary.distribution[s.toString()] || 0;
       }
-      if (count) count.textContent = n;
+      var pct = summary.total > 0 ? Math.round((n / summary.total) * 100) : 0;
+      
+      if (fill) {
+        fill.style.width = pct + '%';
+      }
+      if (count) {
+        count.textContent = n;
+      }
     }
   }
 
