@@ -287,6 +287,7 @@ export default function ReturnsManager() {
                     </th>
                     <th>Order</th>
                     <th>Tracking</th>
+                    <th>Dates</th>
                     <th>Courier Status</th>
                     <th>Action</th>
                   </tr>
@@ -308,6 +309,14 @@ export default function ReturnsManager() {
                       </td>
                       <td style={{ fontFamily: 'monospace' }}>{row.tracking_number}</td>
                       <td>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          Order: <span style={{ fontWeight: 400, opacity: 0.8 }}>{row.order_date ? row.order_date.substring(0, 10) : '—'}</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+                          Courier: <span style={{ fontWeight: 400, opacity: 0.8 }}>{row.status_date ? row.status_date.substring(0, 10) : '—'}</span>
+                        </div>
+                      </td>
+                      <td>
                         <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}>{row.delivery_status}</span>
                       </td>
                       <td>
@@ -323,7 +332,7 @@ export default function ReturnsManager() {
                   ))}
                   {filteredPending.length === 0 && (
                     <tr>
-                      <td colSpan="5" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No pending returns.</td>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No pending returns.</td>
                     </tr>
                   )}
                 </tbody>
