@@ -106,6 +106,54 @@ router.get('/reviews', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// PUBLIC: GET /api/public/reviews/bulk-summary
+// Query: ?handles=handle1,handle2,handle3
+// Returns a dictionary of { [handle]: { total, avg } }
+// ─────────────────────────────────────────────────────────────────
+router.get('/reviews/bulk-summary', (req, res) => {
+  try {
+    const { handles } = req.query;
+    if (!handles) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const handleList = handles.split(',').map(h => h.trim()).filter(Boolean);
+    if (handleList.length === 0) {
+      return res.json({ success: true, data: {} });
+    }
+
+    const placeholders = handleList.map(() => '?').join(',');
+
+    const rows = db.prepare(`
+      SELECT 
+        product_handle,
+        COUNT(*) as total,
+        ROUND(AVG(rating), 1) as avg
+      FROM product_reviews
+      WHERE product_handle IN (${placeholders}) AND status = 'approved'
+      GROUP BY product_handle
+    `).all(...handleList);
+
+    const result = {};
+    handleList.forEach(h => {
+      result[h] = { total: 0, avg: 0 };
+    });
+
+    rows.forEach(row => {
+      result[row.product_handle] = {
+        total: row.total || 0,
+        avg: row.avg || 0
+      };
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('[Reviews Bulk API] Error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch bulk summary' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // PUBLIC: GET /api/public/review-form?token=xxx
 // Renders an HTML form for the customer to submit their review
 // ─────────────────────────────────────────────────────────────────
