@@ -23,6 +23,18 @@ function loadStatusMaps() {
 function applyMap(statusMap, courier, rawStatus) {
   if (!rawStatus) return null;
   const raw = rawStatus.toLowerCase().trim();
+
+  // Pattern matching for dynamic PostEx en-route statuses
+  if (courier && courier.toLowerCase().includes('postex')) {
+    if (raw.startsWith('en-route to') && raw.endsWith('warehouse')) {
+      return 'In Transit';
+    }
+  }
+  // Pattern matching for return in-transit statuses across couriers
+  if (raw.includes('return in-transit') || raw.startsWith('return in-transit')) {
+    return 'Return Initiated';
+  }
+
   const courierKey = `${(courier || 'all').toLowerCase()}:${raw}`;
   const allKey = `all:${raw}`;
   return statusMap[courierKey] || statusMap[allKey] || null;
