@@ -475,11 +475,20 @@
   color: var(--tr-star-empty-color);
 }
 
+.tr-layout-carousel .tr-card-body-wrap {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 28px;
+}
+
 .tr-layout-carousel .tr-card-body {
   font-size: 14px;
   line-height: 1.8;
   color: #4a4a4a;
-  margin: 0 0 28px;
+  margin: 0;
   font-weight: 400;
   display: -webkit-box;
   -webkit-line-clamp: 5;
@@ -612,6 +621,20 @@
       '</div>';
   }
 
+  function cleanLocation(locStr) {
+    if (!locStr) return 'Pakistan';
+    var parts = locStr.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+    var uniqueParts = [];
+    parts.forEach(function(p) {
+      var lower = p.toLowerCase();
+      var exists = uniqueParts.some(function(u) { return u.toLowerCase() === lower; });
+      if (!exists) {
+        uniqueParts.push(p);
+      }
+    });
+    return uniqueParts.join(', ');
+  }
+
   function renderReviews(reviews, append) {
     var listEl = document.getElementById('tr-list-' + PRODUCT_ID);
     if (!listEl) return;
@@ -624,12 +647,15 @@
       card.style.animationDelay = (idx * 0.05) + 's';
 
       var dateStr = formatDate(r.date);
-      var locationHtml = '<div class="tr-card-location">' + escHtml(r.location || 'Pakistan') + '</div>';
+      var cleanLoc = cleanLocation(r.location);
+      var locationHtml = '<div class="tr-card-location">' + escHtml(cleanLoc) + '</div>';
 
       if (LAYOUT_TYPE === 'carousel') {
         card.innerHTML =
           '<div class="tr-card-stars">' + makeStars(r.rating) + '</div>' +
-          '<p class="tr-card-body">' + escHtml(r.body || '') + '</p>' +
+          '<div class="tr-card-body-wrap">' +
+            '<p class="tr-card-body">' + escHtml(r.body || '') + '</p>' +
+          '</div>' +
           '<div class="tr-card-author-wrap">' +
             '<div class="tr-reviewer-name">' + escHtml(r.name || 'Anonymous') + '</div>' +
             locationHtml +
