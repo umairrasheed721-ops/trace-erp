@@ -68,6 +68,7 @@ module.exports = [
       ['Instaworld', 'attempted delivery', 'Attempted'],
       ['all', 'returned to shipper', 'Returned'],
       ['all', 'return received at insta hub', 'Returned'],
+      ['all', 'return to origin', 'Returned'],
       ['all', 'at origin warehouse', 'In Transit'],
       ['all', 'at destination warehouse', 'In Transit'],
       ['all', 'at warehouse', 'In Transit'],
@@ -76,7 +77,8 @@ module.exports = [
       ['all', 'arrival at insta-hub', 'Booked'],
       ['all', 'handover to courier', 'In Transit'],
       ['Leopards', 'returned to shipper', 'Returned'],
-      ['Leopards', 'delivered', 'Delivered']
+      ['Leopards', 'delivered', 'Delivered'],
+      ['LCS', 'return to origin', 'Returned']
     ];
 
     try {
