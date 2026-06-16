@@ -86,6 +86,9 @@ export default function Users() {
       if (res.ok) {
         addToast('User deleted', 'success')
         fetchUsers()
+      } else {
+        const d = await res.json()
+        addToast(d.error || 'Failed to delete user', 'error')
       }
     } catch (e) {
       addToast('Failed to delete user', 'error')
