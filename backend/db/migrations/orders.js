@@ -183,9 +183,9 @@ module.exports = [
   // 11. CREATE role_permissions TABLE
   `CREATE TABLE IF NOT EXISTS role_permissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role TEXT NOT NULL UNIQUE,
-    permissions TEXT NOT NULL, -- JSON string of permission keys
-    updated_at TEXT DEFAULT (datetime('now'))
+    role_name TEXT NOT NULL,
+    page_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );`,
 
   // 12. CREATE order_history TABLE
@@ -233,6 +233,24 @@ module.exports = [
 
   // 14. Idempotent Schema Alterations (Try-catch wrapper)
   (db) => {
+    // Auto-fix role_permissions table if it was created with legacy columns
+    try {
+      const info = db.prepare("PRAGMA table_info(role_permissions)").all();
+      const hasLegacyRole = info.some(col => col.name === 'role');
+      if (hasLegacyRole) {
+        console.log("⚠️ Legacy role_permissions table schema detected. Dropping and recreating table to match backend API schema.");
+        db.exec("DROP TABLE role_permissions");
+        db.exec(`CREATE TABLE role_permissions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          role_name TEXT NOT NULL,
+          page_id TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );`);
+      }
+    } catch (e) {
+      // Ignore if table does not exist
+    }
+
     const alters = [
       "ALTER TABLE stores ADD COLUMN sync_total INTEGER DEFAULT 0",
       "ALTER TABLE stores ADD COLUMN sync_processed INTEGER DEFAULT 0",
