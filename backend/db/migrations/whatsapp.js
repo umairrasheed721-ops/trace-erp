@@ -366,6 +366,10 @@ Please reply with:
     status TEXT DEFAULT 'pending',
     tenant_id TEXT DEFAULT 'default',
     quote_context TEXT DEFAULT NULL,
+    media_url TEXT DEFAULT NULL,
+    media_type TEXT DEFAULT NULL,
+    file_name TEXT DEFAULT NULL,
+    poll_data TEXT DEFAULT NULL,
     created_at TEXT DEFAULT (datetime('now', '+5 hours'))
   );`,
   `CREATE INDEX IF NOT EXISTS idx_wa_msg_queue_status ON whatsapp_message_queue(status, tenant_id);`,
@@ -428,7 +432,11 @@ Please reply with:
       "ALTER TABLE whatsapp_settings DROP COLUMN fallback_autoreply_template",
       "ALTER TABLE whatsapp_settings DROP COLUMN enable_thank_you_msg",
       "ALTER TABLE whatsapp_settings DROP COLUMN enable_fallback_autoreply",
-      "ALTER TABLE whatsapp_settings ADD COLUMN enable_manual_chat_dispatch INTEGER DEFAULT 1"
+      "ALTER TABLE whatsapp_settings ADD COLUMN enable_manual_chat_dispatch INTEGER DEFAULT 1",
+      "ALTER TABLE whatsapp_message_queue ADD COLUMN media_url TEXT DEFAULT NULL",
+      "ALTER TABLE whatsapp_message_queue ADD COLUMN media_type TEXT DEFAULT NULL",
+      "ALTER TABLE whatsapp_message_queue ADD COLUMN file_name TEXT DEFAULT NULL",
+      "ALTER TABLE whatsapp_message_queue ADD COLUMN poll_data TEXT DEFAULT NULL"
     ];
 
     alters.forEach(sql => {

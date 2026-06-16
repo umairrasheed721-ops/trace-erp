@@ -225,12 +225,32 @@ class WhatsAppBot {
       let cleanedPhone = msg.phone.replace(/\D/g, '');
       console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Sending message ID: ${msg.id} to phone: ${cleanedPhone} via Evolution API`);
       
-      const result = await this.sendToEvolutionApi(cleanedPhone, msg.message);
+      const poll = msg.poll_data ? JSON.parse(msg.poll_data) : null;
+      const result = await this.sendToEvolutionApi(cleanedPhone, msg.message, msg.media_url, msg.media_type, msg.file_name);
       const realMessageId = result?.key?.id || msg.client_uuid;
 
       // Mark as 'sent'
       db.prepare("UPDATE whatsapp_message_queue SET status = 'sent', message_id = ? WHERE id = ?").run(realMessageId, msg.id);
       db.prepare("UPDATE whatsapp_messages SET status = 'sent', message_id = ? WHERE message_id = ?").run(realMessageId, msg.client_uuid);
+
+      if (poll) {
+        try {
+          let secretBase64 = null;
+          const secretBuf = result?.message?.messageContextInfo?.messageSecret;
+          if (secretBuf) {
+            secretBase64 = Buffer.from(secretBuf).toString('base64');
+          }
+          const fullMsgJson = result?.message ? JSON.stringify(result.message) : null;
+          db.prepare(`
+            INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, message_secret, full_message_json, tenant_id, order_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(message_id) DO NOTHING
+          `).run(realMessageId, cleanedPhone + '@s.whatsapp.net', poll.name, JSON.stringify(poll.values), secretBase64, fullMsgJson, this.tenantId || 'default', msg.order_id);
+          console.log(`🗄️ [PollVault] [QUEUE] Persisted poll "${poll.name}" (id=${realMessageId}) to DB with secret and full message JSON for crash resilience.`);
+        } catch (vaultErr) {
+          console.error('⚠️ [PollVault] [QUEUE] Failed to persist poll to DB:', vaultErr.message);
+        }
+      }
 
       console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Message ID: ${msg.id} successfully sent! Real ID: ${realMessageId}`);
 
@@ -376,8 +396,112 @@ class WhatsAppBot {
    * @returns {Promise<void>}
    */
   async ensureConnected() {
-    this.status = 'CONNECTED';
     return;
+  }
+
+  async enqueueInDb(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null, options = {}) {
+    const { db } = require('../db');
+    const cleaned = normalizePhone(phone);
+    const uuid = customMessageId || require('crypto').randomUUID();
+
+    let orderId = options?.orderId || options?.order_id || null;
+    let storeId = options?.storeId || options?.store_id || null;
+    if (!orderId || !storeId) {
+      try {
+        const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? AND tenant_id = ? ORDER BY id DESC LIMIT 1`).get(`%${cleaned.substring(cleaned.length - 10)}%`, this.tenantId || 'default');
+        if (order) {
+          if (!orderId) orderId = order.id;
+          if (!storeId) storeId = order.store_id;
+        }
+      } catch (e) {
+        console.error('⚠️ [enqueueInDb] Failed to pre-resolve order/store:', e.message);
+      }
+    }
+    if (!storeId) storeId = 1;
+
+    let dbMessageContent = message;
+    if (poll) {
+      dbMessageContent = poll.name;
+    } else if (mediaUrl) {
+      const finalMediaType = mediaType || 'image';
+      dbMessageContent = `[${finalMediaType.toUpperCase()}] ${message || ''}`;
+    }
+
+    let finalDbMediaUrl = mediaUrl;
+    if (finalDbMediaUrl && typeof finalDbMediaUrl === 'string' && !finalDbMediaUrl.startsWith('http') && !finalDbMediaUrl.startsWith('blob:')) {
+      const publicIndex = finalDbMediaUrl.indexOf('/public/');
+      if (publicIndex !== -1) {
+        finalDbMediaUrl = finalDbMediaUrl.substring(publicIndex + 7);
+      } else {
+        const uploadsIndex = finalDbMediaUrl.indexOf('/uploads/');
+        if (uploadsIndex !== -1) {
+          finalDbMediaUrl = finalDbMediaUrl.substring(uploadsIndex);
+        }
+      }
+    }
+
+    // Insert into whatsapp_messages with status = 'pending'
+    let dbMessageId = null;
+    try {
+      const result = db.prepare(`
+        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
+        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(storeId, orderId, cleaned, dbMessageContent || '', uuid, finalDbMediaUrl, mediaType, this.tenantId, quoteContext ? JSON.stringify(quoteContext) : null);
+      dbMessageId = result.lastInsertRowid;
+    } catch (dbErr) {
+      console.error('Failed to log pending message in DB:', dbErr.message);
+    }
+
+    // Insert into whatsapp_message_queue
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_message_queue (store_id, order_id, phone, message, direction, message_id, client_uuid, is_manual, status, tenant_id, quote_context, media_url, media_type, file_name, poll_data)
+        VALUES (?, ?, ?, ?, 'outgoing', ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+      `).run(
+        storeId,
+        orderId,
+        cleaned,
+        message || (poll ? poll.name : ''),
+        uuid,
+        uuid,
+        isManual ? 1 : 0,
+        this.tenantId,
+        quoteContext ? JSON.stringify(quoteContext) : null,
+        mediaUrl,
+        mediaType,
+        fileName,
+        poll ? JSON.stringify(poll) : null
+      );
+      console.log(`📥 [DB_QUEUE] Message enqueued for ${phone} (Tenant: ${this.tenantId}). Message ID: ${uuid}`);
+    } catch (queueErr) {
+      console.error('Failed to insert into whatsapp_message_queue:', queueErr.message);
+    }
+
+    // Broadcast message pending status via WebSocket
+    try {
+      const { broadcast } = require('../websocket');
+      broadcast('message', {
+        order_id: orderId,
+        message: {
+          id: dbMessageId || Date.now(),
+          store_id: storeId,
+          order_id: orderId,
+          phone: cleaned,
+          direction: 'outgoing',
+          message: dbMessageContent,
+          message_id: uuid,
+          clientUuid: uuid,
+          media_url: finalDbMediaUrl,
+          media_type: mediaType,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        }
+      });
+    } catch (wsErr) {
+      console.warn('WebSocket broadcast failed:', wsErr.message);
+    }
+
+    return { success: true, status: 'pending', messageId: uuid };
   }
 
   /**
@@ -399,6 +523,11 @@ class WhatsAppBot {
    * @returns {Promise<object>} Result payload returned by Baileys
    */
   async directSendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null, options = {}) {
+    if (this.status !== 'CONNECTED') {
+      console.log(`⚠️ Bot is offline (${this.status}). Enqueuing message for ${phone} in DB queue.`);
+      return this.enqueueInDb(phone, message, isManual, mediaUrl, mediaType, fileName, customMessageId, quoteContext, buttons, buttonsMode, poll, options);
+    }
+
     await this.ensureConnected();
 
     const cleaned = normalizePhone(phone);
@@ -888,6 +1017,11 @@ class WhatsAppBot {
    * @returns {Promise<object>} Promise resolving to transaction results
    */
   async sendMessage(phone, message, isManual = false, mediaUrl = null, mediaType = null, fileName = null, customMessageId = null, quoteContext = null, buttons = null, buttonsMode = 'native', poll = null, options = {}) {
+    if (this.status !== 'CONNECTED') {
+      console.log(`⚠️ Bot is offline (${this.status}). Enqueuing message for ${phone} in DB queue.`);
+      return this.enqueueInDb(phone, message, isManual, mediaUrl, mediaType, fileName, customMessageId, quoteContext, buttons, buttonsMode, poll, options);
+    }
+
     if (isManual || options?.force) {
       console.log(`⚡ [DIRECT_SEND_ROUTING] Manual/forced message to ${phone}. Routing directly to directSendMessage.`);
       return this.directSendMessage(phone, message, isManual, mediaUrl, mediaType, fileName, customMessageId, quoteContext, buttons, buttonsMode, poll, options);

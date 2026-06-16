@@ -179,9 +179,14 @@ class WaGovernanceService {
       SELECT phone, MAX(id) as max_id 
       FROM whatsapp_messages 
       WHERE tenant_id = ?
+        AND phone IN (
+          SELECT DISTINCT phone FROM whatsapp_messages 
+          WHERE tenant_id = ? 
+            AND (direction = 'incoming' OR status NOT IN ('failed', 'pending', 'processing'))
+        )
       GROUP BY phone 
       ORDER BY max_id DESC
-    `).all(tenantId);
+    `).all(tenantId, tenantId);
 
     const chats = [];
     for (const chat of uniqueChats) {

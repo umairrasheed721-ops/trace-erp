@@ -186,16 +186,10 @@ async function dispatchCODVerification(order) {
       }
     }
 
-    // Hard-Fix Poll Payload Structure
-    const pollData = {
-      name: finalMessage,
-      values: pollOptions,
-      selectableCount: 1
-    };
-    // Force-send the poll/message
+    // Force-send the text message confirmation
     try {
-      await bot.directSendMessage(normalizedPhone, null, true, null, null, null, null, null, null, 'native', pollData, { force: true, orderId: orderId });
-      console.log('✅ COD VERIFIER: Force-sent successfully to:', normalizedPhone);
+      await bot.directSendMessage(normalizedPhone, finalMessage, true, null, null, null, null, null, null, 'native', null, { force: true, orderId: orderId });
+      console.log('✅ COD VERIFIER: Text confirmation force-sent successfully to:', normalizedPhone);
     } catch (err) {
       console.error('❌ COD VERIFIER: Critical send failure:', err);
     }
