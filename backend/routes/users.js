@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
+const { authenticateToken } = require('./auth');
 
 // Helper to check if admin
 const isAdmin = (req, res, next) => {
@@ -11,7 +12,7 @@ const isAdmin = (req, res, next) => {
 
 // ─── STATIC ROUTES FIRST (must come before /:id to avoid Express matching "permissions" as an ID) ───
 
-// GET /api/users/permissions - Get all role permissions (public, used by sidebar)
+// GET /api/users/permissions - PUBLIC (sidebar uses this for all roles to filter navigation)
 router.get('/permissions', (req, res) => {
   try {
     const permissions = db.prepare('SELECT * FROM role_permissions').all();
@@ -23,7 +24,7 @@ router.get('/permissions', (req, res) => {
 });
 
 // POST /api/users/permissions - Overwrite permissions for a role (admin only)
-router.post('/permissions', isAdmin, (req, res) => {
+router.post('/permissions', authenticateToken, isAdmin, (req, res) => {
   const { role_name, page_ids } = req.body;
   if (!role_name || !Array.isArray(page_ids)) {
     return res.status(400).json({ error: 'Invalid data: role_name and page_ids[] required' });
@@ -52,7 +53,7 @@ router.post('/permissions', isAdmin, (req, res) => {
 // ─── CRUD ROUTES ───
 
 // GET /api/users - List all users (Admin only)
-router.get('/', isAdmin, (req, res) => {
+router.get('/', authenticateToken, isAdmin, (req, res) => {
   try {
     const users = db.prepare(`
       SELECT id, username, email, role, created_at,
@@ -67,7 +68,7 @@ router.get('/', isAdmin, (req, res) => {
 });
 
 // POST /api/users - Create new user (Admin only)
-router.post('/', isAdmin, async (req, res) => {
+router.post('/', authenticateToken, isAdmin, async (req, res) => {
   const { username, password, role, email, can_override_erp_status, can_set_final_status } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ error: 'Username, password and role are required' });
@@ -96,7 +97,7 @@ router.post('/', isAdmin, async (req, res) => {
 });
 
 // DELETE /api/users/:id - Delete user (Admin only)
-router.delete('/:id', isAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, isAdmin, (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -134,7 +135,7 @@ router.delete('/:id', isAdmin, (req, res) => {
 });
 
 // PUT /api/users/:id - Update user (Admin only)
-router.put('/:id', isAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
   const { username, role, email, password, can_override_erp_status, can_set_final_status } = req.body;
   if (!username || !role) {
     return res.status(400).json({ error: 'Username and role are required' });
