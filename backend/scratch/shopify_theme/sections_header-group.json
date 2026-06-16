@@ -1,0 +1,150 @@
+{
+  "name": "t:sections.header.name",
+  "type": "header",
+  "sections": {
+    "announcement_bar_7N8a6N": {
+      "type": "announcement-bar",
+      "blocks": {
+        "announcement_ekCM4p": {
+          "type": "announcement",
+          "settings": {
+            "text": "Cash Refund Policy Available ✅",
+            "link": ""
+          }
+        },
+        "announcement_YHzEJT": {
+          "type": "announcement",
+          "settings": {
+            "text": "All self-collection orders must pay Rs 300  Dc  in advance.",
+            "link": "https:\/\/wa.me\/923034070779"
+          }
+        }
+      },
+      "block_order": [
+        "announcement_ekCM4p",
+        "announcement_YHzEJT"
+      ],
+      "name": "t:sections.announcement-bar.presets.name",
+      "settings": {
+        "layout_mode": "slider",
+        "auto_rotate": true,
+        "change_slides_speed": 3,
+        "color_scheme": "scheme-b2e89de4-d66b-4a52-ad92-f0ef7418dc32",
+        "show_line_separator": true,
+        "show_social": false,
+        "enable_country_selector": false,
+        "enable_language_selector": false
+      }
+    },
+    "announcement_bar_JdycKN": {
+      "type": "announcement-bar",
+      "blocks": {
+        "announcement_xyeLd4": {
+          "type": "announcement",
+          "disabled": true,
+          "settings": {
+            "text": "Today is the final  🚚dispatch day exclusively for 📍 Lahore orders",
+            "link": ""
+          }
+        },
+        "announcement_XzGmBr": {
+          "type": "announcement",
+          "disabled": true,
+          "settings": {
+            "text": "Orders will dispatched After EID",
+            "link": ""
+          }
+        },
+        "announcement_afJzhW": {
+          "type": "announcement",
+          "disabled": true,
+          "settings": {
+            "text": "Only Lahore Deliveries will be entertain after 24 March till 28 March.",
+            "link": ""
+          }
+        }
+      },
+      "block_order": [
+        "announcement_xyeLd4",
+        "announcement_XzGmBr",
+        "announcement_afJzhW"
+      ],
+      "settings": {
+        "auto_rotate": true,
+        "change_slides_speed": 5,
+        "color_scheme": "scheme-1",
+        "show_line_separator": true,
+        "show_social": false,
+        "enable_country_selector": false,
+        "enable_language_selector": false
+      }
+    },
+    "announcement_bar_JCHCHE": {
+      "type": "announcement-bar",
+      "blocks": {
+        "announcement_eEhrbg": {
+          "type": "announcement",
+          "settings": {
+            "text": "Enjoy Free Shipping over Rs 5000\/- order.",
+            "link": ""
+          }
+        },
+        "announcement_jYrjb3": {
+          "type": "announcement",
+          "disabled": true,
+          "settings": {
+            "text": "Special Transparent Flyers Delivery✅",
+            "link": ""
+          }
+        },
+        "announcement_3yAAp9": {
+          "type": "announcement",
+          "settings": {
+            "text": "10% Discount on Advance payment. Contact Whatsapp +923034070779",
+            "link": "https:\/\/wa.me\/923034070779"
+          }
+        }
+      },
+      "block_order": [
+        "announcement_eEhrbg",
+        "announcement_jYrjb3",
+        "announcement_3yAAp9"
+      ],
+      "settings": {
+        "layout_mode": "flex_menu",
+        "auto_rotate": true,
+        "change_slides_speed": 3,
+        "color_scheme": "scheme-3",
+        "show_line_separator": false,
+        "show_social": false,
+        "enable_country_selector": false,
+        "enable_language_selector": false
+      }
+    },
+    "header": {
+      "type": "header",
+      "settings": {
+        "logo_position": "middle-center",
+        "mobile_logo_position": "center",
+        "menu": "main-menu",
+        "menu_type_desktop": "dropdown",
+        "sticky_header_type": "none",
+        "show_line_separator": false,
+        "color_scheme": "scheme-1",
+        "menu_color_scheme": "scheme-1",
+        "enable_country_selector": true,
+        "enable_language_selector": true,
+        "enable_customer_avatar": true,
+        "margin_bottom": 0,
+        "padding_top": 20,
+        "padding_bottom": 20
+      }
+    }
+  },
+  "order": [
+    "announcement_bar_7N8a6N",
+    "announcement_bar_JdycKN",
+    "announcement_bar_JCHCHE",
+    "header"
+  ]
+}

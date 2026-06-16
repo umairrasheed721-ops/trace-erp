@@ -1,5 +1,4 @@
 import React from 'react'
-import SyncDashboard from '../SyncDashboard'
 
 /**
  * CommandCenterHeader
@@ -7,7 +6,6 @@ import SyncDashboard from '../SyncDashboard'
  * Renders the sticky top-bar for the Command Center page:
  * - Page title + version badge
  * - Sub-title caption (hidden in compact mode)
- * - The embedded SyncDashboard reconciliation panel
  *
  * Props:
  *   compactMode {boolean} — toggles compact typography sizes
@@ -31,9 +29,6 @@ export default function CommandCenterHeader({ compactMode }) {
           )}
         </div>
       </div>
-
-      {/* Logistics Reconciliation Dashboard */}
-      <SyncDashboard />
     </>
   )
 }

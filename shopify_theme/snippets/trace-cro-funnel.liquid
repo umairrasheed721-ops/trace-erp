@@ -1,0 +1,1994 @@
+{%- comment -%}
+  =========================================
+  ⚡ TRACE CRO.6 MASTER CONFIGURATION ⚡
+  Updated: AI-Friendly, Advance-Only Lock, No-Bundles Logic, Meta/TikTok Pixels & Size Guide Fix
+  =========================================
+{%- endcomment -%}
+
+{%- assign store_whatsapp_number = "923034070779" -%}
+{%- assign standard_delivery_charge = 300 -%}
+
+{%- assign pack2_discount_percent = 14 -%}
+{%- assign pack3_discount_percent = 18 -%}
+{%- assign pack4_discount_percent = 22 -%}
+
+{%- comment -%} --- DONT EDIT BELOW THIS LINE --- {%- endcomment -%}
+
+{%- assign pack2_multiplier = 100 | minus: pack2_discount_percent -%}
+{%- assign pack3_multiplier = 100 | minus: pack3_discount_percent -%}
+{%- assign pack4_multiplier = 100 | minus: pack4_discount_percent -%}
+
+{%- assign pack2_subtotal = product.price | times: 2 | times: pack2_multiplier | divided_by: 100 -%}
+{%- assign pack3_subtotal = product.price | times: 3 | times: pack3_multiplier | divided_by: 100 -%}
+{%- assign pack4_subtotal = product.price | times: 4 | times: pack4_multiplier | divided_by: 100 -%}
+
+{%- assign dc_cents = standard_delivery_charge | times: 100 -%}
+
+{%- assign price1_cod = product.price | plus: dc_cents -%}
+{%- assign price2_cod = pack2_subtotal | plus: dc_cents -%}
+{%- assign price3_cod = pack3_subtotal | plus: dc_cents -%}
+{%- assign price4_cod = pack4_subtotal | plus: dc_cents -%}
+
+{%- assign has_color = false -%}
+{%- assign size_option_index = 0 -%}
+{%- assign color_option_index = 0 -%}
+{%- for option in product.options_with_values -%}
+  {%- assign option_name_downcase = option.name | downcase -%}
+  {%- if option_name_downcase == 'size' -%}{%- assign size_option_index = forloop.index0 -%}{%- endif -%}
+  {%- if option_name_downcase == 'color' or option_name_downcase == 'colour' -%}{%- assign color_option_index = forloop.index0 -%}{%- assign has_color = true -%}{%- endif -%}
+{%- endfor -%}
+
+{%- assign linked_products = product.metafields.custom.linked_color_products.value -%}
+{%- if linked_products.size > 0 -%}
+  {%- assign has_color = true -%}
+  {%- if size_option_index == 0 -%}
+    {%- assign color_option_index = 1 -%}
+  {%- else -%}
+    {%- assign color_option_index = 0 -%}
+  {%- endif -%}
+{%- endif -%}
+
+{%- assign step_count = 1 -%}
+{%- assign show_bundles = true -%}
+{%- if product.tags contains 'no-bundles' -%}
+  {%- assign show_bundles = false -%}
+{%- endif -%}
+
+{%- if show_bundles -%}
+  {%- assign step_count = step_count | plus: 1 -%}
+  {%- assign bundles_step_label = "Step " | append: step_count | append: ": Choose Package" -%}
+{%- endif -%}
+
+{%- if has_color -%}
+  {%- assign step_count = step_count | plus: 1 -%}
+  {%- assign color_step_label = "Step " | append: step_count | append: ": Select Colors" -%}
+{%- endif -%}
+
+{%- assign step_count = step_count | plus: 1 -%}
+{%- assign payment_step_label = "Step " | append: step_count | append: ": Choose Payment Method" -%}
+
+{%- comment -%} Determine active product color name fallback if no color option {%- endcomment -%}
+{%- assign active_color = blank -%}
+{%- if product.options_by_name['Color'] != blank -%}
+  {%- assign active_color = product.options_by_name['Color'].values[0] -%}
+{%- elsif product.options_by_name['Colour'] != blank -%}
+  {%- assign active_color = product.options_by_name['Colour'].values[0] -%}
+{%- endif -%}
+{%- if active_color == blank -%}
+  {%- for tag in product.tags -%}
+    {%- if tag contains 'color:' -%}
+      {%- assign active_color = tag | split: 'color:' | last | strip -%}
+      {%- break -%}
+    {%- elsif tag contains 'color-' -%}
+      {%- assign active_color = tag | split: 'color-' | last | strip -%}
+      {%- break -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+{%- if active_color == blank -%}
+  {%- if product.title contains '-' -%}
+    {%- assign active_color = product.title | split: '-' | last | strip -%}
+  {%- else -%}
+    {%- assign active_color = product.title | split: ' ' | last | strip -%}
+  {%- endif -%}
+{%- endif -%}
+
+{%- assign master_product_id = product.id -%}
+{%- assign max_reviews = product.metafields.reviews.rating_count.value | plus: 0 -%}
+{%- if max_reviews == 0 -%}
+  {%- assign max_reviews = product.metafields.reviews.rating_count | plus: 0 -%}
+{%- endif -%}
+
+{%- if linked_products.size > 0 -%}
+  {%- for lp in linked_products -%}
+    {%- assign lp_reviews = lp.metafields.reviews.rating_count.value | plus: 0 -%}
+    {%- if lp_reviews == 0 -%}
+      {%- assign lp_reviews = lp.metafields.reviews.rating_count | plus: 0 -%}
+    {%- endif -%}
+    {%- if lp_reviews > max_reviews -%}
+      {%- assign max_reviews = lp_reviews -%}
+      {%- assign master_product_id = lp.id -%}
+    {%- elsif lp_reviews == max_reviews -%}
+      {%- if lp.id < master_product_id -%}
+        {%- assign master_product_id = lp.id -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+
+<script>
+  (function() {
+    var activeId = "{{ product.id }}";
+    var masterId = "{{ master_product_id }}";
+    if (activeId !== masterId) {
+      var obs = new MutationObserver(function() {
+        var els = document.querySelectorAll('[data-id="' + activeId + '"], [data-product-id="' + activeId + '"]');
+        if (els.length > 0) {
+          els.forEach(function(el) {
+            if (el.getAttribute('data-id') === activeId) el.setAttribute('data-id', masterId);
+            if (el.getAttribute('data-product-id') === activeId) el.setAttribute('data-product-id', masterId);
+            el.classList.remove('jdgm--done-setup-widget', 'jdgm--done-setup-badge', 'jdgm--done-setup');
+          });
+          if (window.jdgm && typeof window.jdgm.initializeWidgets === 'function') {
+            window.jdgm.initializeWidgets();
+          }
+        }
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  })();
+</script>
+
+<script>
+  /**
+   * ⚡ TRACE_CONFIG: Centralized data object
+   */
+  window.TRACE_CONFIG = {
+    whatsappNumber: "{{ store_whatsapp_number }}",
+    deliveryCharge: {{ standard_delivery_charge }},
+    productTitle: "{{ product.title | escape }}",
+    shopName: "{{ shop.name | escape }}",
+    sizeKey: 'option1',
+    colorKey: {% if has_color %}'option2'{% else %}null{% endif %},
+    variants: [
+      {%- comment -%} Add active product variants {%- endcomment -%}
+      {%- for variant in product.variants -%}
+        {
+          id: {{ variant.id }},
+          title: {{ variant.title | json }},
+          option1: {% if size_option_index == 0 %}{{ variant.option1 | json }}{% else %}{{ variant.option2 | json }}{% endif %},
+          option2: {% if color_option_index == 1 %}{% if product.options_by_name['Color'] != blank or product.options_by_name['Colour'] != blank %}{{ variant.option2 | json }}{% else %}{{ active_color | json }}{% endif %}{% else %}{% if product.options_by_name['Color'] != blank or product.options_by_name['Colour'] != blank %}{{ variant.option1 | json }}{% else %}{{ active_color | json }}{% endif %}{% endif %},
+          available: {{ variant.available | json }},
+          featured_image: {% if variant.featured_image %}{ src: {{ variant.featured_image.src | json }} }{% else %}null{% endif %},
+          price: {{ variant.price | divided_by: 100 }}
+        }{%- unless forloop.last -%},{%- endunless -%}
+      {%- endfor -%}
+
+      {%- comment -%} Add linked color product variants {%- endcomment -%}
+      {%- if linked_products.size > 0 -%}
+        ,
+        {%- for lp in linked_products -%}
+          {%- assign lp_color = blank -%}
+          {%- if lp.options_by_name['Color'] != blank -%}
+            {%- assign lp_color = lp.options_by_name['Color'].values[0] -%}
+          {%- elsif lp.options_by_name['Colour'] != blank -%}
+            {%- assign lp_color = lp.options_by_name['Colour'].values[0] -%}
+          {%- endif -%}
+          {%- if lp_color == blank -%}
+            {%- for tag in lp.tags -%}
+              {%- if tag contains 'color:' -%}
+                {%- assign lp_color = tag | split: 'color:' | last | strip -%}
+                {%- break -%}
+              {%- elsif tag contains 'color-' -%}
+                {%- assign lp_color = tag | split: 'color-' | last | strip -%}
+                {%- break -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endif -%}
+          {%- if lp_color == blank -%}
+            {%- if lp.title contains '-' -%}
+              {%- assign lp_color = lp.title | split: '-' | last | strip -%}
+            {%- else -%}
+              {%- assign lp_color = lp.title | split: ' ' | last | strip -%}
+            {%- endif -%}
+          {%- endif -%}
+
+          {%- assign lp_size_option_index = 0 -%}
+          {%- for option in lp.options_with_values -%}
+            {%- assign option_name_downcase = option.name | downcase -%}
+            {%- if option_name_downcase == 'size' -%}{%- assign lp_size_option_index = forloop.index0 -%}{%- endif -%}
+          {%- endfor -%}
+
+          {%- for variant in lp.variants -%}
+            {
+              id: {{ variant.id }},
+              title: {{ variant.title | json }},
+              option1: {% if lp_size_option_index == 0 %}{{ variant.option1 | json }}{% elsif lp_size_option_index == 1 %}{{ variant.option2 | json }}{% else %}{{ variant.option3 | json }}{% endif %},
+              option2: {{ lp_color | json }},
+              available: {{ variant.available | json }},
+              featured_image: {% if variant.featured_image %}{ src: {{ variant.featured_image.src | json }} }{% elsif lp.featured_image %}{ src: {{ lp.featured_image.src | json }} }{% else %}null{% endif %},
+              price: {{ variant.price | divided_by: 100 }}
+            }{%- unless forloop.last -%},{%- endunless -%}
+          {%- endfor -%}{%- unless forloop.last -%},{%- endunless -%}
+        {%- endfor -%}
+      {%- endif -%}
+    ],
+    
+    // Logic Locks
+    isAdvanceOnly: {% if product.tags contains 'advance-only' %}true{% else %}false{% endif %},
+    hideBundles: {% if product.tags contains 'no-bundles' %}true{% else %}false{% endif %},
+    
+    // Pricing stored as raw integers for dynamic JS math
+    pricing: {
+      single:  { qty: 1, sub: {{ product.price | divided_by: 100 }}, cod: {{ price1_cod | divided_by: 100 }} },
+      bundle:  { qty: 2, sub: {{ pack2_subtotal | divided_by: 100 }}, cod: {{ price2_cod | divided_by: 100 }} },
+      bundle3: { qty: 3, sub: {{ pack3_subtotal | divided_by: 100 }}, cod: {{ price3_cod | divided_by: 100 }} },
+      bundle4: { qty: 4, sub: {{ pack4_subtotal | divided_by: 100 }}, cod: {{ price4_cod | divided_by: 100 }} }
+    }
+  };
+</script>
+
+<div style="margin-top: 10px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px;">
+  <div style="border: 1px solid #eaeae5; background-color: #fafaf9; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+    <button type="button" id="desc-accordion-btn" class="trace-panel-btn" style="border: none !important; border-radius: 0; box-shadow: none;">
+      <span style="display: flex; align-items: center; font-weight: 600;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; color: #555;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        Product Description
+      </span>
+      <span class="trace-panel-icon">
+        <svg id="desc-accordion-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.3s ease;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </span>
+    </button>
+    <div id="desc-accordion-content" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out;">
+      <div style="padding: 12px 18px 18px 18px; font-size: 0.85rem; color: #444; line-height: 1.6; border-top: 1px solid #eaeae5; background: #ffffff;">
+        {{ product.description }}
+      </div>
+    </div>
+  </div>
+
+  {%- if product.metafields.custom.size_chart -%}
+  <button type="button" id="open-size-guide-bottom" class="trace-panel-btn">
+    <span style="display: flex; align-items: center; font-weight: 600;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; color: #555;"><path d="M21.3 8.11 15.9 2.7a2.2 2.2 0 0 0-3.12 0L2.7 12.8a2.2 2.2 0 0 0 0 3.12l5.4 5.4a2.2 2.2 0 0 0 3.12 0l10.1-10.1a2.2 2.2 0 0 0 0-3.11z"></path><path d="m9 17 2-2"></path><path d="m14 12 2-2"></path><path d="m11.5 14.5 2-2"></path><path d="m16.5 9.5 2-2"></path></svg>
+      View Size Chart
+    </span>
+    <span class="trace-panel-icon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </span>
+  </button>
+  {%- endif -%}
+</div>
+
+<div id="master-funnel-wrapper" style="border: 1px solid #e2e2da; padding: 24px 20px; border-radius: 12px; background-color: #ffffff; box-shadow: 0 10px 35px rgba(0,0,0,0.03); transition: all 0.3s ease;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #f0f0eb; padding-bottom: 14px;">
+    <h3 style="margin: 0; font-weight: 700; font-size: 1.15rem; color: #111; text-transform: uppercase; letter-spacing: 0.03em;">Complete Your Order</h3>
+    <div style="background-color: #111; color: #fff; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; padding: 5px 12px; border-radius: 20px; text-transform: uppercase;">⭐ Best Value</div>
+  </div>
+
+  <div id="master-error-msg" style="display: none; background: #fff1f1; border: 1px solid #e0b4b4; color: #9f3a38; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9em; font-weight: 600; text-align: center;"></div>
+  
+  <div id="downgrade-msg" style="display: none; background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 6px; margin-bottom: 16px; font-size: 0.85em; font-weight: 600; text-align: center; animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;"></div>
+
+  <div id="bundle-progress-container" style="margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: 600; margin-bottom: 6px; color: #666; text-transform: uppercase; letter-spacing: 0.02em;">
+      <span id="progress-text">Let's build your bundle...</span>
+      <span id="progress-percentage" style="color: #888; transition: color 0.3s;">0%</span>
+    </div>
+    <div style="background-color: #eaeae5; border-radius: 4px; height: 4px; width: 100%; overflow: hidden;">
+      <div id="bundle-progress-bar" style="background-color: #111; width: 0%; height: 100%; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.5s ease;"></div>
+    </div>
+  </div>
+
+  <div class="funnel-step" style="margin-bottom: 24px;">
+    <div id="global-size-wrapper" class="attention-pulse step-container" style="padding: 10px; margin: -10px; border-radius: 10px; transition: all 0.3s;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <label style="font-weight: 700; font-size: 0.85rem; color: #111; text-transform: uppercase; letter-spacing: 0.05em; margin: 0; display: flex; align-items: center; gap: 6px;">
+          <span>Step 1: Select Size</span>
+          <span class="step1-check" style="color:#22c55e; display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+          <span style="font-size: 0.75rem; color: #666; font-weight: 500; text-transform: none; letter-spacing: 0;">(Applies to all items)</span>
+        </label>
+        {%- if product.metafields.custom.size_chart -%}
+          <button type="button" id="open-size-guide" style="background: none; border: none; color: #111; text-decoration: underline; font-size: 0.8rem; font-weight: 600; cursor: pointer; padding: 0; display: flex; align-items: center; gap: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.11 15.9 2.7a2.2 2.2 0 0 0-3.12 0L2.7 12.8a2.2 2.2 0 0 0 0 3.12l5.4 5.4a2.2 2.2 0 0 0 3.12 0l10.1-10.1a2.2 2.2 0 0 0 0-3.11z"></path></svg>
+            Size Guide
+          </button>
+        {%- endif -%}
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px;" id="master-size-options">
+        {%- for option in product.options_with_values -%}
+          {%- if option.name == 'Size' or option.name == 'size' -%}
+            {%- for value in option.values -%}
+              <label class="size-wrapper-pill" data-value="{{ value | escape }}" style="cursor: pointer; position: relative;">
+                <input type="radio" name="master-size" value="{{ value | escape }}" style="position: absolute; opacity: 0; width: 0; height: 0;">
+                <div class="size-pill">{{ value }}</div>
+              </label>
+            {%- endfor -%}
+          {%- endif -%}
+        {%- endfor -%}
+      </div>
+    </div>
+
+    <div id="split-size-wrapper" class="attention-pulse step-container" style="display: none; padding: 10px; margin: -10px; border-radius: 10px; transition: all 0.3s;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <label style="font-weight: 700; font-size: 0.85rem; color: #111; text-transform: uppercase; letter-spacing: 0.05em; margin: 0; display: flex; align-items: center; gap: 6px;">
+          <span>Step 1: Select Sizes</span>
+          <span class="step1-check" style="color:#22c55e; display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+        </label>
+        {%- if product.metafields.custom.size_chart -%}
+          <button type="button" id="open-size-guide-split" style="background: none; border: none; color: #111; text-decoration: underline; font-size: 0.8rem; font-weight: 600; cursor: pointer; padding: 0; display: flex; align-items: center; gap: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.3 8.11 15.9 2.7a2.2 2.2 0 0 0-3.12 0L2.7 12.8a2.2 2.2 0 0 0 0 3.12l5.4 5.4a2.2 2.2 0 0 0 3.12 0l10.1-10.1a2.2 2.2 0 0 0 0-3.11z"></path></svg>
+            Size Guide
+          </button>
+        {%- endif -%}
+      </div>
+      
+      {%- for i in (1..4) -%}
+      <div id="size-{{ i }}-container" {% if i > 2 %}style="display:none;"{% endif %}>
+        <p style="margin: 0 0 6px 0; font-size: 0.85em; font-weight: 600; color: #444;">Item {{ i }} Size:</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;" id="size-{{ i }}-options">
+          {%- for option in product.options_with_values -%}
+            {%- if option.name == 'Size' or option.name == 'size' -%}
+              {%- for value in option.values -%}
+                <label class="size-wrapper-pill" data-value="{{ value | escape }}" style="cursor: pointer; position: relative;">
+                  <input type="radio" name="size-{{ i }}" value="{{ value | escape }}" style="position: absolute; opacity: 0; width: 0; height: 0;">
+                  <div class="size-pill" style="padding: 6px 12px; font-size: 0.9em;">{{ value }}</div>
+                </label>
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+        </div>
+      </div>
+      {%- endfor -%}
+    </div>
+
+    <button id="toggle-size-btn" type="button" style="background:none; border:none; color:#111; font-size:0.8rem; font-weight:600; cursor:pointer; padding:0; margin-top:16px; text-decoration:underline; display:flex; align-items:center; gap:6px; {% if product.tags contains 'no-bundles' %}display:none;{% endif %}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+      Need different sizes for each item?
+    </button>
+    <div class="funnel-step" id="step-2-anchor" style="margin-bottom: 24px; {% if product.tags contains 'no-bundles' %}display:none;{% endif %}">
+    <label style="display:block; margin-bottom: 12px; font-weight: 700; font-size: 0.85rem; color: #111; text-transform: uppercase; letter-spacing: 0.05em;">{{ bundles_step_label }}</label>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <label class="package-card" data-tier="4" style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="master-deal" value="bundle4" style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; flex-direction: column; width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span style="font-weight: 800; color: #111; display: flex; align-items: center;">
+              Buy 4-Pack
+              <span class="tier-badge" data-orig-txt="VIP" data-orig-bg="#111" style="font-size: 0.65rem; background: #111; color: #fff; padding: 3px 8px; border-radius: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-left: 6px; display: inline-flex; align-items: center; gap: 3px;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l4 6-10 13L2 9z"></path><path d="M11 3 8 9l4 13 4-13-3-6"></path><path d="M2 9h20"></path></svg>
+                VIP
+              </span>
+            </span>
+            <span style="font-weight: 800; color: #111;">{{ pack4_subtotal | money }}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <span class="pulse-save-badge" data-orig-txt="SAVE Rs. {{ product.price | times: 4 | minus: pack4_subtotal | divided_by: 100 }}" style="background-color: #e3f2e8; color: #1e7038; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: 800;">SAVE Rs. {{ product.price | times: 4 | minus: pack4_subtotal | divided_by: 100 }}</span>
+            <span style="font-size: 0.8em; color: #1e7038; font-weight: 600;">(Rs. {{ pack4_subtotal | divided_by: 4 | money_without_currency }} each)</span>
+          </div>
+        </div>
+      </label>
+
+      <label class="package-card" data-tier="3" style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="master-deal" value="bundle3" style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; flex-direction: column; width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span style="font-weight: 800; color: #111; display: flex; align-items: center;">
+              Buy 3-Pack
+              <span class="tier-badge" data-orig-txt="" data-orig-bg="transparent" style="display:none; font-size: 0.75em; background: transparent; color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 4px;"></span>
+            </span>
+            <span style="font-weight: 800; color: #111;">{{ pack3_subtotal | money }}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <span class="pulse-save-badge" data-orig-txt="SAVE Rs. {{ product.price | times: 3 | minus: pack3_subtotal | divided_by: 100 }}" style="background-color: #e3f2e8; color: #1e7038; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: 800;">SAVE Rs. {{ product.price | times: 3 | minus: pack3_subtotal | divided_by: 100 }}</span>
+            <span style="font-size: 0.8em; color: #1e7038; font-weight: 600;">(Rs. {{ pack3_subtotal | divided_by: 3 | money_without_currency }} each)</span>
+          </div>
+        </div>
+      </label>
+
+      <label class="package-card" data-tier="2" style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="master-deal" value="bundle" {% unless product.tags contains 'no-bundles' %}checked{% endunless %} style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; flex-direction: column; width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span style="font-weight: 800; color: #111; display: flex; align-items: center;">
+              Buy 2-Pack
+              <span class="tier-badge" data-orig-txt="POPULAR" data-orig-bg="#ef4444" style="font-size: 0.65rem; background: #ef4444; color: #fff; padding: 3px 8px; border-radius: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-left: 6px; display: inline-flex; align-items: center; gap: 3px;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+                POPULAR
+              </span>
+            </span>
+            <span style="font-weight: 800; color: #111;">{{ pack2_subtotal | money }}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <span class="pulse-save-badge" data-orig-txt="SAVE Rs. {{ product.price | times: 2 | minus: pack2_subtotal | divided_by: 100 }}" style="background-color: #e3f2e8; color: #1e7038; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: 800;">SAVE Rs. {{ product.price | times: 2 | minus: pack2_subtotal | divided_by: 100 }}</span>
+            <span style="font-size: 0.8em; color: #1e7038; font-weight: 600;">(Rs. {{ pack2_subtotal | divided_by: 2 | money_without_currency }} each)</span>
+          </div>
+        </div>
+      </label>
+
+      <label class="package-card" data-tier="1" style="cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="master-deal" value="single" {% if product.tags contains 'no-bundles' %}checked{% endif %} style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-weight: 600; color: #444;">Buy 1 Item</span>
+          <span style="font-weight: 600; color: #444;">{{ product.price | money }}</span>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  {%- if has_color -%}
+  <div class="funnel-step" id="step-3-container" style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid #eee;">
+    <label style="display:block; margin-bottom: 14px; font-weight: 700; font-size: 0.85rem; color: #111; text-transform: uppercase; letter-spacing: 0.05em;">{{ color_step_label }}</label>
+    
+    {%- for i in (1..4) -%}
+    <div id="color-picker-{{ i }}" style="margin-bottom: 15px; padding: 4px; transition: all 0.3s; {% if i > 2 %}display:none;{% endif %}">
+      <p id="color-{{ i }}-label" style="margin: 0 0 10px 0; font-size: 0.85rem; font-weight: 600; color: #444;">Item {{ i }} Color:</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+        {%- assign swatch_count = 0 -%}
+        {%- assign rendered_colors = "" -%}
+
+        {%- comment -%} Render active product color(s) {%- endcomment -%}
+        {%- if product.options_by_name['Color'] != blank or product.options_by_name['Colour'] != blank -%}
+          {%- for option in product.options_with_values -%}
+            {%- assign option_name_downcase = option.name | downcase -%}
+            {%- if option_name_downcase == 'color' or option_name_downcase == 'colour' -%}
+              {%- for value in option.values -%}
+                {%- assign swatch_count = swatch_count | plus: 1 -%}
+                {%- assign rendered_colors = rendered_colors | append: "|" | append: value -%}
+                {%- assign swatch_img = blank -%}
+                {%- for variant in product.variants -%}
+                  {%- if variant.options contains value and variant.featured_image -%}
+                    {%- assign swatch_img = variant.featured_image | image_url: width: 120 -%}
+                    {%- break -%}
+                  {%- endif -%}
+                {%- endfor -%}
+                {%- if swatch_img == blank and product.featured_image -%}
+                  {%- assign swatch_img = product.featured_image | image_url: width: 120 -%}
+                {%- endif -%}
+                <label class="swatch-wrapper" data-value="{{ value | escape }}" style="position: relative; cursor: pointer; margin: 0; width: 78px; display: inline-block;">
+                  {%- if swatch_count <= 2 -%}
+                    <div style="position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(239,68,68,0.3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 2px;">
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+                      HOT
+                    </div>
+                  {%- endif -%}
+                  <input type="radio" name="color-{{ i }}" value="{{ value | escape }}" style="position: absolute; opacity: 0; pointer-events: none;">
+                  <div class="swatch-card">
+                    <div style="position: relative;">
+                      {% if swatch_img %}<img src="{{ swatch_img }}" style="width: 100%; height: 85px; object-fit: cover; display: block;">{% else %}<div style="width: 100%; height: 85px; background: #eaeaea;"></div>{% endif %}
+                      <div class="sold-out-bar">SOLD OUT</div>
+                    </div>
+                    <div class="color-name">{{ value }}</div>
+                  </div>
+                </label>
+              {%- endfor -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- else -%}
+          {%- assign swatch_count = swatch_count | plus: 1 -%}
+          {%- assign rendered_colors = rendered_colors | append: "|" | append: active_color -%}
+          {%- assign swatch_img = blank -%}
+          {%- if product.featured_image -%}
+            {%- assign swatch_img = product.featured_image | image_url: width: 120 -%}
+          {%- endif -%}
+          <label class="swatch-wrapper" data-value="{{ active_color | escape }}" style="position: relative; cursor: pointer; margin: 0; width: 78px; display: inline-block;">
+            {%- if swatch_count <= 2 -%}
+              <div style="position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(239,68,68,0.3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 2px;">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+                HOT
+              </div>
+            {%- endif -%}
+            <input type="radio" name="color-{{ i }}" value="{{ active_color | escape }}" style="position: absolute; opacity: 0; pointer-events: none;">
+            <div class="swatch-card">
+              <div style="position: relative;">
+                {% if swatch_img %}<img src="{{ swatch_img }}" style="width: 100%; height: 85px; object-fit: cover; display: block;">{% else %}<div style="width: 100%; height: 85px; background: #eaeaea;"></div>{% endif %}
+                <div class="sold-out-bar">SOLD OUT</div>
+              </div>
+              <div class="color-name">{{ active_color }}</div>
+            </div>
+          </label>
+        {%- endif -%}
+
+        {%- comment -%} Render linked products colors {%- endcomment -%}
+        {%- if linked_products.size > 0 -%}
+          {%- for lp in linked_products -%}
+            {%- assign lp_color = blank -%}
+            {%- if lp.options_by_name['Color'] != blank -%}
+              {%- assign lp_color = lp.options_by_name['Color'].values[0] -%}
+            {%- elsif lp.options_by_name['Colour'] != blank -%}
+              {%- assign lp_color = lp.options_by_name['Colour'].values[0] -%}
+            {%- endif -%}
+            {%- if lp_color == blank -%}
+              {%- for tag in lp.tags -%}
+                {%- if tag contains 'color:' -%}
+                  {%- assign lp_color = tag | split: 'color:' | last | strip -%}
+                  {%- break -%}
+                {%- elsif tag contains 'color-' -%}
+                  {%- assign lp_color = tag | split: 'color-' | last | strip -%}
+                  {%- break -%}
+                {%- endif -%}
+              {%- endfor -%}
+            {%- endif -%}
+            {%- if lp_color == blank -%}
+              {%- if lp.title contains '-' -%}
+                {%- assign lp_color = lp.title | split: '-' | last | strip -%}
+              {%- else -%}
+                {%- assign lp_color = lp.title | split: ' ' | last | strip -%}
+              {%- endif -%}
+            {%- endif -%}
+
+            {%- assign check_color = "|" | append: lp_color -%}
+            {%- unless rendered_colors contains check_color -%}
+              {%- assign swatch_count = swatch_count | plus: 1 -%}
+              {%- assign rendered_colors = rendered_colors | append: "|" | append: lp_color -%}
+              {%- assign swatch_img = blank -%}
+              {%- if lp.featured_image -%}
+                {%- assign swatch_img = lp.featured_image | image_url: width: 120 -%}
+              {%- endif -%}
+              <label class="swatch-wrapper" data-value="{{ lp_color | escape }}" style="position: relative; cursor: pointer; margin: 0; width: 78px; display: inline-block;">
+                {%- if swatch_count <= 2 -%}
+                  <div style="position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(239,68,68,0.3); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 2px;">
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+                    HOT
+                  </div>
+                {%- endif -%}
+                <input type="radio" name="color-{{ i }}" value="{{ lp_color | escape }}" style="position: absolute; opacity: 0; pointer-events: none;">
+                <div class="swatch-card">
+                  <div style="position: relative;">
+                    {% if swatch_img %}<img src="{{ swatch_img }}" style="width: 100%; height: 85px; object-fit: cover; display: block;">{% else %}<div style="width: 100%; height: 85px; background: #eaeaea;"></div>{% endif %}
+                    <div class="sold-out-bar">SOLD OUT</div>
+                  </div>
+                  <div class="color-name">{{ lp_color }}</div>
+                </div>
+              </label>
+            {%- endunless -%}
+          {%- endfor -%}
+        {%- endif -%}
+      </div>
+    </div>
+    {%- endfor -%}
+  </div>
+  {%- endif -%}
+
+  <div class="funnel-step" id="step-4-anchor" style="margin-bottom: 24px; padding-top: 16px; border-top: 1px solid #eee;">
+    <div id="advance-warning-msg" style="display: none; background: #fef2f2; color: #991b1b; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; border: 1px solid #fecaca; align-items: center; gap: 8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+      <span>Due to extremely limited stock, Advance Payment is required to secure your order.</span>
+    </div>
+    <label style="display:block; margin-bottom: 10px; font-weight: 700; font-size: 0.85rem; color: #111; text-transform: uppercase; letter-spacing: 0.05em;">{{ payment_step_label }}</label>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <label id="cod-payment-card" class="payment-card" style="cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="payment-method" value="cod" checked style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span style="font-weight: 700; color: #111; display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #555;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+            Cash on Delivery (COD)
+          </span>
+          <div style="display: flex; flex-direction: column; align-items: flex-end;">
+             <span id="cod-price-text" style="font-weight: 700; color: #555; font-size: 0.85em;">+ Rs. {{ standard_delivery_charge }}</span>
+             <span id="cod-locked-badge" style="display: none; background: #fee2e2; color: #991b1b; font-size: 0.7em; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-top: 4px; align-items: center; gap: 2px;">
+               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+               Unavailable
+             </span>
+          </div>
+        </div>
+      </label>
+
+      <label class="payment-card" style="cursor: pointer; display: flex; align-items: flex-start; gap: 12px; transition: all 0.2s;">
+        <input type="radio" name="payment-method" value="advance" style="position: absolute; opacity: 0; width: 0; height: 0;">
+        <span class="custom-radio"></span>
+        <div style="display: flex; flex-direction: column; width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span style="font-weight: 800; color: #111; display: flex; align-items: center; gap: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #555;"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+              EasyPaisa / Bank Transfer
+            </span>
+            <span style="font-weight: 800; color: #16a34a; font-size: 0.85em;">Free</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <span class="pulse-save-badge" style="background-color: #f0fdf4; color: #16a34a; padding: 2px 8px; border-radius: 12px; font-size: 0.75em; font-weight: 800; border: 1px solid #bbf7d0; display: inline-flex; align-items: center; gap: 3px;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+              FREE DELIVERY
+            </span>
+            <span style="font-size: 0.75em; color: #16a34a; font-weight: 600;">(Save Rs. {{ standard_delivery_charge }})</span>
+          </div>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <div id="dynamic-order-summary" style="background: #fafaf9; border: 1px solid #e8e8e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.01); transition: all 0.3s ease;">
+     <div style="display:flex; justify-content:space-between; margin-bottom: 8px; font-size: 0.9rem; color:#555; font-weight: 600;">
+         <span>Subtotal (<span id="summary-item-count">2 Items</span>)</span>
+         <span id="summary-subtotal" style="color:#111;">--</span>
+     </div>
+     <div style="display:flex; justify-content:space-between; margin-bottom: 12px; font-size: 0.9rem; color:#555; border-bottom: 1px solid #e8e8e1; padding-bottom: 12px; font-weight: 600;">
+         <span>Delivery (<span id="summary-dc-type">Standard COD</span>)</span>
+         <span id="summary-dc-amount">--</span>
+     </div>
+     <div style="display:flex; justify-content:space-between; font-weight: 800; font-size: 1.15rem; color:#111;">
+         <span>Total</span>
+         <span id="summary-total">--</span>
+     </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <button type="button" id="master-add-cart-btn" style="width: 100%; padding: 14px; background-color: #fff; color: #111; border: 2px solid #111; border-radius: 10px; font-size: 1.05rem; font-weight: 800; cursor: pointer; transition: all 0.2s;">
+      Add to Cart
+    </button>
+    <button type="button" id="master-buy-now-btn" style="position: relative; overflow: hidden; width: 100%; padding: 18px; background-color: #111; color: #fff; border: none; border-radius: 10px; font-size: 1.15rem; font-weight: 800; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+      <span class="btn-text-content">Buy It Now</span>
+    </button>
+  </div>
+
+  <div style="display: flex; justify-content: space-around; margin-top: 20px; text-align: center; font-size: 0.75rem; color: #555; font-weight: 600; border-top: 1px solid #eee; padding-top: 18px;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #444;"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+      <span>Fast Delivery</span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #444;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+      <span>Easy Exchanges</span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #444;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      <span>Secure Checkout</span>
+    </div>
+  </div>
+
+  <div id="delivery-estimator" style="margin-top: 18px; padding-top: 18px; border-top: 1px solid #eee; text-align: center; font-size: 0.85rem; color: #444; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
+    <span style="position: relative; display: flex; width: 10px; height: 10px;">
+      <span class="pulse-dot"></span>
+      <span style="position: relative; display: inline-flex; border-radius: 50%; height: 10px; width: 10px; background-color: #22c55e;"></span>
+    </span>
+    <span id="delivery-text">Calculating fast delivery...</span>
+  </div>
+
+</div>
+
+<div id="whatsapp-checkout-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 999999; justify-content: center; align-items: flex-end; opacity: 0; transition: opacity 0.3s ease;">
+  <div class="modal-content" style="background: #fff; padding: 28px 24px; border-radius: 20px 20px 0 0; width: 100%; max-width: 500px; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 -10px 40px rgba(0,0,0,0.15); position: relative;">
+    <button type="button" id="close-wa-modal" style="position: absolute; top: 20px; right: 20px; background: #fafaf9; border: 1px solid #eaeae5; width: 32px; height: 32px; border-radius: 50%; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; transition: all 0.2s;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+    <h3 style="margin-top: 0; font-weight: 800; font-size: 1.25rem; color: #111; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.03em;">Secure Your Order</h3>
+    
+    <div style="font-size: 0.85rem; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; padding: 12px 14px; border-radius: 8px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 8px; line-height: 1.4;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top: 1px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      <div>
+        <strong>Limited Stock:</strong> Advance Payment required to secure your order. Enter details to get bank info.
+        <div style="font-size: 0.8rem; font-weight: 500; color: #b91c1c; margin-top: 4px;">Stock bohot kam hai. Order confirm karne ke liye Advance Payment lazmi hai. Details darj karein.</div>
+      </div>
+    </div>
+    
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+      <input type="text" id="wa-name" placeholder="Full Name" required style="width: 100%; padding: 14px; border: 1px solid #e2e2da; border-radius: 8px; font-size: 0.95rem; font-family: inherit; transition: border-color 0.2s; outline: none; background-color: #fafaf9;">
+      <input type="tel" id="wa-phone" placeholder="Active WhatsApp Number" required style="width: 100%; padding: 14px; border: 1px solid #e2e2da; border-radius: 8px; font-size: 0.95rem; font-family: inherit; transition: border-color 0.2s; outline: none; background-color: #fafaf9;">
+      <textarea id="wa-address" placeholder="Complete Delivery Address" rows="3" required style="width: 100%; padding: 14px; border: 1px solid #e2e2da; border-radius: 8px; font-size: 0.95rem; font-family: inherit; resize: none; transition: border-color 0.2s; outline: none; background-color: #fafaf9;"></textarea>
+    </div>
+    
+    <button type="button" id="wa-submit-btn" style="width: 100%; padding: 16px; background-color: #25D366; color: #fff; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 800; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.2); display: flex; align-items: center; justify-content: center; gap: 8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="color: #fff;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.197 1.441 4.742 1.443 5.486 0 9.954-4.437 9.957-9.899.002-2.646-1.03-5.132-2.905-7.008C16.566 1.81 14.09 .78 11.52.784c-5.49 0-9.959 4.439-9.962 9.9-.001 2.01.52 3.843 1.507 5.433l-.976 3.564 3.659-.96c1.614.99 3.255 1.437 4.786 1.437zM17.42 15.3c-.3-.15-1.782-.88-2.057-.98-.275-.1-.475-.15-.675.15-.2.3-.775.98-.95 1.18-.175.2-.35.225-.65.075-.3-.15-1.267-.467-2.413-1.49-1.12-1-1.879-2.235-2.099-2.61-.22-.375-.023-.578.127-.728.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.675-1.625-.925-2.225-.244-.589-.491-.51-.675-.52-.175-.01-.375-.01-.575-.01-.2 0-.525.075-.8 1.012-.275.938-1.05 2.1-1.15 2.288-.1.188-.2.338-.2.525 0 1.25.775 2.475.9 2.65a11.947 11.947 0 0 0 4.6 4.075c1.4.6 2.5.8 3.3.675.838-.125 1.787-.725 2.037-1.388.25-.662.25-1.225.175-1.388-.075-.162-.275-.262-.575-.412z"/></svg>
+      Get Payment Details
+    </button>
+  </div>
+</div>
+
+<div id="social-proof-toast" style="position: fixed; bottom: -100px; left: 20px; background: #111; color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; box-shadow: 0 12px 35px rgba(0,0,0,0.25); z-index: 999999; display: flex; align-items: center; gap: 10px; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: #ef4444; flex-shrink: 0;"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+  <span id="social-proof-text">...</span>
+</div>
+
+{%- if product.metafields.custom.size_chart -%}
+<div id="size-guide-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 999999; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease;">
+  <div class="modal-content" style="background: #fff; padding: 28px 24px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 85vh; overflow-y: auto; position: relative; transform: translateY(20px); transition: transform 0.3s ease; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+    <button type="button" id="close-size-guide" style="position: absolute; top: 20px; right: 20px; background: #fafaf9; border: 1px solid #eaeae5; width: 32px; height: 32px; border-radius: 50%; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; transition: all 0.2s;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
+    <h3 style="margin-top: 0; font-weight: 800; font-size: 1.25rem; border-bottom: 1px solid #f0f0eb; padding-bottom: 12px; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.03em;">Size Guide</h3>
+    <img src="{{ product.metafields.custom.size_chart | image_url: width: 800 }}" alt="Size Guide" style="max-width: 100%; height: auto; display: block; border-radius: 8px; margin: 0 auto; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+  </div>
+</div>
+{%- endif -%}
+
+<style>
+  .trace-panel-btn {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 14px 18px !important;
+    background-color: #fafaf9 !important;
+    border: 1px solid #eaeae5 !important;
+    border-radius: 8px !important;
+    color: #111 !important;
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02) !important;
+    text-align: left !important;
+    font-family: inherit !important;
+    box-sizing: border-box !important;
+  }
+  .trace-panel-btn:hover {
+    background-color: #f3f3f0 !important;
+    border-color: #b5b5a6 !important;
+  }
+  .trace-panel-icon {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #555 !important;
+    transition: transform 0.3s ease !important;
+  }
+
+  .attention-pulse { animation: gentle-breath 2s infinite alternate; border-radius: 10px; }
+  @keyframes gentle-breath {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); background-color: transparent; }
+    100% { box-shadow: 0 0 15px 0 rgba(34, 197, 94, 0.15); background-color: rgba(34, 197, 94, 0.02); }
+  }
+  .success-border { border: 1px solid #22c55e !important; box-shadow: 0 0 15px rgba(34, 197, 94, 0.15) !important; background-color: #f0fdf4 !important; animation: none !important; }
+  .celebration-pulse { animation: victory-flash 1s cubic-bezier(0.165, 0.84, 0.44, 1); }
+  @keyframes victory-flash {
+    0% { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+    50% { box-shadow: 0 0 30px rgba(34, 197, 94, 0.5); border-color: #22c55e; }
+    100% { box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+  }
+
+  .shimmer-btn { pointer-events: none; }
+  .shimmer-btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%); transform: skewX(-25deg); animation: shimmer-slide 1.5s infinite; }
+  @keyframes shimmer-slide { 0% { left: -100%; } 100% { left: 200%; } }
+
+  .size-pill {
+    padding: 10px 18px;
+    border: 1px solid #e2e2da;
+    border-radius: 8px;
+    background: #fff;
+    color: #333;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.01);
+  }
+  .size-pill:hover {
+    border-color: #b5b5a6;
+    background: #fafaf9;
+    transform: translateY(-1px);
+  }
+  input[type="radio"]:checked + .size-pill {
+    background: #111;
+    color: #fff;
+    border-color: #111;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+
+  /* Custom radio button styles */
+  .custom-radio {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ccc;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.25s ease;
+    background: #fff;
+    position: relative;
+  }
+  
+  .package-card:hover .custom-radio,
+  .payment-card:hover .custom-radio {
+    border-color: #999;
+  }
+
+  .package-card.active-package .custom-radio,
+  .payment-card.active-payment .custom-radio {
+    border-color: #111;
+  }
+  .package-card.active-package .custom-radio::after,
+  .payment-card.active-payment .custom-radio::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background-color: #111;
+    border-radius: 50%;
+    display: block;
+    animation: scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .payment-card.active-payment-advance .custom-radio {
+    border-color: #16a34a;
+  }
+  .payment-card.active-payment-advance .custom-radio::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    background-color: #16a34a;
+    border-radius: 50%;
+    display: block;
+    animation: scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes scale-up {
+    0% { transform: scale(0); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .package-card {
+    border: 1px solid #e8e8e1 !important;
+    background-color: #fff !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  }
+  .package-card:hover {
+    border-color: #b5b5a6 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+  }
+  .package-card.active-package {
+    border: 2px solid #111 !important;
+    background-color: #fafaf9 !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+  }
+
+  .payment-card {
+    border: 1px solid #e8e8e1 !important;
+    background-color: #fff !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  }
+  .payment-card:hover {
+    border-color: #b5b5a6 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+  }
+  .payment-card.active-payment {
+    border: 2px solid #111 !important;
+    background-color: #fafaf9 !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+  }
+  .payment-card.active-payment-advance {
+    border: 2px solid #16a34a !important;
+    background-color: #f0fdf4 !important;
+    box-shadow: 0 4px 15px rgba(22,163,74,0.08);
+  }
+
+  .swatch-wrapper {
+    position: relative;
+    cursor: pointer;
+    margin: 0;
+    width: 78px;
+    display: inline-block;
+    transition: transform 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .swatch-wrapper:hover {
+    transform: translateY(-2px);
+  }
+  .swatch-card {
+    border: 1px solid #e8e8e1;
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: center;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .swatch-card img {
+    transition: transform 0.3s ease;
+  }
+  .swatch-wrapper:hover img {
+    transform: scale(1.05);
+  }
+  .swatch-card .color-name {
+    padding: 6px 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #333;
+    transition: all 0.2s;
+    background: #fafaf9;
+    border-top: 1px solid #e8e8e1;
+  }
+  input[type="radio"]:checked + .swatch-card {
+    border-color: #111;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  input[type="radio"]:checked + .swatch-card .color-name {
+    background-color: #111;
+    color: #fff;
+    border-top-color: #111;
+  }
+  .sold-out-bar { display: none; position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(170, 170, 170, 0.9); color: #fff; text-align: center; font-size: 9px; font-weight: 800; padding: 4px 0; }
+  input[type="radio"]:disabled + .swatch-card { opacity: 0.4; cursor: not-allowed; }
+  input[type="radio"]:disabled + .swatch-card .sold-out-bar { display: block; }
+  input[type="radio"]:disabled + .swatch-card .color-name { text-decoration: line-through; }
+
+  #master-add-cart-btn {
+    border-radius: 10px !important;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+  }
+  #master-add-cart-btn:hover {
+    background-color: #fafaf9 !important;
+    border-color: #000 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.04) !important;
+  }
+  #master-buy-now-btn {
+    border-radius: 10px !important;
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+  }
+  #master-buy-now-btn:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2) !important;
+  }
+  #master-buy-now-btn::after { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 100%); transform: skewX(-25deg); animation: button-shine 3.5s infinite; }
+  @keyframes button-shine { 0% { left: -100%; } 20% { left: 200%; } 100% { left: 200%; } }
+  #master-buy-now-btn span { position: relative; z-index: 1; }
+  .pulse-save-badge { animation: pulse-badge 2s infinite ease-in-out; }
+  @keyframes pulse-badge { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+  .shake-error { border-radius: 8px; box-shadow: 0 0 0 2px #e0b4b4, 0 0 15px rgba(159, 58, 56, 0.2) !important; animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; background-color: rgba(159, 58, 56, 0.02) !important; }
+  @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(3px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-5px, 0, 0); } 40%, 60% { transform: translate3d(5px, 0, 0); } }
+
+  .pulse-dot { animation: pulse-dot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: #4ade80; opacity: 0.7; }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(2); } }
+
+  cart-remove-button { display: flex !important; justify-content: center; }
+  quantity-input, 
+  .cart-item__quantity-wrapper quantity-input,
+  .cart-item__quantity quantity-input,
+  .cart-item .quantity,
+  cart-drawer-items .quantity {
+    display: none !important;
+  }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  
+  // ⚡ TRACE CSS TRAP FIX ⚡
+  var stickyBarEl = document.getElementById('sticky-mobile-bundle-bar');
+  var toastEl = document.getElementById('social-proof-toast');
+  var sgModalEl = document.getElementById('size-guide-modal');
+  var waModalEl = document.getElementById('whatsapp-checkout-modal');
+  if (stickyBarEl) document.body.appendChild(stickyBarEl);
+  if (toastEl) document.body.appendChild(toastEl);
+  if (sgModalEl) document.body.appendChild(sgModalEl);
+  if (waModalEl) document.body.appendChild(waModalEl);
+
+  var errorMsgBox = document.getElementById('master-error-msg');
+  var downgradeMsgBox = document.getElementById('downgrade-msg');
+  var addCartBtn = document.getElementById('master-add-cart-btn');
+  var buyNowBtn = document.getElementById('master-buy-now-btn');
+  var bundleWrapper = document.getElementById('master-funnel-wrapper'); 
+
+  var progressBar = document.getElementById('bundle-progress-bar');
+  var progressText = document.getElementById('progress-text');
+  var progressPercent = document.getElementById('progress-percentage');
+  var stickyBar = document.getElementById('sticky-mobile-bundle-bar');
+  var stickyBtn = document.getElementById('sticky-unlock-btn');
+
+  var waSubmitBtn = document.getElementById('wa-submit-btn');
+
+  var isSplitSize = false;
+  var hasAutoScrolledForSize = false;
+
+  // ⚡ AI-FRIENDLY CONFIGURATION ACCESS ⚡
+  var cfg = window.TRACE_CONFIG;
+
+  // Helper: Format Money in JS
+  function formatMoney(amount) {
+      return 'Rs. ' + amount.toLocaleString('en-US') + '.00';
+  }
+
+  // ⚡ 1. ADVANCE-ONLY LOCKOUT LOGIC ⚡
+  if (cfg.isAdvanceOnly) {
+      var codCard = document.getElementById('cod-payment-card');
+      var codInput = codCard.querySelector('input');
+      var codPrice = document.getElementById('cod-price-text');
+      var codBadge = document.getElementById('cod-locked-badge');
+      var advInput = document.querySelector('input[name="payment-method"][value="advance"]');
+      var warningMsg = document.getElementById('advance-warning-msg');
+      
+      codInput.disabled = true;
+      codCard.style.opacity = '0.5';
+      codCard.style.pointerEvents = 'none';
+      codPrice.style.textDecoration = 'line-through';
+      codBadge.style.display = 'inline-flex';
+      if(warningMsg) warningMsg.style.display = 'flex';
+      
+      advInput.checked = true; 
+  }
+
+  // ⚡ INVENTORY AWARENESS ENGINE ⚡
+  var variants = cfg.variants;
+  var availableSizes = {};
+  var availableColors = {};
+  var deadColors = {};
+  var allColors = {};
+  
+  variants.forEach(function(v) { 
+    var s = v[cfg.sizeKey];
+    if (v.available) { 
+      availableSizes[s] = true; 
+    } 
+    if (cfg.colorKey) {
+      var c = v[cfg.colorKey]; 
+      allColors[c] = true; 
+      if (v.available) { 
+        availableColors[c] = true; 
+      } 
+    }
+  });
+  
+  document.querySelectorAll('.size-wrapper-pill').forEach(function(el) { 
+    if(!availableSizes[el.getAttribute('data-value')]) el.style.display = 'none'; 
+  });
+  if (cfg.colorKey) {
+    document.querySelectorAll('.swatch-wrapper').forEach(function(el) { 
+      if(!availableColors[el.getAttribute('data-value')]) el.style.display = 'none'; 
+    });
+  }
+  
+  if (cfg.colorKey) {
+    Object.keys(allColors).forEach(function(c) { 
+      if(!availableColors[c]) deadColors[c] = true; 
+    });
+  }
+  
+  if(cfg.colorKey && Object.keys(deadColors).length > 0) {
+    var deadImages = {};
+    variants.forEach(function(v) { 
+      if(deadColors[v[cfg.colorKey]] && v.featured_image) {
+        var cleanName = v.featured_image.src.split('?')[0].split('/').pop().replace(/\.(jpg|jpeg|png|gif|webp)/i, '');
+        deadImages[cleanName] = true; 
+      }
+    });
+    document.querySelectorAll('img').forEach(function(img) { 
+      Object.keys(deadImages).forEach(function(dSrc) { 
+        if(img.src.indexOf(dSrc) !== -1) { 
+          var li = img.closest('li.thumbnail-list__item, li.product__media-item, .product-media-container'); 
+          if(li) li.style.display = 'none'; 
+        } 
+      }); 
+    });
+  }
+
+  function getAvailableColorsForSize(size) {
+    if(!size) return [];
+    var colors = [];
+    variants.forEach(function(v) {
+      if(v[cfg.sizeKey] === size && v.available) {
+        if(colors.indexOf(v[cfg.colorKey]) === -1) colors.push(v[cfg.colorKey]);
+      }
+    });
+    return colors;
+  }
+
+  function canFulfillUniqueColors(sizesArr) {
+    if (!cfg.colorKey) return true;
+    var uniqueAvailableColors = new Set();
+    sizesArr.forEach(function(sz) {
+      getAvailableColorsForSize(sz).forEach(function(c) {
+        uniqueAvailableColors.add(c);
+      });
+    });
+    return uniqueAvailableColors.size >= sizesArr.length;
+  }
+
+  function evaluateBundleLocks() {
+    if(cfg.hideBundles) return; // Skip if bundles are hidden
+
+    var activeDealInput = document.querySelector('input[name="master-deal"]:checked');
+    if(!activeDealInput) return;
+    var activeDeal = activeDealInput.value;
+    var downgraded = false;
+    var downgradeTo = activeDeal;
+
+    [4, 3, 2].forEach(function(tier) {
+      var tierInput = document.querySelector('input[name="master-deal"][value="bundle' + (tier === 2 ? '' : tier) + '"]');
+      if(!tierInput) return;
+      var card = tierInput.closest('.package-card');
+      
+      var sizesToTest = [];
+      if (!isSplitSize) {
+        var globalSize = document.querySelector('input[name="master-size"]:checked');
+        if (globalSize) {
+          for(var i = 0; i < tier; i++) sizesToTest.push(globalSize.value);
+        }
+      } else {
+        for(var j = 1; j <= tier; j++) {
+          var sz = document.querySelector('input[name="size-' + j + '"]:checked');
+          if(sz) sizesToTest.push(sz.value);
+        }
+      }
+
+      var isLocked = sizesToTest.length > 0 && !canFulfillUniqueColors(sizesToTest);
+      var badge = card.querySelector('.tier-badge');
+      var saveText = card.querySelector('.pulse-save-badge') || card.querySelector('.tier-save-text');
+
+      if (isLocked) {
+        card.style.opacity = '0.5';
+        card.style.pointerEvents = 'none';
+        tierInput.disabled = true;
+        
+        if(badge) {
+            badge.innerHTML = '🔒 LOCKED';
+            badge.style.background = '#888';
+            badge.style.display = 'inline-block';
+        }
+        if(saveText) {
+            saveText.innerHTML = 'Not enough unique colors';
+            saveText.style.background = '#f1f1f1';
+            saveText.style.color = '#666';
+            saveText.classList.remove('pulse-save-badge');
+            saveText.classList.add('tier-save-text');
+        }
+        
+        if(tierInput.checked) {
+            tierInput.checked = false;
+            downgraded = true;
+        }
+      } else {
+        card.style.opacity = '1';
+        card.style.pointerEvents = 'auto';
+        tierInput.disabled = false;
+        
+        if(badge) {
+            var origTxt = badge.getAttribute('data-orig-txt');
+            badge.innerHTML = origTxt || '';
+            badge.style.background = badge.getAttribute('data-orig-bg') || 'transparent';
+            if(!origTxt) badge.style.display = 'none';
+            else badge.style.display = 'inline-block';
+        }
+        if(saveText) {
+            saveText.innerHTML = saveText.getAttribute('data-orig-txt');
+            saveText.style.background = '#e3f2e8';
+            saveText.style.color = '#1e7038';
+            saveText.classList.add('pulse-save-badge');
+            saveText.classList.remove('tier-save-text');
+        }
+        
+        if(downgraded && (!downgradeTo || downgradeTo === 'single' || tier > (downgradeTo.replace('bundle','') || 2))) {
+            downgradeTo = tierInput.value;
+        }
+      }
+    });
+
+    if (downgraded) {
+        var newTarget = document.querySelector('input[name="master-deal"][value="' + downgradeTo + '"]');
+        if(!newTarget || newTarget.disabled) newTarget = document.querySelector('input[name="master-deal"]:not([disabled])');
+        
+        if(newTarget) {
+            newTarget.checked = true;
+            if(downgradeMsgBox) {
+                downgradeMsgBox.innerHTML = 'Adjusted package: Not enough unique colors in selected size(s).';
+                downgradeMsgBox.style.display = 'block';
+                setTimeout(function(){ downgradeMsgBox.style.display = 'none'; }, 5000);
+            }
+        }
+        updateUI(false);
+    }
+  }
+
+  var availableColorsCount = Object.keys(availableColors).length;
+  var bundle4Input = document.querySelector('input[name="master-deal"][value="bundle4"]');
+  var bundle3Input = document.querySelector('input[name="master-deal"][value="bundle3"]');
+  if (cfg.colorKey) {
+    if (availableColorsCount < 4 && bundle4Input) bundle4Input.closest('.package-card').style.display = 'none';
+    if (availableColorsCount < 3 && bundle3Input) bundle3Input.closest('.package-card').style.display = 'none';
+  }
+
+  if (cfg.colorKey && availableColorsCount === 1) {
+    var step3Container = document.getElementById('step-3-container');
+    if(step3Container) step3Container.style.display = 'none';
+    var singleColor = Object.keys(availableColors)[0];
+    for(var i=1; i<=4; i++) {
+      var colorRadio = document.querySelector('input[name="color-' + i + '"][value="' + singleColor.replace(/"/g, '\\"') + '"]');
+      if(colorRadio) colorRadio.checked = true;
+    }
+  }
+
+  setTimeout(function() {
+    variants.forEach(function(v) {
+      if(v.featured_image && v.featured_image.src) {
+        var img = new Image(); 
+        img.src = v.featured_image.src;
+      }
+    });
+  }, 1000);
+
+  function getRequiredItemCount() {
+    var dealInput = document.querySelector('input[name="master-deal"]:checked');
+    if(!dealInput) return 1;
+    return cfg.pricing[dealInput.value] ? cfg.pricing[dealInput.value].qty : 1;
+  }
+
+  function updateFunnelState() {
+    var dealInput = document.querySelector('input[name="master-deal"]:checked');
+    if(!dealInput) return;
+    var deal = dealInput.value;
+    var reqCount = getRequiredItemCount();
+    var isAdvance = document.querySelector('input[name="payment-method"]:checked').value === 'advance';
+    
+    var sizeScore = 0;
+    if (!isSplitSize) {
+      sizeScore = document.querySelector('input[name="master-size"]:checked') ? 1 : 0;
+    } else {
+      var sizesFound = 0;
+      for (var i = 1; i <= reqCount; i++) {
+        if (document.querySelector('input[name="size-' + i + '"]:checked')) sizesFound++;
+      }
+      sizeScore = sizesFound / reqCount;
+    }
+
+    var colorsFound = 0;
+    for (var j = 1; j <= reqCount; j++) {
+      if (document.querySelector('input[name="color-' + j + '"]:checked')) colorsFound++;
+    }
+    var colorScore = colorsFound / reqCount;
+
+    var score = 0;
+    if (sizeScore > 0) score += 33 * sizeScore;
+    if (colorScore > 0) score += 67 * colorScore;
+    score = Math.floor(score);
+    if(score > 98) score = 100;
+
+    progressBar.style.width = score + '%';
+    progressPercent.innerText = score + '%';
+
+    if(score === 100) {
+      progressBar.style.backgroundColor = '#22c55e';
+      progressPercent.style.color = '#22c55e';
+      progressText.innerHTML = '🎉 <strong style="color: #22c55e;">All set! Your deal is locked.</strong>';
+
+      if(!bundleWrapper.classList.contains('celebrated')) {
+        bundleWrapper.classList.add('celebration-pulse');
+        bundleWrapper.classList.add('celebrated');
+        if (navigator.vibrate) navigator.vibrate([20, 50, 20]); 
+        setTimeout(function() { bundleWrapper.classList.remove('celebration-pulse'); }, 1000);
+      }
+    } else {
+      bundleWrapper.classList.remove('celebrated');
+      progressBar.style.backgroundColor = '#111';
+      progressPercent.style.color = '#888';
+      progressText.innerHTML = deal !== 'single' ? 'Complete your selections (' + colorsFound + '/' + reqCount + ' items)' : 'Select size & color';
+    }
+
+    document.querySelectorAll('.payment-card').forEach(function(card) {
+      card.classList.remove('active-payment', 'active-payment-advance');
+    });
+    var activePaymentCard = document.querySelector('input[name="payment-method"]:checked').closest('.payment-card');
+    if(activePaymentCard) {
+      if (isAdvance) {
+        activePaymentCard.classList.add('active-payment-advance');
+      } else {
+        activePaymentCard.classList.add('active-payment');
+      }
+    }
+
+    // ⚡ DYNAMIC MATH CALCULATION ⚡
+    var tierObj = cfg.pricing[deal] || cfg.pricing.single;
+    
+    var currentSub = tierObj.sub;
+    var currentTotal = isAdvance ? tierObj.sub : tierObj.cod;
+
+    var subtotalStr = formatMoney(currentSub);
+    var totalStr = formatMoney(currentTotal);
+    var itemName = tierObj.qty > 1 ? tierObj.qty + ' Items' : '1 Item';
+    var btnTextDesc = tierObj.qty > 1 ? 'Buy ' + tierObj.qty + '-Pack' : 'Buy 1 Item';
+    
+    var summarySub = document.getElementById('summary-subtotal');
+    var summaryDcType = document.getElementById('summary-dc-type');
+    var summaryDcAmt = document.getElementById('summary-dc-amount');
+    var summaryTotal = document.getElementById('summary-total');
+    var summaryItems = document.getElementById('summary-item-count');
+
+    if(summarySub) summarySub.innerText = subtotalStr;
+    if(summaryItems) summaryItems.innerText = itemName;
+    if(summaryTotal) summaryTotal.innerText = totalStr;
+
+    if(isAdvance) {
+        if(summaryDcType) summaryDcType.innerText = 'Advance Payment';
+        if(summaryDcAmt) {
+            summaryDcAmt.innerText = 'FREE';
+            summaryDcAmt.style.color = '#16a34a';
+            summaryDcAmt.style.fontWeight = '800';
+        }
+    } else {
+        if(summaryDcType) summaryDcType.innerText = 'Standard COD';
+        if(summaryDcAmt) {
+            summaryDcAmt.innerText = '+ Rs. ' + cfg.deliveryCharge;
+            summaryDcAmt.style.color = '#555';
+            summaryDcAmt.style.fontWeight = '600';
+        }
+    }
+
+    if (isAdvance) {
+      addCartBtn.style.display = 'none'; 
+      buyNowBtn.style.backgroundColor = '#25D366'; 
+      buyNowBtn.querySelector('.btn-text-content').innerHTML = '<span style="display:flex; align-items:center; justify-content:center; gap:8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="color:#fff;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.197 1.441 4.742 1.443 5.486 0 9.954-4.437 9.957-9.899.002-2.646-1.03-5.132-2.905-7.008C16.566 1.81 14.09 .78 11.52.784c-5.49 0-9.959 4.439-9.962 9.9-.001 2.01.52 3.843 1.507 5.433l-.976 3.564 3.659-.96c1.614.99 3.255 1.437 4.786 1.437zM17.42 15.3c-.3-.15-1.782-.88-2.057-.98-.275-.1-.475-.15-.675.15-.2.3-.775.98-.95 1.18-.175.2-.35.225-.65.075-.3-.15-1.267-.467-2.413-1.49-1.12-1-1.879-2.235-2.099-2.61-.22-.375-.023-.578.127-.728.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.675-1.625-.925-2.225-.244-.589-.491-.51-.675-.52-.175-.01-.375-.01-.575-.01-.2 0-.525.075-.8 1.012-.275.938-1.05 2.1-1.15 2.288-.1.188-.2.338-.2.525 0 1.25.775 2.475.9 2.65a11.947 11.947 0 0 0 4.6 4.075c1.4.6 2.5.8 3.3.675.838-.125 1.787-.725 2.037-1.388.25-.662.25-1.225.175-1.388-.075-.162-.275-.262-.575-.412z"/></svg> Order via WhatsApp • ' + totalStr + '</span>';
+    } else {
+      addCartBtn.style.display = 'block'; 
+      buyNowBtn.style.backgroundColor = '#111'; 
+      buyNowBtn.querySelector('.btn-text-content').innerHTML = btnTextDesc + ' • ' + totalStr;
+    }
+
+    if(score === 100) {
+      if(stickyBtn) {
+        stickyBtn.innerText = isAdvance ? 'Order via WhatsApp' : 'Complete Order';
+        stickyBtn.style.backgroundColor = isAdvance ? '#25D366' : '#1e7038';
+        stickyBtn.dataset.action = 'checkout';
+        stickyBtn.style.width = '100%';
+      }
+      var stickyTextHide = document.getElementById('sticky-text-area');
+      if(stickyTextHide) stickyTextHide.style.display = 'none';
+    } else {
+      if(stickyBtn) {
+        stickyBtn.innerText = cfg.hideBundles ? 'Continue' : 'Unlock Deal';
+        stickyBtn.style.backgroundColor = '#111';
+        stickyBtn.dataset.action = 'scroll';
+        stickyBtn.style.width = 'auto';
+      }
+      var stickyTextShow = document.getElementById('sticky-text-area');
+      if(stickyTextShow) stickyTextShow.style.display = 'flex';
+    }
+  }
+
+  function silentImageSwap(colorVal) {
+    var targetVariant = null;
+    for(var i = 0; i < variants.length; i++) {
+        if(variants[i][cfg.colorKey] === colorVal && variants[i].featured_image) {
+            targetVariant = variants[i];
+            break;
+        }
+    }
+    if (targetVariant) {
+      var newSrc = targetVariant.featured_image.src;
+      document.querySelectorAll('.product__media-item.is-active img, .product-media-container img, .product__media img').forEach(function(img) {
+        img.src = newSrc; img.srcset = newSrc; 
+      });
+    }
+  }
+
+  function getMissingSizeTarget() {
+    var reqCount = getRequiredItemCount();
+    if (!isSplitSize && !document.querySelector('input[name="master-size"]:checked')) return 'global-size-wrapper';
+    if (isSplitSize) {
+      for (var i = 1; i <= reqCount; i++) {
+        if (!document.querySelector('input[name="size-' + i + '"]:checked')) return 'size-' + i + '-options';
+      }
+    }
+    return null;
+  }
+
+  function throwCheckoutError(message, targetId) {
+    if (navigator.vibrate) navigator.vibrate([50, 50, 50]); 
+    if (errorMsgBox) {
+        errorMsgBox.textContent = message;
+        errorMsgBox.style.display = 'block';
+    }
+    var targetEl = document.getElementById(targetId);
+    if (targetEl) { targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); triggerShake(targetId); }
+  }
+
+  function triggerShake(elementId) {
+    var el = document.getElementById(elementId);
+    if(el) { el.classList.remove('shake-error'); void el.offsetWidth; el.classList.add('shake-error'); }
+  }
+
+  // ⚡ EVENT DELEGATION ⚡
+  bundleWrapper.addEventListener('change', function(e) {
+    var target = e.target;
+    var name = target.name || target.id || '';
+
+    if (name.startsWith('master-size') || name.startsWith('size-')) {
+      if (navigator.vibrate) navigator.vibrate(15); 
+      localStorage.setItem('tracepk_saved_size', target.value); 
+
+      var wrapper = document.getElementById(isSplitSize ? 'split-size-wrapper' : 'global-size-wrapper');
+      wrapper.classList.remove('attention-pulse');
+      
+      var reqCount = getRequiredItemCount();
+      var isSizeFullySelected = false;
+
+      if (!isSplitSize) {
+        isSizeFullySelected = !!document.querySelector('input[name="master-size"]:checked');
+      } else {
+        var sizesFound = 0;
+        for(var i=1; i<=reqCount; i++) {
+            if(document.querySelector('input[name="size-' + i + '"]:checked')) sizesFound++;
+        }
+        isSizeFullySelected = (sizesFound === reqCount);
+      }
+
+      if (isSizeFullySelected) {
+        wrapper.classList.add('success-border');
+        wrapper.querySelectorAll('.step1-check').forEach(function(el) { el.style.display = 'inline'; });
+        
+        if(!hasAutoScrolledForSize) {
+           hasAutoScrolledForSize = true;
+           setTimeout(function() { 
+               var step2 = document.getElementById('step-2-anchor');
+               if(step2 && !cfg.hideBundles) step2.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); 
+               else {
+                   var p1 = document.getElementById('color-picker-1');
+                   if (p1) p1.scrollIntoView({ behavior: 'smooth', block: 'center' });
+               }
+           }, 200);
+        }
+      } else {
+        wrapper.classList.remove('success-border');
+        wrapper.querySelectorAll('.step1-check').forEach(function(el) { el.style.display = 'none'; });
+      }
+      
+      evaluateBundleLocks();
+      checkInventory(); 
+      updateFunnelState();
+    }
+
+    if (name === 'master-deal') {
+      if (navigator.vibrate) navigator.vibrate(15);
+      var missingTarget = getMissingSizeTarget();
+      if (missingTarget) {
+        updateUI(false); 
+        var targetEl = document.getElementById(missingTarget);
+        if(targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+        triggerShake(missingTarget);
+      } else { updateUI(true); }
+      updateFunnelState();
+    }
+
+    if (name === 'payment-method') {
+      if (navigator.vibrate) navigator.vibrate(20);
+      updateFunnelState();
+    }
+
+    if (name.startsWith('color-')) {
+      checkInventory();
+      updateFunnelState();
+    }
+  });
+
+  bundleWrapper.addEventListener('click', function(e) {
+    var target = e.target.closest('input[name^="color-"]');
+    if (target) {
+      var missingTarget = getMissingSizeTarget();
+      if (missingTarget) {
+        e.preventDefault(); 
+        var targetEl = document.getElementById(missingTarget);
+        if(targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+        triggerShake(missingTarget);
+      } else {
+        if (navigator.vibrate) navigator.vibrate(15);
+        silentImageSwap(target.value); 
+      }
+    }
+  });
+
+  if(stickyBtn) {
+    stickyBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (this.dataset.action === 'checkout') {
+         if (navigator.vibrate) navigator.vibrate(20);
+         return processCheckout(true); 
+      }
+      var missingTarget = getMissingSizeTarget();
+      if(missingTarget) {
+         var targetEl = document.getElementById(missingTarget);
+         if(targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+         triggerShake(missingTarget); 
+         return; 
+      }
+      var p1 = document.getElementById('color-picker-1');
+      if(p1) p1.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  function updateUI(allowColorScroll) {
+    var reqCount = getRequiredItemCount();
+    
+    document.querySelectorAll('.package-card').forEach(function(card) {
+      card.classList.remove('active-package');
+    });
+    var dealInput = document.querySelector('input[name="master-deal"]:checked');
+    if(dealInput) {
+        var activeCard = dealInput.closest('.package-card');
+        if(activeCard) {
+            activeCard.classList.add('active-package');
+        }
+    }
+
+    if (availableColorsCount > 1) {
+      for(var i=1; i<=4; i++) {
+          var picker = document.getElementById('color-picker-' + i);
+          if(picker) {
+              if(i <= reqCount) picker.style.display = 'block';
+              else picker.style.display = 'none';
+          }
+      }
+      var colorLabel = document.getElementById('color-1-label');
+      if(colorLabel) colorLabel.textContent = reqCount > 1 ? 'Item 1 Color:' : 'Choose Color:';
+    }
+
+    if(isSplitSize) {
+        for(var j=1; j<=4; j++) {
+            var sizeCont = document.getElementById('size-' + j + '-container');
+            if(sizeCont) {
+                if(j <= reqCount) sizeCont.style.display = 'block';
+                else sizeCont.style.display = 'none';
+            }
+        }
+    }
+
+    if (allowColorScroll && reqCount > 1 && availableColorsCount > 1) {
+        setTimeout(function() { 
+            var p1 = document.getElementById('color-picker-1');
+            if(p1) p1.scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+        }, 150);
+    }
+    
+    if (reqCount > 1) { if(stickyBar) stickyBar.classList.remove('show-sticky'); } 
+    else { if(stickyBar) stickyBar.classList.add('show-sticky'); }
+    
+    checkInventory();
+  }
+
+  function checkInventory() {
+    var reqCount = getRequiredItemCount();
+
+    for(var i=1; i<=reqCount; i++) {
+        var sizeNode = isSplitSize ? document.querySelector('input[name="size-' + i + '"]:checked') : document.querySelector('input[name="master-size"]:checked');
+        var sizeVal = sizeNode ? sizeNode.value : null;
+        
+        if(sizeVal) {
+            var radios = document.querySelectorAll('input[name="color-' + i + '"]');
+            radios.forEach(function(radio) {
+                var colorVal = radio.value;
+                var matchingVariant = null;
+                for(var j=0; j < variants.length; j++) {
+                    var v = variants[j];
+                    if(v[cfg.sizeKey] === sizeVal && v[cfg.colorKey] === colorVal) {
+                        matchingVariant = v;
+                        break;
+                    }
+                }
+                
+                var soldOutBadge = radio.nextElementSibling.querySelector('.sold-out-bar');
+
+                if (matchingVariant && matchingVariant.available) {
+                    radio.disabled = false;
+                    if (availableColorsCount === 1) radio.checked = true;
+                    if (soldOutBadge) {
+                        soldOutBadge.innerText = "SOLD OUT";
+                        soldOutBadge.style.background = "rgba(170, 170, 170, 0.9)";
+                    }
+                }
+                else { 
+                    radio.disabled = true; 
+                    if (radio.checked) radio.checked = false; 
+                    if (soldOutBadge) {
+                        soldOutBadge.innerText = "SOLD OUT";
+                        soldOutBadge.style.background = "rgba(170, 170, 170, 0.9)";
+                    }
+                }
+            });
+        }
+    }
+
+    var selectedColorsMap = {};
+    for (var k = 1; k <= reqCount; k++) {
+        var checkedClr = document.querySelector('input[name="color-' + k + '"]:checked');
+        if (checkedClr) selectedColorsMap[k] = checkedClr.value;
+    }
+
+    for (var m = 1; m <= reqCount; m++) {
+        var colorRadios2 = document.querySelectorAll('input[name="color-' + m + '"]');
+        colorRadios2.forEach(function(radio) {
+            var cVal = radio.value;
+            var chosenInOtherItem = false;
+            for (var n = 1; n <= reqCount; n++) {
+                if (n !== m && selectedColorsMap[n] === cVal) {
+                    chosenInOtherItem = true;
+                    break;
+                }
+            }
+            var soldOutBadge = radio.nextElementSibling.querySelector('.sold-out-bar');
+            
+            if (chosenInOtherItem) {
+                radio.disabled = true;
+                if (radio.checked) {
+                    radio.checked = false;
+                    setTimeout(function() { updateFunnelState(); }, 10);
+                }
+                if(soldOutBadge) {
+                    soldOutBadge.innerText = "IN USE";
+                    soldOutBadge.style.background = "#dca514";
+                }
+            } else {
+                if (!radio.disabled && soldOutBadge) {
+                    soldOutBadge.style.display = ""; 
+                }
+            }
+        });
+    }
+  }
+
+  function processCheckout(isBuyNow) {
+    if(errorMsgBox) errorMsgBox.style.display = 'none';
+    var dealInput = document.querySelector('input[name="master-deal"]:checked');
+    if(!dealInput) return;
+    var deal = dealInput.value;
+    var reqCount = getRequiredItemCount();
+    var isAdvance = document.querySelector('input[name="payment-method"]:checked').value === 'advance';
+    
+    if(!isSplitSize && !document.querySelector('input[name="master-size"]:checked')) return throwCheckoutError("Please select a Size in Step 1.", 'global-size-wrapper');
+    
+    var selectedSizes = [];
+    if(isSplitSize) {
+      for(var i=1; i<=reqCount; i++) {
+        var sz = document.querySelector('input[name="size-' + i + '"]:checked');
+        if(!sz) return throwCheckoutError('Please select Item ' + i + ' Size.', 'size-' + i + '-options');
+        selectedSizes.push(sz.value);
+      }
+    } else {
+      var globalSizeNode = document.querySelector('input[name="master-size"]:checked');
+      if(!globalSizeNode) return throwCheckoutError("Please select a Size.", 'global-size-wrapper');
+      var globalSize = globalSizeNode.value;
+      for(var i2=1; i2<=reqCount; i2++) selectedSizes.push(globalSize);
+    }
+
+    var selectedColors = [];
+    if (cfg.colorKey) {
+      for(var i3=1; i3<=reqCount; i3++) {
+        var clr = document.querySelector('input[name="color-' + i3 + '"]:checked');
+        if(!clr) return throwCheckoutError(reqCount > 1 ? 'Please select Item ' + i3 + ' Color.' : "Please select a Color.", 'color-picker-' + i3);
+        selectedColors.push(clr.value);
+      }
+    }
+
+    var selectedVariants = [];
+    for(var i4=0; i4<reqCount; i4++) {
+      var targetV = null;
+      for(var j=0; j < variants.length; j++) {
+          var v = variants[j];
+          var matchSize = (v[cfg.sizeKey] === selectedSizes[i4]);
+          var matchColor = !cfg.colorKey || (v[cfg.colorKey] === selectedColors[i4]);
+          if (matchSize && matchColor) {
+              targetV = v;
+              break;
+          }
+      }
+      if (!targetV) return throwCheckoutError("Error finding variant. Please refresh.", 'master-funnel-wrapper');
+      selectedVariants.push(targetV);
+    }
+
+    var itemsMap = {};
+    selectedVariants.forEach(function(v) {
+       if(itemsMap[v.id]) itemsMap[v.id] += 1;
+       else itemsMap[v.id] = 1;
+    });
+    
+    var itemsPayload = Object.keys(itemsMap).map(function(id) { 
+        return { id: parseInt(id, 10), quantity: itemsMap[id] };
+    });
+
+    var totalStr = document.getElementById('summary-total').innerText;
+    var numericTotal = parseInt(totalStr.replace(/[^0-9]/g, ''), 10) || 0;
+
+    // ⚡ WhatsApp In-Funnel Interception ⚡
+    if (isBuyNow && isAdvance) {
+      if (navigator.vibrate) navigator.vibrate(30);
+
+      // Store payload globally for the modal submit button
+      window.waCurrentPayload = {
+          reqCount: reqCount,
+          selectedSizes: selectedSizes,
+          selectedColors: selectedColors,
+          totalStr: totalStr,
+          numericValue: numericTotal
+      };
+
+      // Show Modal
+      var waModal = document.getElementById('whatsapp-checkout-modal');
+      waModal.style.display = 'flex';
+      void waModal.offsetWidth;
+      waModal.style.opacity = '1';
+      waModal.querySelector('.modal-content').style.transform = 'translateY(0)';
+
+      return; 
+    }
+
+    var targetBtn = isBuyNow ? buyNowBtn : addCartBtn;
+    var originalText = targetBtn.innerHTML;
+    targetBtn.innerHTML = isBuyNow ? '<span class="btn-text-content" style="z-index: 2; position: relative;">🔒 Securing your deal...</span>' : '<span>Processing...</span>';
+    targetBtn.style.pointerEvents = 'none';
+    if(isBuyNow) { 
+        targetBtn.classList.add('shimmer-btn'); 
+        if (navigator.vibrate) navigator.vibrate(30); 
+    }
+
+    if (typeof fbq === 'function') fbq('track', 'AddToCart', { value: numericTotal, currency: 'PKR', content_type: 'product' });
+    if (typeof ttq === 'function') ttq.track('AddToCart', { value: numericTotal, currency: 'PKR' });
+
+    var cartDrawer = document.querySelector('cart-drawer');
+    var sectionsList = [];
+    if (cartDrawer) {
+      sectionsList = cartDrawer.getSectionsToRender().map(function(s) { return s.id; });
+    }
+
+    var addCartPayload = {
+      items: itemsPayload
+    };
+    if (sectionsList.length > 0) {
+      addCartPayload.sections = sectionsList.join(',');
+      addCartPayload.sections_url = window.location.pathname;
+    }
+
+    fetch(window.Shopify.routes.root + 'cart/add.js', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify(addCartPayload)
+    })
+    .then(function(response) {
+      if (!response.ok) throw new Error('Stock issue');
+      return response.json();
+    })
+    .then(function(responseJson) { 
+      if (isBuyNow) {
+        window.location.href = '/checkout'; 
+      } else {
+        targetBtn.style.backgroundColor = '#1e7038';
+        targetBtn.style.color = '#fff';
+        targetBtn.style.borderColor = '#1e7038';
+        targetBtn.innerHTML = '✓ Added to Cart';
+        
+        if (cartDrawer) {
+          cartDrawer.classList.remove('is-empty');
+          if (responseJson && responseJson.sections && responseJson.sections['cart-drawer']) {
+            cartDrawer.renderContents(responseJson);
+            setTimeout(function() {
+              targetBtn.style.backgroundColor = '';
+              targetBtn.style.color = '';
+              targetBtn.style.borderColor = '';
+              targetBtn.innerHTML = originalText;
+              targetBtn.style.pointerEvents = 'auto';
+            }, 2000);
+          } else {
+            // Fallback: Fetch sections manually using Section Rendering API
+            var sectionsToRequest = sectionsList.length > 0 ? sectionsList.join(',') : 'cart-drawer,cart-icon-bubble';
+            fetch(window.location.pathname + '?sections=' + sectionsToRequest)
+            .then(function(res) { return res.json(); })
+            .then(function(sectionsJson) {
+              var stateWithSections = Object.assign({}, responseJson, {
+                sections: sectionsJson
+              });
+              cartDrawer.renderContents(stateWithSections);
+              setTimeout(function() {
+                targetBtn.style.backgroundColor = '';
+                targetBtn.style.color = '';
+                targetBtn.style.borderColor = '';
+                targetBtn.innerHTML = originalText;
+                targetBtn.style.pointerEvents = 'auto';
+              }, 2000);
+            })
+            .catch(function(err) {
+              console.error('Error fetching sections fallback:', err);
+              setTimeout(function() { window.location.href = '/cart'; }, 800);
+            });
+          }
+        } else {
+          setTimeout(function() { window.location.href = '/cart'; }, 800);
+        }
+      }
+    })
+    .catch(function() {
+      targetBtn.style.pointerEvents = 'auto';
+      targetBtn.classList.remove('shimmer-btn');
+      targetBtn.innerHTML = originalText;
+      throwCheckoutError("Not enough stock available for this combination. Please try different colors!", 'color-picker-1');
+    });
+  }
+
+  // ⚡ WhatsApp Form Submission Logic ⚡
+  if(waSubmitBtn) {
+      waSubmitBtn.addEventListener('click', function() {
+          var name = document.getElementById('wa-name').value.trim();
+          var phone = document.getElementById('wa-phone').value.trim();
+          var address = document.getElementById('wa-address').value.trim();
+
+          if(!name || !phone || !address) {
+              alert("Please fill in all your details to proceed.");
+              return;
+          }
+
+          var originalText = this.innerHTML;
+          this.innerHTML = 'Connecting to WhatsApp...';
+          this.style.pointerEvents = 'none';
+
+          var p = window.waCurrentPayload;
+
+          // ⚡ PIXEL: InitiateCheckout (Advance Pay)
+          if (typeof fbq === 'function') fbq('track', 'InitiateCheckout', { value: p.numericValue, currency: 'PKR' });
+          if (typeof ttq === 'function') ttq.track('InitiateCheckout', { value: p.numericValue, currency: 'PKR' });
+
+          var msg = 'Hi ' + cfg.shopName + '! I want to place an Advance Payment order.\n\n';
+          msg += '*Product:* ' + cfg.productTitle + '\n';
+          msg += '*Package:* ' + (p.reqCount > 1 ? p.reqCount + '-Pack Deal' : '1 Item') + '\n';
+
+          for(var i=0; i<p.reqCount; i++) {
+              msg += (p.reqCount > 1 ? '*Item ' + (i+1) + ':* ' : '*Details:* ') + 'Size ' + p.selectedSizes[i];
+              if (p.selectedColors[i]) {
+                  msg += ', Color ' + p.selectedColors[i];
+              }
+              msg += '\n';
+          }
+
+          msg += '\n*Customer Details:*\n';
+          msg += 'Name: ' + name + '\n';
+          msg += 'Phone: ' + phone + '\n';
+          msg += 'Address: ' + address + '\n';
+
+          msg += '\n*Total Amount:* ' + p.totalStr + '\n\n';
+          msg += 'Please share your Bank/EasyPaisa details so I can send the payment slip!';
+          
+          var waUrl = 'https://api.whatsapp.com/send?phone=' + cfg.whatsappNumber + '&text=' + encodeURIComponent(msg);
+          window.location.href = waUrl;
+          
+          setTimeout(function(){
+              waSubmitBtn.innerHTML = originalText;
+              waSubmitBtn.style.pointerEvents = 'auto';
+          }, 3000);
+      });
+  }
+
+  var waCloseBtn = document.getElementById('close-wa-modal');
+  var waModal = document.getElementById('whatsapp-checkout-modal');
+  if(waCloseBtn && waModal) {
+      waCloseBtn.addEventListener('click', function() {
+          waModal.style.opacity = '0';
+          waModal.querySelector('.modal-content').style.transform = 'translateY(100%)';
+          setTimeout(function() { waModal.style.display = 'none'; }, 300);
+      });
+      waModal.addEventListener('click', function(e) {
+          if(e.target === waModal) waCloseBtn.click();
+      });
+  }
+
+  var toggleSizeBtn = document.getElementById('toggle-size-btn');
+  if(toggleSizeBtn) {
+    toggleSizeBtn.addEventListener('click', function(e) {
+      e.preventDefault(); if (navigator.vibrate) navigator.vibrate(10);
+      isSplitSize = !isSplitSize;
+      if(isSplitSize) {
+        document.getElementById('global-size-wrapper').style.display = 'none';
+        document.getElementById('split-size-wrapper').style.display = 'block';
+        this.innerText = '↹ Use same size for all items';
+      } else {
+        document.getElementById('global-size-wrapper').style.display = 'block';
+        document.getElementById('split-size-wrapper').style.display = 'none';
+        this.innerText = '↹ Need different sizes for each item?';
+      }
+      evaluateBundleLocks();
+      updateUI(false);
+      updateFunnelState();
+    });
+  }
+
+  function updateDeliveryEstimate() {
+    var d = new Date();
+    var utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    var pktNow = new Date(utc + (3600000 * 5)); 
+    
+    var cutoffHour = 14; 
+    var isPastCutoff = pktNow.getHours() >= cutoffHour;
+    
+    var minDays = 3, maxDays = 5;
+    if (isPastCutoff) { minDays++; maxDays++; }
+    
+    var minDate = new Date(pktNow); minDate.setDate(pktNow.getDate() + minDays);
+    var maxDate = new Date(pktNow); maxDate.setDate(pktNow.getDate() + maxDays);
+    var options = { weekday: 'short', month: 'short', day: 'numeric' };
+    
+    var cutoffDate = new Date(pktNow);
+    if (isPastCutoff) cutoffDate.setDate(pktNow.getDate() + 1);
+    cutoffDate.setHours(cutoffHour, 0, 0, 0);
+    
+    var diff = cutoffDate - pktNow;
+    var hoursLeft = Math.floor((diff % 86400000) / 3600000);
+    var minsLeft = Math.floor((diff % 3600000) / 60000);
+    
+    var deliveryEl = document.getElementById('delivery-text');
+    if (deliveryEl) deliveryEl.innerHTML = 'Order within <strong style="color:#111;">' + hoursLeft + 'h ' + minsLeft + 'm</strong> to get it by <strong style="color:#111;">' + minDate.toLocaleDateString('en-US', options) + ' - ' + maxDate.toLocaleDateString('en-US', options) + '</strong>';
+  }
+
+  if(addCartBtn) addCartBtn.addEventListener('click', function() { processCheckout(false); });
+  if(buyNowBtn) buyNowBtn.addEventListener('click', function() { processCheckout(true); });
+
+  evaluateBundleLocks();
+  updateUI(false); 
+  updateFunnelState();
+  updateDeliveryEstimate();
+  setInterval(updateDeliveryEstimate, 60000); 
+
+  var descBtn = document.getElementById('desc-accordion-btn');
+  var descContent = document.getElementById('desc-accordion-content');
+  var descIcon = document.getElementById('desc-accordion-icon');
+  if (descBtn && descContent) {
+    descBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (navigator.vibrate) navigator.vibrate(10);
+      if (descContent.style.maxHeight && descContent.style.maxHeight !== '0px') {
+        descContent.style.maxHeight = '0px';
+        descIcon.style.transform = 'rotate(0deg)';
+      } else {
+        descContent.style.maxHeight = (descContent.scrollHeight + 2000) + 'px';
+        descIcon.style.transform = 'rotate(45deg)';
+      }
+    });
+  }
+
+  // ⚡ SIZE GUIDE MODAL LOGIC ⚡
+  var modal = document.getElementById('size-guide-modal');
+  ['open-size-guide', 'open-size-guide-split', 'open-size-guide-bottom'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if(btn) {
+        btn.addEventListener('click', function(e) { 
+            e.preventDefault(); 
+            if(navigator.vibrate) navigator.vibrate(10); 
+            if(modal) { 
+                modal.style.display = 'flex'; 
+                void modal.offsetWidth; 
+                modal.style.opacity = '1'; 
+                var mc = modal.querySelector('.modal-content');
+                if(mc) mc.style.transform = 'translateY(0)'; 
+            } 
+        });
+    }
+  });
+  
+  var closeBtn = document.getElementById('close-size-guide');
+  if(closeBtn) {
+      closeBtn.addEventListener('click', function() { 
+          if(modal) { 
+              modal.style.opacity = '0'; 
+              var mc = modal.querySelector('.modal-content');
+              if(mc) mc.style.transform = 'translateY(20px)'; 
+              setTimeout(function() { modal.style.display = 'none'; }, 300); 
+          } 
+      });
+  }
+  
+  if(modal) {
+      modal.addEventListener('click', function(e) { 
+          if(e.target === modal && closeBtn) closeBtn.click(); 
+      });
+  }
+});
+</script>
