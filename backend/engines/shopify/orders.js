@@ -384,7 +384,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       }
     });
 
-    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
+    const sheetOrders = db.prepare('SELECT id, shopify_order_id, delivery_status, tracking_number, cost, courier_fee, cost_locked, courier_fee_locked FROM orders WHERE store_id = ?').all(storeId);
     let costMap = {};
     const firstUpdateName = sheetOrders && sheetOrders[0] ? (shopifyMap[String(sheetOrders[0].shopify_order_id)]?.name || '') : '';
     if (syncCosts) {
@@ -473,6 +473,19 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           newDeliveryStatus = 'Booked';
         }
 
+        const oldTracking = row.tracking_number || '';
+        const newTracking = tracking || '';
+        if (oldTracking && newTracking && oldTracking !== newTracking) {
+          const { logOrderChange } = require('../../db');
+          logOrderChange({
+            order_id: row.id,
+            user_id: 0,
+            type: 'TRACKING_UPDATE',
+            old_val: { tracking_number: oldTracking },
+            new_val: { tracking_number: newTracking }
+          });
+        }
+
         updateStmt.run(
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
@@ -544,7 +557,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     let totalCost = 0, productTitles = [], activeCount = 0;
     const isCancelled = order.cancelled_at !== null;
     
-    const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
+    const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked, tracking_number FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
     const dbStatus = (existing?.delivery_status || '').trim().toLowerCase();
     const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
     const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
@@ -587,6 +600,19 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     })));
 
     if (existing) {
+      const oldTracking = existing.tracking_number || '';
+      const newTracking = tracking || '';
+      if (oldTracking && newTracking && oldTracking !== newTracking) {
+        const { logOrderChange } = require('../../db');
+        logOrderChange({
+          order_id: existing.id,
+          user_id: 0,
+          type: 'TRACKING_UPDATE',
+          old_val: { tracking_number: oldTracking },
+          new_val: { tracking_number: newTracking }
+        });
+      }
+
       db.prepare(`
         UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
         payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, 

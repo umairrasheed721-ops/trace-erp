@@ -28,7 +28,65 @@ router.get('/stuck', (req, res) => {
   const stuckOrders = orders.map(o => {
     const statusDateStr = o.status_date ? o.status_date.replace(' ', 'T') + '+05:00' : null;
     const hours = statusDateStr ? (Date.now() - new Date(statusDateStr).getTime()) / 3600000 : 0;
-    return { ...o, hours_stuck: Math.floor(hours), days_stuck: Math.floor(hours / 24) };
+
+    // Check if tracking number has changed in history
+    const history = db.prepare(`
+      SELECT h.old_value, h.new_value, h.created_at, u.username
+      FROM order_history h
+      LEFT JOIN users u ON h.user_id = u.id
+      WHERE h.order_id = ? AND h.change_type IN ('TRACKING_UPDATE', 'MANUAL_EDIT')
+      ORDER BY h.id DESC
+    `).all(o.id);
+
+    let tracking_update = null;
+    for (const h of history) {
+      try {
+        const oldVal = JSON.parse(h.old_value);
+        const newVal = JSON.parse(h.new_value);
+        if (oldVal && newVal && oldVal.tracking_number !== undefined && newVal.tracking_number !== undefined && oldVal.tracking_number !== newVal.tracking_number) {
+          tracking_update = {
+            old_tracking: oldVal.tracking_number,
+            new_tracking: newVal.tracking_number,
+            changed_at: h.created_at,
+            changed_by: h.username || 'Shopify Sync'
+          };
+          break;
+        }
+      } catch (e) {}
+    }
+
+    // Determine manual ID
+    const trackingLower = (o.tracking_number || '').toLowerCase();
+    const isManual = trackingLower.includes('@') || 
+                     trackingLower.includes('local') || 
+                     trackingLower.includes('exchange') || 
+                     trackingLower.includes('bus') || 
+                     trackingLower.includes('pvt') || 
+                     trackingLower.includes('deliver') || 
+                     trackingLower.includes('shop') || 
+                     trackingLower.includes('wholesale') || 
+                     trackingLower.includes('purchased') ||
+                     (trackingLower.length > 0 && !/^\d+$/.test(trackingLower) && !/^le\d+$/i.test(trackingLower));
+
+    // Dynamic insight classification
+    let insight_type = 'STUCK_TRANSIT';
+    const statusLower = (o.delivery_status || '').toLowerCase();
+    
+    if (isManual) {
+      insight_type = 'MANUAL_ID';
+    } else if (statusLower === 'booked' || statusLower === 'confirmed') {
+      insight_type = 'PICKUP_PENDING';
+    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k))) {
+      insight_type = 'ADVICE_REQUIRED';
+    }
+
+    return { 
+      ...o, 
+      hours_stuck: Math.floor(hours), 
+      days_stuck: Math.floor(hours / 24),
+      tracking_update,
+      insight_type
+    };
   }).sort((a, b) => b.hours_stuck - a.hours_stuck);
 
   res.json(stuckOrders);

@@ -71,6 +71,7 @@ export default function StuckMonitor() {
                 <th>Order #</th>
                 <th>Tracking #</th>
                 <th>Customer</th>
+                <th>Status Insight</th>
                 <th>Current Status</th>
                 <th>⏳ Days Stuck</th>
                 <th>Last Update</th>
@@ -93,6 +94,42 @@ export default function StuckMonitor() {
                   </td>
                   <td className="font-mono" style={{ color: 'var(--brand)', fontSize: '0.75rem' }}>{o.tracking_number}</td>
                   <td>{o.customer_name}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {o.insight_type === 'MANUAL_ID' && (
+                        <span className="badge" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa', alignSelf: 'flex-start' }}>
+                          📝 Manual ID (No Sync)
+                        </span>
+                      )}
+                      {o.insight_type === 'PICKUP_PENDING' && (
+                        <span className="badge" style={{ background: 'rgba(156, 163, 175, 0.15)', color: 'var(--text-muted)', alignSelf: 'flex-start' }}>
+                          ⏳ Pick-up Pending
+                        </span>
+                      )}
+                      {o.insight_type === 'STUCK_TRANSIT' && (
+                        <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--yellow)', alignSelf: 'flex-start' }}>
+                          📦 Stuck in Transit
+                        </span>
+                      )}
+                      {o.insight_type === 'ADVICE_REQUIRED' && (
+                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--red)', alignSelf: 'flex-start' }}>
+                          ⚠️ Advice Action Needed
+                        </span>
+                      )}
+
+                      {o.tracking_update && (
+                        <div 
+                          style={{ fontSize: '0.7rem', color: 'var(--brand)', cursor: 'help', display: 'flex', alignItems: 'center', gap: 4 }}
+                          title={`Changed from "${o.tracking_update.old_tracking}" to "${o.tracking_update.new_tracking}" by ${o.tracking_update.changed_by} on ${new Date(o.tracking_update.changed_at).toLocaleString()}`}
+                        >
+                          <span>🔄 Tracking Updated</span>
+                          <span style={{ opacity: 0.6, fontSize: '0.65rem' }}>
+                            (was: {o.tracking_update.old_tracking.substring(0, 10)}...)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
                   <td><span className="badge badge-stuck">{o.delivery_status}</span></td>
                   <td style={{ fontWeight: 700, color: o.days_stuck >= 4 ? 'var(--red)' : o.days_stuck >= 2 ? 'var(--yellow)' : 'var(--text-primary)' }}>
                     {o.days_stuck}d {o.hours_stuck % 24}h
