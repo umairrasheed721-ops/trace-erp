@@ -320,7 +320,18 @@ export default function CommandTable({
   return (
     <>
       <div className="table-wrapper" style={{ minWidth: '100%', width: '100%', overflowX: 'auto' }}>
-        <div style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', padding: '8px 24px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ 
+          background: 'var(--bg-elevated)', 
+          borderBottom: '1px solid var(--border)', 
+          padding: '8px 24px', 
+          fontSize: '0.8rem', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          position: 'sticky',
+          left: 0,
+          zIndex: 10
+        }}>
           <span>
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
           </span>

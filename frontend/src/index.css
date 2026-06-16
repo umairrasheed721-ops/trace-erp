@@ -407,6 +407,7 @@ input:focus, select:focus, textarea:focus, button:focus {
   display: flex;
   flex-direction: column;
   transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
 }
 
 .app-layout.sidebar-collapsed .main-content {
@@ -434,7 +435,7 @@ input:focus, select:focus, textarea:focus, button:focus {
 
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
-.page-content { padding: 24px; flex: 1; }
+.page-content { padding: 24px; flex: 1; min-width: 0; }
 .sidebar-collapsed .page-content { padding: 12px; }
 .sidebar-collapsed.ultra-compact-mode .page-content { padding: 0; }
 
