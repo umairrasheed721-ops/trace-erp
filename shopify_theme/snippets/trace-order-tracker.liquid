@@ -3,7 +3,7 @@
   <div class="trace-tracker-modal">
     <!-- Close Button -->
     <button class="trace-tracker-close" onclick="closeOrderTracker()" aria-label="Close Tracking Modal">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
@@ -23,12 +23,12 @@
         <input 
           type="text" 
           id="trace-tracker-input" 
-          placeholder="Enter Mobile Number (e.g. 03001234567) or Order ID" 
+          placeholder="Mobile Number or Order ID" 
           required 
           autocomplete="off"
         />
         <button type="submit" class="trace-tracker-search-btn">
-          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
@@ -45,7 +45,7 @@
 
     <!-- Error Message -->
     <div id="trace-tracker-error" class="trace-tracker-error" style="display: none;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="8" x2="12" y2="12"></line>
         <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -61,24 +61,24 @@
 </div>
 
 <style>
-  /* --- Premium Modal Theme & Transitions --- */
+  /* --- Premium White-Based Light Theme --- */
   .trace-tracker-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: rgba(10, 8, 20, 0.75);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(15, 12, 25, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 9999999;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 20px;
+    padding: 16px;
     box-sizing: border-box;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
   }
   
   .trace-tracker-overlay.active {
@@ -86,22 +86,21 @@
   }
 
   .trace-tracker-modal {
-    background: rgba(24, 20, 38, 0.95);
-    border: 1px solid rgba(168, 85, 247, 0.15);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(168, 85, 247, 0.05);
-    border-radius: 20px;
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 25px 60px -15px rgba(15, 12, 25, 0.15), 0 0 50px rgba(168, 85, 247, 0.03);
+    border-radius: 24px;
     width: 100%;
-    max-width: 650px;
-    max-height: 90vh;
+    max-width: 580px;
+    max-height: 85vh;
     overflow-y: auto;
     position: relative;
-    padding: 40px;
+    padding: 36px;
     box-sizing: border-box;
-    color: #ffffff;
-    transform: translateY(20px) scale(0.95);
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(168, 85, 247, 0.3) rgba(24, 20, 38, 0.95);
+    color: #1f2937;
+    font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transform: translateY(16px) scale(0.97);
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .trace-tracker-overlay.active .trace-tracker-modal {
@@ -109,10 +108,10 @@
   }
 
   .trace-tracker-modal::-webkit-scrollbar {
-    width: 6px;
+    width: 5px;
   }
   .trace-tracker-modal::-webkit-scrollbar-thumb {
-    background-color: rgba(168, 85, 247, 0.3);
+    background-color: rgba(168, 85, 247, 0.2);
     border-radius: 10px;
   }
 
@@ -123,128 +122,143 @@
     right: 20px;
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.5);
+    color: #9ca3af;
     cursor: pointer;
     transition: all 0.2s ease;
-    padding: 8px;
+    padding: 6px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
   }
   .trace-tracker-close:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
-    transform: rotate(90deg);
+    color: #111827;
+    background: #f3f4f6;
   }
 
   /* Header */
   .trace-tracker-header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 28px;
   }
   .trace-tracker-logo {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     letter-spacing: -0.5px;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    font-family: 'Montserrat', sans-serif;
   }
   .trace-brand {
-    background: linear-gradient(135deg, #ffffff 0%, #a855f7 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: #111827;
   }
   .trace-tracker-badge {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    background: rgba(168, 85, 247, 0.2);
-    border: 1px solid rgba(168, 85, 247, 0.4);
+    background: rgba(168, 85, 247, 0.08);
+    border: 1px solid rgba(168, 85, 247, 0.18);
     padding: 3px 8px;
     border-radius: 12px;
-    color: #c084fc;
-    letter-spacing: 1px;
+    color: #7e22ce;
+    letter-spacing: 0.5px;
   }
   .trace-tracker-subtitle {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.6);
-    margin-top: 10px;
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 8px;
   }
 
-  /* Search Container */
+  /* Search Container & Responsive Stack */
   .trace-tracker-search-container {
     display: flex;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 6px;
-    transition: all 0.3s ease;
-    margin-bottom: 25px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 5px;
+    transition: all 0.25s ease;
+    margin-bottom: 24px;
   }
   .trace-tracker-search-container:focus-within {
-    border-color: rgba(168, 85, 247, 0.6);
-    background: rgba(255, 255, 255, 0.06);
-    box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+    border-color: #a855f7;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1);
   }
   #trace-tracker-input {
     flex: 1;
     background: transparent;
     border: none;
     outline: none;
-    color: #ffffff;
-    padding: 12px 16px;
-    font-size: 15px;
-    width: 100%;
+    color: #111827;
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
   }
   #trace-tracker-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: #9ca3af;
   }
+  
   .trace-tracker-search-btn {
-    background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+    background: #a855f7;
     border: none;
     outline: none;
     color: #ffffff;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
-    border-radius: 10px;
-    padding: 0 24px;
+    border-radius: 12px;
+    padding: 0 20px;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 8px;
-    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+    gap: 6px;
+    font-family: inherit;
   }
   .trace-tracker-search-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(168, 85, 247, 0.35);
-    background: linear-gradient(135deg, #b55fe6 0%, #8b28de 100%);
+    background: #9333ea;
   }
-  .trace-tracker-search-btn:active {
-    transform: translateY(0);
+  
+  @media (max-width: 520px) {
+    .trace-tracker-search-container {
+      flex-direction: column;
+      background: transparent;
+      border: none;
+      padding: 0;
+      gap: 10px;
+    }
+    #trace-tracker-input {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .trace-tracker-search-btn {
+      width: 100%;
+      padding: 14px;
+      justify-content: center;
+      border-radius: 14px;
+    }
   }
 
   /* Loader */
   .trace-tracker-loader {
     text-align: center;
-    padding: 40px 0;
+    padding: 30px 0;
   }
   .trace-tracker-loader .spinner {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: 3px solid rgba(168, 85, 247, 0.1);
     border-top: 3px solid #a855f7;
     border-radius: 50%;
     animation: tracker-spin 0.8s linear infinite;
-    margin: 0 auto 15px;
+    margin: 0 auto 12px;
   }
   .trace-tracker-loader p {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    color: #6b7280;
   }
   @keyframes tracker-spin {
     to { transform: rotate(360deg); }
@@ -252,17 +266,17 @@
 
   /* Error Alert */
   .trace-tracker-error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    background: #fef2f2;
+    border: 1px solid #fde8e8;
     border-radius: 12px;
-    padding: 15px 20px;
-    color: #fca5a5;
-    font-size: 14px;
+    padding: 14px 18px;
+    color: #b91c1c;
+    font-size: 13px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 25px;
-    animation: shake-tracker 0.4s ease;
+    gap: 8px;
+    margin-bottom: 20px;
+    animation: shake-tracker 0.35s ease;
   }
   @keyframes shake-tracker {
     0%, 100% { transform: translateX(0); }
@@ -272,101 +286,97 @@
 
   /* --- Order Cards & Timelines --- */
   .trace-order-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 16px;
-    padding: 25px;
-    margin-bottom: 25px;
-    transition: all 0.3s ease;
-  }
-  .trace-order-card:hover {
-    border-color: rgba(168, 85, 247, 0.2);
-    background: rgba(255, 255, 255, 0.03);
+    background: #f9fafb;
+    border: 1px solid #f3f4f6;
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 20px;
   }
 
   .trace-order-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    padding-bottom: 18px;
-    margin-bottom: 20px;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 16px;
+    margin-bottom: 18px;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px;
   }
   .trace-order-id-label {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
-    color: #ffffff;
+    color: #111827;
   }
   .trace-order-date {
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+    color: #6b7280;
     margin-top: 3px;
   }
   .trace-order-status-badge {
-    background: #a855f7;
-    color: #ffffff;
-    font-size: 12px;
+    background: rgba(168, 85, 247, 0.1);
+    color: #7e22ce;
+    font-size: 11px;
     font-weight: 700;
-    padding: 5px 12px;
-    border-radius: 20px;
+    padding: 4px 10px;
+    border-radius: 12px;
     text-transform: capitalize;
-    box-shadow: 0 4px 10px rgba(168, 85, 247, 0.15);
   }
   .trace-order-status-badge.delivered {
-    background: #10b981;
-    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.1);
+    color: #065f46;
   }
   .trace-order-status-badge.cancelled, .trace-order-status-badge.returned, .trace-order-status-badge.refused {
-    background: #ef4444;
-    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.15);
+    background: rgba(239, 68, 68, 0.1);
+    color: #991b1b;
   }
 
   /* Grid details */
   .trace-order-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
-    margin-bottom: 25px;
+    gap: 14px;
+    margin-bottom: 20px;
   }
   @media (max-width: 480px) {
     .trace-order-grid {
       grid-template-columns: 1fr;
+      gap: 12px;
     }
   }
   .trace-grid-item {
     font-size: 13px;
   }
   .trace-grid-label {
-    color: rgba(255, 255, 255, 0.4);
-    margin-bottom: 4px;
-    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 3px;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    font-weight: 600;
   }
   .trace-grid-value {
     font-weight: 600;
-    color: #f3f4f6;
+    color: #374151;
   }
   .trace-courier-link {
-    color: #c084fc;
+    color: #7e22ce;
     text-decoration: none;
+    font-weight: 700;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    transition: all 0.2s ease;
+    gap: 3px;
   }
   .trace-courier-link:hover {
-    color: #e9d5ff;
+    color: #6b21a8;
     text-decoration: underline;
   }
 
   /* Timeline Styles */
   .trace-timeline-container {
-    padding: 20px 0;
+    padding: 16px 0 8px;
     position: relative;
-    margin-top: 15px;
+    margin-top: 10px;
   }
   .trace-timeline {
     display: flex;
@@ -376,21 +386,21 @@
   .trace-timeline::before {
     content: '';
     position: absolute;
-    top: 15px;
-    left: 10px;
-    right: 10px;
+    top: 13px;
+    left: 8px;
+    right: 8px;
     height: 3px;
-    background: rgba(255, 255, 255, 0.08);
+    background: #e5e7eb;
     z-index: 1;
   }
   .trace-timeline-progress {
     position: absolute;
-    top: 15px;
-    left: 10px;
+    top: 13px;
+    left: 8px;
     height: 3px;
-    background: linear-gradient(90deg, #a855f7 0%, #10b981 100%);
+    background: #10b981;
     z-index: 2;
-    transition: width 0.8s ease-in-out;
+    transition: width 0.7s ease-in-out;
   }
   .trace-timeline-step {
     position: relative;
@@ -398,61 +408,59 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: 60px;
+    width: 52px;
     text-align: center;
   }
   .trace-step-dot {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    background: #241438;
-    border: 3px solid rgba(255, 255, 255, 0.1);
+    background: #ffffff;
+    border: 3px solid #e5e7eb;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.4);
+    font-size: 10px;
+    color: #9ca3af;
     font-weight: 700;
-    transition: all 0.4s ease;
+    transition: all 0.3s ease;
   }
   .trace-timeline-step.active .trace-step-dot {
     border-color: #a855f7;
-    background: #a855f7;
-    color: #ffffff;
-    box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+    background: #ffffff;
+    color: #a855f7;
   }
   .trace-timeline-step.completed .trace-step-dot {
     border-color: #10b981;
     background: #10b981;
     color: #ffffff;
-    box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
   }
   .trace-step-label {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
-    margin-top: 8px;
-    color: rgba(255, 255, 255, 0.4);
+    margin-top: 6px;
+    color: #9ca3af;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
-    transition: color 0.4s ease;
+    transition: color 0.3s ease;
   }
   .trace-timeline-step.active .trace-step-label {
-    color: #c084fc;
+    color: #a855f7;
   }
   .trace-timeline-step.completed .trace-step-label {
-    color: #34d399;
+    color: #10b981;
   }
 
   /* Alert panel for Cancelled/Returned orders */
   .trace-tracker-alert-panel {
-    background: rgba(239, 68, 68, 0.05);
-    border: 1px dashed rgba(239, 68, 68, 0.2);
+    background: #fef2f2;
+    border: 1px dashed #fca5a5;
     border-radius: 12px;
-    padding: 15px;
+    padding: 14px;
     font-size: 13px;
-    color: #fca5a5;
-    margin-top: 15px;
+    color: #991b1b;
+    margin-top: 10px;
     text-align: center;
   }
 </style>
@@ -484,7 +492,7 @@
     setTimeout(() => {
       overlay.style.display = 'none';
       document.body.style.overflow = ''; // Unlock scrolling
-    }, 300);
+    }, 250);
   }
 
   // Close modal when clicking outside the content area
@@ -649,7 +657,7 @@
         ${order.product_titles ? `
           <div class="trace-grid-item" style="grid-column: span 2;">
             <div class="trace-grid-label">Items</div>
-            <div class="trace-grid-value" style="font-size:12px; color: rgba(255,255,255,0.7);">${order.product_titles}</div>
+            <div class="trace-grid-value" style="font-size:12px; color: #4b5563;">${order.product_titles}</div>
           </div>
         ` : ''}
       </div>
