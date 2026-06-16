@@ -1,0 +1,708 @@
+<!-- shopify_theme/snippets/trace-order-tracker.liquid -->
+<div id="trace-tracker-overlay" class="trace-tracker-overlay" style="display: none;">
+  <div class="trace-tracker-modal">
+    <!-- Close Button -->
+    <button class="trace-tracker-close" onclick="closeOrderTracker()" aria-label="Close Tracking Modal">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+
+    <!-- Modal Header -->
+    <div class="trace-tracker-header">
+      <div class="trace-tracker-logo">
+        <span class="trace-brand">Trace</span><span class="trace-tracker-badge">Order Tracker</span>
+      </div>
+      <p class="trace-tracker-subtitle">Track your package delivery status in real-time</p>
+    </div>
+
+    <!-- Search Form -->
+    <form id="trace-tracker-form" onsubmit="handleTrackingSearch(event)">
+      <div class="trace-tracker-search-container">
+        <input 
+          type="text" 
+          id="trace-tracker-input" 
+          placeholder="Enter Mobile Number (e.g. 03001234567) or Order ID" 
+          required 
+          autocomplete="off"
+        />
+        <button type="submit" class="trace-tracker-search-btn">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span class="btn-text">Track</span>
+        </button>
+      </div>
+    </form>
+
+    <!-- Loading Spinner -->
+    <div id="trace-tracker-loader" class="trace-tracker-loader" style="display: none;">
+      <div class="spinner"></div>
+      <p>Retrieving order details...</p>
+    </div>
+
+    <!-- Error Message -->
+    <div id="trace-tracker-error" class="trace-tracker-error" style="display: none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span id="trace-tracker-error-text">No order found with these details.</span>
+    </div>
+
+    <!-- Tracking Results -->
+    <div id="trace-tracker-results" class="trace-tracker-results" style="display: none;">
+      <!-- Dynamic list of orders will be loaded here -->
+    </div>
+  </div>
+</div>
+
+<style>
+  /* --- Premium Modal Theme & Transitions --- */
+  .trace-tracker-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(10, 8, 20, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 9999999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  .trace-tracker-overlay.active {
+    opacity: 1;
+  }
+
+  .trace-tracker-modal {
+    background: rgba(24, 20, 38, 0.95);
+    border: 1px solid rgba(168, 85, 247, 0.15);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(168, 85, 247, 0.05);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 650px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    padding: 40px;
+    box-sizing: border-box;
+    color: #ffffff;
+    transform: translateY(20px) scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) rgba(24, 20, 38, 0.95);
+  }
+
+  .trace-tracker-overlay.active .trace-tracker-modal {
+    transform: translateY(0) scale(1);
+  }
+
+  .trace-tracker-modal::-webkit-scrollbar {
+    width: 6px;
+  }
+  .trace-tracker-modal::-webkit-scrollbar-thumb {
+    background-color: rgba(168, 85, 247, 0.3);
+    border-radius: 10px;
+  }
+
+  /* Close Button */
+  .trace-tracker-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .trace-tracker-close:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    transform: rotate(90deg);
+  }
+
+  /* Header */
+  .trace-tracker-header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .trace-tracker-logo {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: 'Montserrat', sans-serif;
+  }
+  .trace-brand {
+    background: linear-gradient(135deg, #ffffff 0%, #a855f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .trace-tracker-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    padding: 3px 8px;
+    border-radius: 12px;
+    color: #c084fc;
+    letter-spacing: 1px;
+  }
+  .trace-tracker-subtitle {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 10px;
+  }
+
+  /* Search Container */
+  .trace-tracker-search-container {
+    display: flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 6px;
+    transition: all 0.3s ease;
+    margin-bottom: 25px;
+  }
+  .trace-tracker-search-container:focus-within {
+    border-color: rgba(168, 85, 247, 0.6);
+    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+  }
+  #trace-tracker-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ffffff;
+    padding: 12px 16px;
+    font-size: 15px;
+    width: 100%;
+  }
+  #trace-tracker-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+  .trace-tracker-search-btn {
+    background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+    border: none;
+    outline: none;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+    border-radius: 10px;
+    padding: 0 24px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+  }
+  .trace-tracker-search-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(168, 85, 247, 0.35);
+    background: linear-gradient(135deg, #b55fe6 0%, #8b28de 100%);
+  }
+  .trace-tracker-search-btn:active {
+    transform: translateY(0);
+  }
+
+  /* Loader */
+  .trace-tracker-loader {
+    text-align: center;
+    padding: 40px 0;
+  }
+  .trace-tracker-loader .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(168, 85, 247, 0.1);
+    border-top: 3px solid #a855f7;
+    border-radius: 50%;
+    animation: tracker-spin 0.8s linear infinite;
+    margin: 0 auto 15px;
+  }
+  .trace-tracker-loader p {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  @keyframes tracker-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Error Alert */
+  .trace-tracker-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 12px;
+    padding: 15px 20px;
+    color: #fca5a5;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 25px;
+    animation: shake-tracker 0.4s ease;
+  }
+  @keyframes shake-tracker {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  /* --- Order Cards & Timelines --- */
+  .trace-order-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 25px;
+    margin-bottom: 25px;
+    transition: all 0.3s ease;
+  }
+  .trace-order-card:hover {
+    border-color: rgba(168, 85, 247, 0.2);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .trace-order-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 18px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .trace-order-id-label {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .trace-order-date {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-top: 3px;
+  }
+  .trace-order-status-badge {
+    background: #a855f7;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 20px;
+    text-transform: capitalize;
+    box-shadow: 0 4px 10px rgba(168, 85, 247, 0.15);
+  }
+  .trace-order-status-badge.delivered {
+    background: #10b981;
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
+  }
+  .trace-order-status-badge.cancelled, .trace-order-status-badge.returned, .trace-order-status-badge.refused {
+    background: #ef4444;
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.15);
+  }
+
+  /* Grid details */
+  .trace-order-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+    margin-bottom: 25px;
+  }
+  @media (max-width: 480px) {
+    .trace-order-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .trace-grid-item {
+    font-size: 13px;
+  }
+  .trace-grid-label {
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .trace-grid-value {
+    font-weight: 600;
+    color: #f3f4f6;
+  }
+  .trace-courier-link {
+    color: #c084fc;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+  }
+  .trace-courier-link:hover {
+    color: #e9d5ff;
+    text-decoration: underline;
+  }
+
+  /* Timeline Styles */
+  .trace-timeline-container {
+    padding: 20px 0;
+    position: relative;
+    margin-top: 15px;
+  }
+  .trace-timeline {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+  }
+  .trace-timeline::before {
+    content: '';
+    position: absolute;
+    top: 15px;
+    left: 10px;
+    right: 10px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    z-index: 1;
+  }
+  .trace-timeline-progress {
+    position: absolute;
+    top: 15px;
+    left: 10px;
+    height: 3px;
+    background: linear-gradient(90deg, #a855f7 0%, #10b981 100%);
+    z-index: 2;
+    transition: width 0.8s ease-in-out;
+  }
+  .trace-timeline-step {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 60px;
+    text-align: center;
+  }
+  .trace-step-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #241438;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 700;
+    transition: all 0.4s ease;
+  }
+  .trace-timeline-step.active .trace-step-dot {
+    border-color: #a855f7;
+    background: #a855f7;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+  }
+  .trace-timeline-step.completed .trace-step-dot {
+    border-color: #10b981;
+    background: #10b981;
+    color: #ffffff;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+  }
+  .trace-step-label {
+    font-size: 10px;
+    font-weight: 700;
+    margin-top: 8px;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    transition: color 0.4s ease;
+  }
+  .trace-timeline-step.active .trace-step-label {
+    color: #c084fc;
+  }
+  .trace-timeline-step.completed .trace-step-label {
+    color: #34d399;
+  }
+
+  /* Alert panel for Cancelled/Returned orders */
+  .trace-tracker-alert-panel {
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px dashed rgba(239, 68, 68, 0.2);
+    border-radius: 12px;
+    padding: 15px;
+    font-size: 13px;
+    color: #fca5a5;
+    margin-top: 15px;
+    text-align: center;
+  }
+</style>
+
+<script>
+  // Global actions to control the tracker overlay
+  function openOrderTracker(event) {
+    if (event) event.preventDefault();
+    const overlay = document.getElementById('trace-tracker-overlay');
+    if (!overlay) return;
+
+    // Reset fields
+    document.getElementById('trace-tracker-input').value = '';
+    document.getElementById('trace-tracker-error').style.display = 'none';
+    document.getElementById('trace-tracker-results').style.display = 'none';
+    document.getElementById('trace-tracker-loader').style.display = 'none';
+
+    overlay.style.display = 'flex';
+    // Force reflow
+    overlay.offsetHeight;
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden'; // Lock background scrolling
+  }
+
+  function closeOrderTracker() {
+    const overlay = document.getElementById('trace-tracker-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    setTimeout(() => {
+      overlay.style.display = 'none';
+      document.body.style.overflow = ''; // Unlock scrolling
+    }, 300);
+  }
+
+  // Close modal when clicking outside the content area
+  document.addEventListener('click', function(e) {
+    const overlay = document.getElementById('trace-tracker-overlay');
+    if (e.target === overlay) {
+      closeOrderTracker();
+    }
+  });
+
+  // Hotkey support: Escape to close modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeOrderTracker();
+    }
+  });
+
+  // Stage resolver
+  function getStageIndex(status) {
+    if (!status) return 0;
+    const s = status.toLowerCase();
+    if (s.includes('delivered')) return 4;
+    if (s.includes('out for delivery')) return 3;
+    if (s.includes('picked up') || s.includes('transit') || s.includes('booked') || s.includes('shipped') || s.includes('dispatch') || s.includes('picked')) return 2;
+    if (s.includes('confirm') || s.includes('verified')) return 1;
+    return 0; // Placed / Pending
+  }
+
+  // Get Courier Tracking URLs
+  function getCourierTrackingUrl(courier, trackingNum) {
+    if (!trackingNum) return '';
+    const cleanNum = trackingNum.trim();
+    const c = (courier || '').toLowerCase();
+    
+    if (c.includes('postex')) {
+      return `https://speedy.postex.pk/tracking?trackingId=${cleanNum}`;
+    }
+    if (c.includes('leopard')) {
+      return `https://www.leopardscourier.com/leopard-tracking?track-number=${cleanNum}`;
+    }
+    if (c.includes('lcs')) {
+      return `https://www.leopardscourier.com/leopard-tracking?track-number=${cleanNum}`;
+    }
+    if (c.includes('trax')) {
+      return `https://trax.pk/tracking?tracking_number=${cleanNum}`;
+    }
+    if (c.includes('mnp') || c.includes('m&p')) {
+      return `https://callcourier.com.pk/tracking/?tc=${cleanNum}`;
+    }
+    return '';
+  }
+
+  // Handle Fetch Request
+  async function handleTrackingSearch(event) {
+    event.preventDefault();
+    
+    const input = document.getElementById('trace-tracker-input');
+    const loader = document.getElementById('trace-tracker-loader');
+    const errorDiv = document.getElementById('trace-tracker-error');
+    const resultsDiv = document.getElementById('trace-tracker-results');
+    
+    const query = input.value.trim();
+    if (!query) return;
+
+    // Show loading, hide error/results
+    loader.style.display = 'block';
+    errorDiv.style.display = 'none';
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+
+    const backendUrl = 'https://trace-erp-production.up.railway.app';
+    const requestUrl = `${backendUrl}/api/public/track?query=${encodeURIComponent(query)}`;
+
+    try {
+      const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+      loader.style.display = 'none';
+
+      if (!response.ok || !data.success || !data.orders || data.orders.length === 0) {
+        document.getElementById('trace-tracker-error-text').textContent = data.error || 'No orders found matching the details provided.';
+        errorDiv.style.display = 'flex';
+        return;
+      }
+
+      // Render orders
+      resultsDiv.style.display = 'block';
+      data.orders.forEach(order => {
+        const orderCard = createOrderCard(order);
+        resultsDiv.appendChild(orderCard);
+      });
+
+    } catch (err) {
+      loader.style.display = 'none';
+      document.getElementById('trace-tracker-error-text').textContent = 'Unable to connect to the tracking server. Please try again.';
+      errorDiv.style.display = 'flex';
+      console.error('Tracking fetch error:', err);
+    }
+  }
+
+  // Build the order card structure dynamically
+  function createOrderCard(order) {
+    const card = document.createElement('div');
+    card.className = 'trace-order-card';
+
+    const orderRef = order.ref_number || `#${order.shopify_order_id}`;
+    const dateFormatted = order.order_date ? new Date(order.order_date).toLocaleDateString('en-US', {
+      year: 'numeric', month: 'short', day: 'numeric'
+    }) : 'N/A';
+
+    const status = order.delivery_status || 'Pending';
+    const statusLower = status.toLowerCase();
+    
+    // Determine class for status badge
+    let statusClass = '';
+    if (statusLower.includes('delivered')) statusClass = 'delivered';
+    else if (statusLower.includes('cancelled') || statusLower.includes('returned') || statusLower.includes('refused')) {
+      statusClass = 'cancelled';
+    }
+
+    // Courier links
+    const trackingUrl = getCourierTrackingUrl(order.courier, order.tracking_number);
+    let courierHtml = order.courier || 'TBD';
+    if (order.tracking_number) {
+      if (trackingUrl) {
+        courierHtml = `${order.courier} (<a href="${trackingUrl}" target="_blank" rel="noopener noreferrer" class="trace-courier-link">${order.tracking_number} ↗</a>)`;
+      } else {
+        courierHtml = `${order.courier} (${order.tracking_number})`;
+      }
+    }
+
+    // Determine timeline progression
+    const stageIndex = getStageIndex(status);
+    const isSpecialStatus = statusLower.includes('cancelled') || statusLower.includes('returned') || statusLower.includes('refused');
+
+    // Create details layout
+    card.innerHTML = `
+      <div class="trace-order-card-header">
+        <div>
+          <div class="trace-order-id-label">Order ${orderRef}</div>
+          <div class="trace-order-date">Placed on ${dateFormatted}</div>
+        </div>
+        <span class="trace-order-status-badge ${statusClass}">${status}</span>
+      </div>
+
+      <div class="trace-order-grid">
+        <div class="trace-grid-item">
+          <div class="trace-grid-label">Customer</div>
+          <div class="trace-grid-value">${order.customer_name || 'N/A'}</div>
+        </div>
+        <div class="trace-grid-item">
+          <div class="trace-grid-label">Destination</div>
+          <div class="trace-grid-value">${order.city || 'N/A'}</div>
+        </div>
+        <div class="trace-grid-item" style="grid-column: span 2;">
+          <div class="trace-grid-label">Courier & Tracking</div>
+          <div class="trace-grid-value">${courierHtml}</div>
+        </div>
+        ${order.product_titles ? `
+          <div class="trace-grid-item" style="grid-column: span 2;">
+            <div class="trace-grid-label">Items</div>
+            <div class="trace-grid-value" style="font-size:12px; color: rgba(255,255,255,0.7);">${order.product_titles}</div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Append alert panel if cancelled/returned, otherwise timeline
+    if (isSpecialStatus) {
+      const alertPanel = document.createElement('div');
+      alertPanel.className = 'trace-tracker-alert-panel';
+      alertPanel.innerHTML = `
+        <strong>Important Notice:</strong> This order has been marked as <strong>${status}</strong>. 
+        If you have any queries, please reach out to customer support.
+      `;
+      card.appendChild(alertPanel);
+    } else {
+      const timelineContainer = document.createElement('div');
+      timelineContainer.className = 'trace-timeline-container';
+      
+      const widthPercent = (stageIndex / 4) * 100;
+      
+      timelineContainer.innerHTML = `
+        <div class="trace-timeline">
+          <div class="trace-timeline-progress" style="width: ${widthPercent}%"></div>
+          
+          <div class="trace-timeline-step ${stageIndex >= 0 ? (stageIndex > 0 ? 'completed' : 'active') : ''}">
+            <div class="trace-step-dot">1</div>
+            <span class="trace-step-label">Placed</span>
+          </div>
+          
+          <div class="trace-timeline-step ${stageIndex >= 1 ? (stageIndex > 1 ? 'completed' : 'active') : ''}">
+            <div class="trace-step-dot">2</div>
+            <span class="trace-step-label">Confirmed</span>
+          </div>
+          
+          <div class="trace-timeline-step ${stageIndex >= 2 ? (stageIndex > 2 ? 'completed' : 'active') : ''}">
+            <div class="trace-step-dot">3</div>
+            <span class="trace-step-label">Dispatched</span>
+          </div>
+          
+          <div class="trace-timeline-step ${stageIndex >= 3 ? (stageIndex > 3 ? 'completed' : 'active') : ''}">
+            <div class="trace-step-dot">4</div>
+            <span class="trace-step-label">Out Delivery</span>
+          </div>
+          
+          <div class="trace-timeline-step ${stageIndex >= 4 ? 'completed' : ''}">
+            <div class="trace-step-dot">5</div>
+            <span class="trace-step-label">Delivered</span>
+          </div>
+        </div>
+      `;
+      card.appendChild(timelineContainer);
+    }
+
+    return card;
+  }
+</script>

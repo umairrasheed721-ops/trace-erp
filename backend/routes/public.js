@@ -151,4 +151,79 @@ router.post('/reset-session', (req, res) => {
   }
 });
 
+// GET /api/public/track - Track order by phone or order number / tracking number
+router.get('/track', (req, res) => {
+  const { query } = req.query;
+  if (!query) {
+    return res.status(400).json({ error: 'Search query is required' });
+  }
+
+  // Set CORS headers manually to guarantee it works from any Shopify front-end domain
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  try {
+    const cleanedQuery = query.trim();
+    const cleanPhoneVal = cleanedQuery.replace(/\D/g, '');
+
+    let whereClauses = [];
+    let params = [];
+
+    // 1. Phone number match (last 10 digits)
+    if (cleanPhoneVal.length >= 10) {
+      whereClauses.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(phone, -10) = ?)');
+      params.push(cleanPhoneVal.slice(-10));
+    }
+
+    // 2. Exact match on ref_number, tracking_number, shopify_order_id, etc.
+    whereClauses.push('ref_number = ?');
+    params.push(cleanedQuery);
+
+    whereClauses.push('tracking_number = ?');
+    params.push(cleanedQuery);
+
+    // If query has '#' prefix or not, we also check the opposite
+    if (cleanedQuery.startsWith('#')) {
+      whereClauses.push('ref_number = ?');
+      params.push(cleanedQuery.substring(1));
+    } else {
+      whereClauses.push('ref_number = ?');
+      params.push('#' + cleanedQuery);
+    }
+
+    // Also match shopify_order_id
+    whereClauses.push('shopify_order_id = ?');
+    params.push(cleanedQuery);
+
+    const querySql = `
+      SELECT ref_number, shopify_order_id, customer_name, order_date, city, tracking_number, delivery_status, courier, status_date, product_titles
+      FROM orders
+      WHERE ${whereClauses.join(' OR ')}
+      ORDER BY order_date DESC
+      LIMIT 5
+    `;
+
+    const orders = db.prepare(querySql).all(...params);
+
+    // If no orders found, return 404
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({ error: 'No orders found matching the details provided.' });
+    }
+
+    res.json({ success: true, orders });
+  } catch (err) {
+    console.error('Public order tracking error:', err);
+    res.status(500).json({ error: 'Server error retrieving tracking information' });
+  }
+});
+
+// OPTIONS preflight for tracking
+router.options('/track', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
 module.exports = router;

@@ -520,5 +520,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     </script>
     {%- comment -%} TRACE Star Ratings — loads collection page badges {%- endcomment -%}
     <script src="{{ 'trace-ratings.js' | asset_url }}" defer></script>
+    
+    {%- comment -%} TRACE Order Tracker Popup {%- endcomment -%}
+    {%- render 'trace-order-tracker' -%}
   </body>
 </html>
