@@ -130,17 +130,6 @@ function SyncDashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '1.2rem' }}>🔄</span>
           <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem' }}>Logistics Tracking Reconciliation Dashboard</h4>
-          <span className="badge" style={{
-            fontSize: '0.65rem',
-            padding: '2px 8px',
-            background: 'var(--brand-glow)',
-            color: 'var(--brand)',
-            borderRadius: '12px',
-            border: '1px solid var(--brand)',
-            marginLeft: '8px'
-          }}>
-            PostEx Sync Engine
-          </span>
         </div>
         <button className="btn btn-secondary btn-sm" style={{ padding: '2px 8px', fontSize: '0.75rem' }}>
           {collapsed ? 'Expand Dashboard ▾' : 'Collapse Dashboard ▴'}
