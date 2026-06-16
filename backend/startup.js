@@ -251,28 +251,8 @@ function runEarlyStartup() {
     console.error('Failed to reset sync statuses:', e.message);
   }
 
-  // Temporary healer to delete user ID 3 or user named "Team access"
-  try {
-    const db = require('./db').db;
-    const usersBefore = db.prepare("SELECT id, username FROM users").all();
-    console.log("⚡ [Startup Auto-Healer] Users list before deletion:", usersBefore);
-
-    const delete3 = db.prepare("DELETE FROM users WHERE id = 3").run();
-    console.log("⚡ [Startup Auto-Healer] Deleted user ID 3:", delete3);
-
-    const delete13 = db.prepare("DELETE FROM users WHERE id = 13").run();
-    console.log("⚡ [Startup Auto-Healer] Deleted user ID 13:", delete13);
-
-    const deleteTeam = db.prepare("DELETE FROM users WHERE username = 'Team access'").run();
-    console.log("⚡ [Startup Auto-Healer] Deleted user named 'Team access':", deleteTeam);
-
-    const usersAfter = db.prepare("SELECT id, username FROM users").all();
-    console.log("⚡ [Startup Auto-Healer] Users list after deletion:", usersAfter);
-  } catch (e) {
-    console.error("⚡ [Startup Auto-Healer] Failed to delete user:", e.message);
-  }
-
   setupWatchdogs();
+
 }
 
 function initPostListen(server) {
