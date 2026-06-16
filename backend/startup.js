@@ -251,11 +251,14 @@ function runEarlyStartup() {
     console.error('Failed to reset sync statuses:', e.message);
   }
 
-  // Temporary healer to delete user ID 13 or user named "Team access"
+  // Temporary healer to delete user ID 3 or user named "Team access"
   try {
     const db = require('./db').db;
     const usersBefore = db.prepare("SELECT id, username FROM users").all();
     console.log("⚡ [Startup Auto-Healer] Users list before deletion:", usersBefore);
+
+    const delete3 = db.prepare("DELETE FROM users WHERE id = 3").run();
+    console.log("⚡ [Startup Auto-Healer] Deleted user ID 3:", delete3);
 
     const delete13 = db.prepare("DELETE FROM users WHERE id = 13").run();
     console.log("⚡ [Startup Auto-Healer] Deleted user ID 13:", delete13);
