@@ -60,3 +60,6 @@ scratch/*.txt
 # Project generated audit files & activity logs
 logs/
 improvement_sheet.md
+
+# Shopify Theme files (handled in a separate git repository)
+shopify_theme/
