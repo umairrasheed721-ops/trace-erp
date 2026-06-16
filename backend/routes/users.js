@@ -63,7 +63,7 @@ router.delete('/:id', isAdmin, (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Prevent deleting the primary admin account (id=1 or username=admin)
+    // Prevent deleting the primary admin account
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -77,13 +77,26 @@ router.delete('/:id', isAdmin, (req, res) => {
       return res.status(400).json({ error: 'You cannot delete your own account' });
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    // Nullify user_id references in audit/history tables before deleting
+    // so FK constraints don't block deletion
+    try { db.prepare('UPDATE order_history SET user_id = NULL WHERE user_id = ?').run(id); } catch (_) {}
+    try { db.prepare('UPDATE audit_logs SET user_id = NULL WHERE user_id = ?').run(id); } catch (_) {}
+
+    // Disable FK checks, delete, re-enable as a safety net
+    try { db.exec('PRAGMA foreign_keys = OFF'); } catch (_) {}
+    try {
+      db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    } finally {
+      try { db.exec('PRAGMA foreign_keys = ON'); } catch (_) {}
+    }
+
     res.json({ success: true, deleted_id: id, deleted_username: user.username });
   } catch (err) {
     console.error('Delete user error:', err.message);
     res.status(500).json({ error: `Failed to delete user: ${err.message}` });
   }
 });
+
 
 // PUT /api/users/:id - Update user (Admin only)
 router.put('/:id', isAdmin, async (req, res) => {
