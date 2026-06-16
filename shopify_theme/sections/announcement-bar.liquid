@@ -104,6 +104,11 @@
               </a>
             </div>
           {%- endfor -%}
+          <div class="custom-announcement-bar__item">
+            <a href="#" onclick="openOrderTracker(event)" class="custom-announcement-bar__link">
+              Track Your Order
+            </a>
+          </div>
         {%- else -%}
           {%- for block in section.blocks -%}
             <div class="custom-announcement-bar__item" {{ block.shopify_attributes }}>
