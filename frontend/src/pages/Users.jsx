@@ -87,11 +87,17 @@ export default function Users() {
         addToast('User deleted', 'success')
         fetchUsers()
       } else {
-        const d = await res.json()
-        addToast(d.error || 'Failed to delete user', 'error')
+        let errMsg = 'Failed to delete user';
+        try {
+          const d = await res.json()
+          errMsg = d.error || d.message || errMsg;
+        } catch (_) {
+          errMsg = `Failed to delete user: ${res.status} ${res.statusText}`;
+        }
+        addToast(errMsg, 'error')
       }
     } catch (e) {
-      addToast('Failed to delete user', 'error')
+      addToast(`Failed to delete user: ${e.message}`, 'error')
     }
   }
 

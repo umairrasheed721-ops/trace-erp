@@ -33,11 +33,15 @@ router.post('/', isAdmin, async (req, res) => {
 
 // DELETE /api/users/:id - Delete user (Admin only)
 router.delete('/:id', isAdmin, (req, res) => {
-  const user = db.prepare('SELECT username FROM users WHERE id = ?').get(req.params.id);
-  if (user && user.username === 'admin') return res.status(400).json({ error: 'Cannot delete primary admin' });
-  
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+  try {
+    const user = db.prepare('SELECT username FROM users WHERE id = ?').get(req.params.id);
+    if (user && user.username === 'admin') return res.status(400).json({ error: 'Cannot delete primary admin' });
+    
+    db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/users/:id - Update user (Admin only)
