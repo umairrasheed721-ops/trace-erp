@@ -338,24 +338,29 @@ function RoleAuthorityMatrix({ addToast, token }) {
   }, []);
 
   const pages = [
-    { id: '/', label: 'Dashboard', icon: '📊' },
-    { id: '/search', label: 'Search Tool', icon: '🔍' },
-    { id: '/returns', label: 'Returns Manager', icon: '📦' },
+    { id: '/', label: 'Dashboard', icon: '🏠' },
+    { id: '/search', label: 'Command Center', icon: '🔍' },
+    { id: '/returns', label: 'Unified Returns', icon: '↩️' },
+    { id: '/whatsapp-portal', label: 'WA Live Chat', icon: '💬' },
     { id: '/whatsapp-bot', label: 'WhatsApp Bot', icon: '🤖' },
-    { id: '/whatsapp-templates', label: 'WhatsApp Templates', icon: '📝' },
-    { id: '/finance', label: 'Finance Manager', icon: '💰' },
-    { id: '/reports', label: 'Reports', icon: '📈' },
+    { id: '/whatsapp-templates', label: 'WA Templates', icon: '✍️' },
+    { id: '/finance', label: 'Finance Engine', icon: '💰' },
+    { id: '/payout-reconciler', label: 'Payout Reconciler', icon: '💸' },
+    { id: '/costing', label: 'Master Costing', icon: '💎' },
+    { id: '/prevention', label: 'Cost Watchdog', icon: '🛡️' },
+    { id: '/reports', label: 'Profit & Loss', icon: '📊' },
+    { id: '/marketing', label: 'Marketing Intel', icon: '🧠' },
+    { id: '/reviews', label: 'Reviews Manager', icon: '⭐' },
     { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚' },
-    { id: '/stuck', label: 'Stuck Monitor', icon: '🛑' },
-    { id: '/advice', label: 'Advice Monitor', icon: '💡' },
-    { id: '/watchdog', label: 'Watchdog', icon: '🕵️' },
-    { id: '/connect', label: 'Connect', icon: '🔗' },
+    { id: '/stuck', label: 'Stuck Monitor', icon: '⏳' },
+    { id: '/advice', label: 'Advice Monitor', icon: '🧠' },
+    { id: '/watchdog', label: 'Watchdog', icon: '🐕' },
+    { id: '/connect', label: 'Connect Store', icon: '🔌' },
     { id: '/users', label: 'User Management', icon: '👥' },
-    { id: '/profile', label: 'Profile', icon: '👤' },
-    { id: '/costing', label: 'Cost Manager', icon: '🏷️' },
-    { id: '/prevention', label: 'Prevention Manager', icon: '🛡️' },
-    { id: '/marketing', label: 'Marketing Intelligence', icon: '📢' },
-    { id: '/diagnostics', label: 'Diagnostic Center', icon: '🛠️' }
+    { id: '/diagnostics', label: 'Diagnostic Center', icon: '🛠️' },
+    { id: '/system-status', label: 'System Status', icon: '🛡️' },
+    { id: '/status-mappings', label: 'Status Mappings', icon: '🔀' },
+    { id: '/profile', label: 'My Profile', icon: '👤' }
   ];
 
   const roles = ['manager', 'agent'];
