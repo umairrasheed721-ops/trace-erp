@@ -1,6 +1,25 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 
+const formatItems = (row) => {
+  if (row.line_items) {
+    try {
+      const items = typeof row.line_items === 'string' ? JSON.parse(row.line_items) : row.line_items;
+      if (Array.isArray(items) && items.length > 0) {
+        return items.map(item => {
+          const name = item.title || item.name || '';
+          const variant = item.variant_title && item.variant_title !== 'Default Title' ? ` - ${item.variant_title}` : '';
+          const qty = item.quantity || item.qty || 1;
+          return `${name}${variant} (x${qty})`;
+        }).join(', ');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return row.product_titles || '';
+};
+
 export default function ReturnsManager() {
   const { activeStoreId, addToast } = useApp()
   const [activeTab, setActiveTab] = useState('queue') // 'queue' or 'history'
@@ -306,6 +325,34 @@ export default function ReturnsManager() {
                       <td>
                         <div style={{ fontWeight: 700 }}>{row.ref_number || row.shopify_order_id}</div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{row.customer_name}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              fontWeight: 700, 
+                              color: '#16a34a',
+                              background: 'rgba(22, 163, 74, 0.08)', 
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              display: 'inline-block'
+                            }}>
+                              Rs. {Math.round(parseFloat(row.price || 0)).toLocaleString()}
+                            </span>
+                          </div>
+                          {formatItems(row) && (
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              opacity: 0.7,
+                              color: 'var(--text-secondary)',
+                              lineHeight: '1.3',
+                              maxWidth: '260px',
+                              wordBreak: 'break-word',
+                              whiteSpace: 'normal'
+                            }}>
+                              📦 {formatItems(row)}
+                            </div>
+                          )}
+                        </div>
                         {row.notes && (
                           <div style={{ 
                             fontSize: '0.72rem', 
@@ -375,6 +422,34 @@ export default function ReturnsManager() {
                       <td>
                         <div style={{ fontWeight: 700 }}>{row.ref_number}</div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{row.customer_name}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ 
+                              fontSize: '0.7rem', 
+                              fontWeight: 700, 
+                              color: '#16a34a',
+                              background: 'rgba(22, 163, 74, 0.08)', 
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              display: 'inline-block'
+                            }}>
+                              Rs. {Math.round(parseFloat(row.price || 0)).toLocaleString()}
+                            </span>
+                          </div>
+                          {formatItems(row) && (
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              opacity: 0.7,
+                              color: 'var(--text-secondary)',
+                              lineHeight: '1.3',
+                              maxWidth: '260px',
+                              wordBreak: 'break-word',
+                              whiteSpace: 'normal'
+                            }}>
+                              📦 {formatItems(row)}
+                            </div>
+                          )}
+                        </div>
                         {row.notes && (
                           <div style={{ 
                             fontSize: '0.72rem', 
