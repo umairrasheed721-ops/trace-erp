@@ -1244,8 +1244,20 @@ class WhatsAppBot {
     const priorityCount = this.priorityQueue?.length || 0;
     this.queue = [];
     if (this.priorityQueue) this.priorityQueue = [];
-    console.log(`🗑️ Cleared ${bulkCount} bulk + ${priorityCount} priority queued messages.`);
-    return bulkCount + priorityCount;
+
+    let dbQueueCount = 0;
+    try {
+      const { db } = require('../db');
+      const result = db.prepare("DELETE FROM whatsapp_message_queue WHERE status = 'pending' AND tenant_id = ?").run(this.tenantId || 'default');
+      dbQueueCount = result.changes;
+
+      db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE status = 'pending' AND tenant_id = ?").run(this.tenantId || 'default');
+    } catch (e) {
+      console.error('Failed to clear database queue:', e.message);
+    }
+
+    console.log(`🗑️ Cleared ${bulkCount} bulk + ${priorityCount} priority + ${dbQueueCount} database queued messages.`);
+    return bulkCount + priorityCount + dbQueueCount;
   }
 
   /**
@@ -1258,13 +1270,28 @@ class WhatsAppBot {
       : this.isPaused ? 'WAITING_QUEUE'
       : this.isSleeping ? 'SLEEPING'
       : 'RUNNING';
+
+    let dbQueueCount = 0;
+    try {
+      const { db } = require('../db');
+      const row = db.prepare("SELECT COUNT(*) as count FROM whatsapp_message_queue WHERE status = 'pending' AND tenant_id = ?").get(this.tenantId || 'default');
+      if (row) {
+        dbQueueCount = row.count;
+      }
+    } catch (e) {
+      console.error('Failed to get database queue count:', e.message);
+    }
+
+    const priorityCount = this.priorityQueue?.length || 0;
+    const bulkCount = this.queue.length;
+
     return {
       isPaused: this.isPaused,
       isSleeping: this.isSleeping,
       bottleneck,
-      priorityQueueCount: this.priorityQueue?.length || 0,
-      bulkQueueCount: this.queue.length,
-      queueCount: (this.priorityQueue?.length || 0) + this.queue.length,
+      priorityQueueCount: priorityCount,
+      bulkQueueCount: bulkCount + dbQueueCount,
+      queueCount: priorityCount + bulkCount + dbQueueCount,
       activeChatsCount: this.activeChats?.size || 0,
       hourlyCount: this.hourlyCount,
       maxPerHour: this.maxPerHour,
