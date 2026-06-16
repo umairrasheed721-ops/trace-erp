@@ -1605,12 +1605,12 @@ export default function SearchTool() {
           <div className="modal-content glass-panel" style={{ width: '450px', textAlign: 'center', padding: '30px' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '15px' }}>⚡</div>
             <h3 className="premium-title">{confirmDialog.title}</h3>
-            <p className="premium-subtitle" style={{ fontSize: '1.1rem', marginBottom: '25px' }}>{confirmDialog.message}</p>
+            <p className="premium-subtitle">{confirmDialog.message}</p>
             
             <div style={{ display: 'flex', gap: '12px' }}>
               <button 
                 className="btn btn-secondary" 
-                style={{ flex: 1, padding: '12px', fontWeight: 700 }}
+                style={{ flex: 1, padding: '12px 20px', fontWeight: 600, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center' }}
                 onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
                 disabled={bulkActionLoading}
               >
@@ -1618,7 +1618,7 @@ export default function SearchTool() {
               </button>
               <button 
                 className="btn btn-primary" 
-                style={{ flex: 1, padding: '12px', fontWeight: 700 }}
+                style={{ flex: 1, padding: '12px 20px', fontWeight: 600, borderRadius: '8px', fontSize: '0.85rem', justifyContent: 'center' }}
                 onClick={confirmDialog.onConfirm}
                 disabled={bulkActionLoading}
               >
@@ -1628,19 +1628,6 @@ export default function SearchTool() {
           </div>
         </div>
       )}
-
-      <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,0,0,0.8);
-          backdrop-filter: blur(8px);
-          display: flex; align-items: center; justify-content: center;
-          z-index: 10000;
-          animation: fadeIn 0.2s ease-out;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      `}</style>
     </div>
   )
 }
