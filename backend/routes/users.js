@@ -9,6 +9,48 @@ const isAdmin = (req, res, next) => {
   res.status(403).json({ error: 'Super Admin access required' });
 };
 
+// ─── STATIC ROUTES FIRST (must come before /:id to avoid Express matching "permissions" as an ID) ───
+
+// GET /api/users/permissions - Get all role permissions (public, used by sidebar)
+router.get('/permissions', (req, res) => {
+  try {
+    const permissions = db.prepare('SELECT * FROM role_permissions').all();
+    res.json(permissions);
+  } catch (err) {
+    console.error('GET permissions error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/users/permissions - Overwrite permissions for a role (admin only)
+router.post('/permissions', isAdmin, (req, res) => {
+  const { role_name, page_ids } = req.body;
+  if (!role_name || !Array.isArray(page_ids)) {
+    return res.status(400).json({ error: 'Invalid data: role_name and page_ids[] required' });
+  }
+
+  try {
+    // Use raw exec transaction — avoids prepared statement cache issues
+    db.exec('BEGIN');
+    try {
+      db.prepare('DELETE FROM role_permissions WHERE role_name = ?').run(role_name);
+      for (const pid of page_ids) {
+        db.prepare('INSERT INTO role_permissions (role_name, page_id) VALUES (?, ?)').run(role_name, pid);
+      }
+      db.exec('COMMIT');
+    } catch (innerErr) {
+      db.exec('ROLLBACK');
+      throw innerErr;
+    }
+    res.json({ success: true, role_name, count: page_ids.length });
+  } catch (err) {
+    console.error('POST permissions error:', err.message);
+    res.status(500).json({ error: `Permission save failed: ${err.message}` });
+  }
+});
+
+// ─── CRUD ROUTES ───
+
 // GET /api/users - List all users (Admin only)
 router.get('/', isAdmin, (req, res) => {
   try {
@@ -38,9 +80,7 @@ router.post('/', isAdmin, async (req, res) => {
       INSERT INTO users (username, password_hash, role, email, can_override_erp_status, can_set_final_status)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(
-      username.trim(),
-      hash,
-      role,
+      username.trim(), hash, role,
       email ? email.trim() : null,
       can_override_erp_status ? 1 : 0,
       can_set_final_status ? 1 : 0
@@ -63,7 +103,6 @@ router.delete('/:id', isAdmin, (req, res) => {
       return res.status(400).json({ error: 'Invalid user ID' });
     }
 
-    // Prevent deleting the primary admin account
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -71,18 +110,15 @@ router.delete('/:id', isAdmin, (req, res) => {
     if (user.username === 'admin') {
       return res.status(400).json({ error: 'Cannot delete the primary admin account' });
     }
-
-    // Prevent self-deletion
     if (req.user && req.user.id === id) {
       return res.status(400).json({ error: 'You cannot delete your own account' });
     }
 
-    // Nullify user_id references in audit/history tables before deleting
-    // so FK constraints don't block deletion
+    // Nullify any user_id references to avoid FK constraint failures
     try { db.prepare('UPDATE order_history SET user_id = NULL WHERE user_id = ?').run(id); } catch (_) {}
     try { db.prepare('UPDATE audit_logs SET user_id = NULL WHERE user_id = ?').run(id); } catch (_) {}
 
-    // Disable FK checks, delete, re-enable as a safety net
+    // Temporarily disable FK enforcement during delete
     try { db.exec('PRAGMA foreign_keys = OFF'); } catch (_) {}
     try {
       db.prepare('DELETE FROM users WHERE id = ?').run(id);
@@ -97,7 +133,6 @@ router.delete('/:id', isAdmin, (req, res) => {
   }
 });
 
-
 // PUT /api/users/:id - Update user (Admin only)
 router.put('/:id', isAdmin, async (req, res) => {
   const { username, role, email, password, can_override_erp_status, can_set_final_status } = req.body;
@@ -109,7 +144,6 @@ router.put('/:id', isAdmin, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid user ID' });
 
-    // Don't allow changing role of primary admin
     const existing = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'User not found' });
 
@@ -137,38 +171,6 @@ router.put('/:id', isAdmin, async (req, res) => {
     if (err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Username already taken by another account' });
     }
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/users/permissions - Get all role permissions
-router.get('/permissions', (req, res) => {
-  try {
-    const permissions = db.prepare('SELECT * FROM role_permissions').all();
-    res.json(permissions);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/users/permissions - Update permissions for a role
-router.post('/permissions', isAdmin, (req, res) => {
-  const { role_name, page_ids } = req.body;
-  if (!role_name || !Array.isArray(page_ids)) {
-    return res.status(400).json({ error: 'Invalid data: role_name and page_ids array required' });
-  }
-
-  try {
-    const transaction = db.transaction(() => {
-      db.prepare('DELETE FROM role_permissions WHERE role_name = ?').run(role_name);
-      const insert = db.prepare('INSERT INTO role_permissions (role_name, page_id) VALUES (?, ?)');
-      for (const pid of page_ids) {
-        insert.run(role_name, pid);
-      }
-    });
-    transaction();
-    res.json({ success: true });
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

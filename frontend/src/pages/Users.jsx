@@ -611,9 +611,12 @@ function RoleAuthorityMatrix({ addToast, token }) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ role_name: role, page_ids: newPageIds })
       })
-      if (!res.ok) throw new Error('Failed')
-    } catch {
-      addToast('⚠️ Permission sync failed. Reverting...', 'error')
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error || `HTTP ${res.status}`)
+      }
+    } catch (e) {
+      addToast(`⚠️ Permission sync failed: ${e.message}`, 'error')
       fetchPermissions()
     }
   }
