@@ -275,6 +275,7 @@ module.exports = [
       "ALTER TABLE product_master_costs ADD COLUMN selling_price REAL DEFAULT 0",
       "ALTER TABLE product_master_costs ADD COLUMN shopify_variant_id TEXT",
       "ALTER TABLE users ADD COLUMN can_override_erp_status INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN can_set_final_status INTEGER DEFAULT 0",
       "ALTER TABLE product_master_costs ADD COLUMN sku TEXT",
       "ALTER TABLE orders ADD COLUMN financial_status TEXT DEFAULT 'pending'",
       "ALTER TABLE orders ADD COLUMN fulfillment_status TEXT DEFAULT 'unfulfilled'",
