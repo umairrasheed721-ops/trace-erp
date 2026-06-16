@@ -212,6 +212,18 @@ module.exports = [
     created_at TEXT DEFAULT (datetime('now'))
   );`,
 
+  // 14. CREATE sync_audit TABLE
+  `CREATE TABLE IF NOT EXISTS sync_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracking_number TEXT,
+    message TEXT NOT NULL,
+    timestamp DATETIME DEFAULT (datetime('now')),
+    store_id INTEGER,
+    level TEXT DEFAULT 'INFO'
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level);`,
+
   // 13. INDEXES ON orders
   `CREATE INDEX IF NOT EXISTS idx_orders_store_id ON orders(store_id);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(phone);`,
@@ -232,6 +244,7 @@ module.exports = [
       "ALTER TABLE product_master_costs ADD COLUMN previous_unit_cost REAL DEFAULT 0",
       "ALTER TABLE sync_audit ADD COLUMN store_id INTEGER",
       "ALTER TABLE sync_audit ADD COLUMN level TEXT DEFAULT 'INFO'",
+      "ALTER TABLE sync_audit ADD COLUMN tracking_number TEXT",
       "ALTER TABLE stores ADD COLUMN meta_ad_account_id TEXT",
       "ALTER TABLE stores ADD COLUMN meta_access_token TEXT",
       "ALTER TABLE stores ADD COLUMN instaworld_key_3 TEXT",
