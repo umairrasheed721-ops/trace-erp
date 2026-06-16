@@ -306,6 +306,24 @@ export default function ReturnsManager() {
                       <td>
                         <div style={{ fontWeight: 700 }}>{row.ref_number || row.shopify_order_id}</div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{row.customer_name}</div>
+                        {row.notes && (
+                          <div style={{ 
+                            fontSize: '0.72rem', 
+                            color: 'var(--brand)', 
+                            background: 'var(--brand-glow)', 
+                            padding: '3px 8px', 
+                            borderRadius: '6px', 
+                            marginTop: '6px', 
+                            display: 'inline-block', 
+                            border: '1px solid rgba(168, 85, 247, 0.2)',
+                            maxWidth: '240px',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'normal',
+                            textAlign: 'left'
+                          }}>
+                            📝 {row.notes}
+                          </div>
+                        )}
                       </td>
                       <td style={{ fontFamily: 'monospace' }}>{row.tracking_number}</td>
                       <td>
@@ -357,6 +375,24 @@ export default function ReturnsManager() {
                       <td>
                         <div style={{ fontWeight: 700 }}>{row.ref_number}</div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{row.customer_name}</div>
+                        {row.notes && (
+                          <div style={{ 
+                            fontSize: '0.72rem', 
+                            color: 'var(--brand)', 
+                            background: 'var(--brand-glow)', 
+                            padding: '3px 8px', 
+                            borderRadius: '6px', 
+                            marginTop: '6px', 
+                            display: 'inline-block', 
+                            border: '1px solid rgba(168, 85, 247, 0.2)',
+                            maxWidth: '240px',
+                            wordBreak: 'break-word',
+                            whiteSpace: 'normal',
+                            textAlign: 'left'
+                          }}>
+                            📝 {row.notes}
+                          </div>
+                        )}
                       </td>
                       <td style={{ fontFamily: 'monospace' }}>{row.tracking_number}</td>
                       <td style={{ fontWeight: 600 }}>{row.processed_by}</td>

@@ -75,7 +75,7 @@ class FinanceAggregator {
 
   static async getReturnsPending(storeId) {
     return db.prepare(`
-      SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, status_date, price
+      SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, status_date, price, notes
       FROM orders 
       WHERE store_id = ? 
       AND LOWER(delivery_status) IN ('returned', 'rto', 'return initiated', 'return in progress')
@@ -87,7 +87,7 @@ class FinanceAggregator {
 
   static async getReturnsHistory(storeId, days) {
     return db.prepare(`
-      SELECT rl.*, o.ref_number, o.customer_name, o.courier
+      SELECT rl.*, o.ref_number, o.customer_name, o.courier, o.notes
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
       WHERE rl.store_id = ?
