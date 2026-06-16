@@ -21,25 +21,137 @@ export default function BulkActions({
   const { user, activeStore } = useApp()
   if (selectedIds.length === 0) return null
 
-  return (
-    <div className="flex items-center gap-4" style={{ 
-      background: 'var(--brand)', 
-      color: 'black', 
-      padding: '8px 16px', 
-      borderRadius: 8, 
-      marginBottom: 12,
+  const styles = {
+    container: {
+      background: '#111827', // Slate 900
+      color: '#f3f4f6',      // Slate 100
+      padding: '10px 18px',
+      borderRadius: '12px',
+      marginBottom: '16px',
       position: 'sticky',
-      top: 0,
+      top: '12px',
       zIndex: 100,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-    }}>
-      <div className="font-bold">📦 {selectedIds.length} selected</div>
+      boxShadow: '0 10px 30px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)',
+      border: '1px solid rgba(168, 85, 247, 0.25)', // Brand purple border
+      display: 'flex',
+      alignItems: 'center',
+      gap: '10px',
+      flexWrap: 'wrap'
+    },
+    divider: {
+      width: '1px',
+      height: '22px',
+      background: 'rgba(255, 255, 255, 0.12)',
+      margin: '0 4px'
+    },
+    selectionText: {
+      fontSize: '13.5px',
+      fontWeight: '600',
+      color: '#e5e7eb',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
+    },
+    btnSelectAll: {
+      background: '#ffffff',
+      color: '#111827',
+      fontWeight: '600',
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    selectBook: {
+      background: '#a855f7',
+      color: '#ffffff',
+      fontWeight: '600',
+      border: 'none',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      outline: 'none',
+      boxShadow: '0 4px 10px rgba(168, 85, 247, 0.15)'
+    },
+    btnCancelBooking: {
+      background: 'rgba(239, 68, 68, 0.1)',
+      color: '#fca5a5',
+      fontWeight: '600',
+      border: '1px solid rgba(239, 68, 68, 0.25)',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    btnConfirm: {
+      background: 'rgba(16, 185, 129, 0.1)',
+      color: '#34d399',
+      fontWeight: '600',
+      border: '1px solid rgba(16, 185, 129, 0.25)',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    btnRevert: {
+      background: 'rgba(245, 158, 11, 0.1)',
+      color: '#fbbf24',
+      fontWeight: '600',
+      border: '1px solid rgba(245, 158, 11, 0.25)',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    selectStatus: {
+      background: '#1f2937',
+      color: '#f3f4f6',
+      fontWeight: '600',
+      border: '1px solid #374151',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      outline: 'none'
+    },
+    btnSecondary: {
+      background: '#1f2937',
+      color: '#e5e7eb',
+      fontWeight: '600',
+      border: '1px solid #374151',
+      borderRadius: '8px',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    btnCancel: {
+      background: 'transparent',
+      color: '#9ca3af',
+      border: 'none',
+      fontWeight: '600',
+      padding: '6px 12px',
+      fontSize: '12.5px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    }
+  }
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.selectionText}>📦 {selectedIds.length} selected</div>
       
       {totalMatching > selectedIds.length && (
         <button 
           onClick={handleSelectAllMatching}
-          className="btn btn-sm"
-          style={{ background: 'white', color: 'black', border: '1px solid black' }}
+          style={styles.btnSelectAll}
+          onMouseOver={(e) => e.target.style.background = '#f3f4f6'}
+          onMouseOut={(e) => e.target.style.background = '#ffffff'}
         >
           Select all {totalMatching} matching orders
         </button>
@@ -47,9 +159,10 @@ export default function BulkActions({
 
       {/* --- BULK BOOKING CONTROLS --- */}
       <select 
-        className="btn btn-sm" 
-        style={{ background: 'var(--brand)', color: 'black', fontWeight: 800, border: '2px solid black', cursor: 'pointer' }}
+        style={styles.selectBook}
         disabled={bulkActionLoading}
+        onMouseOver={(e) => e.target.style.background = '#9333ea'}
+        onMouseOut={(e) => e.target.style.background = '#a855f7'}
         onChange={(e) => {
           const val = e.target.value;
           if (val === 'postex') handleBulkBookPostEx();
@@ -73,19 +186,21 @@ export default function BulkActions({
       <button 
         disabled={bulkActionLoading}
         onClick={handleBulkCancel}
-        className="btn btn-sm" 
-        style={{ background: '#ff0000', color: 'white', fontWeight: 800, border: '2px solid white' }}
+        style={styles.btnCancelBooking}
+        onMouseOver={(e) => { e.target.style.background = 'rgba(239, 68, 68, 0.2)' }}
+        onMouseOut={(e) => { e.target.style.background = 'rgba(239, 68, 68, 0.1)' }}
       >
         🛑 CANCEL BOOKING
       </button>
 
-      <div style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.2)', margin: '0 8px' }} />
+      <div style={styles.divider} />
 
       <button 
         disabled={bulkActionLoading}
         onClick={handleBulkConfirm}
-        className="btn btn-sm" 
-        style={{ background: 'black', color: 'var(--brand)', fontWeight: 700 }}
+        style={styles.btnConfirm}
+        onMouseOver={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.2)' }}
+        onMouseOut={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.1)' }}
       >
         {bulkActionLoading ? '⌛...' : '✅ BULK CONFIRM'}
       </button>
@@ -93,18 +208,20 @@ export default function BulkActions({
       <button 
         disabled={bulkActionLoading}
         onClick={handleBulkRevert}
-        className="btn btn-sm" 
-        style={{ background: 'black', color: '#ff4444', fontWeight: 700 }}
+        style={styles.btnRevert}
+        onMouseOver={(e) => { e.target.style.background = 'rgba(245, 158, 11, 0.2)' }}
+        onMouseOut={(e) => { e.target.style.background = 'rgba(245, 158, 11, 0.1)' }}
       >
         {bulkActionLoading ? '⌛...' : '↩️ REVERT TO PENDING'}
       </button>
 
-      <div style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.2)', margin: '0 8px' }} />
+      <div style={styles.divider} />
 
       <select 
-        className="btn btn-sm" 
-        style={{ background: 'black', color: 'white', fontWeight: 700, cursor: 'pointer' }}
+        style={styles.selectStatus}
         disabled={bulkActionLoading}
+        onMouseOver={(e) => { e.target.style.background = '#374151' }}
+        onMouseOut={(e) => { e.target.style.background = '#1f2937' }}
         onChange={(e) => handleBulkUpdateStatus(e.target.value)}
         value=""
       >
@@ -124,24 +241,32 @@ export default function BulkActions({
 
       <button 
         onClick={handleExportTracking}
-        className="btn btn-sm" 
-        style={{ background: 'white', color: 'black', fontWeight: 800, border: '2px solid black' }}
+        style={styles.btnSecondary}
+        onMouseOver={(e) => { e.target.style.background = '#374151' }}
+        onMouseOut={(e) => { e.target.style.background = '#1f2937' }}
       >
         📋 EXPORT TRACKINGS
       </button>
 
       <button 
         onClick={handleBulkWhatsApp}
-        className="btn btn-sm" 
-        style={{ background: 'white', color: 'var(--green)', fontWeight: 800, border: '2px solid var(--green)' }}
+        style={{
+          ...styles.btnSecondary,
+          color: '#34d399',
+          border: '1px solid rgba(16, 185, 129, 0.25)',
+          background: 'rgba(16, 185, 129, 0.05)'
+        }}
+        onMouseOver={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.15)' }}
+        onMouseOut={(e) => { e.target.style.background = 'rgba(16, 185, 129, 0.05)' }}
       >
         💬 BULK WHATSAPP
       </button>
 
       <button 
         onClick={() => setSelectedIds([])}
-        className="btn btn-sm" 
-        style={{ background: 'rgba(0,0,0,0.1)', color: 'black' }}
+        style={styles.btnCancel}
+        onMouseOver={(e) => { e.target.style.color = '#ffffff' }}
+        onMouseOut={(e) => { e.target.style.color = '#9ca3af' }}
       >
         CANCEL
       </button>
