@@ -61,6 +61,10 @@ async function main() {
     {
       local: '/Users/umairrasheed/Desktop/antigravity/shopify_theme/layout/theme.liquid',
       remote: 'layout/theme.liquid'
+    },
+    {
+      local: '/Users/umairrasheed/Desktop/antigravity/shopify_theme/sections/custom-hero-slider.liquid',
+      remote: 'sections/custom-hero-slider.liquid'
     }
   ];
 
