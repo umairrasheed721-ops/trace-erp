@@ -90,9 +90,45 @@ router.post('/bulk-update', async (req, res) => {
       let order = null;
       if (masterKey === "Match by Tracking Number") {
         order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
-        if (!order && inputId) order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
-      } else if (inputId) {
-        order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(store_id, inputId);
+        if (!order && (row.orderId || row.trackingNumber)) {
+          const rawId = String(row.orderId || '').trim();
+          const cleanDigits = rawId.replace(/\D/g, '');
+          const candidates = Array.from(new Set([
+            rawId,
+            cleanDigits,
+            cleanDigits ? 'TR' + cleanDigits : null,
+            cleanDigits ? '#' + cleanDigits : null
+          ].filter(Boolean)));
+
+          if (candidates.length > 0) {
+            const placeholders = candidates.map(() => '?').join(',');
+            order = db.prepare(`
+              SELECT * FROM orders 
+              WHERE store_id = ? 
+              AND (shopify_order_id IN (${placeholders}) OR ref_number IN (${placeholders}))
+              LIMIT 1
+            `).get(store_id, ...candidates, ...candidates);
+          }
+        }
+      } else {
+        const rawId = String(row.orderId || '').trim();
+        const cleanDigits = rawId.replace(/\D/g, '');
+        const candidates = Array.from(new Set([
+          rawId,
+          cleanDigits,
+          cleanDigits ? 'TR' + cleanDigits : null,
+          cleanDigits ? '#' + cleanDigits : null
+        ].filter(Boolean)));
+
+        if (candidates.length > 0) {
+          const placeholders = candidates.map(() => '?').join(',');
+          order = db.prepare(`
+            SELECT * FROM orders 
+            WHERE store_id = ? 
+            AND (shopify_order_id IN (${placeholders}) OR ref_number IN (${placeholders}))
+            LIMIT 1
+          `).get(store_id, ...candidates, ...candidates);
+        }
       }
 
       if (!order) {
