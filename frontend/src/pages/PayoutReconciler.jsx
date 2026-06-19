@@ -712,7 +712,7 @@ export default function PayoutReconciler() {
               {normalizedData.length > 0 && (
                 <div style={{ marginTop: 40 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <h3 style={{ margin: 0 }}>Preview (First 10 rows)</h3>
+                    <h3 style={{ margin: 0 }}>Preview ({normalizedData.length} rows)</h3>
                     <div style={{ display: 'flex', gap: 10 }}>
                       <button className="btn btn-brand" style={{ background: 'var(--green)', border: 'none', color: '#fff' }} onClick={handleProceedToFinanceEngine}>
                         🚀 Proceed in Finance Engine
@@ -722,7 +722,7 @@ export default function PayoutReconciler() {
                       </button>
                     </div>
                   </div>
-                  <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
+                  <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)', maxHeight: 400 }}>
                     <table className="order-table" style={{ width: '100%' }}>
                       <thead>
                         <tr>
@@ -735,7 +735,7 @@ export default function PayoutReconciler() {
                         </tr>
                       </thead>
                       <tbody>
-                        {normalizedData.slice(0, 10).map((row, i) => (
+                        {normalizedData.map((row, i) => (
                           <tr key={i}>
                             <td style={{ fontWeight: 700 }}>{row['Order ID']}</td>
                             <td style={{ fontFamily: 'monospace' }}>{row['Tracking Number']}</td>
