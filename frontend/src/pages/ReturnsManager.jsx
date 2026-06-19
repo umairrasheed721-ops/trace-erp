@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 const formatItems = (row) => {
@@ -22,6 +23,7 @@ const formatItems = (row) => {
 
 export default function ReturnsManager() {
   const { activeStoreId, addToast } = useApp()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('queue') // 'queue' or 'history'
   const [trackingInput, setTrackingInput] = useState('')
   const [restockShopify, setRestockShopify] = useState(true)
@@ -174,6 +176,30 @@ export default function ReturnsManager() {
     }
   }
 
+  const handleOpenInCommandCenter = () => {
+    const currentList = activeTab === 'queue' ? pendingReturns : returnHistory;
+    const filteredList = activeTab === 'queue' ? filteredPending : filteredHistory;
+
+    const targetOrders = selectedIds.length > 0 
+      ? currentList.filter(r => selectedIds.includes(r.id))
+      : filteredList;
+
+    if (targetOrders.length === 0) {
+      addToast('No returns to open in Command Center', 'warning');
+      return;
+    }
+
+    const refs = targetOrders.map(o => o.ref_number || o.shopify_order_id).filter(Boolean).join(' ');
+    
+    navigate('/search', { 
+      state: { 
+        preset: 'All Time',
+        status: 'All Statuses',
+        keyword: refs
+      } 
+    });
+  }
+
   return (
     <div className="page-container" style={{ maxWidth: '1600px', margin: '0 auto' }}>
       <header className="page-header" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -279,6 +305,12 @@ export default function ReturnsManager() {
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
               />
+              <button 
+                className="btn btn-secondary btn-sm" 
+                onClick={handleOpenInCommandCenter}
+              >
+                🔍 Open in Command Center {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
+              </button>
               {activeTab === 'queue' && selectedIds.length > 0 && (
                 <button 
                   className="btn btn-brand btn-sm" 

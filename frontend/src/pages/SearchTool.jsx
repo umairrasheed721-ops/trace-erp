@@ -746,31 +746,54 @@ export default function SearchTool() {
     const price = Math.round(parseFloat(o.price)||0);
     const courier = o.courier || 'our courier';
     const tracking = o.tracking_number || '';
-    
-    const template = waTemplates.find(t => t.id === parseInt(waQueueTemplate));
-    let msg = "";
-    
-    if (template) {
-      msg = template.content
-        .replace(/\[Name\]/g, name)
-        .replace(/\[OrderID\]/g, ref)
-        .replace(/\[Price\]/g, price)
-        .replace(/\[Courier\]/g, courier)
-        .replace(/\[Tracking\]/g, tracking);
-      
-      // Auto-Link if confirmation token exists
-      if (o.confirmation_token) {
-        const appUrl = window.location.origin;
-        const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-        msg = msg.replace(/\[Link\]/g, link);
-      } else {
-        msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
-      }
-    }
-
     const waPhone = o.phone.replace(/\D/g,'').replace(/^0/,'92');
-    const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
-    window.open(waLink, '_blank');
+
+    if (waQueueTemplate === 'send_images') {
+      addToast(`⏳ Sending product images to ${name}...`, 'info');
+      fetch('/api/whatsapp/send-order-images', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+        },
+        body: JSON.stringify({ orderId: o.id, phone: o.phone })
+      })
+      .then(async (res) => {
+        const data = await res.json();
+        if (res.ok && data.success) {
+          addToast(`✅ Images sent to ${name}! (Sent ${data.sentCount} items)`, 'success');
+        } else {
+          addToast(`❌ Failed to send images to ${name}: ${data.error || 'Unknown error'}`, 'error');
+        }
+      })
+      .catch((err) => {
+        addToast(`❌ Failed to send images to ${name}: ${err.message || err}`, 'error');
+      });
+    } else {
+      const template = waTemplates.find(t => t.id === parseInt(waQueueTemplate));
+      let msg = "";
+      
+      if (template) {
+        msg = template.content
+          .replace(/\[Name\]/g, name)
+          .replace(/\[OrderID\]/g, ref)
+          .replace(/\[Price\]/g, price)
+          .replace(/\[Courier\]/g, courier)
+          .replace(/\[Tracking\]/g, tracking);
+        
+        // Auto-Link if confirmation token exists
+        if (o.confirmation_token) {
+          const appUrl = window.location.origin;
+          const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
+          msg = msg.replace(/\[Link\]/g, link);
+        } else {
+          msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
+        }
+      }
+
+      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      window.open(waLink, '_blank');
+    }
 
     if (waQueueIndex < selectedIds.length - 1) {
       setWAQueueIndex(prev => prev + 1);
@@ -1463,6 +1486,7 @@ export default function SearchTool() {
                 value={waQueueTemplate}
                 onChange={e => setWAQueueTemplate(e.target.value)}
               >
+                <option value="send_images">🖼️ Send Product Images</option>
                 {waTemplates.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
