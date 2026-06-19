@@ -61,6 +61,11 @@ fs.mkdirSync(publicPath, { recursive: true });
 console.log('📤 Copying build artifacts...');
 copyRecursiveSync(distPath, publicPath);
 
+// 4.5. Generate version metadata for automated client-side cache busting
+const versionInfo = { buildId: `build-${Date.now()}` };
+fs.writeFileSync(path.join(publicPath, 'version.json'), JSON.stringify(versionInfo, null, 2), 'utf8');
+console.log(`✨ Generated version metadata with buildId: ${versionInfo.buildId}`);
+
 // 5. Final Sanity Check
 const finalAssetsPath = path.join(publicPath, 'assets');
 if (fs.existsSync(finalAssetsPath)) {

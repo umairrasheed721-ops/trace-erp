@@ -42,6 +42,41 @@ const ReviewsManager = lazy(() => import('./pages/ReviewsManager'))
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
 
+  // 🔄 Automated Cache-Buster Engine
+  React.useEffect(() => {
+    let currentBuildId = null;
+    let isChecking = false;
+
+    const checkVersion = async () => {
+      if (isChecking) return;
+      isChecking = true;
+      try {
+        const res = await fetch(`/version.json?t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.buildId) {
+            if (currentBuildId && currentBuildId !== data.buildId) {
+              console.log(`✨ A new version of Trace ERP is available! Current: ${currentBuildId}, New: ${data.buildId}. Reloading...`);
+              const url = new URL(window.location.href);
+              url.searchParams.set('v', data.buildId);
+              window.location.href = url.toString();
+            } else if (!currentBuildId) {
+              currentBuildId = data.buildId;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[CacheBuster] Version check failed:', err);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    checkVersion();
+    const interval = setInterval(checkVersion, 60000); // Check every 60 seconds
+    return () => clearInterval(interval);
+  }, []);
+
   // Public Unauthenticated Tracking Portal Route
   if (window.location.pathname.startsWith('/track')) {
     return (
