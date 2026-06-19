@@ -50,7 +50,7 @@ export default function Topbar() {
 
   return (
     <header className="topbar" style={{ borderBottom: 'none' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', height: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', height: '100%', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
           <div className="topbar-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
             {activeStore?.store_name || activeStore?.shop_domain || 'Select Store'}
