@@ -1,9 +1,25 @@
-import React from 'react'
+import React, { useState, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Sidebar() {
   const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout, permissions } = useApp()
+  const [isHovered, setIsHovered] = useState(false)
+  const hoverTimeout = useRef(null)
+
+  const handleMouseEnter = () => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current)
+    hoverTimeout.current = setTimeout(() => {
+      setIsHovered(true)
+    }, 150) // 150ms hover-intent delay
+  }
+
+  const handleMouseLeave = () => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current)
+    setIsHovered(false)
+  }
+
+  const isExpanded = !sidebarCollapsed || isHovered
 
   const navItems = [
     { to: '/', icon: '🏠', label: 'Dashboard' },
@@ -37,17 +53,21 @@ export default function Sidebar() {
   })
 
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+    <aside 
+      className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${isHovered && sidebarCollapsed ? 'hover-expanded' : ''}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <div className="sidebar-logo">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          <div style={{ overflow: 'hidden', display: !sidebarCollapsed ? 'block' : 'none' }}>
+          <div style={{ overflow: 'hidden', display: isExpanded ? 'block' : 'none' }}>
             <h1>TRACE ERP</h1>
             <span>Multi-Store Dashboard</span>
           </div>
           <button 
             onClick={toggleSidebar} 
             className="sidebar-toggle"
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+            title={sidebarCollapsed ? 'Pin Sidebar' : 'Unpin Sidebar'}
           >
             {sidebarCollapsed ? '➡️' : '⬅️'}
           </button>
@@ -55,24 +75,24 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <div className="nav-section-label" style={{ display: !sidebarCollapsed ? 'block' : 'none' }}>Navigation</div>
+        <div className="nav-section-label" style={{ display: isExpanded ? 'block' : 'none' }}>Navigation</div>
         {navItems.map(item => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            title={sidebarCollapsed ? item.label : ''}
+            title={!isExpanded ? item.label : ''}
           >
             <span className="nav-icon">{item.icon}</span>
-            <span style={{ display: !sidebarCollapsed ? 'inline' : 'none' }}>{item.label}</span>
-            <span className="nav-badge" style={{ display: item.badge > 0 ? 'inline' : 'none' }}>{item.badge}</span>
+            <span style={{ display: isExpanded ? 'inline' : 'none' }}>{item.label}</span>
+            <span className="nav-badge" style={{ display: (item.badge > 0 && isExpanded) ? 'inline' : 'none' }}>{item.badge}</span>
           </NavLink>
         ))}
       </nav>
 
       <div className="store-switcher">
-        <span className="store-select-label" style={{ display: !sidebarCollapsed ? 'inline' : 'none' }}>Active Store</span>
+        <span className="store-select-label" style={{ display: isExpanded ? 'inline' : 'none' }}>Active Store</span>
         <NavLink 
           to="/connect" 
           className="btn btn-primary" 
@@ -81,19 +101,21 @@ export default function Sidebar() {
             display: stores.length === 0 ? 'flex' : 'none'
           }}
         >
-          + {sidebarCollapsed ? '' : 'Connect Store'}
+          + {isExpanded ? 'Connect Store' : ''}
         </NavLink>
         <select
           className="store-select"
           value={activeStoreId || ''}
           onChange={e => setActiveStoreId(parseInt(e.target.value))}
           style={{
-            ...((sidebarCollapsed ? { padding: '4px 2px', textAlign: 'center' } : {})),
+            ...((!isExpanded ? { padding: '4px 2px', textAlign: 'center' } : {})),
             display: stores.length > 0 ? 'block' : 'none'
           }}
         >
           {stores.map(s => (
-            <option key={s.id} value={s.id}>{sidebarCollapsed ? (s.store_name || s.shop_domain).substring(0,2).toUpperCase() : (s.store_name || s.shop_domain)}</option>
+            <option key={s.id} value={s.id}>
+              {isExpanded ? (s.store_name || s.shop_domain) : (s.store_name || s.shop_domain).substring(0,2).toUpperCase()}
+            </option>
           ))}
         </select>
         <button 
@@ -101,12 +123,13 @@ export default function Sidebar() {
           className="btn btn-secondary btn-sm" 
           style={{ width: '100%', justifyContent: 'center', marginTop: 10, background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
         >
-          {sidebarCollapsed ? '🚪' : '🚪 Logout'}
+          {isExpanded ? '🚪 Logout' : '🚪'}
         </button>
-        <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center', display: !sidebarCollapsed ? 'block' : 'none' }}>
+        <div style={{ fontSize: 10, opacity: 0.3, marginTop: 12, textAlign: 'center', display: isExpanded ? 'block' : 'none' }}>
           TRACE ERP v1.6.0
         </div>
       </div>
     </aside>
   )
 }
+

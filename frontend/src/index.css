@@ -245,7 +245,42 @@ input:focus, select:focus, textarea:focus, button:focus {
 
 .sidebar.collapsed {
   width: var(--sidebar-width-collapsed);
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.sidebar.collapsed.hover-expanded {
+  width: var(--sidebar-width);
+  box-shadow: 8px 0 28px rgba(0, 0, 0, 0.45);
+  background: var(--bg-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right-color: var(--border-bright);
+  transition-delay: 150ms;
+}
+
+@keyframes sidebarFadeIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sidebarFadeInSimple {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sidebar.hover-expanded .sidebar-logo > div > div,
+.sidebar.hover-expanded .nav-section-label,
+.sidebar.hover-expanded .nav-item span:not(.nav-icon),
+.sidebar.hover-expanded .store-select-label,
+.sidebar.hover-expanded .store-switcher div {
+  animation: sidebarFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.sidebar.hover-expanded .store-switcher button,
+.sidebar.hover-expanded .store-switcher select {
+  animation: sidebarFadeInSimple 0.2s ease-out forwards;
+}
+
 
 .sidebar-logo {
   padding: 16px 14px;
