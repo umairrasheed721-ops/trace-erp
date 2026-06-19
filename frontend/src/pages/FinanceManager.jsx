@@ -1,8 +1,10 @@
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useFinance } from '../context/FinanceContext'
 
 export default function FinanceManager() {
   const { activeStoreId } = useApp()
+  const navigate = useNavigate()
   const {
     pasteData, setPasteData,
     masterKey, setMasterKey,
@@ -27,11 +29,18 @@ export default function FinanceManager() {
 
   return (
     <div className="page-container" style={{ maxWidth: 1400 }}>
-      <header className="page-header" style={{ marginBottom: 20 }}>
+      <header className="page-header" style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="page-title">💰 Finance & Payments Manager</h1>
           <p className="page-subtitle">Reconcile COD payouts and returned items from courier settlement sheets.</p>
         </div>
+        <button 
+          className="btn" 
+          style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} 
+          onClick={() => navigate('/payout-reconciler')}
+        >
+          💸 Payout Reconciler
+        </button>
       </header>
 
       {summary && (

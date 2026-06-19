@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useFinance } from '../context/FinanceContext'
 
 function formatDateToUserFriendly(dateStr) {
   if (!dateStr) return '';
@@ -81,9 +83,11 @@ function parseDateString(inputStr) {
 
 export default function PayoutReconciler() {
   const { addToast, activeStoreId } = useApp()
+  const { setPasteData, setMasterKey } = useFinance()
+  const navigate = useNavigate()
   
   // Navigation & Modes
-  const [activeTab, setActiveTab] = useState('api') // 'api' | 'manual'
+  const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'api'
   const [showVault, setShowVault] = useState(false)
 
   // Common Form State
@@ -291,6 +295,28 @@ export default function PayoutReconciler() {
     addToast('📊 Master Excel downloaded!', 'success')
   }
 
+  const handleProceedToFinanceEngine = () => {
+    if (normalizedData.length === 0) {
+      addToast('No data to proceed with', 'error')
+      return
+    }
+
+    const tsv = normalizedData.map(row => [
+      row['Order ID'] || '',
+      row['Tracking Number'] || '',
+      row['Status'] || '',
+      row['Amount Collected'] || 0,
+      row['Total Expense'] || 0,
+      row['CPR Reference'] || '',
+      row['Settlement Date'] || ''
+    ].join('\t')).join('\n')
+
+    setPasteData(tsv)
+    setMasterKey('Match by Order ID')
+    addToast(`🚀 Transferred ${normalizedData.length} orders to Finance Engine!`, 'success')
+    navigate('/finance')
+  }
+
   // --- LIVE API LOGIC ---
   const handleFetchLive = async () => {
     if (!cprReference) {
@@ -416,9 +442,14 @@ export default function PayoutReconciler() {
           <p className="page-subtitle">Reconcile courier payouts with bank-level verification and zero-trust audit locking.</p>
         </div>
 
-        <button className="btn" style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setShowVault(true)}>
-          🔑 Secure Credential Vault
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn" style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => navigate('/finance')}>
+            💰 Go to Finance Engine
+          </button>
+          <button className="btn" style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setShowVault(true)}>
+            🔑 Secure Credential Vault
+          </button>
+        </div>
       </header>
 
       {/* --- MODE SWITCHER TABS --- */}
@@ -682,9 +713,14 @@ export default function PayoutReconciler() {
                 <div style={{ marginTop: 40 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                     <h3 style={{ margin: 0 }}>Preview (First 10 rows)</h3>
-                    <button className="btn btn-brand" onClick={handleExport}>
-                      📥 Download Master Excel ({normalizedData.length} rows)
-                    </button>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button className="btn btn-brand" style={{ background: 'var(--green)', border: 'none', color: '#fff' }} onClick={handleProceedToFinanceEngine}>
+                        🚀 Proceed in Finance Engine
+                      </button>
+                      <button className="btn btn-brand" onClick={handleExport}>
+                        📥 Download Master Excel ({normalizedData.length} rows)
+                      </button>
+                    </div>
                   </div>
                   <div style={{ overflowX: 'auto', borderRadius: 12, border: '1px solid var(--border)' }}>
                     <table className="order-table" style={{ width: '100%' }}>
