@@ -508,35 +508,37 @@ async function processQueue(bot, sock, db) {
           }
 
           let existingRow = null;
-          if (uuid) {
-            existingRow = db.prepare(`
-              SELECT id FROM whatsapp_messages 
-              WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
-              ORDER BY id DESC LIMIT 1
-            `).get(cleaned, uuid, bot.tenantId);
-          }
-          if (!existingRow && finalDbMediaUrl) {
-            existingRow = db.prepare(`
-              SELECT id FROM whatsapp_messages 
-              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
-              ORDER BY id DESC LIMIT 1
-            `).get(cleaned, finalDbMediaUrl, bot.tenantId);
-          }
+          if (bot.ephemeralMode !== 1) {
+            if (uuid) {
+              existingRow = db.prepare(`
+                SELECT id FROM whatsapp_messages 
+                WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
+                ORDER BY id DESC LIMIT 1
+              `).get(cleaned, uuid, bot.tenantId);
+            }
+            if (!existingRow && finalDbMediaUrl) {
+              existingRow = db.prepare(`
+                SELECT id FROM whatsapp_messages 
+                WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+                ORDER BY id DESC LIMIT 1
+              `).get(cleaned, finalDbMediaUrl, bot.tenantId);
+            }
 
-          if (existingRow) {
-            db.prepare(`
-              UPDATE whatsapp_messages 
-              SET message_id = ?, status = 'sent'
-              WHERE id = ?
-            `).run(messageId, existingRow.id);
-            dbMessageId = existingRow.id;
-            console.log(`[DEDUP] Updated existing message ID ${dbMessageId} (originally message_id=${uuid}) with Baileys ID: ${messageId}`);
-          } else {
-            const result = db.prepare(`
-              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
-            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType, bot.tenantId);
-            dbMessageId = result.lastInsertRowid;
+            if (existingRow) {
+              db.prepare(`
+                UPDATE whatsapp_messages 
+                SET message_id = ?, status = 'sent'
+                WHERE id = ?
+              `).run(messageId, existingRow.id);
+              dbMessageId = existingRow.id;
+              console.log(`[DEDUP] Updated existing message ID ${dbMessageId} (originally message_id=${uuid}) with Baileys ID: ${messageId}`);
+            } else {
+              const result = db.prepare(`
+                INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+                VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
+              `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType, bot.tenantId);
+              dbMessageId = result.lastInsertRowid;
+            }
           }
 
           try {
@@ -595,25 +597,27 @@ async function processQueue(bot, sock, db) {
           }
 
           let existingRow = null;
-          if (finalDbMediaUrl) {
-            existingRow = db.prepare(`
-              SELECT id FROM whatsapp_messages 
-              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
-              ORDER BY id DESC LIMIT 1
-            `).get(cleaned, finalDbMediaUrl, bot.tenantId);
-          }
+          if (bot.ephemeralMode !== 1) {
+            if (finalDbMediaUrl) {
+              existingRow = db.prepare(`
+                SELECT id FROM whatsapp_messages 
+                WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+                ORDER BY id DESC LIMIT 1
+              `).get(cleaned, finalDbMediaUrl, bot.tenantId);
+            }
 
-          if (existingRow) {
-            db.prepare(`
-              UPDATE whatsapp_messages 
-              SET message_id = ?, status = 'failed'
-              WHERE id = ?
-            `).run(uuid, existingRow.id);
-          } else {
-            db.prepare(`
-              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'failed', ?)
-            `).run(storeId, orderId, cleaned, dbMessageContent, uuid, finalDbMediaUrl, finalMediaType, bot.tenantId);
+            if (existingRow) {
+              db.prepare(`
+                UPDATE whatsapp_messages 
+                SET message_id = ?, status = 'failed'
+                WHERE id = ?
+              `).run(uuid, existingRow.id);
+            } else {
+              db.prepare(`
+                INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+                VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'failed', ?)
+              `).run(storeId, orderId, cleaned, dbMessageContent, uuid, finalDbMediaUrl, finalMediaType, bot.tenantId);
+            }
           }
 
           try {
@@ -699,14 +703,16 @@ async function processIncomingMessage(bot, msg, sock, db) {
       if (deletedId) {
         console.log(`🚫 Message deletion detected: message_id=${deletedId} was deleted.`);
         
-        try {
-          db.prepare(`
-            UPDATE whatsapp_messages 
-            SET message = '🚫 This message was deleted', media_url = NULL, media_type = NULL 
-            WHERE message_id = ?
-          `).run(deletedId);
-        } catch (e) {
-          console.error('Failed to update deleted message in DB:', e.message);
+        if (bot.ephemeralMode !== 1) {
+          try {
+            db.prepare(`
+              UPDATE whatsapp_messages 
+              SET message = '🚫 This message was deleted', media_url = NULL, media_type = NULL 
+              WHERE message_id = ?
+            `).run(deletedId);
+          } catch (e) {
+            console.error('Failed to update deleted message in DB:', e.message);
+          }
         }
 
         try {
@@ -749,7 +755,7 @@ async function processIncomingMessage(bot, msg, sock, db) {
   let mediaUrl = null;
   let mediaType = null;
   let driveFileId = null;
-  if (mediaDetails) {
+  if (mediaDetails && bot.ephemeralMode !== 1) {
     const existingMsg = db.prepare(`SELECT media_url, drive_file_id FROM whatsapp_messages WHERE message_id = ?`).get(msg.key.id);
     if (existingMsg && existingMsg.media_url) {
       mediaUrl = existingMsg.media_url;
@@ -806,29 +812,31 @@ async function processIncomingMessage(bot, msg, sock, db) {
 
   let dbMessageId = null;
   let alreadyExists = false;
-  try {
-    const existing = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
-    if (existing) {
-      alreadyExists = true;
-      dbMessageId = existing.id;
-    } else {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent, tenant_id, drive_file_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)
-      `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag, bot.tenantId || 'default', driveFileId);
-      dbMessageId = result.lastInsertRowid;
+  if (bot.ephemeralMode !== 1) {
+    try {
+      const existing = db.prepare('SELECT id FROM whatsapp_messages WHERE message_id = ?').get(msg.key.id);
+      if (existing) {
+        alreadyExists = true;
+        dbMessageId = existing.id;
+      } else {
+        const result = db.prepare(`
+          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, quote_context, intent, tenant_id, drive_file_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)
+        `).run(storeId, orderId, fromPhone, isOutgoing ? 'outgoing' : 'incoming', finalMessage, msg.key.id, mediaUrl, mediaType, incomingQuoteContext ? JSON.stringify(incomingQuoteContext) : null, tag, bot.tenantId || 'default', driveFileId);
+        dbMessageId = result.lastInsertRowid;
 
-      if (order && order.shopify_order_id) {
-        try {
-          const { broadcast } = require('../sse');
-          broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-        } catch (e) {
-          console.error('Failed to broadcast WhatsApp message order_updated:', e.message);
+        if (order && order.shopify_order_id) {
+          try {
+            const { broadcast } = require('../sse');
+            broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+          } catch (e) {
+            console.error('Failed to broadcast WhatsApp message order_updated:', e.message);
+          }
         }
       }
+    } catch (dbErr) {
+      console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);
     }
-  } catch (dbErr) {
-    console.error('⚠️ DB Insert Failed for incoming message:', dbErr.message);
   }
 
   if (!isOutgoing || !alreadyExists) {
@@ -899,12 +907,14 @@ async function processIncomingMessage(bot, msg, sock, db) {
       broadcast('high_risk_triage', { phone: fromPhone, message: text });
     } catch (_) {}
 
-    try {
-      db.prepare(`
-        UPDATE whatsapp_messages SET intent = 'triage' WHERE message_id = ?
-      `).run(msg.key.id);
-    } catch (dbErr) {
-      console.error('⚠️ DB update failed for triage message:', dbErr.message);
+    if (bot.ephemeralMode !== 1) {
+      try {
+        db.prepare(`
+          UPDATE whatsapp_messages SET intent = 'triage' WHERE message_id = ?
+        `).run(msg.key.id);
+      } catch (dbErr) {
+        console.error('⚠️ DB update failed for triage message:', dbErr.message);
+      }
     }
     
     return;
@@ -942,11 +952,17 @@ async function processIncomingMessage(bot, msg, sock, db) {
   }
 
   try {
-    const lastOutgoing = db.prepare(`
-      SELECT message FROM whatsapp_messages 
-      WHERE phone = ? AND direction = 'outgoing' 
-      ORDER BY id DESC LIMIT 1
-    `).get(fromPhone);
+    const lastOutgoing = (bot.ephemeralMode === 1)
+      ? db.prepare(`
+          SELECT message FROM whatsapp_message_queue 
+          WHERE phone = ? AND direction = 'outgoing' AND status = 'sent'
+          ORDER BY id DESC LIMIT 1
+        `).get(fromPhone)
+      : db.prepare(`
+          SELECT message FROM whatsapp_messages 
+          WHERE phone = ? AND direction = 'outgoing' 
+          ORDER BY id DESC LIMIT 1
+        `).get(fromPhone);
 
     if (lastOutgoing && lastOutgoing.message) {
       const outMsg = lastOutgoing.message;

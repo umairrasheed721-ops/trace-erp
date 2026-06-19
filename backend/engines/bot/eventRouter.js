@@ -83,7 +83,7 @@ async function handleMessagingHistorySet(bot, { chats, messages, isLatest }) {
         const finalMessage = text || (mediaType ? `[${mediaType.toUpperCase()}]` : '');
 
         const order = db.prepare(`SELECT id, store_id FROM orders WHERE phone LIKE ? ORDER BY id DESC LIMIT 1`).get(`%${fromPhone.substring(Math.max(0, fromPhone.length - 10))}%`);
-        if (order) {
+        if (bot.ephemeralMode !== 1 && order) {
           db.prepare(`
             INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status)
             VALUES (?, ?, ?, ?, ?, ?, null, ?, 'sent')
@@ -159,9 +159,11 @@ async function handleMessagesUpdate(bot, updates) {
       else if (statusVal === 3) statusStr = 'delivered';
       else if (statusVal >= 4) statusStr = 'read';
 
-      try {
-        db.prepare("UPDATE whatsapp_messages SET status = ? WHERE message_id = ?").run(statusStr, messageId);
-      } catch (e) {}
+      if (bot.ephemeralMode !== 1) {
+        try {
+          db.prepare("UPDATE whatsapp_messages SET status = ? WHERE message_id = ?").run(statusStr, messageId);
+        } catch (e) {}
+      }
 
       try {
         const { broadcast } = require('../../websocket');
@@ -387,27 +389,29 @@ async function handleMessagesUpdate(bot, updates) {
               } catch (_) {}
 
               // Log incoming poll vote to messages table
-              try {
-                const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
-                const storeId = order ? order.store_id : 1;
-                db.prepare(`
-                  INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
-                  VALUES (?, ?, ?, 'incoming', ?)
-                `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
-                
-                const { broadcast: wsBroadcast } = require('../../websocket');
-                wsBroadcast('message', {
-                  order_id: pendingCOD.order_id,
-                  message: {
-                    store_id: storeId,
+              if (bot.ephemeralMode !== 1) {
+                try {
+                  const order = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(pendingCOD.order_id);
+                  const storeId = order ? order.store_id : 1;
+                  db.prepare(`
+                    INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message)
+                    VALUES (?, ?, ?, 'incoming', ?)
+                  `).run(storeId, pendingCOD.order_id, cleanPhone, `🗳️ Selected: ${selectedOption}`);
+                  
+                  const { broadcast: wsBroadcast } = require('../../websocket');
+                  wsBroadcast('message', {
                     order_id: pendingCOD.order_id,
-                    phone: cleanPhone,
-                    direction: 'incoming',
-                    message: `🗳️ Selected: ${selectedOption}`,
-                    created_at: new Date().toISOString()
-                  }
-                });
-              } catch (e) {}
+                    message: {
+                      store_id: storeId,
+                      order_id: pendingCOD.order_id,
+                      phone: cleanPhone,
+                      direction: 'incoming',
+                      message: `🗳️ Selected: ${selectedOption}`,
+                      created_at: new Date().toISOString()
+                    }
+                  });
+                } catch (e) {}
+              }
 
               if (isConfirm) {
                 // ✅ CONFIRM ORDER
@@ -489,7 +493,7 @@ async function handleMessagesUpsert(bot, m) {
     const msgText = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
     // Direct Cloudinary Ingestion for incoming media messages
-    if (isFromCustomer) {
+    if (isFromCustomer && bot.ephemeralMode !== 1) {
       const mediaDetails = getMessageMediaDetails(msg);
       if (mediaDetails && (mediaDetails.type === 'image' || mediaDetails.type === 'audio' || mediaDetails.type === 'video')) {
         setImmediate(() => {

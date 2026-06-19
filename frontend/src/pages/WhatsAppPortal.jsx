@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import useWhatsAppPortal from '../hooks/useWhatsAppPortal'
 import ChatContactSidebar from '../components/WhatsAppPortal/ChatContactSidebar'
 import ChatMessageList from './ChatMessageList'
@@ -9,6 +9,33 @@ import { useApp } from '../context/AppContext'
 
 export default function WhatsAppPortal() {
   const { setSidebarCollapsed } = useApp()
+  const [settings, setSettings] = useState(null)
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const token = localStorage.getItem('trace_token') || '';
+        const res = await fetch('/api/whatsapp-governance/settings', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        setSettings(data);
+      } catch (err) {
+        console.error('Error fetching settings on portal:', err);
+      }
+    };
+    fetchSettings();
+
+    const handleSettingsUpdate = () => {
+      fetchSettings();
+    };
+    window.addEventListener('whatsapp_settings_updated', handleSettingsUpdate);
+    return () => {
+      window.removeEventListener('whatsapp_settings_updated', handleSettingsUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     // Save original sidebar state
@@ -230,14 +257,22 @@ export default function WhatsAppPortal() {
                   </div>
                 )}
 
-                {/* Human Handoff Banner — Module 5/7 */}
-                {humanHandoffActive && (
-                  <div className="wa-handoff-banner">
-                    <span>🧑</span>
-                    <span>Human Agent Mode — Bot is silent for this chat</span>
-                    <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
-                  </div>
-                )}
+                 {/* Human Handoff Banner — Module 5/7 */}
+                 {humanHandoffActive && (
+                   <div className="wa-handoff-banner">
+                     <span>🧑</span>
+                     <span>Human Agent Mode — Bot is silent for this chat</span>
+                     <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
+                   </div>
+                 )}
+
+                 {/* Ephemeral Mode Warning Banner */}
+                 {settings && settings.ephemeral_mode === 1 && (
+                   <div className="wa-handoff-banner" style={{ background: 'rgba(249, 115, 22, 0.12)', borderBottom: '1px solid rgba(249, 115, 22, 0.3)', color: '#f97316', gap: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', fontSize: '0.85rem', fontWeight: 600 }}>
+                     <span>🛡️</span>
+                     <span>Stateless Ephemeral Mode Active: Chat logs, voice notes, and media are not saved. Confirmations are handled in-memory only.</span>
+                   </div>
+                 )}
 
                 {/* Message Timeline */}
                 <ChatMessageList

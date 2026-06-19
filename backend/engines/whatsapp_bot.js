@@ -78,6 +78,7 @@ class WhatsAppBot {
     this.maxDelaySec = 15;
     this.maxPerHour = 60;
     this.coolingPeriodMin = 15;
+    this.ephemeralMode = 0;
     this.auditLogs = []; // Buffer of recent delivery audits
 
     // --- 🤖 MODULE 5: AUTO-RESPONSE STUDIO ---
@@ -185,27 +186,33 @@ class WhatsAppBot {
     console.log(`[WA-QUEUE] [Tenant: ${this.tenantId}] Found pending outgoing message ID: ${msg.id}`);
 
     // Fetch current settings
-    const settings = db.prepare('SELECT enable_automated_broadcasts, vip_bypass_manual, min_delay_sec, max_delay_sec FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
+    const settings = db.prepare('SELECT enable_automated_broadcasts, vip_bypass_manual, min_delay_sec, max_delay_sec, ephemeral_mode FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
 
     // SMART ROUTING LOGIC:
     if (msg.is_manual === 1 && settings.vip_bypass_manual === 0) {
       console.warn(`[WA-QUEUE] [Tenant: ${this.tenantId}] Manual dispatch disabled. Cancelling message ID: ${msg.id}`);
       db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
-      db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      if (settings.ephemeral_mode !== 1) {
+        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      }
       return;
     }
 
     if (msg.is_manual !== 1 && settings.enable_automated_broadcasts === 0) {
       console.warn(`[WA-QUEUE] [Tenant: ${this.tenantId}] Automated broadcast disabled. Cancelling message ID: ${msg.id}`);
       db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
-      db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      if (settings.ephemeral_mode !== 1) {
+        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+      }
       return;
     }
 
     try {
       // Mark as 'processing' to prevent double sends
       db.prepare("UPDATE whatsapp_message_queue SET status = 'processing' WHERE id = ?").run(msg.id);
-      db.prepare("UPDATE whatsapp_messages SET status = 'processing' WHERE message_id = ?").run(msg.client_uuid);
+      if (settings.ephemeral_mode !== 1) {
+        db.prepare("UPDATE whatsapp_messages SET status = 'processing' WHERE message_id = ?").run(msg.client_uuid);
+      }
 
       // If it's an automated marketing bot, apply the Anti-Ban Pacing Delay
       // ======================================================================
@@ -231,7 +238,9 @@ class WhatsAppBot {
 
       // Mark as 'sent'
       db.prepare("UPDATE whatsapp_message_queue SET status = 'sent', message_id = ? WHERE id = ?").run(realMessageId, msg.id);
-      db.prepare("UPDATE whatsapp_messages SET status = 'sent', message_id = ? WHERE message_id = ?").run(realMessageId, msg.client_uuid);
+      if (settings.ephemeral_mode !== 1) {
+        db.prepare("UPDATE whatsapp_messages SET status = 'sent', message_id = ? WHERE message_id = ?").run(realMessageId, msg.client_uuid);
+      }
 
       if (poll) {
         try {
@@ -272,7 +281,9 @@ class WhatsAppBot {
       console.error(`[WA-QUEUE-ERR] Failed to process queue message ID: ${msg.id}`, err);
       try {
         db.prepare("UPDATE whatsapp_message_queue SET status = 'failed' WHERE id = ?").run(msg.id);
-        db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+        if (settings.ephemeral_mode !== 1) {
+          db.prepare("UPDATE whatsapp_messages SET status = 'failed' WHERE message_id = ?").run(msg.client_uuid);
+        }
       } catch (dbErr) {
         console.error(`[WA-QUEUE-ERR] Failed to mark message ID: ${msg.id} as failed:`, dbErr.message);
       }
@@ -442,14 +453,16 @@ class WhatsAppBot {
 
     // Insert into whatsapp_messages with status = 'pending'
     let dbMessageId = null;
-    try {
-      const result = db.prepare(`
-        INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
-        VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'pending', ?, ?)
-      `).run(storeId, orderId, cleaned, dbMessageContent || '', uuid, finalDbMediaUrl, mediaType, this.tenantId, quoteContext ? JSON.stringify(quoteContext) : null);
-      dbMessageId = result.lastInsertRowid;
-    } catch (dbErr) {
-      console.error('Failed to log pending message in DB:', dbErr.message);
+    if (this.ephemeralMode !== 1) {
+      try {
+        const result = db.prepare(`
+          INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id, quote_context)
+          VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'pending', ?, ?)
+        `).run(storeId, orderId, cleaned, dbMessageContent || '', uuid, finalDbMediaUrl, mediaType, this.tenantId, quoteContext ? JSON.stringify(quoteContext) : null);
+        dbMessageId = result.lastInsertRowid;
+      } catch (dbErr) {
+        console.error('Failed to log pending message in DB:', dbErr.message);
+      }
     }
 
     // Insert into whatsapp_message_queue
@@ -851,34 +864,36 @@ class WhatsAppBot {
         }
 
         let existingRow = null;
-        if (uuid) {
-          existingRow = db.prepare(`
-            SELECT id FROM whatsapp_messages 
-            WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
-            ORDER BY id DESC LIMIT 1
-          `).get(cleaned, uuid, this.tenantId);
-        }
-        if (!existingRow && finalDbMediaUrl) {
-          existingRow = db.prepare(`
-            SELECT id FROM whatsapp_messages 
-            WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
-            ORDER BY id DESC LIMIT 1
-          `).get(cleaned, finalDbMediaUrl, this.tenantId);
-        }
+        if (this.ephemeralMode !== 1) {
+          if (uuid) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, uuid, this.tenantId);
+          }
+          if (!existingRow && finalDbMediaUrl) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, finalDbMediaUrl, this.tenantId);
+          }
 
-        if (existingRow) {
-          db.prepare(`
-            UPDATE whatsapp_messages 
-            SET message_id = ?, status = 'sent'
-            WHERE id = ?
-          `).run(messageId, existingRow.id);
-          dbMessageId = existingRow.id;
-        } else {
-          const result = db.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-            VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
-          `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType, this.tenantId);
-          dbMessageId = result.lastInsertRowid;
+          if (existingRow) {
+            db.prepare(`
+              UPDATE whatsapp_messages 
+              SET message_id = ?, status = 'sent'
+              WHERE id = ?
+            `).run(messageId, existingRow.id);
+            dbMessageId = existingRow.id;
+          } else {
+            const result = db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'sent', ?)
+            `).run(storeId, orderId, cleaned, dbMessageContent, messageId, finalDbMediaUrl, finalMediaType, this.tenantId);
+            dbMessageId = result.lastInsertRowid;
+          }
         }
 
         try {
@@ -942,32 +957,34 @@ class WhatsAppBot {
         }
 
         let existingRow = null;
-        if (uuid) {
-          existingRow = db.prepare(`
-            SELECT id FROM whatsapp_messages 
-            WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
-            ORDER BY id DESC LIMIT 1
-          `).get(cleaned, uuid, this.tenantId);
-        }
-        if (!existingRow && finalDbMediaUrl) {
-          existingRow = db.prepare(`
-            SELECT id FROM whatsapp_messages 
-            WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
-            ORDER BY id DESC LIMIT 1
-          `).get(cleaned, finalDbMediaUrl, this.tenantId);
-        }
+        if (this.ephemeralMode !== 1) {
+          if (uuid) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND message_id = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, uuid, this.tenantId);
+          }
+          if (!existingRow && finalDbMediaUrl) {
+            existingRow = db.prepare(`
+              SELECT id FROM whatsapp_messages 
+              WHERE phone = ? AND media_url = ? AND direction = 'outgoing' AND tenant_id = ?
+              ORDER BY id DESC LIMIT 1
+            `).get(cleaned, finalDbMediaUrl, this.tenantId);
+          }
 
-        if (existingRow) {
-          db.prepare(`
-            UPDATE whatsapp_messages 
-            SET message_id = ?, status = 'failed'
-            WHERE id = ?
-          `).run(uuid, existingRow.id);
-        } else {
-          db.prepare(`
-            INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
-            VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'failed', ?)
-          `).run(storeId, orderId, cleaned, dbMessageContent, uuid, finalDbMediaUrl, finalMediaType, this.tenantId);
+          if (existingRow) {
+            db.prepare(`
+              UPDATE whatsapp_messages 
+              SET message_id = ?, status = 'failed'
+              WHERE id = ?
+            `).run(uuid, existingRow.id);
+          } else {
+            db.prepare(`
+              INSERT INTO whatsapp_messages (store_id, order_id, phone, direction, message, message_id, media_url, media_type, status, tenant_id)
+              VALUES (?, ?, ?, 'outgoing', ?, ?, ?, ?, 'failed', ?)
+            `).run(storeId, orderId, cleaned, dbMessageContent, uuid, finalDbMediaUrl, finalMediaType, this.tenantId);
+          }
         }
 
         try {
@@ -1209,7 +1226,7 @@ class WhatsAppBot {
    * @param {string} settings.aiLandmarkTemplate - Active landmark lookup query content
    * @returns {void}
    */
-  setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate }) {
+  setSettings({ minDelaySec, maxDelaySec, maxPerHour, coolingPeriodMin, aiResponderEnabled, aiTrackingTemplate, aiLandmarkTemplate, ephemeralMode }) {
     if (minDelaySec !== undefined) this.minDelaySec = Number(minDelaySec);
     if (maxDelaySec !== undefined) this.maxDelaySec = Number(maxDelaySec);
     if (maxPerHour !== undefined) this.maxPerHour = Number(maxPerHour);
@@ -1217,7 +1234,8 @@ class WhatsAppBot {
     if (aiResponderEnabled !== undefined) this.aiResponderEnabled = Number(aiResponderEnabled);
     if (aiTrackingTemplate !== undefined) this.aiTrackingTemplate = aiTrackingTemplate;
     if (aiLandmarkTemplate !== undefined) this.aiLandmarkTemplate = aiLandmarkTemplate;
-    console.log(`🎛️ Bot pacing & AI updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m | AI Responder: ${this.aiResponderEnabled}`);
+    if (ephemeralMode !== undefined) this.ephemeralMode = Number(ephemeralMode);
+    console.log(`🎛️ Bot pacing & AI updated: ${this.minDelaySec}-${this.maxDelaySec}s delay | max ${this.maxPerHour}/hr | cooling ${this.coolingPeriodMin}m | AI Responder: ${this.aiResponderEnabled} | Ephemeral Mode: ${this.ephemeralMode}`);
   }
 
   /**

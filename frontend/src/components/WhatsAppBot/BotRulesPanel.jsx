@@ -29,6 +29,7 @@ export default function BotRulesPanel({
       });
 
       if (!response.ok) throw new Error('Failed to save to database');
+      window.dispatchEvent(new Event('whatsapp_settings_updated'));
     } catch (error) {
       console.error('Settings update failed:', error);
       // 3. Rollback: If API fails, revert the state to its previous value
@@ -175,6 +176,23 @@ export default function BotRulesPanel({
                     />
                     <span>VIP Bypass for Manual ERP Chat (Instant Dispatch, Ignores Pacing)</span>
                   </label>
+                </div>
+
+                {/* Privacy & Stateless Mode */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                  <h5 style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px 0' }}>🔒 Privacy &amp; Stateless Mode</h5>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, cursor: 'pointer', fontSize: '0.95rem' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={settings.ephemeral_mode === 1} 
+                      onChange={e => handleSettingChange('ephemeral_mode', e.target.checked)} 
+                      style={{ width: 20, height: 20, accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ color: settings.ephemeral_mode === 1 ? 'var(--orange)' : 'inherit' }}>Enable Stateless Ephemeral Mode</span>
+                  </label>
+                  <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: 0, paddingLeft: 32 }}>
+                    When active, chat history logging and media storage are disabled to protect customer privacy. Outgoing templates/images are dispatched, and confirmations are processed in-memory only.
+                  </p>
                 </div>
               </div>
             </div>

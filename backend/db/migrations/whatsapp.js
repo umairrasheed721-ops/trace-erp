@@ -436,7 +436,8 @@ Please reply with:
       "ALTER TABLE whatsapp_message_queue ADD COLUMN media_url TEXT DEFAULT NULL",
       "ALTER TABLE whatsapp_message_queue ADD COLUMN media_type TEXT DEFAULT NULL",
       "ALTER TABLE whatsapp_message_queue ADD COLUMN file_name TEXT DEFAULT NULL",
-      "ALTER TABLE whatsapp_message_queue ADD COLUMN poll_data TEXT DEFAULT NULL"
+      "ALTER TABLE whatsapp_message_queue ADD COLUMN poll_data TEXT DEFAULT NULL",
+      "ALTER TABLE whatsapp_settings ADD COLUMN ephemeral_mode INTEGER DEFAULT 0"
     ];
 
     alters.forEach(sql => {
