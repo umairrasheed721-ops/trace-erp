@@ -83,6 +83,17 @@ function broadcast(event, data) {
           }
         });
       }
+    } else {
+      // Fallback: broadcast to all tenant-specific clients if active context is lost/undefined
+      tenantClients.forEach(set => {
+        set.forEach(c => {
+          try {
+            c.write(payload);
+          } catch (e) {
+            // silent
+          }
+        });
+      });
     }
   } catch (err) {
     console.error('Failed to run tenant broadcast:', err.message);

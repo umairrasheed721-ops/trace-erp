@@ -133,18 +133,18 @@ router.post('/sync-shopify', async (req, res) => {
   const store = getStore(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0, abort: false };
-
   const { runShopifySyncWithJournal } = require('../engines/shopify_sync');
   const tenantId = req.tenantId || 'default';
 
-  // Set activeSyncs state
-  global.activeSyncs = global.activeSyncs || {};
-  global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
-  global.activeSyncs[tenantId].shopify = true;
-
   try {
     const syncPromise = new Promise(async (resolve, reject) => {
+      // Set active sync state at start of execution
+      global.activeSyncs = global.activeSyncs || {};
+      global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+      global.activeSyncs[tenantId].shopify = true;
+      global.syncProgress = global.syncProgress || {};
+      global.syncProgress[store_id] = { status: 'Starting Shopify Sync...', processed: 0, total: 0, abort: false };
+
       try {
         const tenantContext = require('../tenant-context');
         await tenantContext.run(tenantId, async () => {
@@ -153,6 +153,12 @@ router.post('/sync-shopify', async (req, res) => {
         });
       } catch (err) {
         reject(err);
+      } finally {
+        // Only clear sync status when the actual sync background job finishes!
+        delete global.syncProgress[store_id];
+        if (global.activeSyncs[tenantId]) {
+          global.activeSyncs[tenantId].shopify = false;
+        }
       }
     });
 
@@ -165,11 +171,6 @@ router.post('/sync-shopify', async (req, res) => {
   } catch (e) {
     console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
     res.status(500).json({ error: e.message || 'Sync failed' });
-  } finally {
-    delete global.syncProgress[store_id];
-    if (global.activeSyncs[tenantId]) {
-      global.activeSyncs[tenantId].shopify = false;
-    }
   }
 });
 
@@ -180,18 +181,18 @@ router.post('/sync-couriers', async (req, res) => {
   const store = getStore(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
-
   const { runCourierSyncWithJournal } = require('../engines/courier_sync');
   const tenantId = req.tenantId || 'default';
 
-  // Set activeSyncs state
-  global.activeSyncs = global.activeSyncs || {};
-  global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
-  global.activeSyncs[tenantId].courier = true;
-
   try {
     const syncPromise = new Promise(async (resolve, reject) => {
+      // Set active sync state at start of execution
+      global.activeSyncs = global.activeSyncs || {};
+      global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+      global.activeSyncs[tenantId].courier = true;
+      global.syncProgress = global.syncProgress || {};
+      global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
+
       try {
         const tenantContext = require('../tenant-context');
         await tenantContext.run(tenantId, async () => {
@@ -200,6 +201,12 @@ router.post('/sync-couriers', async (req, res) => {
         });
       } catch (err) {
         reject(err);
+      } finally {
+        // Only clear sync status when the actual sync background job finishes!
+        delete global.syncProgress[store_id];
+        if (global.activeSyncs[tenantId]) {
+          global.activeSyncs[tenantId].courier = false;
+        }
       }
     });
 
@@ -212,11 +219,6 @@ router.post('/sync-couriers', async (req, res) => {
   } catch (e) {
     console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
     res.status(500).json({ error: e.message || 'Sync failed' });
-  } finally {
-    delete global.syncProgress[store_id];
-    if (global.activeSyncs[tenantId]) {
-      global.activeSyncs[tenantId].courier = false;
-    }
   }
 });
 
