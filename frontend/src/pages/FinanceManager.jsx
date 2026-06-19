@@ -35,8 +35,8 @@ export default function FinanceManager() {
           <p className="page-subtitle">Reconcile COD payouts and returned items from courier settlement sheets.</p>
         </div>
         <button 
-          className="btn" 
-          style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} 
+          className="btn btn-secondary" 
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }} 
           onClick={() => navigate('/payout-reconciler')}
         >
           💸 Payout Reconciler

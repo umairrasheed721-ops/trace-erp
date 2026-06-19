@@ -443,10 +443,10 @@ export default function PayoutReconciler() {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn" style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => navigate('/finance')}>
+          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => navigate('/finance')}>
             💰 Go to Finance Engine
           </button>
-          <button className="btn" style={{ border: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setShowVault(true)}>
+          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setShowVault(true)}>
             🔑 Secure Credential Vault
           </button>
         </div>
@@ -800,7 +800,7 @@ export default function PayoutReconciler() {
             <p style={{ fontSize: '0.85rem', margin: 0, opacity: 0.7 }}>Permanent audit trail of all verified courier bank deposits.</p>
           </div>
 
-          <button className="btn" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={fetchLedger} disabled={isLoadingLedger}>
+          <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={fetchLedger} disabled={isLoadingLedger}>
             {isLoadingLedger ? 'Refreshing...' : '🔄 Refresh Ledger'}
           </button>
         </div>
@@ -930,7 +930,7 @@ export default function PayoutReconciler() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                  <button type="button" className="btn" onClick={() => setShowVault(false)}>Cancel</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowVault(false)}>Cancel</button>
                   <button type="submit" className="btn btn-brand" disabled={isSavingToken}>
                     {isSavingToken ? 'Saving...' : '💾 Save Credentials'}
                   </button>
