@@ -2,6 +2,83 @@ import { useState, useRef, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { useApp } from '../context/AppContext'
 
+function formatDateToUserFriendly(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const y = parts[0];
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    const shortY = y.slice(-2);
+    return `${d}/${m}/${shortY}`;
+  }
+  return dateStr;
+}
+
+function parseDateString(inputStr) {
+  if (!inputStr) return null;
+  const cleaned = inputStr.trim();
+  
+  // 1. Try D/M/YY or D/M/YYYY (slash format)
+  const slashParts = cleaned.split('/');
+  if (slashParts.length === 3) {
+    const d = parseInt(slashParts[0], 10);
+    const m = parseInt(slashParts[1], 10) - 1;
+    let yStr = slashParts[2].trim();
+    let y = parseInt(yStr, 10);
+    if (yStr.length === 2) {
+      y = 2000 + y;
+    }
+    const testDate = new Date(y, m, d);
+    if (!isNaN(testDate.getTime()) && testDate.getDate() === d && testDate.getMonth() === m) {
+      const mm = String(m + 1).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      return `${y}-${mm}-${dd}`;
+    }
+  }
+
+  // 2. Try D-M-YY or D-M-YYYY (dash format)
+  const dashParts = cleaned.split('-');
+  if (dashParts.length === 3) {
+    if (dashParts[0].length === 4) {
+      const y = parseInt(dashParts[0], 10);
+      const m = parseInt(dashParts[1], 10) - 1;
+      const d = parseInt(dashParts[2], 10);
+      const testDate = new Date(y, m, d);
+      if (!isNaN(testDate.getTime()) && testDate.getDate() === d && testDate.getMonth() === m) {
+        const mm = String(m + 1).padStart(2, '0');
+        const dd = String(d).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+      }
+    } else {
+      const d = parseInt(dashParts[0], 10);
+      const m = parseInt(dashParts[1], 10) - 1;
+      let yStr = dashParts[2].trim();
+      let y = parseInt(yStr, 10);
+      if (yStr.length === 2) {
+        y = 2000 + y;
+      }
+      const testDate = new Date(y, m, d);
+      if (!isNaN(testDate.getTime()) && testDate.getDate() === d && testDate.getMonth() === m) {
+        const mm = String(m + 1).padStart(2, '0');
+        const dd = String(d).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+      }
+    }
+  }
+
+  // 3. Fallback: Try native Date parsing
+  const native = new Date(cleaned);
+  if (!isNaN(native.getTime())) {
+    const y = native.getFullYear();
+    const mm = String(native.getMonth() + 1).padStart(2, '0');
+    const dd = String(native.getDate()).padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  }
+
+  return null;
+}
+
 export default function PayoutReconciler() {
   const { addToast, activeStoreId } = useApp()
   
@@ -12,7 +89,33 @@ export default function PayoutReconciler() {
   // Common Form State
   const [cprReference, setCprReference] = useState('')
   const [settlementDate, setSettlementDate] = useState(new Date().toISOString().split('T')[0])
+  const [dateInputText, setDateInputText] = useState(formatDateToUserFriendly(new Date().toISOString().split('T')[0]))
   const [courier, setCourier] = useState('PostEx')
+
+  // Sync dateInputText if settlementDate changes externally (e.g. reset or manual fetch)
+  useEffect(() => {
+    setDateInputText(formatDateToUserFriendly(settlementDate))
+  }, [settlementDate])
+
+  const handleDateChange = (val) => {
+    setDateInputText(val);
+    const parsed = parseDateString(val);
+    if (parsed) {
+      setSettlementDate(parsed);
+      if (activeTab === 'manual') updateNormalizedData(cprReference, parsed);
+    }
+  };
+
+  const handleDateBlur = () => {
+    const parsed = parseDateString(dateInputText);
+    if (parsed) {
+      setDateInputText(formatDateToUserFriendly(parsed));
+      setSettlementDate(parsed);
+      if (activeTab === 'manual') updateNormalizedData(cprReference, parsed);
+    } else {
+      setDateInputText(formatDateToUserFriendly(settlementDate));
+    }
+  };
   
   // Manual Upload State
   const [rawData, setRawData] = useState([])
@@ -367,13 +470,12 @@ export default function PayoutReconciler() {
             <div className="form-group">
               <label className="form-label">Settlement Date</label>
               <input 
-                type="date" 
+                type="text" 
                 className="form-input" 
-                value={settlementDate} 
-                onChange={e => {
-                  setSettlementDate(e.target.value)
-                  if (activeTab === 'manual') updateNormalizedData(cprReference, e.target.value)
-                }}
+                value={dateInputText} 
+                onChange={e => handleDateChange(e.target.value)}
+                onBlur={handleDateBlur}
+                placeholder="d/m/yy (e.g. 6/5/26)"
               />
             </div>
           </div>
@@ -694,7 +796,7 @@ export default function PayoutReconciler() {
                     <tr key={i} style={{ background: isDisputed ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
                       <td style={{ fontWeight: 700, color: 'var(--brand)' }}>{row.cpr_reference}</td>
                       <td>{row.courier}</td>
-                      <td>{row.settlement_date}</td>
+                      <td>{formatDateToUserFriendly(row.settlement_date)}</td>
                       <td style={{ fontWeight: 600 }}>{row.total_orders}</td>
                       <td>Rs. {parseFloat(row.net_payout || 0).toLocaleString()}</td>
                       <td style={{ fontWeight: 700, color: isDisputed ? 'var(--red)' : 'var(--green)' }}>
