@@ -105,35 +105,58 @@ function auditPostExOrder(distData, requestTime) {
     const history = distData.trackingHistory || distData.transactionStatusHistory || distData.statusHistory || [];
     const currentStatus = distData.transactionStatus || distData.status || 'Unknown';
 
-    const getMoveTime = h => h.dateTime || h.dateTimeStr || h.date || h.updatedAt || h.timestamp;
-    const getMoveStatus = h => h.transactionStatus || h.transactionStatusMessage || h.status || '';
-
-    const validMoves = history.filter(h => {
-      const t = getMoveTime(h);
-      return t && new Date(t) > requestTime;
-    });
-
-    if (!validMoves.length) {
+    if (!Array.isArray(history) || !history.length) {
       return { 
         latestStatus: currentStatus, 
         verdict: '🔴 IGNORED (No movement)', 
         duration: 'N/A', 
-        evidence: 'Status unchanged since request' 
+        evidence: 'No tracking history records found' 
       };
     }
 
-    validMoves.sort((a, b) => new Date(getMoveTime(a)) - new Date(getMoveTime(b)));
+    const getMoveTime = h => h.dateTime || h.dateTimeStr || h.date || h.updatedAt || h.timestamp;
+    const getMoveStatus = h => h.transactionStatus || h.transactionStatusMessage || h.status || '';
 
-    let enrouteTime = null;
+    // Sort all history events chronologically
+    const sortedHistory = history
+      .filter(h => getMoveTime(h))
+      .sort((a, b) => new Date(getMoveTime(a)) - new Date(getMoveTime(b)));
+
+    if (!sortedHistory.length) {
+      return { 
+        latestStatus: currentStatus, 
+        verdict: '🔴 IGNORED (No movement)', 
+        duration: 'N/A', 
+        evidence: 'No valid movement timestamp' 
+      };
+    }
+
+    // Find the last Enroute/Dispatched event
+    let enrouteIdx = -1;
+    for (let i = sortedHistory.length - 1; i >= 0; i--) {
+      const st = getMoveStatus(sortedHistory[i]).toLowerCase();
+      if (st.includes('enroute') || st.includes('out for delivery') || st.includes('dispatched')) {
+        enrouteIdx = i;
+        break;
+      }
+    }
+
+    if (enrouteIdx === -1) {
+      return {
+        latestStatus: currentStatus,
+        verdict: '⚪ Moving / No Attempt Yet',
+        duration: 'Pending',
+        evidence: 'No enroute status found in history'
+      };
+    }
+
+    const enrouteTime = new Date(getMoveTime(sortedHistory[enrouteIdx]));
     let attemptTime = null;
 
-    for (const move of validMoves) {
-      const st = getMoveStatus(move).toLowerCase();
-      const timeVal = new Date(getMoveTime(move));
-
-      if (st.includes('enroute') || st.includes('out for delivery') || st.includes('dispatched')) {
-        enrouteTime = timeVal;
-      } else if (enrouteTime && (
+    // Search for the first attempt/failure event AFTER the last enroute event
+    for (let i = enrouteIdx + 1; i < sortedHistory.length; i++) {
+      const st = getMoveStatus(sortedHistory[i]).toLowerCase();
+      if (
         st.includes('attempt') || 
         st.includes('refused') || 
         st.includes('return') || 
@@ -141,8 +164,8 @@ function auditPostExOrder(distData, requestTime) {
         st.includes('shipper advice') || 
         st.includes('delivered') ||
         st.includes('failed')
-      )) {
-        attemptTime = timeVal;
+      ) {
+        attemptTime = new Date(getMoveTime(sortedHistory[i]));
         break;
       }
     }
