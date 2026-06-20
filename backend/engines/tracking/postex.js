@@ -160,12 +160,14 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
               }
             }
 
+            const trackingHistoryJson = history && history.length > 0 ? JSON.stringify(history) : null;
             return { 
               id: order.id, 
               oldStatus: order.delivery_status, 
               rawStatus, 
               mappedStatus, 
               statusDate: formattedStatusDate,
+              trackingHistoryJson,
               watchdogResult
             };
           } catch (err) {
@@ -178,7 +180,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value) {
-        const { id, rawStatus, mappedStatus, oldStatus, statusDate, watchdogResult } = r.value;
+        const { id, rawStatus, mappedStatus, oldStatus, statusDate, trackingHistoryJson, watchdogResult } = r.value;
         if (!rawStatus) continue;
         const isProtected = DEAD_STATUSES.includes((oldStatus||'').toLowerCase());
         const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((rawStatus||'').toLowerCase());
@@ -188,6 +190,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
           erp_status: (!isProtected && mappedStatus) ? mappedStatus : null,
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
           status_date: statusDate,
+          tracking_history: trackingHistoryJson,
           watchdogResult
         });
       }
@@ -205,7 +208,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     SET courier_status = ?,
         delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
         status_date = CASE WHEN ? IS NOT NULL THEN COALESCE(?, datetime('now')) ELSE status_date END,
-        failed_attempts = failed_attempts + ?
+        failed_attempts = failed_attempts + ?,
+        tracking_history = ?
     WHERE id = ?
   `);
   const insertWatchdogStmt = db.prepare(`
@@ -216,7 +220,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const lookupStmt = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
-      updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment || 0, u.id);
+      updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment || 0, u.tracking_history, u.id);
       if (u.watchdogResult) {
         const w = u.watchdogResult;
         insertWatchdogStmt.run(storeId, w.tracking_number, w.request_time, w.latest_status, w.verdict, w.duration, w.evidence);

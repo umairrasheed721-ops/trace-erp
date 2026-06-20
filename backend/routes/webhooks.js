@@ -58,7 +58,7 @@ router.post('/postex', (req, res) => {
 
   try {
     // Find order
-    const order = db.prepare('SELECT id, store_id, shopify_order_id, delivery_status, phone FROM orders WHERE tracking_number = ?').get(trackingNumber);
+    const order = db.prepare('SELECT id, store_id, shopify_order_id, delivery_status, phone, tracking_history FROM orders WHERE tracking_number = ?').get(trackingNumber);
     if (!order) {
       console.log(`%c👻 Webhook order not found: ${trackingNumber}`, 'color: yellow');
       return res.json({ success: true, message: 'Order not in ERP' });
@@ -68,18 +68,46 @@ router.post('/postex', (req, res) => {
     const statusMap = loadStatusMaps();
     const mappedStatus = applyMap(statusMap, 'PostEx', transactionStatus);
     
-    // Always update courier_status, and update delivery_status if mapping exists
+    // Parse existing history
+    let history = [];
+    if (order.tracking_history) {
+      try {
+        history = JSON.parse(order.tracking_history);
+      } catch (e) {}
+    }
+    if (!Array.isArray(history)) {
+      history = [];
+    }
+
+    // Add new event
+    const eventTime = statusDateTime || new Date().toISOString();
+    
+    // Check for duplicates
+    const isDuplicate = history.some(h => 
+      (h.dateTime === eventTime || h.date === eventTime) && 
+      (h.transactionStatus === transactionStatus || h.status === transactionStatus)
+    );
+    if (!isDuplicate) {
+      history.push({
+        dateTime: eventTime,
+        transactionStatus: transactionStatus
+      });
+    }
+
+    // Always update courier_status, tracking_history and update delivery_status if mapping exists
     db.prepare(`
       UPDATE orders 
       SET courier_status = ?,
           delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
-          status_date = ?
+          status_date = ?,
+          tracking_history = ?
       WHERE id = ?
     `).run(
       transactionStatus,
       mappedStatus,
       mappedStatus,
-      statusDateTime || new Date().toISOString(),
+      eventTime,
+      JSON.stringify(history),
       order.id
     );
 

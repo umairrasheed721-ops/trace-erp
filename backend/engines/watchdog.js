@@ -9,26 +9,20 @@ function formatTime(dateObj) {
 
 // 🐕 WATCHDOG: Only runs on PostEx orders (as confirmed by user)
 async function runWatchdog(store) {
-  const { id: storeId, postex_token, postex_track_url } = store;
-  if (!postex_token) return { audited: 0, reason: 'No PostEx token found' };
-
-  let rawUrl = postex_track_url;
-  if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
-    rawUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
-  }
-  const baseUrl = rawUrl.replace(/\/?$/, '/');
+  const { id: storeId } = store;
 
   // We look back up to 14 days and check orders that are > 12 hours old
   const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
 
-  // Find candidates directly via SQL: avoids scanning historical orders or JS filtering
+  // Find candidates directly via SQL: must have tracking_history populated in the database
   const candidates = db.prepare(`
-    SELECT id, tracking_number, status_date, delivery_status, courier_status 
+    SELECT id, tracking_number, status_date, order_date, delivery_status, courier_status, tracking_history 
     FROM orders
     WHERE store_id = ?
       AND LOWER(courier) = 'postex'
       AND status_date > datetime('now', '-14 days')
       AND status_date < ?
+      AND tracking_history IS NOT NULL AND tracking_history != '' AND tracking_history != '[]'
       AND tracking_number IS NOT NULL AND tracking_number != ''
       AND tracking_number NOT IN (SELECT tracking_number FROM watchdog_results WHERE store_id = ?)
       AND (
@@ -46,102 +40,56 @@ async function runWatchdog(store) {
         LOWER(courier_status) LIKE '%return%'
       )
     ORDER BY status_date DESC
-    LIMIT 50
+    LIMIT 200
   `).all(storeId, cutoff, storeId);
 
   if (!candidates.length) {
     return { audited: 0, candidatesCount: 0 };
   }
 
-  const CONCURRENT = 5;
   let audited = 0;
+  const rows = [];
 
   const insertResult = db.prepare(`
     INSERT OR REPLACE INTO watchdog_results (store_id, tracking_number, request_time, latest_status, verdict, duration, evidence)
     VALUES (?,?,?,?,?,?,?)
   `);
 
-  const chunks = (arr, size) => {
-    const out = [];
-    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-    return out;
-  };
+  for (const order of candidates) {
+    try {
+      const history = JSON.parse(order.tracking_history);
+      if (!Array.isArray(history) || history.length === 0) continue;
 
-  for (const batch of chunks(candidates, CONCURRENT)) {
-    const results = await Promise.allSettled(
-      batch.map(async order => {
-        let retries = 0;
-        const trackUrl = `${baseUrl}${order.tracking_number}`;
-        while (retries < 3) {
-          try {
-            const res = await fetch(trackUrl, {
-              method: 'GET',
-              headers: { 
-                'token': postex_token, 
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9'
-              },
-              timeout: 10000
-            });
-            if (res.status === 429 || res.status === 503) {
-              await sleep(4000);
-              retries++;
-              continue;
-            }
-            if (!res.ok) {
-              console.warn(`[Watchdog Debug] Tracking response not OK (${res.status}) for ${order.tracking_number}`);
-              return null;
-            }
-            const data = await res.json();
-            const distData = data?.dist || data;
-            if (!distData) {
-              console.warn(`[Watchdog Debug] Missing dist data in response for ${order.tracking_number}`);
-              return null;
-            }
-
-            const requestTime = new Date(order.status_date);
-            const result = auditPostExOrder(distData, requestTime);
-            return {
-              tracking_number: order.tracking_number,
-              requestTime,
-              result
-            };
-          } catch (e) {
-            console.error(`[Watchdog Debug Error] Exception for ${order.tracking_number}:`, e.message);
-            retries++;
-            await sleep(1000);
-          }
-        }
-        return null;
-      })
-    );
-
-    const rows = [];
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value) {
-        const { tracking_number, requestTime, result } = r.value;
-        rows.push([
-          storeId, tracking_number,
-          requestTime.toISOString(),
-          result.latestStatus, result.verdict, result.duration, result.evidence
-        ]);
-        audited++;
-      }
+      const requestTime = new Date(order.status_date || order.order_date || Date.now());
+      // We pass the parsed tracking history inside an object containing 'trackingHistory' matching the audit parser format
+      const result = auditPostExOrder({ 
+        trackingHistory: history, 
+        transactionStatus: order.courier_status || order.delivery_status 
+      }, requestTime);
+      
+      rows.push([
+        storeId, 
+        order.tracking_number,
+        requestTime.toISOString(),
+        result.latestStatus, 
+        result.verdict, 
+        result.duration, 
+        result.evidence
+      ]);
+      audited++;
+    } catch (e) {
+      console.error(`[Watchdog Offline Engine Error] Parsing failed for ${order.tracking_number}:`, e.message);
     }
-
-    if (rows.length > 0) {
-      const insertMany = db.transaction(items => {
-        for (const item of items) insertResult.run(...item);
-      });
-      insertMany(rows);
-    }
-
-    await sleep(1200);
   }
 
-  console.log(`🕵️ Watchdog [Store ID ${storeId}]: Audited ${audited} PostEx orders`);
+  if (rows.length > 0) {
+    const insertMany = db.transaction(items => {
+      for (const item of items) insertResult.run(...item);
+    });
+    insertMany(rows);
+  }
+
+  console.log(`🕵️ Offline Watchdog [Store ID ${storeId}]: Audited ${audited} PostEx orders from database`);
   return { 
     audited, 
     candidatesCount: candidates.length, 

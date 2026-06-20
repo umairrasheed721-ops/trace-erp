@@ -79,7 +79,8 @@ module.exports = [
     financial_status TEXT DEFAULT 'pending',
     fulfillment_status TEXT DEFAULT 'unfulfilled',
     total_price REAL DEFAULT 0,
-    tenant_id TEXT DEFAULT 'default'
+    tenant_id TEXT DEFAULT 'default',
+    tracking_history TEXT DEFAULT NULL
   );`,
 
   // 3. CREATE products TABLE
@@ -285,7 +286,8 @@ module.exports = [
       "ALTER TABLE orders ADD COLUMN tenant_id TEXT DEFAULT 'default'",
       "ALTER TABLE products ADD COLUMN inventory_qty INTEGER DEFAULT 0",
       "ALTER TABLE products ADD COLUMN product_url TEXT DEFAULT ''",
-      "ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL"
+      "ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL",
+      "ALTER TABLE orders ADD COLUMN tracking_history TEXT DEFAULT NULL"
     ];
 
     alters.forEach(sql => {
