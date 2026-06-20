@@ -75,20 +75,6 @@ router.get('/poll-diag', (req, res) => {
       result.polls_error = e.message;
     }
 
-    // recent postex orders (for webhook diagnostics)
-    try {
-      result.latest_postex_webhooks = db.prepare(`
-        SELECT id, shopify_order_id, ref_number, tracking_number, delivery_status, courier_status, status_date, tracking_history 
-        FROM orders 
-        WHERE LOWER(courier) = 'postex' 
-          AND status_date IS NOT NULL 
-        ORDER BY status_date DESC 
-        LIMIT 10
-      `).all();
-    } catch (e) {
-      result.latest_postex_webhooks_error = e.message;
-    }
-
     // recent orders
     try {
       result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, delivery_status, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
