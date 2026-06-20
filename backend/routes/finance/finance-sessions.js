@@ -208,7 +208,8 @@ router.post('/bulk-update', async (req, res) => {
             
             let delStatus = order.delivery_status;
             if (delStatus !== 'Return Received') delStatus = 'Returned';
-            db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ? WHERE id = ?').run(delStatus, charges, order.id);
+            db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ?, payment_status = ?, paid_amount = ? WHERE id = ?')
+              .run(delStatus, charges, 'Returned', 0, order.id);
             
             results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
             processedCount++;
@@ -475,9 +476,15 @@ router.post('/lock-cpr', (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const updateMainOrd = db.prepare(`
+    const updateMainOrdDelivered = db.prepare(`
       UPDATE orders 
       SET payment_status = 'Paid', delivery_status = 'Delivered', payment_ref = ?, paid_amount = ?, courier_fee = ?, payment_date = ?, cost_locked = 1 
+      WHERE store_id = ? AND (tracking_number = ? OR shopify_order_id = ? OR ref_number = ?)
+    `);
+
+    const updateMainOrdReturned = db.prepare(`
+      UPDATE orders 
+      SET payment_status = 'Returned', delivery_status = CASE WHEN delivery_status = 'Return Received' THEN 'Return Received' ELSE 'Returned' END, payment_ref = ?, paid_amount = 0, courier_fee = ?, payment_date = ?, cost_locked = 1 
       WHERE store_id = ? AND (tracking_number = ? OR shopify_order_id = ? OR ref_number = ?)
     `);
 
@@ -493,16 +500,28 @@ router.post('/lock-cpr', (req, res) => {
         settlementDate
       );
 
-      updateMainOrd.run(
-        cpr,
-        ord['Amount Collected'],
-        ord['Total Expense'],
-        settlementDate,
-        Number(store_id),
-        ord['Tracking Number'],
-        ord['Order ID'],
-        ord['Order ID']
-      );
+      if (ord['Status'] === 'R') {
+        updateMainOrdReturned.run(
+          cpr,
+          ord['Total Expense'],
+          settlementDate,
+          Number(store_id),
+          ord['Tracking Number'],
+          ord['Order ID'],
+          ord['Order ID']
+        );
+      } else {
+        updateMainOrdDelivered.run(
+          cpr,
+          ord['Amount Collected'],
+          ord['Total Expense'],
+          settlementDate,
+          Number(store_id),
+          ord['Tracking Number'],
+          ord['Order ID'],
+          ord['Order ID']
+        );
+      }
     }
   });
 
