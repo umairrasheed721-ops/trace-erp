@@ -137,7 +137,11 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             // Watchdog Rider Fraud Audit (PostEx candidate status match)
             let watchdogResult = null;
             const statusLower = (rawStatus || '').toLowerCase();
-            const ADVICE_KEYWORDS = ['attempt', 'failed', 'refused', 'undelivered', 'reattempt', 'shipper advice', 'return'];
+            const ADVICE_KEYWORDS = [
+              'attempt', 'failed', 'refused', 'undelivered', 'reattempt', 
+              'shipper advice', 'return', 'delivery under review', 
+              'incomplete address', 'consignee not available', 'review'
+            ];
             const needsWatchdog = ADVICE_KEYWORDS.some(kw => statusLower.includes(kw));
             if (needsWatchdog && distData) {
               try {
