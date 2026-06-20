@@ -58,7 +58,7 @@ router.post('/postex', (req, res) => {
 
   try {
     // Find order
-    const order = db.prepare('SELECT id, store_id, shopify_order_id, delivery_status, phone, tracking_history FROM orders WHERE tracking_number = ?').get(trackingNumber);
+    const order = db.prepare('SELECT id, store_id, shopify_order_id, delivery_status, phone, tracking_history, order_date, status_date FROM orders WHERE tracking_number = ?').get(trackingNumber);
     if (!order) {
       console.log(`%c👻 Webhook order not found: ${trackingNumber}`, 'color: yellow');
       return res.json({ success: true, message: 'Order not in ERP' });
@@ -94,6 +94,8 @@ router.post('/postex', (req, res) => {
       });
     }
 
+    const historyJson = JSON.stringify(history);
+
     // Always update courier_status, tracking_history and update delivery_status if mapping exists
     db.prepare(`
       UPDATE orders 
@@ -107,9 +109,42 @@ router.post('/postex', (req, res) => {
       mappedStatus,
       mappedStatus,
       eventTime,
-      JSON.stringify(history),
+      historyJson,
       order.id
     );
+
+    // 🐕 REAL-TIME OFFLINE WATCHDOG AUDIT ON WEBHOOK RECEIVED
+    const statusLower = (transactionStatus || '').toLowerCase();
+    const ADVICE_KEYWORDS = [
+      'attempt', 'failed', 'refused', 'undelivered', 'reattempt', 
+      'shipper advice', 'return', 'delivery under review', 
+      'incomplete address', 'consignee not available', 'review'
+    ];
+    const needsWatchdog = ADVICE_KEYWORDS.some(kw => statusLower.includes(kw));
+    if (needsWatchdog) {
+      try {
+        const { auditPostExOrder } = require('../engines/watchdog');
+        // Tri-layer audit relies on the initial status date (or order date as fallback) as requestTime
+        const requestTime = new Date(order.status_date || order.order_date || eventTime);
+        const auditRes = auditPostExOrder({ trackingHistory: history, transactionStatus }, requestTime);
+        
+        db.prepare(`
+          INSERT OR REPLACE INTO watchdog_results (store_id, tracking_number, request_time, latest_status, verdict, duration, evidence)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          order.store_id,
+          trackingNumber,
+          requestTime.toISOString(),
+          auditRes.latestStatus,
+          auditRes.verdict,
+          auditRes.duration,
+          auditRes.evidence
+        );
+        console.log(`🐕 [Webhook Watchdog] Offline real-time audit logged for ${trackingNumber}: ${auditRes.verdict}`);
+      } catch (wdErr) {
+        console.error(`[Webhook Watchdog Error] Failed to audit ${trackingNumber} on webhook:`, wdErr.message);
+      }
+    }
 
     // Check for post-delivery feedback scheduling
     const isDelivered = (transactionStatus === 'Delivered' || mappedStatus === 'Delivered');
