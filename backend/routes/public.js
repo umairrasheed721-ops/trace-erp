@@ -75,34 +75,6 @@ router.get('/poll-diag', (req, res) => {
       result.polls_error = e.message;
     }
 
-    // temporary timeline diagnostics
-    try {
-      result.postex_errors = db.prepare(`
-        SELECT id, level, message, module, created_at 
-        FROM system_logs 
-        WHERE message LIKE '%PostEx%' OR message LIKE '%Premature close%' 
-        ORDER BY created_at DESC 
-        LIMIT 50
-      `).all();
-      
-      result.sync_audits = db.prepare(`
-        SELECT id, tracking_number, message, timestamp, store_id, level 
-        FROM sync_audit 
-        ORDER BY timestamp DESC 
-        LIMIT 50
-      `).all();
-
-      result.postex_orders = db.prepare(`
-        SELECT id, shopify_order_id, ref_number, tracking_number, delivery_status, courier_status, status_date 
-        FROM orders 
-        WHERE LOWER(courier) = 'postex' 
-        ORDER BY status_date DESC 
-        LIMIT 20
-      `).all();
-    } catch (e) {
-      result.timeline_error = e.message;
-    }
-
     // recent orders
     try {
       result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, delivery_status, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
