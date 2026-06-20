@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
 const { runWatchdog } = require('../engines/watchdog');
+const { syncPostEx } = require('../engines/tracking/postex');
 const whatsappService = require('../services/whatsappService');
 
 // GET /api/watchdog?store_id=1
@@ -22,7 +23,7 @@ router.get('/', authenticateToken, (req, res) => {
   res.json(results);
 });
 
-// POST /api/watchdog/run - Manually trigger watchdog for a store
+// POST /api/watchdog/run - Manually trigger watchdog for a store (calls PostEx sync engine)
 router.post('/run', authenticateToken, async (req, res) => {
   const { store_id } = req.body;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
@@ -31,9 +32,19 @@ router.post('/run', authenticateToken, async (req, res) => {
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
   try {
-    const result = await runWatchdog(store);
-    res.json({ success: true, result });
+    // Run the PostEx tracking sync which will automatically trigger and save the watchdog audits
+    console.log(`🚀 [Watchdog Route] Triggering PostEx tracking sync for store ${store.shop_domain}...`);
+    const syncRes = await syncPostEx(store, 'FULL');
+    res.json({ 
+      success: true, 
+      result: { 
+        audited: syncRes.updated, 
+        candidatesCount: syncRes.total,
+        failedCount: syncRes.failed
+      } 
+    });
   } catch (e) {
+    console.error(`[Watchdog Route Error] Failed to run sync watchdog audit:`, e.message);
     res.status(500).json({ error: e.message });
   }
 });

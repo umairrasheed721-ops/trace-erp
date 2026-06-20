@@ -2,6 +2,7 @@ const fetch = require('node-fetch');
 const { db } = require('../../db');
 const { postexBreaker } = require('../circuit_breaker');
 const { DEAD_STATUSES, EARLY_STATUSES, ATTEMPT_FAILURE_STATUSES, loadStatusMaps, applyMap } = require('./statusMapper');
+const { auditPostExOrder } = require('../watchdog');
 
 const CONCURRENT = 5;
 const BASE_SLEEP_MS = 1200;
@@ -32,7 +33,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   const baseUrl = rawUrl.replace(/\/?$/, '/');
 
   const orders = db.prepare(`
-    SELECT id, ref_number, tracking_number, delivery_status FROM orders
+    SELECT id, ref_number, tracking_number, delivery_status, status_date, order_date FROM orders
     WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
     AND (LOWER(courier) IN ('postex', 'post ex') OR courier IS NULL OR courier = '')
   `).all(storeId);
@@ -92,8 +93,9 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             }
   
             const data = await res.json();
+            const distData = data?.dist || data;
   
-            let rawStatus = data?.dist?.transactionStatus
+            let rawStatus = distData?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
               || data?.statusDescription
@@ -132,7 +134,36 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
               }
             }
 
-            return { id: order.id, oldStatus: order.delivery_status, rawStatus, mappedStatus, statusDate: formattedStatusDate };
+            // Watchdog Rider Fraud Audit (PostEx candidate status match)
+            let watchdogResult = null;
+            const statusLower = (rawStatus || '').toLowerCase();
+            const ADVICE_KEYWORDS = ['attempt', 'failed', 'refused', 'undelivered', 'reattempt', 'shipper advice', 'return'];
+            const needsWatchdog = ADVICE_KEYWORDS.some(kw => statusLower.includes(kw));
+            if (needsWatchdog && distData) {
+              try {
+                const requestTime = new Date(order.status_date || order.order_date || Date.now());
+                const auditRes = auditPostExOrder(distData, requestTime);
+                watchdogResult = {
+                  tracking_number: order.tracking_number,
+                  request_time: requestTime.toISOString(),
+                  latest_status: auditRes.latestStatus,
+                  verdict: auditRes.verdict,
+                  duration: auditRes.duration,
+                  evidence: auditRes.evidence
+                };
+              } catch (e) {
+                console.error(`[Watchdog Sync Audit Error] Exception for ${order.tracking_number}:`, e.message);
+              }
+            }
+
+            return { 
+              id: order.id, 
+              oldStatus: order.delivery_status, 
+              rawStatus, 
+              mappedStatus, 
+              statusDate: formattedStatusDate,
+              watchdogResult
+            };
           } catch (err) {
             await sleep(1000);
           }
@@ -143,7 +174,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
 
     for (const r of results) {
       if (r.status === 'fulfilled' && r.value) {
-        const { id, rawStatus, mappedStatus, oldStatus, statusDate } = r.value;
+        const { id, rawStatus, mappedStatus, oldStatus, statusDate, watchdogResult } = r.value;
         if (!rawStatus) continue;
         const isProtected = DEAD_STATUSES.includes((oldStatus||'').toLowerCase());
         const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((rawStatus||'').toLowerCase());
@@ -152,7 +183,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
           courier_status: rawStatus,
           erp_status: (!isProtected && mappedStatus) ? mappedStatus : null,
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
-          status_date: statusDate
+          status_date: statusDate,
+          watchdogResult
         });
       }
     }
@@ -172,11 +204,19 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
         failed_attempts = failed_attempts + ?
     WHERE id = ?
   `);
+  const insertWatchdogStmt = db.prepare(`
+    INSERT OR REPLACE INTO watchdog_results (store_id, tracking_number, request_time, latest_status, verdict, duration, evidence)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
   const { broadcast } = require('../../sse');
   const lookupStmt = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
       updateStmt.run(u.courier_status, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment || 0, u.id);
+      if (u.watchdogResult) {
+        const w = u.watchdogResult;
+        insertWatchdogStmt.run(storeId, w.tracking_number, w.request_time, w.latest_status, w.verdict, w.duration, w.evidence);
+      }
     }
   });
   updateMany(updatesToApply);

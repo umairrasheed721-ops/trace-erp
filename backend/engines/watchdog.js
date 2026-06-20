@@ -260,4 +260,4 @@ function auditPostExOrder(distData, requestTime) {
   }
 }
 
-module.exports = { runWatchdog };
+module.exports = { runWatchdog, auditPostExOrder };
