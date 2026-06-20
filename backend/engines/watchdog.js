@@ -10,7 +10,7 @@ function formatTime(dateObj) {
 // 🐕 WATCHDOG: Only runs on PostEx orders (as confirmed by user)
 async function runWatchdog(store) {
   const { id: storeId, postex_token, postex_track_url } = store;
-  if (!postex_token) return { audited: 0 };
+  if (!postex_token) return { audited: 0, reason: 'No PostEx token found' };
 
   let rawUrl = postex_track_url;
   if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
@@ -18,30 +18,40 @@ async function runWatchdog(store) {
   }
   const baseUrl = rawUrl.replace(/\/?$/, '/');
 
+  // We look back up to 14 days and check orders that are > 12 hours old
   const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
 
-  // Get PostEx shipper-advice/failed attempt orders > 12 hours old, not yet audited
-  const alreadyAudited = new Set(
-    db.prepare('SELECT tracking_number FROM watchdog_results WHERE store_id = ?').all(storeId).map(r => r.tracking_number)
-  );
-
-  const ADVICE_KEYWORDS = ['shipper advice', 'delivery under review', 'reattempt', 'undelivered', 'refused', 'incomplete address', 'consignee not available', 'attempt'];
-
+  // Find candidates directly via SQL: avoids scanning historical orders or JS filtering
   const candidates = db.prepare(`
-    SELECT id, tracking_number, status_date, delivery_status, courier_status FROM orders
+    SELECT id, tracking_number, status_date, delivery_status, courier_status 
+    FROM orders
     WHERE store_id = ?
-    AND LOWER(courier) = 'postex'
-    AND status_date < ?
-    AND tracking_number IS NOT NULL AND tracking_number != ''
-  `).all(storeId, cutoff).filter(o => {
-    if (alreadyAudited.has(o.tracking_number)) return false;
-    const status = (o.delivery_status || '').toLowerCase();
-    const courierStatus = (o.courier_status || '').toLowerCase();
-    return ADVICE_KEYWORDS.some(kw => status.includes(kw) || courierStatus.includes(kw)) ||
-           status.includes('return') || courierStatus.includes('return');
-  });
+      AND LOWER(courier) = 'postex'
+      AND status_date > datetime('now', '-14 days')
+      AND status_date < ?
+      AND tracking_number IS NOT NULL AND tracking_number != ''
+      AND tracking_number NOT IN (SELECT tracking_number FROM watchdog_results WHERE store_id = ?)
+      AND (
+        LOWER(delivery_status) LIKE '%shipper advice%' OR
+        LOWER(delivery_status) LIKE '%attempt%' OR
+        LOWER(delivery_status) LIKE '%reattempt%' OR
+        LOWER(delivery_status) LIKE '%refused%' OR
+        LOWER(delivery_status) LIKE '%undelivered%' OR
+        LOWER(delivery_status) LIKE '%return%' OR
+        LOWER(courier_status) LIKE '%shipper advice%' OR
+        LOWER(courier_status) LIKE '%attempt%' OR
+        LOWER(courier_status) LIKE '%reattempt%' OR
+        LOWER(courier_status) LIKE '%refused%' OR
+        LOWER(courier_status) LIKE '%undelivered%' OR
+        LOWER(courier_status) LIKE '%return%'
+      )
+    ORDER BY status_date DESC
+    LIMIT 50
+  `).all(storeId, cutoff, storeId);
 
-  if (!candidates.length) return { audited: 0 };
+  if (!candidates.length) {
+    return { audited: 0, candidatesCount: 0 };
+  }
 
   const CONCURRENT = 5;
   let audited = 0;
@@ -118,12 +128,11 @@ async function runWatchdog(store) {
     await sleep(1200);
   }
 
-  console.log(`🕵️ Watchdog [${store.shop_domain}]: Audited ${audited} PostEx orders`);
+  console.log(`🕵️ Watchdog [Store ID ${storeId}]: Audited ${audited} PostEx orders`);
   return { 
     audited, 
     candidatesCount: candidates.length, 
-    cutoff, 
-    alreadyAuditedCount: alreadyAudited.size 
+    cutoff
   };
 }
 
@@ -132,11 +141,11 @@ async function runWatchdog(store) {
 // ─────────────────────────────────────────
 function auditPostExOrder(distData, requestTime) {
   try {
-    const history = distData.trackingHistory || distData.transactionStatusHistory || [];
-    const currentStatus = distData.transactionStatus || 'Unknown';
+    const history = distData.trackingHistory || distData.transactionStatusHistory || distData.statusHistory || [];
+    const currentStatus = distData.transactionStatus || distData.status || 'Unknown';
 
     const getMoveTime = h => h.dateTime || h.dateTimeStr || h.date || h.updatedAt || h.timestamp;
-    const getMoveStatus = h => h.transactionStatus || h.transactionStatusMessage || '';
+    const getMoveStatus = h => h.transactionStatus || h.transactionStatusMessage || h.status || '';
 
     const validMoves = history.filter(h => {
       const t = getMoveTime(h);
@@ -144,7 +153,12 @@ function auditPostExOrder(distData, requestTime) {
     });
 
     if (!validMoves.length) {
-      return { latestStatus: currentStatus, verdict: '🔴 IGNORED (No movement)', duration: 'N/A', evidence: 'Status unchanged since request' };
+      return { 
+        latestStatus: currentStatus, 
+        verdict: '🔴 IGNORED (No movement)', 
+        duration: 'N/A', 
+        evidence: 'Status unchanged since request' 
+      };
     }
 
     validMoves.sort((a, b) => new Date(getMoveTime(a)) - new Date(getMoveTime(b)));
@@ -154,10 +168,20 @@ function auditPostExOrder(distData, requestTime) {
 
     for (const move of validMoves) {
       const st = getMoveStatus(move).toLowerCase();
-      if (st.includes('enroute') || st.includes('out for delivery')) {
-        enrouteTime = new Date(getMoveTime(move));
-      } else if (enrouteTime && (st.includes('attempt') || st.includes('refused') || st.includes('return') || st.includes('undelivered') || st.includes('shipper advice') || st.includes('delivered'))) {
-        attemptTime = new Date(getMoveTime(move));
+      const timeVal = new Date(getMoveTime(move));
+
+      if (st.includes('enroute') || st.includes('out for delivery') || st.includes('dispatched')) {
+        enrouteTime = timeVal;
+      } else if (enrouteTime && (
+        st.includes('attempt') || 
+        st.includes('refused') || 
+        st.includes('return') || 
+        st.includes('undelivered') || 
+        st.includes('shipper advice') || 
+        st.includes('delivered') ||
+        st.includes('failed')
+      )) {
+        attemptTime = timeVal;
         break;
       }
     }
@@ -168,17 +192,58 @@ function auditPostExOrder(distData, requestTime) {
       const hourOfDay = attemptTime.getHours();
       const evidence = `${formatTime(enrouteTime)} ➡️ ${formatTime(attemptTime)}`;
 
+      // Layer 3: Instant/Negative Delta
+      if (diffMins <= 0) {
+        return { 
+          latestStatus: currentStatus, 
+          verdict: '🔴 FAKE: INSTANT CLOSE', 
+          duration: `${diffMins} mins`, 
+          evidence 
+        };
+      }
+
       // Layer 1: Speed Trap
-      if (diffMins < 30) return { latestStatus: currentStatus, verdict: '🔴 FAKE: IMPOSSIBLE SPEED', duration: `${diffMins} mins`, evidence };
+      if (diffMins < 30) {
+        return { 
+          latestStatus: currentStatus, 
+          verdict: '🔴 FAKE: IMPOSSIBLE SPEED', 
+          duration: `${diffMins} mins`, 
+          evidence 
+        };
+      }
+
       // Layer 2: Night Owl
-      if (hourOfDay >= 21) return { latestStatus: currentStatus, verdict: '🟠 SUSPICIOUS: LATE BULK CLOSE', duration: `${Math.floor(diffMins / 60)} hrs`, evidence };
-      // Layer 3: Verified
-      return { latestStatus: currentStatus, verdict: '🟢 VERIFIED ATTEMPT', duration: `${Math.floor(diffMins / 60)}h ${diffMins % 60}m`, evidence };
+      if (hourOfDay >= 21) {
+        return { 
+          latestStatus: currentStatus, 
+          verdict: '🟠 SUSPICIOUS: LATE BULK CLOSE', 
+          duration: `${Math.floor(diffMins / 60)} hrs`, 
+          evidence 
+        };
+      }
+
+      // Layer 4: Verified
+      return { 
+        latestStatus: currentStatus, 
+        verdict: '🟢 VERIFIED ATTEMPT', 
+        duration: `${Math.floor(diffMins / 60)}h ${diffMins % 60}m`, 
+        evidence 
+      };
     }
 
-    return { latestStatus: currentStatus, verdict: '⚪ Moving / No Attempt Yet', duration: 'Pending', evidence: 'Enroute but no result' };
+    return { 
+      latestStatus: currentStatus, 
+      verdict: '⚪ Moving / No Attempt Yet', 
+      duration: 'Pending', 
+      evidence: 'Enroute but no final status recorded' 
+    };
   } catch (e) {
-    return { latestStatus: 'Error', verdict: '❌ Parse Error', duration: '-', evidence: e.message };
+    return { 
+      latestStatus: 'Error', 
+      verdict: '❌ Parse Error', 
+      duration: '-', 
+      evidence: e.message 
+    };
   }
 }
 

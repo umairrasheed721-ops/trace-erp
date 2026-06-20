@@ -110,12 +110,14 @@ module.exports = [
   `CREATE TABLE IF NOT EXISTS watchdog_results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-    checked_at TEXT DEFAULT (datetime('now')),
-    total_orders INTEGER DEFAULT 0,
-    unmapped_cities INTEGER DEFAULT 0,
-    stuck_orders INTEGER DEFAULT 0,
-    pending_reconcile INTEGER DEFAULT 0,
-    drift_count INTEGER DEFAULT 0
+    tracking_number TEXT NOT NULL,
+    request_time TEXT,
+    latest_status TEXT,
+    verdict TEXT,
+    duration TEXT,
+    evidence TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(store_id, tracking_number)
   );`,
 
   // 6. CREATE users TABLE
