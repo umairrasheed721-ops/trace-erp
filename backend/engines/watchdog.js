@@ -84,10 +84,16 @@ async function runWatchdog(store) {
               retries++;
               continue;
             }
-            if (!res.ok) return null;
+            if (!res.ok) {
+              console.warn(`[Watchdog Debug] Tracking response not OK (${res.status}) for ${order.tracking_number}`);
+              return null;
+            }
             const data = await res.json();
             const distData = data?.dist || data;
-            if (!distData) return null;
+            if (!distData) {
+              console.warn(`[Watchdog Debug] Missing dist data in response for ${order.tracking_number}`);
+              return null;
+            }
 
             const requestTime = new Date(order.status_date);
             const result = auditPostExOrder(distData, requestTime);
@@ -97,6 +103,7 @@ async function runWatchdog(store) {
               result
             };
           } catch (e) {
+            console.error(`[Watchdog Debug Error] Exception for ${order.tracking_number}:`, e.message);
             retries++;
             await sleep(1000);
           }
