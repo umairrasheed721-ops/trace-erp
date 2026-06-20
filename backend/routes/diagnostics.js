@@ -553,4 +553,35 @@ router.post('/remote-logs/clear', (req, res) => {
     }
 });
 
+// GET /api/diagnostics/test-postex/:tracking
+router.get('/test-postex/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const fetch = require('node-fetch');
+        const order = db.prepare("SELECT store_id FROM orders WHERE tracking_number = ?").get(tracking);
+        if (!order) return res.status(404).json({ error: 'Order not found in DB' });
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (!store) return res.status(404).json({ error: 'Store not found' });
+
+        const url = `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}`;
+        const start = Date.now();
+        console.log(`🔌 Probing PostEx API from Railway for tracking: ${tracking}...`);
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+            timeout: 10000
+        });
+        const duration = Date.now() - start;
+        const data = await response.json();
+        
+        res.json({
+            status: response.status,
+            duration: `${duration}ms`,
+            data
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
