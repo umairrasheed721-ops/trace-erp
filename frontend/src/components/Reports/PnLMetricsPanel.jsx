@@ -101,7 +101,7 @@ export default function PnLMetricsPanel({
                 if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                 
                 if (col.id === 'pnl') style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
-                const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount'].includes(col.id);
+                const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount', 'zeroExpenseCount'].includes(col.id);
 
                 return (
                   <td 
@@ -109,8 +109,8 @@ export default function PnLMetricsPanel({
                     style={{ 
                       ...style, 
                       cursor: isClickable ? 'pointer' : 'default',
-                      color: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0)) ? 'var(--red)' : style.color,
-                      fontWeight: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0)) ? 'bold' : style.fontWeight
+                      color: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0)) ? 'var(--red)' : style.color,
+                      fontWeight: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0)) ? 'bold' : style.fontWeight
                     }} 
                     onClick={() => isClickable && handleDrilldown(row, col.id)}
                   >

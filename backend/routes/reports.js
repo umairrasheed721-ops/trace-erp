@@ -47,6 +47,7 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) THEN 1 ELSE 0 END) as cost_gaps,
         SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN price ELSE 0 END) as unpaid_amount,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status != 'Paid' AND payment_status != 'Payment Posted' OR payment_status IS NULL) AND (julianday('now', '+5 hours') - julianday(COALESCE(status_date, order_date))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
+        SUM(CASE WHEN (courier_fee IS NULL OR courier_fee < 1) AND LOWER(delivery_status) NOT IN ('pending', 'cancelled') AND (tracking_number IS NOT NULL AND tracking_number != '') THEN 1 ELSE 0 END) as zero_expense_count,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count
       FROM orders
@@ -199,7 +200,8 @@ router.get('/daily', (req, res) => {
         deliveredPaymentPending: day.delivered_payment_pending || 0,
         costGaps: day.cost_gaps || 0,
         unpaidAmount: day.unpaid_amount || 0,
-        overduePayoutCount: day.overdue_payout_count || 0
+        overduePayoutCount: day.overdue_payout_count || 0,
+        zeroExpenseCount: day.zero_expense_count || 0
       };
     });
 
@@ -233,7 +235,7 @@ router.get('/daily', (req, res) => {
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
-            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0
+            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0
           });
         }
         curr.setDate(curr.getDate() + 1);

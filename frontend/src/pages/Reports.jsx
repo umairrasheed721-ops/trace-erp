@@ -109,6 +109,7 @@ export default function Reports() {
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
     else if (colId === 'costGaps') filters.status = '[MISSING COST]';
     else if (colId === 'overduePayoutCount') filters.status = 'OVERDUE PAYOUT';
+    else if (colId === 'zeroExpenseCount') filters.status = '[AUDIT: MISSING CHARGES]';
 
     navigate('/search', { state: filters });
   };
@@ -149,6 +150,7 @@ export default function Reports() {
     { id: 'diffCorrection', label: 'Correction', group: 'kpi' },
     { id: 'deliveredPaymentPending', label: 'Unpaid Del', group: 'kpi' },
     { id: 'costGaps', label: 'Cost Gaps', group: 'kpi' },
+    { id: 'zeroExpenseCount', label: 'Zero Expense', group: 'kpi' },
     { id: 'unpaidAmount', label: 'Unpaid Payouts', group: 'kpi' },
     { id: 'overduePayoutCount', label: 'Overdue 10+', group: 'kpi' }
   ];

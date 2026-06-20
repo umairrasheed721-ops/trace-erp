@@ -273,7 +273,8 @@ export default function useReportsData(activeStoreId, toast) {
           estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
-          paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0
+          paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
+          zeroExpenseCount: 0
         };
       }
       const m = acc[month];
@@ -302,6 +303,7 @@ export default function useReportsData(activeStoreId, toast) {
       m.costGaps += row.costGaps || 0;
       m.unpaidAmount += row.unpaidAmount || 0;
       m.overduePayoutCount += row.overduePayoutCount || 0;
+      m.zeroExpenseCount += row.zeroExpenseCount || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
       m.totalSale += (row.roasMeta * totalMarketing);
       return acc;
