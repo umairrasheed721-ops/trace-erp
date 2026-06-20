@@ -24,15 +24,12 @@ router.post('/run', async (req, res) => {
   const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  res.json({ success: true, message: 'Watchdog running in background...' });
-
-  (async () => {
-    try {
-      await runWatchdog(store);
-    } catch (e) {
-      console.error(`Watchdog error: ${e.message}`);
-    }
-  })();
+  try {
+    const result = await runWatchdog(store);
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // DELETE /api/watchdog/:id - Remove a watchdog result (allow re-audit)

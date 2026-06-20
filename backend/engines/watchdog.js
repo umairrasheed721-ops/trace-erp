@@ -119,7 +119,12 @@ async function runWatchdog(store) {
   }
 
   console.log(`🕵️ Watchdog [${store.shop_domain}]: Audited ${audited} PostEx orders`);
-  return { audited };
+  return { 
+    audited, 
+    candidatesCount: candidates.length, 
+    cutoff, 
+    alreadyAuditedCount: alreadyAudited.size 
+  };
 }
 
 // ─────────────────────────────────────────
