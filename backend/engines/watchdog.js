@@ -76,7 +76,13 @@ async function runWatchdog(store) {
           try {
             const res = await fetch(trackUrl, {
               method: 'GET',
-              headers: { 'token': postex_token, 'Content-Type': 'application/json' },
+              headers: { 
+                'token': postex_token, 
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9'
+              },
               timeout: 10000
             });
             if (res.status === 429 || res.status === 503) {
