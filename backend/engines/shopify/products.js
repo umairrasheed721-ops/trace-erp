@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('../fetch');
 const db = require('../../db');
 const API_TIMEOUT = 15000;
 
@@ -275,7 +275,7 @@ async function syncFullProductCatalog(store) {
   const { db: dbConn } = require('../../db');
   console.log(`🔄 Starting full Shopify catalog sync for store ${store.shop_domain}...`);
   try {
-    const fetchFn = typeof fetch === 'function' ? fetch : require('node-fetch');
+    const fetchFn = fetch;
     let url = `https://${store.shop_domain}/admin/api/2024-10/products.json?limit=250`;
     let page = 1;
     

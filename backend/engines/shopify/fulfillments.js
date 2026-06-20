@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('../fetch');
 const API_TIMEOUT = 15000;
 
 async function registerShopifyWebhooks(store, appUrl) {

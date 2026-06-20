@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('./fetch');
 const { postexBreaker } = require('./circuit_breaker');
 const API_TIMEOUT = 15000;
 

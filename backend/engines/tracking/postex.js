@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('../fetch');
 const { db } = require('../../db');
 const { postexBreaker } = require('../circuit_breaker');
 const { DEAD_STATUSES, EARLY_STATUSES, ATTEMPT_FAILURE_STATUSES, loadStatusMaps, applyMap } = require('./statusMapper');
