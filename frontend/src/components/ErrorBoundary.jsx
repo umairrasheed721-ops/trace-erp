@@ -13,6 +13,23 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     console.error("🛡️ UI Safety Net Caught Error:", error, errorInfo);
     
+    // Auto-reload on dynamic import / chunk load failures (Vite deployment hash changes)
+    const errorStr = String(error?.message || error || '');
+    const isChunkError = errorStr.includes('dynamically imported module') || 
+                         errorStr.includes('Failed to fetch') || 
+                         errorStr.includes('ChunkLoadError');
+                         
+    if (isChunkError) {
+      const lastReload = sessionStorage.getItem('last-chunk-reload');
+      const now = Date.now();
+      if (!lastReload || now - parseInt(lastReload) > 10000) {
+        sessionStorage.setItem('last-chunk-reload', now.toString());
+        console.warn("Detected dynamic import chunk load error. Reloading app automatically...");
+        window.location.reload();
+        return;
+      }
+    }
+    
     // Send crash report to backend
     fetch('/api/public/crash-report', {
       method: 'POST',

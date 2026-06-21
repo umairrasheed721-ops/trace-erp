@@ -12,32 +12,59 @@ import Topbar from './components/Topbar'
 import ToastContainer from './components/ToastContainer'
 import ErrorBoundary from './components/ErrorBoundary'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const SearchTool = lazy(() => import('./pages/SearchTool'))
-const StuckMonitor = lazy(() => import('./pages/StuckMonitor'))
-const AdviceMonitor = lazy(() => import('./pages/AdviceMonitor'))
-const Watchdog = lazy(() => import('./pages/Watchdog'))
-const ReturnsManager = lazy(() => import('./pages/ReturnsManager'))
-const FinanceManager = lazy(() => import('./pages/FinanceManager'))
-const Reports = lazy(() => import('./pages/Reports'))
-const CourierIntelligence = lazy(() => import('./pages/CourierIntelligence'))
-const Connect = lazy(() => import('./pages/Connect'))
-const Login = lazy(() => import('./pages/Login'))
-const Users = lazy(() => import('./pages/Users'))
-const Profile = lazy(() => import('./pages/Profile'))
-const CostManager = lazy(() => import('./pages/CostManager'))
-const PreventionManager = lazy(() => import('./pages/PreventionManager'))
-const MarketingIntelligence = lazy(() => import('./pages/MarketingIntelligence'))
-const WhatsAppBot = lazy(() => import('./pages/WhatsAppBot'))
-const TemplateManager = lazy(() => import('./pages/TemplateManager'))
-const DiagnosticCenter = lazy(() => import('./pages/DiagnosticCenter'))
-const SystemStatus = lazy(() => import('./pages/SystemStatus'))
-const StatusMappingManager = lazy(() => import('./pages/StatusMappingManager'))
+const lazyWithRetry = (componentImport, componentName) =>
+  lazy(async () => {
+    const pageHasReloadedKey = `page-reloaded-${componentName}`;
+    try {
+      const result = await componentImport();
+      try {
+        sessionStorage.removeItem(pageHasReloadedKey);
+      } catch (e) {}
+      return result;
+    } catch (error) {
+      console.error(`Dynamic import failed for ${componentName}:`, error);
+      let hasReloaded = false;
+      try {
+        hasReloaded = !!sessionStorage.getItem(pageHasReloadedKey);
+      } catch (e) {}
+      if (!hasReloaded) {
+        try {
+          sessionStorage.setItem(pageHasReloadedKey, 'true');
+        } catch (e) {}
+        console.log(`Forcing page reload to fetch new bundles for ${componentName}...`);
+        window.location.reload();
+        return new Promise(() => {});
+      }
+      throw error;
+    }
+  });
 
-const PayoutReconciler = lazy(() => import('./pages/PayoutReconciler'))
-const TrackingPortal = lazy(() => import('./pages/TrackingPortal'))
-const WhatsAppPortal = lazy(() => import('./pages/WhatsAppPortal'))
-const ReviewsManager = lazy(() => import('./pages/ReviewsManager'))
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'Dashboard')
+const SearchTool = lazyWithRetry(() => import('./pages/SearchTool'), 'SearchTool')
+const StuckMonitor = lazyWithRetry(() => import('./pages/StuckMonitor'), 'StuckMonitor')
+const AdviceMonitor = lazyWithRetry(() => import('./pages/AdviceMonitor'), 'AdviceMonitor')
+const Watchdog = lazyWithRetry(() => import('./pages/Watchdog'), 'Watchdog')
+const ReturnsManager = lazyWithRetry(() => import('./pages/ReturnsManager'), 'ReturnsManager')
+const FinanceManager = lazyWithRetry(() => import('./pages/FinanceManager'), 'FinanceManager')
+const Reports = lazyWithRetry(() => import('./pages/Reports'), 'Reports')
+const CourierIntelligence = lazyWithRetry(() => import('./pages/CourierIntelligence'), 'CourierIntelligence')
+const Connect = lazyWithRetry(() => import('./pages/Connect'), 'Connect')
+const Login = lazyWithRetry(() => import('./pages/Login'), 'Login')
+const Users = lazyWithRetry(() => import('./pages/Users'), 'Users')
+const Profile = lazyWithRetry(() => import('./pages/Profile'), 'Profile')
+const CostManager = lazyWithRetry(() => import('./pages/CostManager'), 'CostManager')
+const PreventionManager = lazyWithRetry(() => import('./pages/PreventionManager'), 'PreventionManager')
+const MarketingIntelligence = lazyWithRetry(() => import('./pages/MarketingIntelligence'), 'MarketingIntelligence')
+const WhatsAppBot = lazyWithRetry(() => import('./pages/WhatsAppBot'), 'WhatsAppBot')
+const TemplateManager = lazyWithRetry(() => import('./pages/TemplateManager'), 'TemplateManager')
+const DiagnosticCenter = lazyWithRetry(() => import('./pages/DiagnosticCenter'), 'DiagnosticCenter')
+const SystemStatus = lazyWithRetry(() => import('./pages/SystemStatus'), 'SystemStatus')
+const StatusMappingManager = lazyWithRetry(() => import('./pages/StatusMappingManager'), 'StatusMappingManager')
+
+const PayoutReconciler = lazyWithRetry(() => import('./pages/PayoutReconciler'), 'PayoutReconciler')
+const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'TrackingPortal')
+const WhatsAppPortal = lazyWithRetry(() => import('./pages/WhatsAppPortal'), 'WhatsAppPortal')
+const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'ReviewsManager')
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
