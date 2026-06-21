@@ -305,7 +305,7 @@ const CommandTableRow = React.memo(({
 
                   {/* 2. Native WhatsApp App Icon (Green) */}
                   <a 
-                    href={"whatsapp://send?phone=" + waPhone} 
+                    href={(localStorage.getItem('trace_use_wa_web') === 'true' ? "https://web.whatsapp.com/send" : "whatsapp://send") + "?phone=" + waPhone} 
                     target="_blank" 
                     rel="noreferrer" 
                     onClick={() => setActiveRowId(o.id)} 
@@ -439,7 +439,9 @@ const CommandTableRow = React.memo(({
                         const amount = Math.round(parseFloat(o.price) || 0);
                         const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                        const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+                        const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+                        const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+                        const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
                         window.open(waLink, '_blank');
                         return;
                       }
@@ -484,7 +486,9 @@ const CommandTableRow = React.memo(({
                         } catch (e) {}
 
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                        let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+                        const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+                        const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+                        let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
                         if (imageUrls.length > 0) {
                           waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
                         }

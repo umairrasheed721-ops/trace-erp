@@ -803,7 +803,8 @@ export default function SearchTool() {
         imageUrls = items.map(i => i.image_url).filter(Boolean);
       } catch (e) {}
 
-      let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       if (imageUrls.length > 0) {
         waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
       }
@@ -874,6 +875,9 @@ export default function SearchTool() {
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
   const [useLocalHelper, setUseLocalHelper] = useState(() => {
     return localStorage.getItem('trace_use_local_helper') === 'true';
+  })
+  const [useWaWeb, setUseWaWeb] = useState(() => {
+    return localStorage.getItem('trace_use_wa_web') === 'true';
   })
 
 
@@ -1481,6 +1485,8 @@ export default function SearchTool() {
             showKPIs={showKPIs}
             toggleKPIs={toggleKPIs}
             onClear={handleClear}
+            useWaWeb={useWaWeb}
+            setUseWaWeb={setUseWaWeb}
           />
         </div>
       )}
@@ -1524,20 +1530,38 @@ export default function SearchTool() {
                 ))}
               </select>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
-                <input 
-                  type="checkbox" 
-                  id="useLocalHelper" 
-                  checked={useLocalHelper} 
-                  onChange={(e) => {
-                    setUseLocalHelper(e.target.checked);
-                    localStorage.setItem('trace_use_local_helper', e.target.checked);
-                  }} 
-                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                />
-                <label htmlFor="useLocalHelper" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
-                  🔌 Use Local Helper (For Desktop App auto-paste)
-                </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    id="useLocalHelper" 
+                    checked={useLocalHelper} 
+                    onChange={(e) => {
+                      setUseLocalHelper(e.target.checked);
+                      localStorage.setItem('trace_use_local_helper', e.target.checked);
+                    }} 
+                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="useLocalHelper" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
+                    🔌 Use Local Helper (For Desktop App auto-paste)
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                  <input 
+                    type="checkbox" 
+                    id="useWaWeb" 
+                    checked={useWaWeb} 
+                    onChange={(e) => {
+                      setUseWaWeb(e.target.checked);
+                      localStorage.setItem('trace_use_wa_web', e.target.checked);
+                    }} 
+                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="useWaWeb" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
+                    🌐 Use WhatsApp Web (Chrome Extension mode)
+                  </label>
+                </div>
               </div>
             </div>
 

@@ -49,7 +49,17 @@ async function pasteImageToField(urlListString, inputElement) {
 
     for (let i = 0; i < urls.length; i++) {
       try {
-        const response = await fetch(urls[i]);
+        let response;
+        try {
+          // Attempt downloading through the local helper proxy to bypass CORS
+          console.log(`Trace Extension: Requesting image via helper proxy for: ${urls[i]}`);
+          response = await fetch(`http://127.0.0.1:9099/fetch-image?url=${encodeURIComponent(urls[i])}`);
+          if (!response.ok) throw new Error(`Helper proxy returned HTTP ${response.status}`);
+        } catch (helperErr) {
+          console.warn(`Trace Extension: Helper proxy failed (${helperErr.message}). Trying direct fetch...`);
+          response = await fetch(urls[i]);
+        }
+
         const blob = await response.blob();
         const extension = blob.type.split('/')[1] || 'png';
         const file = new File([blob], `product_image_${i}.${extension}`, { type: blob.type });
@@ -65,8 +75,13 @@ async function pasteImageToField(urlListString, inputElement) {
       return;
     }
     
-    // 2. Dispatch drop events directly to the WhatsApp Web drop area/input field
-    console.log('Trace Extension: Dispatching virtual Drag/Drop events with files...');
+    // Choose drop target: #main (main chat pane), copyable-area, or fallback to inputElement / body
+    const dropTarget = document.querySelector('#main') || 
+                       document.querySelector('div.copyable-area') || 
+                       inputElement || 
+                       document.body;
+
+    console.log('Trace Extension: Dispatching virtual Drag/Drop events on target:', dropTarget);
     
     // Trigger dragover/dragenter first to let WhatsApp prepare the drop-overlay
     const dragEvent = new DragEvent('dragover', {
@@ -74,7 +89,7 @@ async function pasteImageToField(urlListString, inputElement) {
       cancelable: true,
       dataTransfer: dataTransfer
     });
-    inputElement.dispatchEvent(dragEvent);
+    dropTarget.dispatchEvent(dragEvent);
 
     setTimeout(() => {
       const dropEvent = new DragEvent('drop', {
@@ -82,7 +97,7 @@ async function pasteImageToField(urlListString, inputElement) {
         cancelable: true,
         dataTransfer: dataTransfer
       });
-      inputElement.dispatchEvent(dropEvent);
+      dropTarget.dispatchEvent(dropEvent);
       console.log('Trace Extension: Successfully simulated multi-file drop.');
     }, 500);
 

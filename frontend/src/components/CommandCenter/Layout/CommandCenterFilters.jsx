@@ -33,6 +33,7 @@ export default function CommandCenterFilters({
   setShowAgingConfig,
   showKPIs, toggleKPIs,
   sortMode, setSortMode,
+  useWaWeb, setUseWaWeb,
   // ── Dialog triggers ───────────────────────────────────────────────────
   setShowSaveDialog, setShowColPicker, setShowNameDialog,
   // ── KPI / Aging data (forwarded to CommandCenterStats) ────────────────
@@ -192,6 +193,18 @@ export default function CommandCenterFilters({
         </button>
         <button className="btn btn-secondary btn-sm" onClick={() => setShowColPicker(true)}>
           ⚙️ Columns
+        </button>
+        <button 
+          className={`btn btn-sm ${useWaWeb ? 'btn-primary' : 'btn-secondary'}`} 
+          onClick={() => {
+            const nextVal = !useWaWeb;
+            setUseWaWeb(nextVal);
+            localStorage.setItem('trace_use_wa_web', nextVal);
+          }}
+          title="Toggle between opening WhatsApp Web in browser or opening WhatsApp Desktop App"
+          style={{ fontWeight: 600 }}
+        >
+          {useWaWeb ? '🌐 WhatsApp Web' : '📱 WhatsApp Desktop'}
         </button>
         <button className="btn btn-brand btn-sm" onClick={() => setShowSaveDialog(true)} style={{ fontWeight: 800 }}>
           💾 Save Current View

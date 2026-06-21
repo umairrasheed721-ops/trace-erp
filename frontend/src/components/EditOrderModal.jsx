@@ -152,7 +152,9 @@ export default function EditOrderModal({
       e.target.value = ""; // Reset
       const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${price}. Reply 1 to Confirm, 2 to Cancel.`;
       const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
       window.open(waLink, '_blank');
       return;
     }
@@ -194,7 +196,9 @@ export default function EditOrderModal({
       } catch (e) {}
 
       const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-      let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       if (imageUrls.length > 0) {
         waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
       }

@@ -7,6 +7,12 @@
     "activeTab",
     "clipboardWrite"
   ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*.shopify.com/*",
+    "https://*.shopifycdn.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],

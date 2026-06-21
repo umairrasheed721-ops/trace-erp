@@ -128,6 +128,30 @@ function copyImagesToClipboardAndSend(filePaths) {
   }
 }
 
+// End-point to proxy external images to the extension, avoiding CORS restrictions
+app.get('/fetch-image', async (req, res) => {
+  const { url } = req.query;
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter required' });
+  }
+  try {
+    const response = await axios({
+      url: url,
+      method: 'GET',
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    const contentType = response.headers['content-type'] || 'image/png';
+    res.setHeader('Content-Type', contentType);
+    res.send(response.data);
+  } catch (err) {
+    console.error(`Failed to fetch/stream image: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // End-point called by ERP page
 app.post('/paste-image', async (req, res) => {
   const { imageUrl, imageUrls } = req.body;
