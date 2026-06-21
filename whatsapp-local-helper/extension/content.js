@@ -86,16 +86,24 @@ async function pasteImageToField(urlListString, inputElement) {
     // Trigger dragover/dragenter first to let WhatsApp prepare the drop-overlay
     const dragEvent = new DragEvent('dragover', {
       bubbles: true,
-      cancelable: true,
-      dataTransfer: dataTransfer
+      cancelable: true
+    });
+    Object.defineProperty(dragEvent, 'dataTransfer', {
+      value: dataTransfer,
+      writable: false,
+      configurable: true
     });
     dropTarget.dispatchEvent(dragEvent);
 
     setTimeout(() => {
       const dropEvent = new DragEvent('drop', {
         bubbles: true,
-        cancelable: true,
-        dataTransfer: dataTransfer
+        cancelable: true
+      });
+      Object.defineProperty(dropEvent, 'dataTransfer', {
+        value: dataTransfer,
+        writable: false,
+        configurable: true
       });
       dropTarget.dispatchEvent(dropEvent);
       console.log('Trace Extension: Successfully simulated multi-file drop.');
