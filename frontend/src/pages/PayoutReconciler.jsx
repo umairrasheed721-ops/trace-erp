@@ -126,6 +126,7 @@ export default function PayoutReconciler() {
   const [normalizedData, setNormalizedData] = useState([])
   const [isProcessing, setIsProcessing] = useState(false)
   const fileInputRef = useRef(null)
+  const workbookRef = useRef(null)
 
   // Live API State
   const [liveOrders, setLiveOrders] = useState([])
@@ -170,6 +171,14 @@ export default function PayoutReconciler() {
     }
   }
 
+  // Sync newToken with selected credentials in modal
+  useEffect(() => {
+    if (showVault && credentials) {
+      const key = editingCourier.toLowerCase().includes('tcs') ? 'tcs' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'leopards' : 'postex');
+      setNewToken(credentials[key]?.masked || '');
+    }
+  }, [showVault, editingCourier, credentials]);
+
   const fetchLedger = async () => {
     setIsLoadingLedger(true)
     try {
@@ -189,19 +198,19 @@ export default function PayoutReconciler() {
     e.preventDefault()
     setIsSavingToken(true)
     try {
+      const mappedCourier = editingCourier.toLowerCase().includes('tcs') ? 'TCS' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'Leopards' : 'PostEx');
       const res = await fetch('/api/finance/courier-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           store_id: activeStoreId,
-          courier: editingCourier,
+          courier: mappedCourier,
           token: newToken
         })
       })
       const data = await res.json()
       if (data.success) {
-        addToast(`✅ ${editingCourier} credentials updated!`, 'success')
-        setNewToken('')
+        addToast(`✅ ${mappedCourier} credentials updated!`, 'success')
         fetchCredentials()
       } else {
         addToast(data.error || 'Failed to save credentials', 'error')
@@ -241,10 +250,107 @@ export default function PayoutReconciler() {
     }).filter(r => r['Order ID'] && r['Order ID'] !== 'undefined')
   }
 
+  const processInstaworld = (wb, cpr, date) => {
+    const sheetNames = wb.SheetNames;
+    const serviceChargesSheetName = sheetNames.find(name => name.toLowerCase().replace(/[\s\-_]+/g, '').includes('servicecharge'));
+    const codPayableSheetName = sheetNames.find(name => name.toLowerCase().replace(/[\s\-_]+/g, '').includes('codpayable') || name.toLowerCase().includes('cod'));
+
+    if (!serviceChargesSheetName && !codPayableSheetName) {
+      throw new Error("Could not find either 'Service Charges' or 'COD Payable' sheet in the workbook.");
+    }
+
+    const serviceRows = serviceChargesSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[serviceChargesSheetName]) : [];
+    const codRows = codPayableSheetName ? XLSX.utils.sheet_to_json(wb.Sheets[codPayableSheetName]) : [];
+
+    const trackingMap = {};
+
+    const findVal = (row, keys) => {
+      const rowKeys = Object.keys(row);
+      for (const k of keys) {
+        if (row[k] !== undefined) return row[k];
+        const matchedKey = rowKeys.find(rk => rk.toLowerCase().replace(/[\s\-_]+/g, '') === k.toLowerCase().replace(/[\s\-_]+/g, ''));
+        if (matchedKey !== undefined) return row[matchedKey];
+      }
+      return undefined;
+    };
+
+    serviceRows.forEach(row => {
+      const track = findVal(row, ['Tracking Number', 'TrackingID', 'Tracking ID', 'TrackingNumber', 'awb', 'AWB', 'Tracking_Number', 'CN']);
+      const ref = findVal(row, ['Reference Number', 'Reference_Number', 'ReferenceNumber', 'Ref No', 'Ref_No', 'Order Reference', 'Order ID', 'Order_ID', 'OrderId', 'Order ID / Ref No']);
+      
+      let dc = parseFloat(findVal(row, ['TotalAmount', 'Total Amount', 'Amount', 'Charges'])) || 0;
+      if (!dc) {
+        const sc = parseFloat(findVal(row, ['Service Charges', 'Service_Charges', 'ServiceCharges'])) || 0;
+        const fc = parseFloat(findVal(row, ['Fuel Charges', 'FuelCharges'])) || 0;
+        const gst = parseFloat(findVal(row, ['GST', 'Gst', 'Sales Tax'])) || 0;
+        dc = sc + fc + gst;
+      }
+
+      if (track) {
+        const cleanTrack = String(track).trim();
+        trackingMap[cleanTrack] = {
+          orderId: ref ? String(ref).trim() : '',
+          trackingNumber: cleanTrack,
+          dcFee: dc,
+          codAmount: 0,
+          isDelivered: false
+        };
+      }
+    });
+
+    codRows.forEach(row => {
+      const track = findVal(row, ['Tracking Number', 'TrackingID', 'Tracking ID', 'TrackingNumber', 'awb', 'AWB', 'Tracking_Number', 'CN']);
+      const ref = findVal(row, ['Reference Number', 'Reference_Number', 'ReferenceNumber', 'Ref No', 'Ref_No', 'Order Reference', 'Order ID', 'Order_ID', 'OrderId', 'Order ID / Ref No']);
+      const cod = parseFloat(findVal(row, ['COD Amount', 'COD_Amount', 'CODAmount', 'Net Payable', 'NetPayable', 'COD', 'AmountCollected', 'Amount Collected'])) || 0;
+
+      if (track) {
+        const cleanTrack = String(track).trim();
+        if (trackingMap[cleanTrack]) {
+          trackingMap[cleanTrack].codAmount = cod;
+          trackingMap[cleanTrack].isDelivered = true;
+          if (ref && !trackingMap[cleanTrack].orderId) {
+            trackingMap[cleanTrack].orderId = String(ref).trim();
+          }
+        } else {
+          trackingMap[cleanTrack] = {
+            orderId: ref ? String(ref).trim() : '',
+            trackingNumber: cleanTrack,
+            dcFee: 0,
+            codAmount: cod,
+            isDelivered: true
+          };
+        }
+      }
+    });
+
+    return Object.values(trackingMap).map(item => {
+      const calculatedTax = item.isDelivered ? Math.round((item.codAmount * 0.04) * 100) / 100 : 0;
+      const totalExpense = item.dcFee + calculatedTax;
+      const status = item.isDelivered ? 'D' : 'R';
+
+      return {
+        'Order ID': item.orderId,
+        'Tracking Number': item.trackingNumber,
+        'Status': status,
+        'Amount Collected': item.isDelivered ? item.codAmount : 0,
+        'Total Expense': totalExpense.toFixed(2),
+        'CPR Reference': (cpr || '').trim(),
+        'Settlement Date': date
+      };
+    }).filter(r => r['Order ID'] && r['Order ID'] !== 'undefined');
+  };
+
   const updateNormalizedData = (cpr, date) => {
-    if (rawData.length > 0) {
-      const normalized = courier === 'PostEx' ? processPostEx(rawData, cpr, date) : rawData
-      setNormalizedData(normalized)
+    if (courier.toLowerCase().includes('insta')) {
+      if (workbookRef.current) {
+        const normalized = processInstaworld(workbookRef.current, cpr, date);
+        setNormalizedData(normalized);
+      }
+    } else {
+      if (rawData.length > 0) {
+        const normalized = courier === 'PostEx' ? processPostEx(rawData, cpr, date) : rawData;
+        setNormalizedData(normalized);
+      }
     }
   }
 
@@ -258,12 +364,20 @@ export default function PayoutReconciler() {
       try {
         const bstr = evt.target.result
         const wb = XLSX.read(bstr, { type: 'binary' })
-        const wsname = wb.SheetNames[0]
-        const ws = wb.Sheets[wsname]
-        const data = XLSX.utils.sheet_to_json(ws)
+        workbookRef.current = wb;
         
-        setRawData(data)
-        const normalized = courier === 'PostEx' ? processPostEx(data, cprReference, settlementDate) : data
+        let normalized = []
+        if (courier.toLowerCase().includes('insta')) {
+          normalized = processInstaworld(wb, cprReference, settlementDate)
+          setRawData(normalized)
+        } else {
+          const wsname = wb.SheetNames[0]
+          const ws = wb.Sheets[wsname]
+          const data = XLSX.utils.sheet_to_json(ws)
+          setRawData(data)
+          normalized = courier === 'PostEx' ? processPostEx(data, cprReference, settlementDate) : data
+        }
+        
         setNormalizedData(normalized)
 
         if (normalized.length === 0) {
@@ -272,7 +386,8 @@ export default function PayoutReconciler() {
           addToast(`✅ Found ${normalized.length} valid orders.`, 'success')
         }
       } catch (err) {
-        addToast('Error reading file.', 'error')
+        console.error(err)
+        addToast(err.message || 'Error reading file.', 'error')
       } finally {
         setIsProcessing(false)
       }
@@ -479,10 +594,20 @@ export default function PayoutReconciler() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 30 }}>
             <div className="form-group">
               <label className="form-label">Courier</label>
-              <select className="form-input" value={courier} onChange={e => setCourier(e.target.value)}>
+              <select 
+                className="form-input" 
+                value={courier} 
+                onChange={e => {
+                  setCourier(e.target.value)
+                  setRawData([])
+                  setNormalizedData([])
+                  workbookRef.current = null
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                }}
+              >
                 <option value="PostEx">PostEx</option>
-                <option value="Leopards">Leopards</option>
-                <option value="TCS">TCS</option>
+                <option value="TCS (via Instaworld)">TCS (via Instaworld)</option>
+                <option value="LCS (via Instaworld)">LCS (via Instaworld)</option>
               </select>
             </div>
             <div className="form-group">
@@ -770,19 +895,38 @@ export default function PayoutReconciler() {
             </h4>
             <ul style={{ paddingLeft: 20, fontSize: '0.85rem', opacity: 0.8, lineHeight: 1.6 }}>
               <li><b>Live API Mode:</b> Enter CPR ID, fetch orders, audit against your bank statement, and lock records.</li>
-              <li><b>Manual Mode:</b> Upload raw PostEx Excel/CSV to calculate 4% taxes and export your Master Settlement sheet.</li>
+              {courier.toLowerCase().includes('insta') ? (
+                <li><b>Manual Mode:</b> Upload multi-tab Instaworld Excel (Service Charges + COD Payable). Calculates 4% tax on delivered COD amount.</li>
+              ) : (
+                <li><b>Manual Mode:</b> Upload raw PostEx Excel/CSV to calculate 4% taxes and export your Master Settlement sheet.</li>
+              )}
             </ul>
           </div>
 
-          <div className="card" style={{ padding: 20, background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-            <h4 style={{ margin: '0 0 10px 0', color: '#3b82f6' }}>PostEx Formula Used:</h4>
-            <p style={{ fontSize: '0.8rem', margin: '0 0 10px 0', opacity: 0.9 }}>
-              <b>Expense:</b> <code>SHIPPING_CH</code> + <code>GST</code> + <code>WH_INCOME_TAX (2%)</code> + <code>WH_SALES_TAX (2%)</code>
-            </p>
-            <p style={{ fontSize: '0.8rem', margin: 0, opacity: 0.9 }}>
-              <b>CPR:</b> Auto-pulled from <code>PAYMENT_REFERENCE</code> or <code>CPR</code> column (falls back to manual input).
-            </p>
-          </div>
+          {courier.toLowerCase().includes('insta') ? (
+            <div className="card" style={{ padding: 20, background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#3b82f6' }}>Instaworld Formula:</h4>
+              <p style={{ fontSize: '0.8rem', margin: '0 0 10px 0', opacity: 0.9 }}>
+                <b>Expense:</b> Base Delivery Charges (DC) + 4% COD Tax.
+              </p>
+              <p style={{ fontSize: '0.8rem', margin: '0 0 10px 0', opacity: 0.9 }}>
+                <b>Service Charges sheet:</b> DC read from <code>TotalAmount</code> or <code>Service Charges + Fuel Charges + GST</code>.
+              </p>
+              <p style={{ fontSize: '0.8rem', margin: 0, opacity: 0.9 }}>
+                <b>COD Payable sheet:</b> COD amount is used to compute the 4% tax.
+              </p>
+            </div>
+          ) : (
+            <div className="card" style={{ padding: 20, background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#3b82f6' }}>PostEx Formula Used:</h4>
+              <p style={{ fontSize: '0.8rem', margin: '0 0 10px 0', opacity: 0.9 }}>
+                <b>Expense:</b> <code>SHIPPING_CH</code> + <code>GST</code> + <code>WH_INCOME_TAX (2%)</code> + <code>WH_SALES_TAX (2%)</code>
+              </p>
+              <p style={{ fontSize: '0.8rem', margin: 0, opacity: 0.9 }}>
+                <b>CPR:</b> Auto-pulled from <code>PAYMENT_REFERENCE</code> or <code>CPR</code> column (falls back to manual input).
+              </p>
+            </div>
+          )}
         </div>
 
       </div>
@@ -904,14 +1048,19 @@ export default function PayoutReconciler() {
                 
                 <div className="form-group" style={{ marginBottom: 15 }}>
                   <label className="form-label">Select Courier</label>
-                  <select className="form-input" value={editingCourier} onChange={e => {
-                    setEditingCourier(e.target.value)
-                    const key = e.target.value.toLowerCase()
-                    setNewToken(credentials[key]?.masked || '')
-                  }}>
+                  <select 
+                    className="form-input" 
+                    value={editingCourier} 
+                    onChange={e => {
+                      const val = e.target.value
+                      setEditingCourier(val)
+                      const key = val.toLowerCase().includes('tcs') ? 'tcs' : (val.toLowerCase().includes('lcs') || val.toLowerCase().includes('leopards') ? 'leopards' : 'postex')
+                      setNewToken(credentials[key]?.masked || '')
+                    }}
+                  >
                     <option value="PostEx">PostEx</option>
-                    <option value="Leopards">Leopards</option>
-                    <option value="TCS">TCS</option>
+                    <option value="TCS (via Instaworld)">TCS (via Instaworld)</option>
+                    <option value="LCS (via Instaworld)">LCS (via Instaworld)</option>
                   </select>
                 </div>
 
@@ -925,7 +1074,7 @@ export default function PayoutReconciler() {
                     onChange={e => setNewToken(e.target.value)}
                   />
                   <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
-                    Keys are securely stored and masked. Current: <code>{credentials[editingCourier.toLowerCase()]?.masked || 'None'}</code>
+                    Keys are securely stored and masked. Current: <code>{credentials[editingCourier.toLowerCase().includes('tcs') ? 'tcs' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'leopards' : 'postex')]?.masked || 'None'}</code>
                   </div>
                 </div>
 

@@ -187,8 +187,13 @@ router.post('/bulk-update', async (req, res) => {
               combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
             }
 
+            let finalCourierFee = charges;
+            if (order.courier_fee > 0 && (order.courier === 'TCS' || order.courier === 'Leopards' || order.courier === 'LCS' || String(order.courier).toLowerCase().includes('insta'))) {
+              finalCourierFee = order.courier_fee + charges;
+            }
+
             db.prepare(`UPDATE orders SET payment_status = ?, delivery_status = ?, courier_fee = ?, payment_ref = ?, paid_amount = ?, payment_date = ?, cost_locked = 1 WHERE id = ?`)
-              .run('Paid', 'Delivered', charges, ref, amount, dateStr, order.id);
+              .run('Paid', 'Delivered', finalCourierFee, ref, amount, dateStr, order.id);
               
             const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
             results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
@@ -208,8 +213,14 @@ router.post('/bulk-update', async (req, res) => {
             
             let delStatus = order.delivery_status;
             if (delStatus !== 'Return Received') delStatus = 'Returned';
+
+            let finalCourierFee = charges;
+            if (order.courier_fee > 0 && (order.courier === 'TCS' || order.courier === 'Leopards' || order.courier === 'LCS' || String(order.courier).toLowerCase().includes('insta'))) {
+              finalCourierFee = order.courier_fee + charges;
+            }
+
             db.prepare('UPDATE orders SET delivery_status = ?, courier_fee = ?, payment_status = ?, paid_amount = ? WHERE id = ?')
-              .run(delStatus, charges, 'Returned', 0, order.id);
+              .run(delStatus, finalCourierFee, 'Returned', 0, order.id);
             
             results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
             processedCount++;
