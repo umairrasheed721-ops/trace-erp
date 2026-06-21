@@ -404,7 +404,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     let count = 0;
     const updateStmt = db.prepare(`
       UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-      payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?
+      payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?,
+      shipping_fee=?, discount_amount=?
       WHERE id=?
     `);
 
@@ -491,6 +492,9 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           });
         }
 
+        const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
+        const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
+
         updateStmt.run(
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
@@ -499,6 +503,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           tracking, 
           row.courier_fee_locked ? row.courier_fee : courier, 
           newDeliveryStatus, 
+          shopifyShipping,
+          shopifyDiscount,
           row.id
         );
         count++;
@@ -733,7 +739,8 @@ async function syncSpecificOrders(store, shopifyIds) {
 
     const updateStmt = db.prepare(`
       UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-      payment_status=?, tracking_number=?, courier=?, delivery_status=?, status_date=datetime('now')
+      payment_status=?, tracking_number=?, courier=?, delivery_status=?,
+      shipping_fee=?, discount_amount=?, status_date=datetime('now')
       WHERE shopify_order_id=? AND store_id=?
     `);
 
@@ -751,12 +758,15 @@ async function syncSpecificOrders(store, shopifyIds) {
       const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
 
       let newStatus = mapShopifyStatus(fresh);
+      const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
+      const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
 
       updateStmt.run(
         finalPrice, fresh.line_items.length, fresh.note || '',
         productTitles.join(', '),
         fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
         tracking, courier, newStatus,
+        shopifyShipping, shopifyDiscount,
         String(fresh.id), store.id
       );
       updatedCount++;
