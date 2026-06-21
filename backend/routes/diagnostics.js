@@ -617,4 +617,40 @@ router.get('/test-instaworld-direct/:tracking', async (req, res) => {
     }
 });
 
+// GET /api/diagnostics/test-instaworld-proxy/:tracking
+router.get('/test-instaworld-proxy/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        if (!store) return res.status(404).json({ error: 'No store found in database' });
+
+        const { instaworldFetch } = require('../engines/instaworld_http');
+        const url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        console.log(`🔌 Instaworld Proxy Probe for tracking: ${tracking}...`);
+        const start = Date.now();
+        const response = await instaworldFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                tracking_number: tracking,
+                api_key: store.instaworld_key 
+            }),
+            timeout: 15000,
+            proxyUrl: store.gas_proxy_url
+        });
+        const duration = Date.now() - start;
+        const body = await response.text();
+
+        res.json({
+            proxy_test: true,
+            proxy_url: store.gas_proxy_url || 'None configured',
+            status: response.status,
+            duration: `${duration}ms`,
+            response: body
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
