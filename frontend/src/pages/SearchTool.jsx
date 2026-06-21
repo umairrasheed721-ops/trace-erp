@@ -170,6 +170,7 @@ export default function SearchTool() {
   const [debugWhere, setDebugWhere] = useState('')
   const lastSearchRef = useRef('')
   const isProgrammaticRef = useRef(false)
+  const isCustomerSearchRef = useRef(false)
   const searchInputRef = useRef(null)
   const lastFetchedUrlRef = useRef('')
   const lastRefreshRef = useRef(0)
@@ -976,23 +977,43 @@ export default function SearchTool() {
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
     setLoading(true);
     clearAllFilters();
-    isProgrammaticRef.current = true;
+    isCustomerSearchRef.current = true;
     
+    const inputEl = searchInputRef.current;
+    if (inputEl) {
+      inputEl.focus();
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+      nativeInputValueSetter.call(inputEl, newKeyword);
+      const event = new Event('input', { bubbles: true });
+      inputEl.dispatchEvent(event);
+    } else {
+      setKeyword(newKeyword);
+    }
+    console.log('📡 [SearchTool] Imperatively triggering search for customer keyword:', newKeyword);
+    
+    const emptyColFilters = {
+      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    };
+    
+    setPage(1);
+    fetchOrders({
+      preset: 'All Time',
+      status: 'All Statuses',
+      customStart: '',
+      customEnd: '',
+      keyword: newKeyword,
+      colFilters: emptyColFilters,
+      isRefresh: true,
+      wasProgrammatic: true,
+      clearKeyword: false,
+      clearColFilters: true
+    });
+
     setTimeout(() => {
-      const inputEl = searchInputRef.current;
-      if (inputEl) {
-        inputEl.focus();
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeInputValueSetter.call(inputEl, newKeyword);
-        const event = new Event('input', { bubbles: true });
-        inputEl.dispatchEvent(event);
-      } else {
-        setKeyword(newKeyword);
-      }
-      console.log('📡 [SearchTool] Imperatively triggering search for customer keyword:', newKeyword);
-      runSearch();
-    }, 50);
-  }, [clearAllFilters, runSearch]);
+      isCustomerSearchRef.current = false;
+      console.log('📡 [SearchTool] Resetting isCustomerSearchRef after stabilization');
+    }, 600);
+  }, [clearAllFilters, fetchOrders]);
 
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()
@@ -1178,6 +1199,12 @@ export default function SearchTool() {
     // Skip trigger if clear sequence is pending
     if (isClearingStageRef.current === 'pending') {
       console.log('📡 [SearchTool] useEffect skipped: clear sequence is pending');
+      return;
+    }
+
+    // Skip trigger if programmatic customer search is in progress
+    if (isCustomerSearchRef.current) {
+      console.log('📡 [SearchTool] useEffect skipped: programmatic customer search is in progress');
       return;
     }
 
