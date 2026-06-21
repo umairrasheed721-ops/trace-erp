@@ -461,7 +461,13 @@ const CommandTableRow = React.memo(({
                            .replace(/\[OrderID\]/g, orderId)
                            .replace(/\[Price\]/g, price)
                            .replace(/\[Courier\]/g, courier)
-                           .replace(/\[Tracking\]/g, tracking);
+                           .replace(/\[Tracking\]/g, tracking)
+                           .replace(/\[Address\]/g, o.address || 'N/A')
+                           .replace(/\[City\]/g, o.city || 'N/A')
+                           .replace(/\[Phone\]/g, o.phone || 'N/A')
+                           .replace(/\[Products\]/g, o.product_titles || 'N/A')
+                           .replace(/\[RefNumber\]/g, o.ref_number || 'N/A')
+                           .replace(/\[ItemsCount\]/g, o.items_count || '0');
 
                         if (o.confirmation_token) {
                           const appUrl = window.location.origin;

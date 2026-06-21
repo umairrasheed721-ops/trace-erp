@@ -171,7 +171,13 @@ export default function EditOrderModal({
          .replace(/\[OrderID\]/g, orderId)
          .replace(/\[Price\]/g, price)
          .replace(/\[Courier\]/g, courier)
-         .replace(/\[Tracking\]/g, tracking);
+         .replace(/\[Tracking\]/g, tracking)
+         .replace(/\[Address\]/g, editingOrder.address || 'N/A')
+         .replace(/\[City\]/g, editingOrder.city || 'N/A')
+         .replace(/\[Phone\]/g, editingOrder.phone || 'N/A')
+         .replace(/\[Products\]/g, editingOrder.product_titles || 'N/A')
+         .replace(/\[RefNumber\]/g, editingOrder.ref_number || 'N/A')
+         .replace(/\[ItemsCount\]/g, editingOrder.items_count || '0');
 
       if (editingOrder.confirmation_token) {
         const appUrl = window.location.origin;
