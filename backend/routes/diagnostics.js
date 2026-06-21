@@ -653,4 +653,22 @@ router.get('/test-instaworld-proxy/:tracking', async (req, res) => {
     }
 });
 
+// GET /api/diagnostics/order-full-details/:id
+router.get('/order-full-details/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const order = db.prepare('SELECT * FROM orders WHERE id = ? OR tracking_number = ? OR shopify_order_id = ?').get(id, id, id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+
+        const history = db.prepare('SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at ASC').all(order.id);
+
+        res.json({
+            order,
+            history
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
