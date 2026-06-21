@@ -14,6 +14,7 @@ export default function useOrderSave({
 }) {
   // CS Edit State
   const [localDiscount, setLocalDiscount] = useState(0);
+  const [localShippingFee, setLocalShippingFee] = useState(0);
   const [localNotes, setLocalNotes] = useState('');
   const [isSavingCS, setIsSavingCS] = useState(false);
 
@@ -31,8 +32,8 @@ export default function useOrderSave({
 
   // Live Math & Profit Margins
   const liveTotal = useMemo(() => {
-    return Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder?.courier_fee || 250));
-  }, [liveSubtotal, localDiscount, editingOrder?.courier_fee]);
+    return Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(localShippingFee || 0));
+  }, [liveSubtotal, localDiscount, localShippingFee]);
 
   const totalOrderCost = useMemo(() => {
     let total = 0;
@@ -45,7 +46,7 @@ export default function useOrderSave({
   }, [localItems, masterProducts]);
 
   const netProfit = useMemo(() => {
-    return liveTotal - totalOrderCost - parseFloat(editingOrder?.courier_fee || 250);
+    return liveTotal - totalOrderCost - parseFloat(editingOrder?.courier_fee || 0);
   }, [liveTotal, totalOrderCost, editingOrder?.courier_fee]);
 
   const profitMargin = useMemo(() => {
@@ -56,7 +57,7 @@ export default function useOrderSave({
     setIsSavingCS(true);
     try {
       const subtotal = localItems.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
-      const newPrice = Math.max(0, subtotal - parseFloat(localDiscount || 0) + parseFloat(editingOrder.courier_fee || 250));
+      const newPrice = Math.max(0, subtotal - parseFloat(localDiscount || 0) + parseFloat(localShippingFee || 0));
       
       const res = await fetch(`${apiBase}/api/orders/${editingOrder.id}/cs-update`, {
         method: 'PUT',
@@ -68,6 +69,7 @@ export default function useOrderSave({
           line_items: localItems,
           price: newPrice,
           discount_amount: parseFloat(localDiscount || 0),
+          shipping_fee: parseFloat(localShippingFee || 0),
           cs_notes: localNotes
         })
       });
@@ -83,7 +85,7 @@ export default function useOrderSave({
     } finally {
       setIsSavingCS(false);
     }
-  }, [apiBase, localItems, localDiscount, localNotes, editingOrder, setEditingOrder]);
+  }, [apiBase, localItems, localDiscount, localShippingFee, localNotes, editingOrder, setEditingOrder]);
 
   const handleWaSimulate = useCallback((action) => {
     setWaSimulating(true);
@@ -221,6 +223,8 @@ export default function useOrderSave({
   return {
     localDiscount,
     setLocalDiscount,
+    localShippingFee,
+    setLocalShippingFee,
     localNotes,
     setLocalNotes,
     isSavingCS,

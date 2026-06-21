@@ -29,6 +29,8 @@ export default function EditOrderModal({
     setLocalItems,
     localDiscount,
     setLocalDiscount,
+    localShippingFee,
+    setLocalShippingFee,
     localNotes,
     setLocalNotes,
     isSavingCS,
@@ -350,8 +352,13 @@ export default function EditOrderModal({
                 liveSubtotal={liveSubtotal}
                 localDiscount={localDiscount}
                 setLocalDiscount={setLocalDiscount}
-                courierFee={editingOrder.courier_fee || 250}
-                setCourierFee={(val) => setEditingOrder({ ...editingOrder, courier_fee: val })}
+                shippingFee={localShippingFee}
+                setShippingFee={setLocalShippingFee}
+                courierFee={editingOrder.courier_fee || 0}
+                setCourierFee={(val) => {
+                  setEditingOrder({ ...editingOrder, courier_fee: val });
+                  if (updateOrderField) updateOrderField(editingOrder.id, 'courier_fee', val);
+                }}
                 liveTotal={liveTotal}
                 totalOrderCost={totalOrderCost}
                 netProfit={netProfit}

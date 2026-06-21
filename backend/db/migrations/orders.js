@@ -53,6 +53,7 @@ module.exports = [
     cost REAL DEFAULT 0,
     packaging_cost REAL DEFAULT 0,
     courier_fee REAL DEFAULT 0,
+    shipping_fee REAL DEFAULT 0,
     payment_ref TEXT,
     paid_amount REAL DEFAULT 0,
     payment_date TEXT,
@@ -287,7 +288,8 @@ module.exports = [
       "ALTER TABLE products ADD COLUMN inventory_qty INTEGER DEFAULT 0",
       "ALTER TABLE products ADD COLUMN product_url TEXT DEFAULT ''",
       "ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL",
-      "ALTER TABLE orders ADD COLUMN tracking_history TEXT DEFAULT NULL"
+      "ALTER TABLE orders ADD COLUMN tracking_history TEXT DEFAULT NULL",
+      "ALTER TABLE orders ADD COLUMN shipping_fee REAL DEFAULT 0"
     ];
 
     alters.forEach(sql => {

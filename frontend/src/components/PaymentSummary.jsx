@@ -4,6 +4,8 @@ const PaymentSummary = React.memo(({
   liveSubtotal,
   localDiscount,
   setLocalDiscount,
+  shippingFee,
+  setShippingFee,
   courierFee,
   setCourierFee,
   liveTotal,
@@ -34,10 +36,22 @@ const PaymentSummary = React.memo(({
         </div>
 
         <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
-          <span>Shipping Fee</span>
+          <span title="Shipping fee charged to the customer (adds to Revenue)">Shipping Fee (Customer)</span>
           <input 
             type="number"
             style={{ width: 90, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '6px 10px', color: '#fff', fontSize: '0.85rem', textAlign: 'right', fontWeight: 600, outline: 'none' }}
+            value={shippingFee}
+            onChange={e => setShippingFee(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
+          <span title="Actual cost billed by the courier service (subtracts from Profit)">
+            Courier Expense 📦
+          </span>
+          <input 
+            type="number"
+            style={{ width: 90, background: '#0f172a', border: '1px solid #334155', borderRadius: 10, padding: '6px 10px', color: '#38bdf8', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700, outline: 'none' }}
             value={courierFee}
             onChange={e => setCourierFee(e.target.value)}
           />

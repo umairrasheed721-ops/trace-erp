@@ -403,6 +403,7 @@ export default function useOrderManagement({
         d = editingOrder.discount_amount || 0;
       }
       saveHook.setLocalDiscount(d);
+      saveHook.setLocalShippingFee(editingOrder.shipping_fee || 0);
 
       // Fetch Customer Intelligence
       saveHook.setCustIntelLoading(true);
@@ -531,6 +532,8 @@ export default function useOrderManagement({
     setLocalItems: itemsHook.setLocalItems,
     localDiscount: saveHook.localDiscount,
     setLocalDiscount: saveHook.setLocalDiscount,
+    localShippingFee: saveHook.localShippingFee,
+    setLocalShippingFee: saveHook.setLocalShippingFee,
     localNotes: saveHook.localNotes,
     setLocalNotes: saveHook.setLocalNotes,
     isSavingCS: saveHook.isSavingCS,

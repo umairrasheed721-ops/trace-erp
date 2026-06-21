@@ -7,7 +7,7 @@ const { broadcast } = require('../../sse');
 // PUT /api/orders/:id/cs-update - Advanced CS edit (Line items, Discounts, Price)
 router.put('/:id/cs-update', async (req, res) => {
   const { id } = req.params;
-  const { line_items, price, discount_amount } = req.body;
+  const { line_items, price, discount_amount, shipping_fee } = req.body;
 
   try {
     const oldOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
@@ -39,9 +39,10 @@ router.put('/:id/cs-update', async (req, res) => {
         product_titles = ?,
         discount_amount = ?,
         cs_notes = ?,
+        shipping_fee = ?,
         notes = json_set(COALESCE(notes, '{}'), '$.cs_discount', ?)
       WHERE id = ?
-    `).run(newItemsStr, price, totalCost, newItemsCount, newProductTitles, discount_amount, req.body.cs_notes || '', discount_amount, id);
+    `).run(newItemsStr, price, totalCost, newItemsCount, newProductTitles, discount_amount, req.body.cs_notes || '', shipping_fee || 0, discount_amount, id);
 
     const newOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     
@@ -73,7 +74,7 @@ router.put('/:id/cs-update', async (req, res) => {
 // PUT /api/orders/:id - Update a single order field (for manual edits)
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address', 'address1', 'address2', 'province', 'zip', 'tracking_number', 'courier'];
+  const allowed = ['delivery_status', 'payment_status', 'notes', 'paid_amount', 'payment_ref', 'courier_fee', 'shipping_fee', 'hold_reason', 'return_status', 'cost', 'customer_name', 'phone', 'city', 'address', 'address1', 'address2', 'province', 'zip', 'tracking_number', 'courier'];
   const updates = Object.keys(req.body).filter(k => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields to update' });
 
