@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('./fetch');
 
 /**
  * Resolve proxy URL: per-store (Connect / provision) wins, then Railway env.
