@@ -144,7 +144,11 @@ export default function PayoutReconciler() {
     tcs: { isSet: false, masked: '' }
   })
   const [editingCourier, setEditingCourier] = useState('PostEx')
-  const [newToken, setNewToken] = useState('')
+  const [tokens, setTokens] = useState({
+    postex: '',
+    tcs: '',
+    leopards: ''
+  })
   const [isSavingToken, setIsSavingToken] = useState(false)
 
   // CPR Ledger State
@@ -165,19 +169,16 @@ export default function PayoutReconciler() {
       if (res.ok) {
         const data = await res.json()
         setCredentials(data)
+        setTokens({
+          postex: data.postex?.masked || '',
+          tcs: data.tcs?.masked || '',
+          leopards: data.leopards?.masked || ''
+        })
       }
     } catch (e) {
       console.error('Failed to fetch credentials', e)
     }
   }
-
-  // Sync newToken with selected credentials in modal
-  useEffect(() => {
-    if (showVault && credentials) {
-      const key = editingCourier.toLowerCase().includes('tcs') ? 'tcs' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'leopards' : 'postex');
-      setNewToken(credentials[key]?.masked || '');
-    }
-  }, [showVault, editingCourier, credentials]);
 
   const fetchLedger = async () => {
     setIsLoadingLedger(true)
@@ -198,23 +199,53 @@ export default function PayoutReconciler() {
     e.preventDefault()
     setIsSavingToken(true)
     try {
-      const mappedCourier = editingCourier.toLowerCase().includes('tcs') ? 'TCS' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'Leopards' : 'PostEx');
-      const res = await fetch('/api/finance/courier-credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: activeStoreId,
-          courier: mappedCourier,
-          token: newToken
+      if (editingCourier === 'PostEx') {
+        const res = await fetch('/api/finance/courier-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            courier: 'PostEx',
+            token: tokens.postex
+          })
         })
-      })
-      const data = await res.json()
-      if (data.success) {
-        addToast(`✅ ${mappedCourier} credentials updated!`, 'success')
-        fetchCredentials()
+        const data = await res.json()
+        if (data.success) {
+          addToast('✅ PostEx credentials updated!', 'success')
+        } else {
+          addToast(data.error || 'Failed to save PostEx credentials', 'error')
+        }
       } else {
-        addToast(data.error || 'Failed to save credentials', 'error')
+        // Instaworld - Save both TCS and Leopards keys
+        const resTcs = await fetch('/api/finance/courier-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            courier: 'TCS',
+            token: tokens.tcs
+          })
+        })
+        const dataTcs = await resTcs.json()
+
+        const resLcs = await fetch('/api/finance/courier-credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            courier: 'Leopards',
+            token: tokens.leopards
+          })
+        })
+        const dataLcs = await resLcs.json()
+
+        if (dataTcs.success && dataLcs.success) {
+          addToast('✅ Instaworld (TCS & LCS) credentials updated!', 'success')
+        } else {
+          addToast('⚠️ Error updating some Instaworld credentials', 'warn')
+        }
       }
+      fetchCredentials()
     } catch (e) {
       addToast('Error saving credentials', 'error')
     } finally {
@@ -606,8 +637,7 @@ export default function PayoutReconciler() {
                 }}
               >
                 <option value="PostEx">PostEx</option>
-                <option value="TCS (via Instaworld)">TCS (via Instaworld)</option>
-                <option value="LCS (via Instaworld)">LCS (via Instaworld)</option>
+                <option value="Instaworld (TCS & LCS)">Instaworld (TCS & LCS)</option>
               </select>
             </div>
             <div className="form-group">
@@ -1051,32 +1081,57 @@ export default function PayoutReconciler() {
                   <select 
                     className="form-input" 
                     value={editingCourier} 
-                    onChange={e => {
-                      const val = e.target.value
-                      setEditingCourier(val)
-                      const key = val.toLowerCase().includes('tcs') ? 'tcs' : (val.toLowerCase().includes('lcs') || val.toLowerCase().includes('leopards') ? 'leopards' : 'postex')
-                      setNewToken(credentials[key]?.masked || '')
-                    }}
+                    onChange={e => setEditingCourier(e.target.value)}
                   >
                     <option value="PostEx">PostEx</option>
-                    <option value="TCS (via Instaworld)">TCS (via Instaworld)</option>
-                    <option value="LCS (via Instaworld)">LCS (via Instaworld)</option>
+                    <option value="Instaworld (TCS & LCS)">Instaworld (TCS & LCS)</option>
                   </select>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="form-label">API Token / Merchant Key</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Paste new API key here..."
-                    value={newToken}
-                    onChange={e => setNewToken(e.target.value)}
-                  />
-                  <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
-                    Keys are securely stored and masked. Current: <code>{credentials[editingCourier.toLowerCase().includes('tcs') ? 'tcs' : (editingCourier.toLowerCase().includes('lcs') || editingCourier.toLowerCase().includes('leopards') ? 'leopards' : 'postex')]?.masked || 'None'}</code>
+                {editingCourier === 'PostEx' ? (
+                  <div className="form-group" style={{ marginBottom: 20 }}>
+                    <label className="form-label">PostEx API Token / Merchant Key</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Paste new PostEx API key here..."
+                      value={tokens.postex}
+                      onChange={e => setTokens({ ...tokens, postex: e.target.value })}
+                    />
+                    <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
+                      Keys are securely stored and masked. Current: <code>{credentials.postex?.masked || 'None'}</code>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="form-group" style={{ marginBottom: 15 }}>
+                      <label className="form-label">Instaworld TCS API Token / Merchant Key</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Paste new TCS key here..."
+                        value={tokens.tcs}
+                        onChange={e => setTokens({ ...tokens, tcs: e.target.value })}
+                      />
+                      <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
+                        Current: <code>{credentials.tcs?.masked || 'None'}</code>
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 20 }}>
+                      <label className="form-label">Instaworld LCS API Token / Merchant Key</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Paste new LCS key here..."
+                        value={tokens.leopards}
+                        onChange={e => setTokens({ ...tokens, leopards: e.target.value })}
+                      />
+                      <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
+                        Current: <code>{credentials.leopards?.masked || 'None'}</code>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShowVault(false)}>Cancel</button>
