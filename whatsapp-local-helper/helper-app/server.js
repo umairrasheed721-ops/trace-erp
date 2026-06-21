@@ -65,13 +65,13 @@ function copyImagesToClipboardAndSend(filePaths) {
 
   if (platform === 'darwin') {
     // macOS AppleScript to copy multiple files to clipboard:
-    const fileListItems = filePaths.map(fp => `copy POSIX file "${path.resolve(fp)}" to end of fileList`).join('\n');
+    const fileListItems = filePaths.map(fp => `copy POSIX file "${path.resolve(fp)}" as alias to end of fileList`).join('\n');
     
     const appleScript = `
       set fileList to {}
       ${fileListItems}
       try
-        set the clipboard to fileList
+        tell application "Finder" to set the clipboard to fileList
         delay 0.5
         tell application "System Events"
           set frontmost of process "WhatsApp" to true
