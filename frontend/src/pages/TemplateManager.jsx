@@ -164,7 +164,7 @@ export default function TemplateManager() {
                 placeholder="Hi [Name], your order [OrderID] is ready..."
               />
               <div style={{ marginTop: 8, fontSize: '0.75rem', opacity: 0.6 }}>
-                <b>Available Tags:</b> [Name], [OrderID], [Price], [Link], [Courier], [Tracking]
+                <b>Available Tags:</b> [Name], [OrderID], [Price], [Link], [Courier], [Tracking], [Address], [City], [Phone], [Products], [RefNumber], [ItemsCount]
               </div>
             </div>
 
@@ -186,13 +186,19 @@ export default function TemplateManager() {
         <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>
           Use the tags below to make your messages personal. The system will replace them with actual order data:
         </p>
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 15 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 15 }}>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Name]</code>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[OrderID]</code>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Price]</code>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Link]</code>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Courier]</code>
           <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Tracking]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Address]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[City]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Phone]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[Products]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[RefNumber]</code>
+          <code style={{ background: 'black', padding: '4px 8px', borderRadius: 4 }}>[ItemsCount]</code>
         </div>
       </div>
     </div>

@@ -142,6 +142,12 @@ function formatTemplate(templateStr, orderInfo) {
         ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` 
         : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`) 
     : 'N/A';
+  const address = orderInfo?.address || 'N/A';
+  const city = orderInfo?.city || 'N/A';
+  const phone = orderInfo?.phone || 'N/A';
+  const products = orderInfo?.product_titles || 'N/A';
+  const refNumber = orderInfo?.ref_number || 'N/A';
+  const itemsCount = orderInfo?.items_count || '0';
 
   return templateStr
     .replace(/\[Name\]/g, name)
@@ -149,7 +155,13 @@ function formatTemplate(templateStr, orderInfo) {
     .replace(/\[Price\]/g, price)
     .replace(/\[Courier\]/g, courier)
     .replace(/\[Tracking\]/g, tracking)
-    .replace(/\[Link\]/g, link);
+    .replace(/\[Link\]/g, link)
+    .replace(/\[Address\]/g, address)
+    .replace(/\[City\]/g, city)
+    .replace(/\[Phone\]/g, phone)
+    .replace(/\[Products\]/g, products)
+    .replace(/\[RefNumber\]/g, refNumber)
+    .replace(/\[ItemsCount\]/g, itemsCount);
 }
 
 function cleanAndShortenForHuman(text) {
@@ -232,7 +244,7 @@ function adaptiveStrategy(phone, messageItem, db, isManual = false) {
   let orderInfo = null;
   try {
     orderInfo = db.prepare(`
-      SELECT id, customer_name, price, courier, tracking_number 
+      SELECT id, customer_name, price, courier, tracking_number, address, city, phone, product_titles, ref_number, items_count 
       FROM orders 
       WHERE phone LIKE ? 
       ORDER BY id DESC LIMIT 1
