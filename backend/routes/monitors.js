@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const fetch = require('node-fetch');
+const { cancelInstaworldOrder } = require('../engines/instaworld');
 
 const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
 const ADVICE_KEYWORDS = ['shipper advice', 'delivery under review', 'reattempt', 'undelivered', 'refused', 'incomplete address', 'consignee not available'];
@@ -102,7 +103,7 @@ router.get('/advice', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, delivery_status, notes, price, product_titles, courier
+    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier
     FROM orders WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
   `).all(store_id);
@@ -131,37 +132,79 @@ router.delete('/blacklist', (req, res) => {
   res.json({ success: true });
 });
 
-// POST /api/monitors/postex-action - Send Reattempt/Return to PostEx
-router.post('/postex-action', async (req, res) => {
+// POST /api/monitors/courier-action - Send Reattempt/Return to the correct courier
+const handleCourierAction = async (req, res) => {
   const { store_id, tracking_number, action, note } = req.body;
   if (!store_id || !tracking_number || !action) return res.status(400).json({ error: 'Missing fields' });
 
-  const store = db.prepare('SELECT postex_token FROM stores WHERE id = ?').get(store_id);
-  if (!store?.postex_token) return res.status(400).json({ error: 'PostEx token not configured' });
+  // 1. Fetch order to detect the courier
+  const order = db.prepare('SELECT courier FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
+  const courierName = order ? (order.courier || 'PostEx') : 'PostEx';
+  const isPostEx = courierName.toLowerCase().includes('postex');
 
-  const statusId = action === 'Return' ? 1 : action === 'Reattempt' ? 2 : 0;
-  if (!statusId) return res.status(400).json({ error: 'Invalid action' });
+  // 2. Fetch store details
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
 
-  try {
-    const response = await fetch('https://api.postex.pk/services/integration/api/order/v2/save-shipper-advice', {
-      method: 'PUT',
-      headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ trackingNumber: String(tracking_number), statusId, remarks: note || 'Merchant Action via TracePK' })
-    });
+  if (isPostEx) {
+    if (!store.postex_token) return res.status(400).json({ error: 'PostEx token not configured' });
 
-    if (response.ok) {
-      // Update local status immediately
-      const newStatus = action === 'Return' ? 'Return Initiated' : 'Reattempt Requested';
-      db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
-        .run(newStatus, store_id, tracking_number);
-      res.json({ success: true, message: `✅ ${action} sent to PostEx` });
-    } else {
-      res.status(400).json({ error: `PostEx API returned ${response.status}` });
+    const statusId = action === 'Return' ? 1 : action === 'Reattempt' ? 2 : 0;
+    if (!statusId) return res.status(400).json({ error: 'Invalid action' });
+
+    try {
+      const response = await fetch('https://api.postex.pk/services/integration/api/order/v2/save-shipper-advice', {
+        method: 'PUT',
+        headers: { 'token': store.postex_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackingNumber: String(tracking_number), statusId, remarks: note || 'Merchant Action via TracePK' })
+      });
+
+      if (response.ok) {
+        const newStatus = action === 'Return' ? 'Return Initiated' : 'Reattempt Requested';
+        db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+          .run(newStatus, store_id, tracking_number);
+        return res.json({ success: true, message: `✅ ${action} sent to PostEx` });
+      } else {
+        return res.status(400).json({ error: `PostEx API returned ${response.status}` });
+      }
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  } else {
+    // Non-PostEx couriers (Instaworld / TCS / Leopards / LCS)
+    if (!store.instaworld_key) return res.status(400).json({ error: 'Instaworld API Key missing/not configured' });
+
+    if (action === 'Return') {
+      try {
+        const cancelled = await cancelInstaworldOrder(store, tracking_number);
+        if (cancelled) {
+          const newStatus = 'Return Initiated';
+          db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+            .run(newStatus, store_id, tracking_number);
+          return res.json({ success: true, message: `✅ Return initiated / Order cancelled in Instaworld` });
+        } else {
+          return res.status(400).json({ error: 'Failed to cancel order in Instaworld' });
+        }
+      } catch (e) {
+        return res.status(500).json({ error: `Instaworld Cancel Error: ${e.message}` });
+      }
+    } else if (action === 'Reattempt') {
+      try {
+        const newStatus = 'Reattempt Requested';
+        db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+          .run(newStatus, store_id, tracking_number);
+        return res.json({ success: true, message: `✅ Reattempt status updated locally for ${courierName}` });
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    } else {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
   }
-});
+};
+
+router.post('/postex-action', handleCourierAction);
+router.post('/courier-action', handleCourierAction);
 
 // GET /api/monitors/sync-audit?store_id=1
 router.get('/sync-audit', (req, res) => {

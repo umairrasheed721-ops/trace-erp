@@ -25,14 +25,14 @@ export default function AdviceMonitor() {
   const sendAction = async (order, action) => {
     setActionStates(prev => ({ ...prev, [order.id]: 'loading' }))
     try {
-      const res = await fetch('/api/monitors/postex-action', {
+      const res = await fetch('/api/monitors/courier-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId, tracking_number: order.tracking_number, action, note: '' })
       })
       const data = await res.json()
       if (data.success) {
-        addToast(data.message || `✅ ${action} sent`, 'success')
+        addToast(data.message || `✅ ${action} sent to ${order.courier || 'Courier'}`, 'success')
         setActionStates(prev => ({ ...prev, [order.id]: 'done' }))
       } else {
         addToast(`❌ ${data.error}`, 'error')
@@ -55,8 +55,16 @@ export default function AdviceMonitor() {
   }
 
   const getWhatsAppLink = (order) => {
-    const msg = `🚨 *PostEx~TRACE ERP*\n📦 Tracking: ${order.tracking_number}\n🛍️ Customer: ${order.customer_name}\n💬 Status: ${order.delivery_status}\n💰 Price: Rs ${parseInt(order.price || 0).toLocaleString()}`
-    return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`
+    const msg = `🚨 *${order.courier || 'PostEx'}~TRACE ERP*\n📦 Tracking: ${order.tracking_number}\n🛍️ Customer: ${order.customer_name}\n💬 Status: ${order.delivery_status}\n💰 Price: Rs ${parseInt(order.price || 0).toLocaleString()}`
+    
+    let phone = (order.phone || '').trim().replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) {
+      phone = '92' + phone.substring(1);
+    } else if (phone.length === 10 && !phone.startsWith('92')) {
+      phone = '92' + phone;
+    }
+    
+    return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
   }
 
   return (
@@ -90,7 +98,7 @@ export default function AdviceMonitor() {
                 <th>Courier Note</th>
                 <th>Price</th>
                 <th>Product</th>
-                <th>PostEx Action</th>
+                <th>Courier Action</th>
                 <th>Share</th>
                 <th>Ignore</th>
               </tr>
