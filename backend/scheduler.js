@@ -258,8 +258,8 @@ module.exports = function schedulerInit() {
     }
   });
 
-  // 4. Every 6 hours (offset): Watchdog audit
-  cron.schedule('0 2,8,14,20 * * *', async () => {
+  // 4. Every 30 minutes: Watchdog audit
+  cron.schedule('*/30 * * * *', async () => {
     console.log('🐕 [CRON] Watchdog audit starting...');
     const tenants = getAllTenants();
     for (const tenantId of tenants) {
