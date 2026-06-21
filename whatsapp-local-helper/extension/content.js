@@ -40,20 +40,33 @@ window.addEventListener('load', () => {
   }).observe(document, { subtree: true, childList: true });
 });
 
-async function pasteImageToField(url, inputElement) {
+async function pasteImageToField(urlListString, inputElement) {
   try {
-    console.log('Trace Extension: Fetching image blob...');
-    // 1. Fetch image bytes from CDN
-    const response = await fetch(url);
-    const blob = await response.blob();
+    const urls = urlListString.split(',').map(u => u.trim()).filter(Boolean);
+    console.log(`Trace Extension: Fetching ${urls.length} images...`, urls);
     
-    // Create a virtual file drop event
-    const file = new File([blob], "product_image.png", { type: blob.type });
     const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
+
+    for (let i = 0; i < urls.length; i++) {
+      try {
+        const response = await fetch(urls[i]);
+        const blob = await response.blob();
+        const extension = blob.type.split('/')[1] || 'png';
+        const file = new File([blob], `product_image_${i}.${extension}`, { type: blob.type });
+        dataTransfer.items.add(file);
+        console.log(`Trace Extension: Loaded image ${i+1}/${urls.length}`);
+      } catch (err) {
+        console.error(`Trace Extension: Failed to load image at index ${i}:`, err);
+      }
+    }
+
+    if (dataTransfer.items.length === 0) {
+      console.warn('Trace Extension: No images were successfully loaded.');
+      return;
+    }
     
     // 2. Dispatch drop events directly to the WhatsApp Web drop area/input field
-    console.log('Trace Extension: Dispatching virtual Drag/Drop events...');
+    console.log('Trace Extension: Dispatching virtual Drag/Drop events with files...');
     
     // Trigger dragover/dragenter first to let WhatsApp prepare the drop-overlay
     const dragEvent = new DragEvent('dragover', {
@@ -70,10 +83,10 @@ async function pasteImageToField(url, inputElement) {
         dataTransfer: dataTransfer
       });
       inputElement.dispatchEvent(dropEvent);
-      console.log('Trace Extension: Successfully simulated file drop.');
+      console.log('Trace Extension: Successfully simulated multi-file drop.');
     }, 500);
 
   } catch (err) {
-    console.error('Trace Extension: Failed to download or paste image:', err);
+    console.error('Trace Extension: Failed to download or paste image list:', err);
   }
 }

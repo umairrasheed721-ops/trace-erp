@@ -11,37 +11,67 @@ app.use(express.json());
 
 const PORT = 9099;
 
-// Helper to download image to temp file
-async function downloadImage(url) {
-  const tempPath = path.join(__dirname, 'temp_img.png');
-  const response = await axios({
-    url,
-    method: 'GET',
-    responseType: 'stream'
-  });
+// Helper to download multiple images to temp files
+async function downloadImages(urls) {
+  const downloadedFiles = [];
   
-  return new Promise((resolve, reject) => {
-    const writer = fs.createWriteStream(tempPath);
-    response.data.pipe(writer);
-    writer.on('finish', () => resolve(tempPath));
-    writer.on('error', reject);
-  });
+  // Cleanup any old temp files first
+  cleanTempFiles();
+
+  for (let i = 0; i < urls.length; i++) {
+    try {
+      const tempPath = path.join(__dirname, `temp_img_${i}.png`);
+      const response = await axios({
+        url: urls[i],
+        method: 'GET',
+        responseType: 'stream'
+      });
+      
+      await new Promise((resolve, reject) => {
+        const writer = fs.createWriteStream(tempPath);
+        response.data.pipe(writer);
+        writer.on('finish', () => {
+          downloadedFiles.push(tempPath);
+          resolve();
+        });
+        writer.on('error', reject);
+      });
+      console.log(`Downloaded image ${i+1}/${urls.length}: ${urls[i]}`);
+    } catch (e) {
+      console.error(`Failed to download image at index ${i}:`, e.message);
+    }
+  }
+  return downloadedFiles;
+}
+
+// Clean old temporary files
+function cleanTempFiles() {
+  try {
+    const files = fs.readdirSync(__dirname);
+    for (const file of files) {
+      if (file.startsWith('temp_img_') && file.endsWith('.png')) {
+        fs.unlinkSync(path.join(__dirname, file));
+      }
+    }
+  } catch (e) {
+    console.error('Failed to cleanup temp images:', e.message);
+  }
 }
 
 // OS-specific window focusing, clipboard image load, and paste trigger
-function copyImageToClipboardAndSend(filePath) {
+function copyImagesToClipboardAndSend(filePaths) {
   const platform = process.platform;
-  const absolutePath = path.resolve(filePath);
+  if (filePaths.length === 0) return;
 
   if (platform === 'darwin') {
-    // macOS AppleScript:
-    // 1. Reads image file and writes to clipboard as TIFF
-    // 2. Activates WhatsApp Desktop app
-    // 3. Simulates Command+V then Enter
+    // macOS AppleScript to copy multiple files to clipboard:
+    const fileListItems = filePaths.map(fp => `copy POSIX file "${path.resolve(fp)}" to end of fileList`).join('\n');
+    
     const appleScript = `
-      set imagePath to "${absolutePath}"
+      set fileList to {}
+      ${fileListItems}
       try
-        set the clipboard to (read (POSIX file imagePath) as TIFF picture)
+        set the clipboard to fileList
         delay 0.5
         tell application "System Events"
           set frontmost of process "WhatsApp" to true
@@ -66,16 +96,14 @@ function copyImageToClipboardAndSend(filePath) {
     });
 
   } else if (platform === 'win32') {
-    // Windows PowerShell script:
-    // 1. Loads .NET drawing assembly, reads the file, sets to clipboard
-    // 2. Activates WhatsApp Desktop app window
-    // 3. Simulates Ctrl+V then Enter
+    // Windows PowerShell to copy multiple files to clipboard:
+    const fileAdditions = filePaths.map(fp => `$FileArray.Add("${path.resolve(fp).replace(/\\/g, '\\\\')}")`).join('\n');
+    
     const psScript = `
       Add-Type -AssemblyName System.Windows.Forms
-      Add-Type -AssemblyName System.Drawing
-      $image = [System.Drawing.Image]::FromFile("${absolutePath.replace(/\\/g, '\\\\')}")
-      [System.Windows.Forms.Clipboard]::SetImage($image)
-      $image.Dispose()
+      $FileArray = New-Object System.Collections.Specialized.StringCollection
+      ${fileAdditions}
+      [System.Windows.Forms.Clipboard]::SetFileDropList($FileArray)
       
       Start-Sleep -Milliseconds 500
       $wshell = New-Object -ComObject Wscript.Shell
@@ -106,17 +134,24 @@ function copyImageToClipboardAndSend(filePath) {
 
 // End-point called by ERP page
 app.post('/paste-image', async (req, res) => {
-  const { imageUrl } = req.body;
-  if (!imageUrl) return res.status(400).json({ error: 'Image URL required' });
+  const { imageUrl, imageUrls } = req.body;
+  
+  // Accept either a single URL or an array of URLs
+  const urls = Array.isArray(imageUrls) ? imageUrls : (imageUrl ? [imageUrl] : []);
+  if (urls.length === 0) return res.status(400).json({ error: 'Image URL(s) required' });
 
   try {
-    console.log(`📥 Downloading image: ${imageUrl}`);
-    const localFile = await downloadImage(imageUrl);
+    console.log(`📥 Downloading ${urls.length} images...`);
+    const localFiles = await downloadImages(urls);
     
-    console.log('📋 Copying to clipboard and triggering focus/paste on WhatsApp...');
-    copyImageToClipboardAndSend(localFile);
+    if (localFiles.length === 0) {
+      return res.status(400).json({ error: 'Failed to download any images' });
+    }
 
-    res.json({ success: true, message: 'Image download initiated, copying to clipboard & sending...' });
+    console.log(`📋 Copying ${localFiles.length} files to clipboard and triggering WhatsApp...`);
+    copyImagesToClipboardAndSend(localFiles);
+
+    res.json({ success: true, message: `${localFiles.length} images processed, copying to clipboard & sending...` });
   } catch (err) {
     console.error('Error processing image send:', err.message);
     res.status(500).json({ error: err.message });

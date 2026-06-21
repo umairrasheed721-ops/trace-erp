@@ -477,27 +477,27 @@ const CommandTableRow = React.memo(({
                           msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
                         }
 
-                        let firstImageUrl = '';
+                        let imageUrls = [];
                         try {
                           const items = JSON.parse(o.line_items || '[]');
-                          firstImageUrl = items.find(i => i.image_url)?.image_url || '';
+                          imageUrls = items.map(i => i.image_url).filter(Boolean);
                         } catch (e) {}
 
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
                         let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
-                        if (firstImageUrl) {
-                          waLink += `&autoImage=${encodeURIComponent(firstImageUrl)}`;
+                        if (imageUrls.length > 0) {
+                          waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
                         }
                         window.open(waLink, '_blank');
 
                         const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
-                        if (useLocalHelper && firstImageUrl) {
+                        if (useLocalHelper && imageUrls.length > 0) {
                           setTimeout(async () => {
                             try {
                               await fetch('http://127.0.0.1:9099/paste-image', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ imageUrl: firstImageUrl })
+                                body: JSON.stringify({ imageUrls })
                               });
                             } catch (err) {
                               console.warn('Local helper not running:', err.message);
