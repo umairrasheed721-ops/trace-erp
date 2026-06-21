@@ -88,7 +88,6 @@ export default function PayoutReconciler() {
   
   // Navigation & Modes
   const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'api'
-  const [showVault, setShowVault] = useState(false)
 
   // Common Form State
   const [cprReference, setCprReference] = useState('')
@@ -137,19 +136,6 @@ export default function PayoutReconciler() {
   const [discrepancyReason, setDiscrepancyReason] = useState('Courier Overcharge / Disputed Fee')
   const [disputeNotes, setDisputeNotes] = useState('')
 
-  // Credentials State
-  const [credentials, setCredentials] = useState({
-    postex: { isSet: false, masked: '' },
-    leopards: { isSet: false, masked: '' },
-    tcs: { isSet: false, masked: '' }
-  })
-  const [tokens, setTokens] = useState({
-    postex: '',
-    tcs: '',
-    leopards: ''
-  })
-  const [isSavingToken, setIsSavingToken] = useState(false)
-
   // CPR Ledger State
   const [ledger, setLedger] = useState([])
   const [isLoadingLedger, setIsLoadingLedger] = useState(false)
@@ -157,27 +143,9 @@ export default function PayoutReconciler() {
   // Fetch initial data
   useEffect(() => {
     if (activeStoreId) {
-      fetchCredentials()
       fetchLedger()
     }
   }, [activeStoreId])
-
-  const fetchCredentials = async () => {
-    try {
-      const res = await fetch(`/api/finance/courier-credentials?store_id=${activeStoreId}`)
-      if (res.ok) {
-        const data = await res.json()
-        setCredentials(data)
-        setTokens({
-          postex: data.postex?.masked || '',
-          tcs: data.tcs?.masked || '',
-          leopards: data.leopards?.masked || ''
-        })
-      }
-    } catch (e) {
-      console.error('Failed to fetch credentials', e)
-    }
-  }
 
   const fetchLedger = async () => {
     setIsLoadingLedger(true)
@@ -194,66 +162,7 @@ export default function PayoutReconciler() {
     }
   }
 
-  const handleSaveCredential = async (e) => {
-    e.preventDefault()
-    setIsSavingToken(true)
-    try {
-      let updatedAny = false
-      
-      // Save PostEx if changed
-      if (tokens.postex && !tokens.postex.includes('****')) {
-        const res = await fetch('/api/finance/courier-credentials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_id: activeStoreId,
-            courier: 'PostEx',
-            token: tokens.postex
-          })
-        })
-        if (res.ok) updatedAny = true
-      }
 
-      // Save TCS if changed
-      if (tokens.tcs && !tokens.tcs.includes('****')) {
-        const res = await fetch('/api/finance/courier-credentials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_id: activeStoreId,
-            courier: 'TCS',
-            token: tokens.tcs
-          })
-        })
-        if (res.ok) updatedAny = true
-      }
-
-      // Save Leopards if changed
-      if (tokens.leopards && !tokens.leopards.includes('****')) {
-        const res = await fetch('/api/finance/courier-credentials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_id: activeStoreId,
-            courier: 'Leopards',
-            token: tokens.leopards
-          })
-        })
-        if (res.ok) updatedAny = true
-      }
-
-      if (updatedAny) {
-        addToast('✅ Credentials updated successfully!', 'success')
-      } else {
-        addToast('ℹ️ No changes to save', 'info')
-      }
-      fetchCredentials()
-    } catch (e) {
-      addToast('Error saving credentials', 'error')
-    } finally {
-      setIsSavingToken(false)
-    }
-  }
 
   // --- MANUAL UPLOAD LOGIC ---
   const processPostEx = (rows, cpr, date) => {
@@ -593,9 +502,6 @@ export default function PayoutReconciler() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => navigate('/finance')}>
             💰 Go to Finance Engine
-          </button>
-          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => setShowVault(true)}>
-            🔑 Secure Credential Vault
           </button>
         </div>
       </header>
@@ -1047,97 +953,7 @@ export default function PayoutReconciler() {
       </div>
 
       {/* --- MODAL: SECURE CREDENTIAL VAULT --- */}
-      {showVault && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(5px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
-        }}>
-          <div className="card" style={{ width: '100%', maxWidth: 600, padding: 30, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 15, marginBottom: 25 }}>
-              <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-                🔑 Secure Credential Vault
-              </h2>
-              <button className="btn" style={{ padding: '6px 12px', background: 'transparent', border: 'none', fontSize: '1.2rem' }} onClick={() => setShowVault(false)}>✕</button>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 30 }}>
-              {/* STATUS CARDS */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 15 }}>
-                {Object.entries(credentials).map(([key, val]) => (
-                  <div key={key} style={{ padding: 15, borderRadius: 12, border: '1px solid var(--border)', background: val.isSet ? 'rgba(34, 197, 94, 0.05)' : 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
-                    <div style={{ fontWeight: 700, textTransform: 'capitalize', marginBottom: 5 }}>{key}</div>
-                    <span className="badge" style={{ background: val.isSet ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255,255,255,0.1)', color: val.isSet ? 'var(--green)' : 'var(--text)', fontSize: '0.75rem' }}>
-                      {val.isSet ? '🟢 Connected' : '⚪ Not Set'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* EDIT FORM */}
-              <form onSubmit={handleSaveCredential} style={{ background: 'rgba(255,255,255,0.02)', padding: 20, borderRadius: 14, border: '1px solid var(--border)' }}>
-                <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem' }}>Update API Keys</h3>
-                
-                {/* PostEx Key */}
-                <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ fontWeight: 600 }}>PostEx API Token / Merchant Key</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Paste new PostEx API key here..."
-                    value={tokens.postex}
-                    onChange={e => setTokens({ ...tokens, postex: e.target.value })}
-                  />
-                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
-                    Current: <code>{credentials.postex?.masked || 'None'}</code>
-                  </div>
-                </div>
-
-                {/* Instaworld TCS Key */}
-                <div className="form-group" style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ fontWeight: 600 }}>Instaworld TCS API Token / Merchant Key</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Paste new TCS key here..."
-                    value={tokens.tcs}
-                    onChange={e => setTokens({ ...tokens, tcs: e.target.value })}
-                  />
-                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
-                    Current: <code>{credentials.tcs?.masked || 'None'}</code>
-                  </div>
-                </div>
-
-                {/* Instaworld LCS Key */}
-                <div className="form-group" style={{ marginBottom: 25 }}>
-                  <label className="form-label" style={{ fontWeight: 600 }}>Instaworld LCS API Token / Merchant Key</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Paste new LCS key here..."
-                    value={tokens.leopards}
-                    onChange={e => setTokens({ ...tokens, leopards: e.target.value })}
-                  />
-                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
-                    Current: <code>{credentials.leopards?.masked || 'None'}</code>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowVault(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-brand" disabled={isSavingToken}>
-                    {isSavingToken ? 'Saving...' : '💾 Save Credentials'}
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            <div style={{ fontSize: '0.8rem', opacity: 0.6, textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 15 }}>
-              🛡️ Bank-grade AES-256 encryption active. Keys are never displayed in plain text.
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   )
