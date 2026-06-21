@@ -64,20 +64,32 @@ function copyImagesToClipboardAndSend(filePaths) {
   if (filePaths.length === 0) return;
 
   if (platform === 'darwin') {
-    // macOS AppleScript to copy multiple files to clipboard:
-    const fileListItems = filePaths.map(fp => `copy POSIX file "${path.resolve(fp)}" as alias to end of fileList`).join('\n');
-    
+    // macOS: Copy each file as TIFF picture data to clipboard and paste sequentially.
+    // Pasting subsequent images in WhatsApp Desktop adds them to the media group.
+    let scriptActions = '';
+    for (let i = 0; i < filePaths.length; i++) {
+      const absolutePath = path.resolve(filePaths[i]);
+      scriptActions += `
+        try
+          set the clipboard to (read (POSIX file "${absolutePath}") as TIFF picture)
+          delay 0.3
+          tell application "System Events"
+            keystroke "v" using {command down}
+          end tell
+          delay 0.6
+        on error errMsg
+          log errMsg
+        end try
+      `;
+    }
+
     const appleScript = `
-      set fileList to {}
-      ${fileListItems}
       try
-        tell application "Finder" to set the clipboard to fileList
-        delay 0.5
         tell application "System Events"
           set frontmost of process "WhatsApp" to true
           delay 0.5
-          keystroke "v" using {command down}
         end tell
+        ${scriptActions}
       on error errMsg
         log errMsg
       end try
