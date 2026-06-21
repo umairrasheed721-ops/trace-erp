@@ -143,7 +143,6 @@ export default function PayoutReconciler() {
     leopards: { isSet: false, masked: '' },
     tcs: { isSet: false, masked: '' }
   })
-  const [editingCourier, setEditingCourier] = useState('PostEx')
   const [tokens, setTokens] = useState({
     postex: '',
     tcs: '',
@@ -199,7 +198,10 @@ export default function PayoutReconciler() {
     e.preventDefault()
     setIsSavingToken(true)
     try {
-      if (editingCourier === 'PostEx') {
+      let updatedAny = false
+      
+      // Save PostEx if changed
+      if (tokens.postex && !tokens.postex.includes('****')) {
         const res = await fetch('/api/finance/courier-credentials', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -209,15 +211,12 @@ export default function PayoutReconciler() {
             token: tokens.postex
           })
         })
-        const data = await res.json()
-        if (data.success) {
-          addToast('✅ PostEx credentials updated!', 'success')
-        } else {
-          addToast(data.error || 'Failed to save PostEx credentials', 'error')
-        }
-      } else {
-        // Instaworld - Save both TCS and Leopards keys
-        const resTcs = await fetch('/api/finance/courier-credentials', {
+        if (res.ok) updatedAny = true
+      }
+
+      // Save TCS if changed
+      if (tokens.tcs && !tokens.tcs.includes('****')) {
+        const res = await fetch('/api/finance/courier-credentials', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -226,9 +225,12 @@ export default function PayoutReconciler() {
             token: tokens.tcs
           })
         })
-        const dataTcs = await resTcs.json()
+        if (res.ok) updatedAny = true
+      }
 
-        const resLcs = await fetch('/api/finance/courier-credentials', {
+      // Save Leopards if changed
+      if (tokens.leopards && !tokens.leopards.includes('****')) {
+        const res = await fetch('/api/finance/courier-credentials', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -237,13 +239,13 @@ export default function PayoutReconciler() {
             token: tokens.leopards
           })
         })
-        const dataLcs = await resLcs.json()
+        if (res.ok) updatedAny = true
+      }
 
-        if (dataTcs.success && dataLcs.success) {
-          addToast('✅ Instaworld (TCS & LCS) credentials updated!', 'success')
-        } else {
-          addToast('⚠️ Error updating some Instaworld credentials', 'warn')
-        }
+      if (updatedAny) {
+        addToast('✅ Credentials updated successfully!', 'success')
+      } else {
+        addToast('ℹ️ No changes to save', 'info')
       }
       fetchCredentials()
     } catch (e) {
@@ -1074,64 +1076,52 @@ export default function PayoutReconciler() {
 
               {/* EDIT FORM */}
               <form onSubmit={handleSaveCredential} style={{ background: 'rgba(255,255,255,0.02)', padding: 20, borderRadius: 14, border: '1px solid var(--border)' }}>
-                <h3 style={{ margin: '0 0 15px 0', fontSize: '1.1rem' }}>Update API Keys</h3>
+                <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem' }}>Update API Keys</h3>
                 
-                <div className="form-group" style={{ marginBottom: 15 }}>
-                  <label className="form-label">Select Courier</label>
-                  <select 
+                {/* PostEx Key */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>PostEx API Token / Merchant Key</label>
+                  <input 
+                    type="text" 
                     className="form-input" 
-                    value={editingCourier} 
-                    onChange={e => setEditingCourier(e.target.value)}
-                  >
-                    <option value="PostEx">PostEx</option>
-                    <option value="Instaworld (TCS & LCS)">Instaworld (TCS & LCS)</option>
-                  </select>
+                    placeholder="Paste new PostEx API key here..."
+                    value={tokens.postex}
+                    onChange={e => setTokens({ ...tokens, postex: e.target.value })}
+                  />
+                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
+                    Current: <code>{credentials.postex?.masked || 'None'}</code>
+                  </div>
                 </div>
 
-                {editingCourier === 'PostEx' ? (
-                  <div className="form-group" style={{ marginBottom: 20 }}>
-                    <label className="form-label">PostEx API Token / Merchant Key</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Paste new PostEx API key here..."
-                      value={tokens.postex}
-                      onChange={e => setTokens({ ...tokens, postex: e.target.value })}
-                    />
-                    <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
-                      Keys are securely stored and masked. Current: <code>{credentials.postex?.masked || 'None'}</code>
-                    </div>
+                {/* Instaworld TCS Key */}
+                <div className="form-group" style={{ marginBottom: 20 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Instaworld TCS API Token / Merchant Key</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Paste new TCS key here..."
+                    value={tokens.tcs}
+                    onChange={e => setTokens({ ...tokens, tcs: e.target.value })}
+                  />
+                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
+                    Current: <code>{credentials.tcs?.masked || 'None'}</code>
                   </div>
-                ) : (
-                  <>
-                    <div className="form-group" style={{ marginBottom: 15 }}>
-                      <label className="form-label">Instaworld TCS API Token / Merchant Key</label>
-                      <input 
-                        type="text" 
-                        className="form-input" 
-                        placeholder="Paste new TCS key here..."
-                        value={tokens.tcs}
-                        onChange={e => setTokens({ ...tokens, tcs: e.target.value })}
-                      />
-                      <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
-                        Current: <code>{credentials.tcs?.masked || 'None'}</code>
-                      </div>
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 20 }}>
-                      <label className="form-label">Instaworld LCS API Token / Merchant Key</label>
-                      <input 
-                        type="text" 
-                        className="form-input" 
-                        placeholder="Paste new LCS key here..."
-                        value={tokens.leopards}
-                        onChange={e => setTokens({ ...tokens, leopards: e.target.value })}
-                      />
-                      <div style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: 6 }}>
-                        Current: <code>{credentials.leopards?.masked || 'None'}</code>
-                      </div>
-                    </div>
-                  </>
-                )}
+                </div>
+
+                {/* Instaworld LCS Key */}
+                <div className="form-group" style={{ marginBottom: 25 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Instaworld LCS API Token / Merchant Key</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Paste new LCS key here..."
+                    value={tokens.leopards}
+                    onChange={e => setTokens({ ...tokens, leopards: e.target.value })}
+                  />
+                  <div style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 4 }}>
+                    Current: <code>{credentials.leopards?.masked || 'None'}</code>
+                  </div>
+                </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                   <button type="button" className="btn btn-secondary" onClick={() => setShowVault(false)}>Cancel</button>
