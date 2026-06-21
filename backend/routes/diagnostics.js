@@ -671,4 +671,47 @@ router.get('/order-full-details/:id', (req, res) => {
     }
 });
 
+// GET /api/diagnostics/test-instaworld-keys/:tracking
+router.get('/test-instaworld-keys/:tracking', async (req, res) => {
+    try {
+        const { tracking } = req.params;
+        const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        if (!store) return res.status(404).json({ error: 'No store found in database' });
+
+        const apiKeys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
+        const url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        const results = {};
+
+        for (let i = 0; i < apiKeys.length; i++) {
+            const key = apiKeys[i];
+            const label = `key_${i + 1}`;
+            try {
+                const start = Date.now();
+                const response = await globalThis.fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        tracking_number: tracking,
+                        api_key: key 
+                    }),
+                    signal: AbortSignal.timeout(10000)
+                });
+                const duration = Date.now() - start;
+                const body = await response.text();
+                results[label] = {
+                    status: response.status,
+                    duration: `${duration}ms`,
+                    response: body
+                };
+            } catch (err) {
+                results[label] = { error: err.message };
+            }
+        }
+
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
