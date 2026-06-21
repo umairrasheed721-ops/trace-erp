@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Trace ERP WhatsApp Web Helper",
+  "version": "1.0",
+  "description": "Auto-pastes product images and templates in WhatsApp Web.",
+  "permissions": [
+    "activeTab",
+    "clipboardWrite"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

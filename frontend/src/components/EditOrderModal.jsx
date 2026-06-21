@@ -187,9 +187,33 @@ export default function EditOrderModal({
         msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
       }
 
+      let firstImageUrl = '';
+      try {
+        const items = JSON.parse(editingOrder.line_items || '[]');
+        firstImageUrl = items.find(i => i.image_url)?.image_url || '';
+      } catch (e) {}
+
       const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      if (firstImageUrl) {
+        waLink += `&autoImage=${encodeURIComponent(firstImageUrl)}`;
+      }
       window.open(waLink, '_blank');
+
+      const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
+      if (useLocalHelper && firstImageUrl) {
+        setTimeout(async () => {
+          try {
+            await fetch('http://127.0.0.1:9099/paste-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrl: firstImageUrl })
+            });
+          } catch (err) {
+            console.warn('Local helper not running:', err.message);
+          }
+        }, 1500);
+      }
     }
   };
 

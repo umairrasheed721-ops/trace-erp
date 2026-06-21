@@ -797,8 +797,31 @@ export default function SearchTool() {
         }
       }
 
-      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      let firstImageUrl = '';
+      try {
+        const items = JSON.parse(o.line_items || '[]');
+        firstImageUrl = items.find(i => i.image_url)?.image_url || '';
+      } catch (e) {}
+
+      let waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      if (firstImageUrl) {
+        waLink += `&autoImage=${encodeURIComponent(firstImageUrl)}`;
+      }
       window.open(waLink, '_blank');
+
+      if (useLocalHelper && firstImageUrl) {
+        setTimeout(async () => {
+          try {
+            await fetch('http://127.0.0.1:9099/paste-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrl: firstImageUrl })
+            });
+          } catch (err) {
+            console.warn('Local helper not running:', err.message);
+          }
+        }, 1500);
+      }
     }
 
     if (waQueueIndex < selectedIds.length - 1) {
@@ -849,6 +872,9 @@ export default function SearchTool() {
   })
   const [syncProgress, setSyncProgress] = useState(null) // { current, total, message }
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
+  const [useLocalHelper, setUseLocalHelper] = useState(() => {
+    return localStorage.getItem('trace_use_local_helper') === 'true';
+  })
 
 
   const getAgingBuckets = () => {
@@ -1497,6 +1523,22 @@ export default function SearchTool() {
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
+                <input 
+                  type="checkbox" 
+                  id="useLocalHelper" 
+                  checked={useLocalHelper} 
+                  onChange={(e) => {
+                    setUseLocalHelper(e.target.checked);
+                    localStorage.setItem('trace_use_local_helper', e.target.checked);
+                  }} 
+                  style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                />
+                <label htmlFor="useLocalHelper" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
+                  🔌 Use Local Helper (For Desktop App auto-paste)
+                </label>
+              </div>
             </div>
 
             <div className="queue-progress" style={{ margin: '20px 0' }}>
