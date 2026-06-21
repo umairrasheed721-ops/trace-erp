@@ -532,4 +532,134 @@ router.post('/:id/resync', async (req, res) => {
   }
 });
 
+// POST /api/orders/update-legacy-financials - Run historical financials sync for all tenants
+router.post('/update-legacy-financials', async (req, res) => {
+  const filterMissingOnly = req.body.filterMissingOnly !== false; // default to true for safety
+  
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Unauthorized. Admin role required.' });
+  }
+
+  const path = require('path');
+  const fs = require('fs');
+  const tenantContext = require('../../tenant-context');
+  const { db } = require('../../db');
+  const customFetch = require('../../engines/fetch');
+
+  function getAllTenants() {
+    try {
+      const dbDir = path.dirname(path.resolve(process.env.DB_PATH || './trace_erp.db'));
+      const files = fs.readdirSync(dbDir);
+      const tenants = ['default'];
+      files.forEach(f => {
+        if (f.startsWith('trace_erp_') && f.endsWith('.db') && !f.includes('-shm') && !f.includes('-wal') && f !== 'trace_erp_db.db') {
+          const tenantId = f.replace('trace_erp_', '').replace('.db', '');
+          if (tenantId && tenantId !== 'db') {
+            tenants.push(tenantId);
+          }
+        }
+      });
+      return tenants;
+    } catch (e) {
+      return ['default'];
+    }
+  }
+
+  function chunkArray(array, size) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // Run asynchronously so we return immediately
+  (async () => {
+    console.log('🚀 [API triggered] Starting legacy financials update for all tenants...');
+    const tenants = getAllTenants();
+    
+    for (const tenantId of tenants) {
+      await tenantContext.run(tenantId, async () => {
+        try {
+          const stores = db.prepare("SELECT * FROM stores").all();
+          for (const store of stores) {
+            if (!store.access_token || store.access_token === 'PENDING') continue;
+
+            let ordersQuery;
+            if (filterMissingOnly) {
+              ordersQuery = db.prepare(`
+                SELECT shopify_order_id, id, ref_number FROM orders 
+                WHERE store_id = ? 
+                AND shopify_order_id IS NOT NULL 
+                AND shopify_order_id != ''
+                AND (shipping_fee = 0 AND discount_amount = 0)
+              `);
+            } else {
+              ordersQuery = db.prepare(`
+                SELECT shopify_order_id, id, ref_number FROM orders 
+                WHERE store_id = ? 
+                AND shopify_order_id IS NOT NULL 
+                AND shopify_order_id != ''
+              `);
+            }
+
+            const orders = ordersQuery.all(store.id);
+            if (orders.length === 0) continue;
+
+            const localOrderMap = {};
+            orders.forEach(o => { localOrderMap[String(o.shopify_order_id)] = o; });
+
+            const shopifyOrderIds = orders.map(o => String(o.shopify_order_id));
+            const batches = chunkArray(shopifyOrderIds, 50);
+
+            for (let i = 0; i < batches.length; i++) {
+              try {
+                const idsParam = batches[i].join(',');
+                const url = `https://${store.shop_domain}/admin/api/2024-10/orders.json?ids=${idsParam}&status=any`;
+                
+                const res = await customFetch(url, {
+                  headers: { 'X-Shopify-Access-Token': store.access_token },
+                  timeout: 15000
+                });
+
+                if (res.ok) {
+                  const data = await res.json();
+                  const shopifyOrders = data.orders || [];
+
+                  db.transaction(() => {
+                    for (const fresh of shopifyOrders) {
+                      const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
+                      const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
+
+                      const localOrder = localOrderMap[String(fresh.id)];
+                      if (localOrder) {
+                        db.prepare(`
+                          UPDATE orders 
+                          SET shipping_fee = ?, discount_amount = ? 
+                          WHERE id = ?
+                        `).run(shopifyShipping, shopifyDiscount, localOrder.id);
+                      }
+                    }
+                  })();
+                }
+
+                await sleep(500);
+              } catch (e) {
+                console.error(`Error on API update batch ${i}:`, e.message);
+              }
+            }
+          }
+        } catch (dbErr) {
+          console.error(`DB Error on API update for tenant [${tenantId}]:`, dbErr.message);
+        }
+      });
+    }
+    console.log('🏁 [API triggered] Legacy financials update completed.');
+  })().catch(err => console.error('Error running API triggered financials update:', err));
+
+  return res.json({ success: true, message: 'Historical financials update job successfully dispatched in the background.' });
+});
+
 module.exports = router;
