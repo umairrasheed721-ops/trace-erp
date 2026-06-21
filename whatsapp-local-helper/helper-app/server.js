@@ -77,8 +77,6 @@ function copyImagesToClipboardAndSend(filePaths) {
           set frontmost of process "WhatsApp" to true
           delay 0.5
           keystroke "v" using {command down}
-          delay 0.8
-          key code 36 -- Enter key
         end tell
       on error errMsg
         log errMsg
@@ -111,8 +109,6 @@ function copyImagesToClipboardAndSend(filePaths) {
       if ($activated) {
         Start-Sleep -Milliseconds 800
         $wshell.SendKeys("^v")
-        Start-Sleep -Milliseconds 800
-        $wshell.SendKeys("{ENTER}")
       } else {
         Write-Host "WhatsApp window not found."
       }
