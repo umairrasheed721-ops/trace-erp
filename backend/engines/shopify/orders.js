@@ -139,8 +139,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     INSERT OR IGNORE INTO orders (
       store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
       address, city, price, tracking_number, items_count, notes, product_titles,
-      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, shipping_fee
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?)
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, shipping_fee, discount_amount
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)
   `);
 
   const insertChunk = db.transaction((orders, costMap) => {
@@ -172,6 +172,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const cleanCity = getCorrectedCity(rawCity);
         
         const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
+        const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
 
         insertOrder.run(
           storeId, String(order.id), order.name,
@@ -186,7 +187,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source, token,
-          shopifyShipping
+          shopifyShipping,
+          shopifyDiscount
         );
 
         if (status === 'Pending' && (addr.phone || customer.phone)) {
@@ -617,17 +619,18 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       }
 
       const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
+      const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
 
       db.prepare(`
         UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
         payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, 
-        line_items=?, shipping_fee=?, status_date=datetime('now')
+        line_items=?, shipping_fee=?, discount_amount=?, status_date=datetime('now')
         WHERE id=?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles,
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
-        tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, existing.id
+        tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount, existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
@@ -640,13 +643,14 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       const cleanCity = getCorrectedCity(rawCity);
       
       const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
+      const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
 
       db.prepare(`
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -660,7 +664,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
         0.5, courier, totalCost, source, token,
         require('../../tenant-context').getStore() || 'default',
-        shopifyShipping
+        shopifyShipping,
+        shopifyDiscount
       );
 
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
