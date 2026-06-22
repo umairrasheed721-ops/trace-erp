@@ -500,10 +500,21 @@ export default function CourierIntelligence() {
           {activeTab === 5 && (
             <Section>
               <SectionHeader icon="❌" title="Failed Attempt Cost Calculator" subtitle="Money spent on couriers that couldn't deliver on first try" />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
                 {data.failedAttemptCosts.map(c => {
                   const clr = getCourier(c.courier_name)
                   const failRate = c.total_orders > 0 ? ((c.orders_with_failed_attempts / c.total_orders) * 100).toFixed(1) : 0
+                  
+                  // Ratios
+                  const totalDelivered = c.total_delivered || 0
+                  const firstAttemptPct = totalDelivered > 0 ? ((c.first_attempt_delivered / totalDelivered) * 100).toFixed(1) : 0
+                  const failedButDelivered = c.failed_but_delivered || 0
+                  const failedAndReturned = c.failed_and_returned || 0
+                  const ordersAffected = c.orders_with_failed_attempts || 0
+                  
+                  const failedToDeliveredPct = ordersAffected > 0 ? ((failedButDelivered / ordersAffected) * 100).toFixed(1) : 0
+                  const failedToReturnedPct = ordersAffected > 0 ? ((failedAndReturned / ordersAffected) * 100).toFixed(1) : 0
+
                   return (
                     <div key={c.courier_name} style={{ padding: '28px', borderRadius: '22px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', position: 'relative', overflow: 'hidden' }}>
                       <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '100px', height: '100px', background: 'rgba(239,68,68,0.05)', borderRadius: '50%', filter: 'blur(30px)' }} />
@@ -516,9 +527,47 @@ export default function CourierIntelligence() {
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                         <StatPill label="Failed Attempts (total)" value={fmt(c.total_failed_attempts)} color="#ef4444" />
-                        <StatPill label="Orders Affected" value={fmt(c.orders_with_failed_attempts)} color="#f59e0b" />
+                        <StatPill label="Orders Affected" value={fmt(ordersAffected)} color="#f59e0b" />
                         <StatPill label="Fee on Multi-Attempt" value={`Rs ${fmtK(c.fee_on_multi_attempt)}`} color="#ef4444" sub="total courier cost paid" />
                         <StatPill label="Avg Fee (failed)" value={`Rs ${fmt(c.avg_fee_multi_attempt)}`} sub="per affected order" />
+                      </div>
+
+                      <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Delivery & Recovery Ratios</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {/* 1st Attempt Delivery Rate */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>1st Attempt Delivery Rate</span>
+                              <span style={{ color: '#10b981', fontWeight: 900 }}>{firstAttemptPct}% <span style={{ opacity: 0.5, fontWeight: 600, fontSize: '0.65rem' }}>({fmt(c.first_attempt_delivered)}/{fmt(totalDelivered)})</span></span>
+                            </div>
+                            <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${firstAttemptPct}%`, height: '100%', background: '#10b981', borderRadius: '3px' }} />
+                            </div>
+                          </div>
+
+                          {/* Failed Attempt to Delivered Ratio */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Failed to Delivered (Recovery)</span>
+                              <span style={{ color: '#3b82f6', fontWeight: 900 }}>{failedToDeliveredPct}% <span style={{ opacity: 0.5, fontWeight: 600, fontSize: '0.65rem' }}>({fmt(failedButDelivered)}/{fmt(ordersAffected)})</span></span>
+                            </div>
+                            <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${failedToDeliveredPct}%`, height: '100%', background: '#3b82f6', borderRadius: '3px' }} />
+                            </div>
+                          </div>
+
+                          {/* Failed Attempt to Returned Ratio */}
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
+                              <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Failed to Returned (RTO)</span>
+                              <span style={{ color: '#ef4444', fontWeight: 900 }}>{failedToReturnedPct}% <span style={{ opacity: 0.5, fontWeight: 600, fontSize: '0.65rem' }}>({fmt(failedAndReturned)}/{fmt(ordersAffected)})</span></span>
+                            </div>
+                            <div style={{ width: '100%', height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${failedToReturnedPct}%`, height: '100%', background: '#ef4444', borderRadius: '3px' }} />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )

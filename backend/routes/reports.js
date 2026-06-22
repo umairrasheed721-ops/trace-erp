@@ -563,7 +563,11 @@ router.get('/logistics-intelligence', (req, res) => {
         SUM(COALESCE(failed_attempts, 0)) as total_failed_attempts,
         ROUND(SUM(CASE WHEN COALESCE(failed_attempts,0) > 0 THEN courier_fee ELSE 0 END), 0) as fee_on_multi_attempt,
         ROUND(AVG(CASE WHEN COALESCE(failed_attempts,0) > 0 THEN courier_fee ELSE NULL END), 0) as avg_fee_multi_attempt,
-        COUNT(*) as total_orders
+        COUNT(*) as total_orders,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as total_delivered,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts,0) = 0 THEN 1 ELSE 0 END) as first_attempt_delivered,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as failed_but_delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received') AND COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as failed_and_returned
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
       GROUP BY courier_name
