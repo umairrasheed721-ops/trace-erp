@@ -425,4 +425,218 @@ router.get('/profitability-chart-data', (req, res) => {
   }
 });
 
+// GET /api/reports/logistics-intelligence - Comprehensive offline courier auditing (10 metrics)
+router.get('/logistics-intelligence', (req, res) => {
+  const { store_id, startDate, endDate } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  const courierCase = `
+    CASE 
+      WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+      WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
+      WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
+      WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
+      ELSE COALESCE(NULLIF(TRIM(courier),''), 'Unknown')
+    END
+  `;
+
+  let dateFilter = '';
+  const baseParams = [Number(store_id)];
+  if (startDate && endDate) {
+    dateFilter = `AND order_date BETWEEN ? AND ?`;
+    baseParams.push(startDate, endDate);
+  }
+
+  try {
+    // ── 1. Cost-Per-Delivery by Courier ──────────────────────────────────────
+    const costPerDelivery = db.prepare(`
+      SELECT 
+        ${courierCase} as courier_name,
+        COUNT(*) as total_orders,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
+        ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE NULL END), 0) as avg_fee_delivered,
+        ROUND(AVG(courier_fee), 0) as avg_fee_all,
+        SUM(courier_fee) as total_fee_paid
+      FROM orders
+      WHERE store_id = ? AND courier_fee > 0 AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY courier_name
+      HAVING total_orders >= 3
+      ORDER BY total_orders DESC
+    `).all(...baseParams);
+
+    // ── 2. Revenue Leaked via Returns ─────────────────────────────────────────
+    const returnLoss = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as return_count,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN price ELSE 0 END), 0) as lost_revenue,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN courier_fee ELSE 0 END), 0) as return_shipping_cost,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN cost ELSE 0 END), 0) as inventory_cost_at_risk
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY courier_name
+      HAVING return_count > 0
+      ORDER BY lost_revenue DESC
+    `).all(...baseParams);
+
+    // ── 3. Profit per Courier ─────────────────────────────────────────────────
+    const profitByCourier = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END), 0) as revenue,
+        ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN cost ELSE 0 END), 0) as cogs,
+        ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE 0 END), 0) as courier_cost,
+        ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE 0 END), 0) as net_profit,
+        ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE NULL END), 0) as avg_profit_per_order
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY courier_name
+      HAVING delivered > 0
+      ORDER BY net_profit DESC
+    `).all(...baseParams);
+
+    // ── 4. Dead Zone Cities (delivery rate < 50%, min 5 orders) ─────────────
+    const deadZoneCities = db.prepare(`
+      SELECT
+        city,
+        ${courierCase} as courier_name,
+        COUNT(*) as total_orders,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
+        ROUND(100.0 * SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) / COUNT(*), 1) as delivery_rate
+      FROM orders
+      WHERE store_id = ? AND city IS NOT NULL AND city != '' 
+        AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY city, courier_name
+      HAVING total_orders >= 5 AND delivery_rate < 50
+      ORDER BY delivery_rate ASC
+      LIMIT 20
+    `).all(...baseParams);
+
+    // ── 5. Pending Cost Exposure ──────────────────────────────────────────────
+    const pendingExposure = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN 1 ELSE 0 END) as in_transit_count,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN COALESCE(courier_fee, 0) ELSE 0 END), 0) as actual_committed_fee,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN price ELSE 0 END), 0) as cod_at_risk
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
+      GROUP BY courier_name
+      HAVING in_transit_count > 0
+      ORDER BY cod_at_risk DESC
+    `).all(Number(store_id));
+
+    // ── 6. Weekly Trend: Delivery Rate by Courier (last 12 weeks) ────────────
+    const twelveWeeksAgo = new Date();
+    twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 84);
+    const weeklyTrend = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        CAST((julianday(order_date) - julianday('2024-01-01')) / 7 AS INTEGER) as week_num,
+        MIN(order_date) as week_start,
+        COUNT(*) as total_orders,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        ROUND(100.0 * SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) / COUNT(*), 1) as delivery_rate
+      FROM orders
+      WHERE store_id = ? AND order_date >= ? 
+        AND tracking_number IS NOT NULL AND tracking_number != ''
+      GROUP BY courier_name, week_num
+      HAVING total_orders >= 3
+      ORDER BY week_start ASC, courier_name
+    `).all(Number(store_id), twelveWeeksAgo.toISOString().split('T')[0]);
+
+    // ── 7. Failed Attempt Cost Calculator ────────────────────────────────────
+    const failedAttemptCosts = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        SUM(CASE WHEN COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as orders_with_failed_attempts,
+        SUM(COALESCE(failed_attempts, 0)) as total_failed_attempts,
+        ROUND(SUM(CASE WHEN COALESCE(failed_attempts,0) > 0 THEN courier_fee ELSE 0 END), 0) as fee_on_multi_attempt,
+        ROUND(AVG(CASE WHEN COALESCE(failed_attempts,0) > 0 THEN courier_fee ELSE NULL END), 0) as avg_fee_multi_attempt,
+        COUNT(*) as total_orders
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY courier_name
+      HAVING total_orders >= 3
+      ORDER BY total_failed_attempts DESC
+    `).all(...baseParams);
+
+    // ── 8. Shipping Fee Recovery Analysis ────────────────────────────────────
+    const shippingRecovery = db.prepare(`
+      SELECT
+        ${courierCase} as courier_name,
+        COUNT(*) as total_orders,
+        ROUND(AVG(COALESCE(shipping_fee, 0)), 0) as avg_shipping_charged,
+        ROUND(AVG(COALESCE(courier_fee, 0)), 0) as avg_courier_cost,
+        ROUND(SUM(COALESCE(shipping_fee, 0)), 0) as total_shipping_collected,
+        ROUND(SUM(COALESCE(courier_fee, 0)), 0) as total_courier_paid,
+        ROUND(SUM(COALESCE(shipping_fee, 0)) - SUM(COALESCE(courier_fee, 0)), 0) as net_shipping_pnl,
+        SUM(CASE WHEN COALESCE(shipping_fee, 0) < COALESCE(courier_fee, 0) THEN 1 ELSE 0 END) as orders_underwater
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      GROUP BY courier_name
+      HAVING total_orders >= 3
+      ORDER BY net_shipping_pnl ASC
+    `).all(...baseParams);
+
+    // ── 9. City-level Avg Delivery Days ──────────────────────────────────────
+    const cityDeliveryDays = db.prepare(`
+      SELECT
+        city,
+        ${courierCase} as courier_name,
+        COUNT(*) as delivered_count,
+        ROUND(AVG(julianday(status_date) - julianday(order_date)), 1) as avg_days,
+        MIN(CAST(julianday(status_date) - julianday(order_date) AS INTEGER)) as fastest_days,
+        MAX(CAST(julianday(status_date) - julianday(order_date) AS INTEGER)) as slowest_days
+      FROM orders
+      WHERE store_id = ? AND delivery_status = 'Delivered'
+        AND status_date IS NOT NULL AND order_date IS NOT NULL
+        AND city IS NOT NULL AND city != ''
+        AND julianday(status_date) > julianday(order_date)
+        AND (julianday(status_date) - julianday(order_date)) <= 30
+        ${dateFilter}
+      GROUP BY city, courier_name
+      HAVING delivered_count >= 5
+      ORDER BY avg_days ASC
+      LIMIT 40
+    `).all(...baseParams);
+
+    // ── 10. Courier Mix by Month ──────────────────────────────────────────────
+    const courierMix = db.prepare(`
+      SELECT
+        substr(order_date, 1, 7) as month,
+        ${courierCase} as courier_name,
+        COUNT(*) as order_count,
+        ROUND(SUM(courier_fee), 0) as total_fee,
+        SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered
+      FROM orders
+      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
+        AND order_date >= date('now', '-6 months')
+      GROUP BY month, courier_name
+      ORDER BY month ASC, order_count DESC
+    `).all(Number(store_id));
+
+    res.json({
+      costPerDelivery,
+      returnLoss,
+      profitByCourier,
+      deadZoneCities,
+      pendingExposure,
+      weeklyTrend,
+      failedAttemptCosts,
+      shippingRecovery,
+      cityDeliveryDays,
+      courierMix
+    });
+
+  } catch (err) {
+    console.error('Logistics Intelligence Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+
