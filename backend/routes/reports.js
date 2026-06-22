@@ -334,12 +334,13 @@ router.get('/courier-comparison', (req, res) => {
     const query = `
       SELECT 
         CASE 
-          WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+          WHEN UPPER(courier) LIKE '%POSTEX%' OR UPPER(courier) LIKE '%POST EX%' THEN 'PostEx'
           WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
           WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
-          WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
-          WHEN courier GLOB '*[0-9]*' AND length(courier) < 4 THEN 'PostEx' -- IDs often belong to main courier
-          ELSE COALESCE(courier, 'PostEx')
+          WHEN UPPER(courier) LIKE '%INSTA%' OR UPPER(courier) LIKE '%INSTAWORLD%' OR UPPER(courier) LIKE '%ILOGISTIC%' THEN 'InstaLogistics'
+          WHEN courier GLOB '*[0-9]*' AND length(TRIM(courier)) < 6 THEN 'PostEx'
+          WHEN courier IS NULL OR TRIM(courier) = '' THEN 'PostEx'
+          ELSE TRIM(courier)
         END as courier_name,
         COUNT(id) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
@@ -363,12 +364,13 @@ router.get('/courier-comparison', (req, res) => {
       SELECT 
         city,
         CASE 
-          WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+          WHEN UPPER(courier) LIKE '%POSTEX%' OR UPPER(courier) LIKE '%POST EX%' THEN 'PostEx'
           WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
           WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
-          WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
-          WHEN courier GLOB '*[0-9]*' AND length(courier) < 4 THEN 'PostEx'
-          ELSE COALESCE(courier, 'PostEx')
+          WHEN UPPER(courier) LIKE '%INSTA%' OR UPPER(courier) LIKE '%INSTAWORLD%' OR UPPER(courier) LIKE '%ILOGISTIC%' THEN 'InstaLogistics'
+          WHEN courier GLOB '*[0-9]*' AND length(TRIM(courier)) < 6 THEN 'PostEx'
+          WHEN courier IS NULL OR TRIM(courier) = '' THEN 'PostEx'
+          ELSE TRIM(courier)
         END as courier_name,
         COUNT(id) as total,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered
@@ -432,11 +434,13 @@ router.get('/logistics-intelligence', (req, res) => {
 
   const courierCase = `
     CASE 
-      WHEN UPPER(courier) LIKE '%POSTEX%' THEN 'PostEx'
+      WHEN UPPER(courier) LIKE '%POSTEX%' OR UPPER(courier) LIKE '%POST EX%' THEN 'PostEx'
       WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
       WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
-      WHEN UPPER(courier) LIKE '%INSTA%' THEN 'InstaLogistics'
-      ELSE COALESCE(NULLIF(TRIM(courier),''), 'Unknown')
+      WHEN UPPER(courier) LIKE '%INSTA%' OR UPPER(courier) LIKE '%INSTAWORLD%' OR UPPER(courier) LIKE '%INSTA WORLD%' OR UPPER(courier) LIKE '%ILOGISTIC%' THEN 'InstaLogistics'
+      WHEN courier GLOB '*[0-9]*' AND length(TRIM(courier)) < 6 THEN 'PostEx'
+      WHEN courier IS NULL OR TRIM(courier) = '' THEN 'PostEx'
+      ELSE TRIM(courier)
     END
   `;
 
