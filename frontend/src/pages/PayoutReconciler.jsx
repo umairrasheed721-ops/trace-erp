@@ -171,7 +171,9 @@ export default function PayoutReconciler() {
       const track = row.TRACKING_NUMBER || row.TRACKING_NUME || row.Tracking_Number || row['Tracking ID'] || ''
       const status = String(row.STATUS || row.Status || '').toLowerCase().includes('delivered') ? 'D' : 'R'
       
-      const cod = parseFloat(row.RESERVE_AMOUNT || row.RESERVE_AN || row.COD_AMOUNT || 0)
+      const cod = parseFloat(row.COD_AMOUNT || 0)
+      const reserve = parseFloat(row.RESERVE_AMOUNT || row.RESERVE_AM || row.RESERVE_AN || row.COD_AMOUNT || 0)
+      
       const ship = parseFloat(row.SHIPPING_CHARGES || row.SHIPPING_CH || row.Shipping_Charges || 0)
       const gst = parseFloat(row.GST || row.GST_Amount || 0)
       const incomeTax = parseFloat(row['WH_INCOME_TAX (2%)'] || row.WH_INCOME_ || row.WH_INCOME_TAX || 0)
@@ -185,6 +187,7 @@ export default function PayoutReconciler() {
         'Tracking Number': String(track).trim(),
         'Status': status,
         'Amount Collected': status === 'D' ? cod : 0,
+        'Reserve Amount': reserve,
         'Total Expense': totalExpense.toFixed(2),
         'CPR Reference': (rowCpr || cpr).trim(),
         'Settlement Date': date
@@ -406,11 +409,14 @@ export default function PayoutReconciler() {
   const calcLiveTotals = () => {
     let totalCod = 0
     let totalExpense = 0
+    let totalReserve = 0
     liveOrders.forEach(ord => {
       totalCod += parseFloat(ord['Amount Collected']) || 0
       totalExpense += parseFloat(ord['Total Expense']) || 0
+      const reserve = ord['Reserve Amount'] !== undefined ? parseFloat(ord['Reserve Amount']) : parseFloat(ord['Amount Collected'])
+      totalReserve += isNaN(reserve) ? 0 : reserve
     })
-    const netPayout = totalCod - totalExpense
+    const netPayout = totalReserve - totalExpense
     return { totalCod, totalExpense, netPayout }
   }
 
@@ -728,7 +734,14 @@ export default function PayoutReconciler() {
                                   {row.Status}
                                 </span>
                               </td>
-                              <td>{row['Amount Collected']}</td>
+                              <td>
+                                {row['Amount Collected']}
+                                {row['Reserve Amount'] !== undefined && row['Reserve Amount'] !== row['Amount Collected'] && (
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                    Reserve: {row['Reserve Amount']}
+                                  </div>
+                                )}
+                              </td>
                               <td>{row['Total Expense']}</td>
                               <td style={{ fontSize: '0.75rem', opacity: 0.7 }}>{row['CPR Reference']}</td>
                             </tr>
@@ -810,7 +823,14 @@ export default function PayoutReconciler() {
                                 {row.Status}
                               </span>
                             </td>
-                            <td>{row['Amount Collected']}</td>
+                            <td>
+                              {row['Amount Collected']}
+                              {row['Reserve Amount'] !== undefined && row['Reserve Amount'] !== row['Amount Collected'] && (
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                  Reserve: {row['Reserve Amount']}
+                                </div>
+                              )}
+                            </td>
                             <td>{row['Total Expense']}</td>
                             <td style={{ fontSize: '0.75rem', opacity: 0.7 }}>{row['CPR Reference']}</td>
                           </tr>
