@@ -260,22 +260,20 @@ export default function CourierIntelligence() {
             ))}
           </div>
 
-          {/* ── TAB 0: Cost & Profit (already shown above, show summary table) ── */}
-          {activeTab === 0 && (
+           {activeTab === 0 && (
             <Section>
-              <SectionHeader icon="📊" title="Profit Breakdown Table" subtitle="Revenue, COGS, courier cost, and net margin per carrier" />
+              <SectionHeader icon="📊" title="Profit Breakdown Table" subtitle="Revenue, courier cost, and average delivery/return costs per carrier" />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
                   <thead>
                     <tr style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {['Courier', 'Delivered', 'Returned', 'Revenue', 'COGS', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Net Profit', 'Avg/Order', 'Margin'].map(h => (
+                      {['Courier', 'Delivered', 'Returned', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
                         <th key={h} style={{ padding: '0 16px', textAlign: h === 'Courier' ? 'left' : 'right' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {data.profitByCourier.map(c => {
-                      const margin = c.revenue > 0 ? ((c.net_profit / c.revenue) * 100).toFixed(1) : 0
                       const clr = getCourier(c.courier_name)
                       return (
                         <tr key={c.courier_name} style={{ background: 'var(--bg-elevated)' }}>
@@ -288,7 +286,6 @@ export default function CourierIntelligence() {
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(c.delivered)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#ef4444' }}>{fmt(c.returned || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>Rs {fmtK(c.revenue)}</td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>Rs {fmtK(c.cogs)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>Rs {fmtK(c.courier_cost)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f59e0b' }}>
                             Rs {fmt(c.avg_delivery_cost || 0)}
@@ -298,11 +295,7 @@ export default function CourierIntelligence() {
                             {c.avg_return_cost ? `Rs ${fmt(c.avg_return_cost)}` : <span style={{ opacity: 0.25 }}>—</span>}
                             {c.avg_return_cost ? <div style={{ fontSize: '0.6rem', opacity: 0.4, fontWeight: 700, color: 'var(--text-muted)' }}>no tax</div> : null}
                           </td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: c.net_profit > 0 ? '#10b981' : '#ef4444' }}>Rs {fmtK(c.net_profit)}</td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-secondary)' }}>Rs {fmt(c.avg_profit_per_order)}</td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', borderRadius: '0 12px 12px 0' }}>
-                            <Badge text={`${margin}%`} type={parseFloat(margin) > 20 ? 'success' : parseFloat(margin) > 0 ? 'warn' : 'danger'} />
-                          </td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-secondary)', borderRadius: '0 12px 12px 0' }}>Rs {fmt(c.avg_profit_per_order)}</td>
                         </tr>
                       )
                     })}
