@@ -489,11 +489,14 @@ router.get('/logistics-intelligence', (req, res) => {
       SELECT
         ${courierCase} as courier_name,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END), 0) as revenue,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN cost ELSE 0 END), 0) as cogs,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE 0 END), 0) as courier_cost,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE 0 END), 0) as net_profit,
-        ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE NULL END), 0) as avg_profit_per_order
+        ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE NULL END), 0) as avg_profit_per_order,
+        ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE NULL END), 0) as avg_delivery_cost,
+        ROUND(AVG(CASE WHEN delivery_status IN ('Returned','Return Received') THEN courier_fee ELSE NULL END), 0) as avg_return_cost
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
       GROUP BY courier_name

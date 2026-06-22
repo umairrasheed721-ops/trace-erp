@@ -268,7 +268,7 @@ export default function CourierIntelligence() {
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
                   <thead>
                     <tr style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {['Courier', 'Delivered', 'Revenue', 'COGS', 'Courier Cost', 'Avg Del. Cost', 'Net Profit', 'Avg/Order', 'Margin'].map(h => (
+                      {['Courier', 'Delivered', 'Returned', 'Revenue', 'COGS', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Net Profit', 'Avg/Order', 'Margin'].map(h => (
                         <th key={h} style={{ padding: '0 16px', textAlign: h === 'Courier' ? 'left' : 'right' }}>{h}</th>
                       ))}
                     </tr>
@@ -286,10 +286,18 @@ export default function CourierIntelligence() {
                             </div>
                           </td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(c.delivered)}</td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#ef4444' }}>{fmt(c.returned || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>Rs {fmtK(c.revenue)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>Rs {fmtK(c.cogs)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>Rs {fmtK(c.courier_cost)}</td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#f59e0b' }}>Rs {fmt(c.delivered > 0 ? Math.round(c.courier_cost / c.delivered) : 0)}</td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f59e0b' }}>
+                            Rs {fmt(c.avg_delivery_cost || 0)}
+                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontWeight: 700, color: 'var(--text-muted)' }}>incl. tax</div>
+                          </td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f97316' }}>
+                            {c.avg_return_cost ? `Rs ${fmt(c.avg_return_cost)}` : <span style={{ opacity: 0.25 }}>—</span>}
+                            {c.avg_return_cost ? <div style={{ fontSize: '0.6rem', opacity: 0.4, fontWeight: 700, color: 'var(--text-muted)' }}>no tax</div> : null}
+                          </td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: c.net_profit > 0 ? '#10b981' : '#ef4444' }}>Rs {fmtK(c.net_profit)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-secondary)' }}>Rs {fmt(c.avg_profit_per_order)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', borderRadius: '0 12px 12px 0' }}>
