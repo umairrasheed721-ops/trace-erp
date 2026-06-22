@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
 const path = require('path');
 const db = require('../db');
 const { instaworldFetch } = require('./instaworld_http');

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../db');
-const fetch = require('node-fetch');
+const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
 const { broadcast } = require('../../sse');
 const { getOrderFilters } = require('../../services/orderFilterBuilder');
 

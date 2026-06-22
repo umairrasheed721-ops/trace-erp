@@ -2,7 +2,7 @@ const { db } = require('../db');
 const tenantContext = require('../tenant-context');
 const fs = require('fs');
 const path = require('path');
-const fetch = require('node-fetch');
+const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
 
 // Helper to get all tenants (matching scheduler.js)
 function getAllTenants() {
