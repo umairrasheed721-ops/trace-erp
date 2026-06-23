@@ -50,7 +50,7 @@ function detectCourier(tracking, tags = '', shopifyCarrier = '') {
     return 'Self Delivery';
   }
 
-  if (tracking.startsWith('28') || tracking.startsWith('21')) return 'PostEx';
+  if (/^2\d{13}$/.test(cleanTracking) || tracking.startsWith('28') || tracking.startsWith('21')) return 'PostEx';
   if (tracking.startsWith('LE')) return 'Leopards';
   if (tracking.startsWith('1730')) return 'TCS';
   if (tracking.startsWith('PVT')) return 'Private Rider';

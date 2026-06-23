@@ -354,5 +354,38 @@ module.exports = [
     } catch (e) {
       console.error('Failed to update self-delivery orders in migration:', e.message);
     }
+  },
+
+  // 17. Retroactively heal PostEx courier names
+  (db) => {
+    try {
+      console.log('🩹 Running database migration to update existing PostEx orders with 14-digit numeric tracking starting with 2...');
+      
+      const orders = db.prepare(`
+        SELECT id, tracking_number, courier 
+        FROM orders 
+        WHERE (courier IS NULL OR courier = '' OR courier = '—' OR courier = 'Unknown')
+        AND tracking_number IS NOT NULL 
+        AND tracking_number != '' 
+        AND tracking_number != '—'
+      `).all();
+
+      let updatedCount = 0;
+      const updateStmt = db.prepare("UPDATE orders SET courier = 'PostEx' WHERE id = ?");
+
+      for (const order of orders) {
+        const tracking = order.tracking_number.trim();
+        // Match 14 digits starting with 2
+        if (/^2\d{13}$/.test(tracking)) {
+          updateStmt.run(order.id);
+          updatedCount++;
+        }
+      }
+      if (updatedCount > 0) {
+        console.log(`✅ [Migration] Updated ${updatedCount} existing PostEx orders in DB.`);
+      }
+    } catch (e) {
+      console.error('Failed to update PostEx orders in migration:', e.message);
+    }
   }
 ];
