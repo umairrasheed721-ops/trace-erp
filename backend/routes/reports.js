@@ -434,6 +434,7 @@ router.get('/logistics-intelligence', (req, res) => {
 
   const courierCase = `
     CASE 
+      WHEN (tracking_number IS NULL OR TRIM(tracking_number) = '' OR tracking_number = '—') THEN 'Unassigned'
       WHEN UPPER(courier) LIKE '%POSTEX%' OR UPPER(courier) LIKE '%POST EX%' THEN 'PostEx'
       WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
       WHEN UPPER(courier) LIKE '%TCS%' THEN 'TCS'
@@ -501,9 +502,8 @@ router.get('/logistics-intelligence', (req, res) => {
         ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE NULL END), 0) as avg_delivery_cost,
         ROUND(AVG(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused') THEN courier_fee ELSE NULL END), 0) as avg_return_cost
       FROM orders
-      WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
+      WHERE store_id = ? ${dateFilter}
       GROUP BY courier_name
-      HAVING delivered > 0
       ORDER BY net_profit DESC
     `).all(...baseParams);
 

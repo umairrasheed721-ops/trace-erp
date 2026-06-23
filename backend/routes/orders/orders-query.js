@@ -382,6 +382,16 @@ router.get('/by-shopify/:id', (req, res) => {
   res.json(order);
 });
 
+// GET /api/logistics/couriers - Fetch unique couriers active in the database
+router.get('/logistics/couriers', (req, res) => {
+  try {
+    const rows = db.prepare("SELECT DISTINCT courier FROM orders WHERE courier IS NOT NULL AND courier != '' AND courier != '—' ORDER BY courier ASC").all();
+    res.json(rows.map(r => r.courier));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/logistics/cities - Fetch valid cities for a courier
 router.get('/logistics/cities', (req, res) => {
   const { courier } = req.query;

@@ -7,8 +7,92 @@ const CourierBooking = React.memo(({
   trackingLoading,
   trackingData,
   bookingCourier,
-  handleBookCourier
+  handleBookCourier,
+  activeCouriers = [],
+  updateOrderField,
+  editingOrder,
+  setEditingOrder
 }) => {
+  const standardCouriers = ['PostEx', 'Leopards', 'TCS', 'Self Delivery', 'InstaLogistics', 'Unassigned'];
+  const [localCourier, setLocalCourier] = React.useState('Unassigned');
+  const [localTracking, setLocalTracking] = React.useState('');
+  const [showCustomInput, setShowCustomInput] = React.useState(false);
+  const [customCourier, setCustomCourier] = React.useState('');
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  // Merge standard options with dynamic options from activeCouriers
+  const courierOptions = React.useMemo(() => {
+    const list = [...standardCouriers];
+    if (Array.isArray(activeCouriers)) {
+      activeCouriers.forEach(c => {
+        if (c && !list.includes(c)) {
+          list.push(c);
+        }
+      });
+    }
+    return list;
+  }, [activeCouriers]);
+
+  React.useEffect(() => {
+    const currentCourier = courier || 'Unassigned';
+    setLocalTracking(trackingNumber || '');
+    
+    if (courierOptions.includes(currentCourier)) {
+      setLocalCourier(currentCourier);
+      setShowCustomInput(false);
+      setCustomCourier('');
+    } else if (courier) {
+      setLocalCourier('custom');
+      setShowCustomInput(true);
+      setCustomCourier(currentCourier);
+    } else {
+      setLocalCourier('Unassigned');
+      setShowCustomInput(false);
+      setCustomCourier('');
+    }
+  }, [courier, trackingNumber, courierOptions]);
+
+  const handleCourierChange = (e) => {
+    const val = e.target.value;
+    setLocalCourier(val);
+    if (val === 'custom') {
+      setShowCustomInput(true);
+    } else {
+      setShowCustomInput(false);
+    }
+  };
+
+  const handleSaveManualCourier = async () => {
+    let finalCourier = localCourier;
+    if (localCourier === 'custom') {
+      finalCourier = customCourier.trim();
+      if (!finalCourier) {
+        alert('Please enter a custom courier name.');
+        return;
+      }
+    }
+    
+    setIsSaving(true);
+    try {
+      if (updateOrderField && editingOrder) {
+        await updateOrderField(editingOrder.id, 'courier', finalCourier);
+        await updateOrderField(editingOrder.id, 'tracking_number', localTracking);
+      }
+      
+      if (setEditingOrder) {
+        setEditingOrder(prev => ({
+          ...prev,
+          courier: finalCourier,
+          tracking_number: localTracking
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to manually update courier details:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28 }}>
       
@@ -55,8 +139,9 @@ const CourierBooking = React.memo(({
         </div>
       </div>
 
-      {/* Right Side: 1-Click Courier Booking Controls */}
+      {/* Right Side: Booking & Assignment Controls */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Instant Booking Panel */}
         <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>🚀 Instant Courier Booking</div>
           
@@ -107,6 +192,102 @@ const CourierBooking = React.memo(({
               </a>
             </div>
           )}
+        </div>
+
+        {/* Manual Assignment Panel */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12 }}>⚙️ Manual Courier Assignment</div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Courier Partner</label>
+            <select
+              value={localCourier}
+              onChange={handleCourierChange}
+              style={{
+                width: '100%',
+                background: '#0f172a',
+                color: '#fff',
+                border: '1px solid #334155',
+                padding: '12px 16px',
+                borderRadius: 12,
+                fontSize: '0.85rem',
+                outline: 'none',
+                cursor: 'pointer',
+                boxSizing: 'border-box'
+              }}
+            >
+              {courierOptions.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+              <option value="custom">+ Custom Courier...</option>
+            </select>
+          </div>
+
+          {showCustomInput && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Custom Courier Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Trax, M&P, Barq Raftar"
+                value={customCourier}
+                onChange={(e) => setCustomCourier(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#0f172a',
+                  color: '#fff',
+                  border: '1px solid #334155',
+                  padding: '12px 16px',
+                  borderRadius: 12,
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8' }}>Tracking Number</label>
+            <input
+              type="text"
+              placeholder="Enter tracking number"
+              value={localTracking}
+              onChange={(e) => setLocalTracking(e.target.value)}
+              style={{
+                width: '100%',
+                background: '#0f172a',
+                color: '#fff',
+                border: '1px solid #334155',
+                padding: '12px 16px',
+                borderRadius: 12,
+                fontSize: '0.85rem',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveManualCourier}
+            disabled={isSaving}
+            style={{
+              background: '#6366f1',
+              color: '#fff',
+              border: 'none',
+              padding: '12px 16px',
+              borderRadius: 12,
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              textAlign: 'center',
+              marginTop: 8,
+              boxShadow: '0 4px 12px rgba(99,102,241,0.3)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {isSaving ? '⏳ Saving details...' : '💾 Save Courier Details'}
+          </button>
         </div>
       </div>
     </div>

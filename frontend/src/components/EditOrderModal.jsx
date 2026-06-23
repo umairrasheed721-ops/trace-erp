@@ -102,6 +102,7 @@ export default function EditOrderModal({
 
   const { addToast } = useApp();
   const [waTemplates, setWATemplates] = useState([]);
+  const [activeCouriers, setActiveCouriers] = useState([]);
 
   useEffect(() => {
     if (editingOrder) {
@@ -113,6 +114,15 @@ export default function EditOrderModal({
           if (Array.isArray(data)) setWATemplates(data);
         })
         .catch(err => console.error('Failed to fetch templates:', err));
+
+      fetch('/api/logistics/couriers', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setActiveCouriers(data);
+        })
+        .catch(err => console.error('Failed to fetch active couriers:', err));
     }
   }, [editingOrder]);
 
@@ -713,6 +723,10 @@ export default function EditOrderModal({
               trackingData={trackingData}
               bookingCourier={bookingCourier}
               handleBookCourier={handleBookCourier}
+              activeCouriers={activeCouriers}
+              updateOrderField={updateOrderField}
+              editingOrder={editingOrder}
+              setEditingOrder={setEditingOrder}
             />
           )}
 
