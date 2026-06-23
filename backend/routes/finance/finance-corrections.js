@@ -253,6 +253,7 @@ router.post('/master-costs', (req, res) => {
 
   try {
     const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
+    const existing = db.prepare('SELECT unit_cost, shopify_cost, shopify_variant_id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store_id), parent_title, variant_title || '');
     db.prepare(`
       INSERT INTO product_master_costs (store_id, parent_title, variant_title, unit_cost, packaging_cost, landed_cost, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
@@ -262,6 +263,11 @@ router.post('/master-costs', (req, res) => {
         landed_cost = excluded.landed_cost,
         updated_at = datetime('now')
     `).run(Number(store_id), parent_title, variant_title || '', unit_cost || 0, packaging_cost || 0, landed_cost);
+    // Log cost change
+    try {
+      db.prepare(`INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, changed_by) VALUES (?,?,?,?,?,?,'manual')`)
+        .run(Number(store_id), parent_title, variant_title || '', existing?.shopify_variant_id || null, existing?.unit_cost ?? null, parseFloat(unit_cost) || 0);
+    } catch (_) {}
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -483,6 +489,7 @@ router.post('/accept-shopify-cost', (req, res) => {
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
 
   try {
+    const existing = db.prepare('SELECT unit_cost, shopify_cost, shopify_variant_id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store_id), parent_title, variant_title || '');
     db.prepare(`
       UPDATE product_master_costs 
       SET previous_unit_cost = unit_cost,
@@ -491,6 +498,11 @@ router.post('/accept-shopify-cost', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND variant_title = ?
     `).run(Number(store_id), parent_title, variant_title || '');
+    // Log cost change
+    try {
+      db.prepare(`INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, old_shopify_cost, new_shopify_cost, changed_by) VALUES (?,?,?,?,?,?,?,?,'bulk_accept')`)
+        .run(Number(store_id), parent_title, variant_title || '', existing?.shopify_variant_id || null, existing?.unit_cost ?? null, existing?.shopify_cost ?? null, existing?.shopify_cost ?? null, existing?.shopify_cost ?? null);
+    } catch (_) {}
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -517,6 +529,9 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
     const { store_id, parent_title } = req.body;
     if (!store_id || !parent_title) return res.status(400).json({ error: "Missing required fields" });
 
+    // Capture before-state for logging
+    const variants = db.prepare('SELECT parent_title, variant_title, shopify_variant_id, unit_cost, shopify_cost FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND shopify_cost > 0').all(Number(store_id), parent_title);
+
     const result = db.prepare(`
       UPDATE product_master_costs 
       SET previous_unit_cost = unit_cost,
@@ -525,6 +540,14 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND shopify_cost > 0
     `).run(Number(store_id), parent_title);
+
+    // Log each variant's cost change
+    try {
+      for (const v of variants) {
+        db.prepare(`INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, old_shopify_cost, new_shopify_cost, changed_by) VALUES (?,?,?,?,?,?,?,?,'bulk_accept')`)
+          .run(Number(store_id), v.parent_title, v.variant_title || '', v.shopify_variant_id || null, v.unit_cost ?? null, v.shopify_cost ?? null, v.shopify_cost ?? null, v.shopify_cost ?? null);
+      }
+    } catch (_) {}
 
     res.json({ success: true, message: `Accepted costs for ${result.changes} variants` });
   } catch (error) {

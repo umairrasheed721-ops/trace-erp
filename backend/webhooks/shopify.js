@@ -21,6 +21,58 @@ function getAllTenants() {
   return tenants;
 }
 
+/**
+ * processProductUpdateForCosts — called when Shopify fires products/update webhook
+ * Updates product_master_costs with new price, image, and logs cost drift
+ */
+function processProductUpdateForCosts(storeId, payload) {
+  try {
+    const variants = payload.variants || [];
+    const parentTitle = payload.title;
+    if (!parentTitle || variants.length === 0) return;
+
+    for (const v of variants) {
+      const variantTitle = v.title === 'Default Title' ? '' : (v.title || '');
+      const newPrice = parseFloat(v.price || 0);
+      const newImageId = v.image_id;
+
+      // Find image URL from payload.images
+      let imageUrl = null;
+      if (newImageId && payload.images) {
+        const img = payload.images.find(i => i.id === newImageId);
+        if (img) imageUrl = img.src;
+      }
+      // Fallback: first product image
+      if (!imageUrl && payload.image?.src) imageUrl = payload.image.src;
+
+      // Find existing row
+      const existing = db.prepare(`
+        SELECT id, unit_cost, shopify_cost, selling_price
+        FROM product_master_costs
+        WHERE store_id = ? AND (
+          shopify_variant_id = ? OR shopify_variant_id = ? OR
+          (parent_title = ? AND variant_title = ?)
+        ) LIMIT 1
+      `).get(Number(storeId), String(v.id), `gid://shopify/ProductVariant/${v.id}`, parentTitle, variantTitle);
+
+      if (existing) {
+        // Update selling_price and image — but NOT unit_cost (user controls that)
+        db.prepare(`
+          UPDATE product_master_costs SET
+            selling_price = ?,
+            variant_image_url = COALESCE(?, variant_image_url),
+            updated_at = datetime('now')
+          WHERE id = ?
+        `).run(newPrice, imageUrl || null, existing.id);
+
+        console.log(`🔔 [Webhook] Updated price/image for "${parentTitle} - ${variantTitle}" → Rs ${newPrice}`);
+      }
+    }
+  } catch (e) {
+    console.error('[Webhook] processProductUpdateForCosts error:', e.message);
+  }
+}
+
 module.exports = async function handleShopifyWebhook(req, res) {
   const shopDomain = req.headers['x-shopify-shop-domain'];
   const topic = req.headers['x-shopify-topic'];
@@ -65,10 +117,14 @@ module.exports = async function handleShopifyWebhook(req, res) {
         if (topic === 'products/delete') {
           db.prepare('DELETE FROM products WHERE store_id = ? AND shopify_product_id = ?').run(store.id, String(payload.id));
           console.log(`🗑️ [Shopify Webhook] Deleted product ${payload.id} from local cache.`);
-        } else {
+        } else if (topic === 'products/update' || topic === 'products/create') {
+          // 1. Sync product to local product catalog cache
           const { syncShopifyProduct } = require('../engines/shopify');
           syncShopifyProduct(db, store.id, store.shop_domain, payload);
           console.log(`🔄 [Shopify Webhook] Synced product ${payload.id} to local cache.`);
+
+          // 2. Update costing registry with new price/image (real-time R1)
+          processProductUpdateForCosts(store.id, payload);
         }
       } else if (topic === 'orders/cancelled' || payload.cancelled_at !== null) {
         // Immediate cancellation state invalidation

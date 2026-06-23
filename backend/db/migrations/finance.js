@@ -76,5 +76,21 @@ module.exports = [
         // Ignore column already exists errors
       }
     });
-  }
+  },
+
+  // 6. CREATE cost_change_log TABLE — tracks every cost change for P&L traceability
+  `CREATE TABLE IF NOT EXISTS cost_change_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL,
+    parent_title TEXT NOT NULL,
+    variant_title TEXT DEFAULT '',
+    shopify_variant_id TEXT,
+    old_cost REAL,
+    new_cost REAL,
+    old_shopify_cost REAL,
+    new_shopify_cost REAL,
+    changed_by TEXT NOT NULL, -- 'shopify_cron' | 'manual' | 'webhook' | 'bulk_accept' | 'inline_save'
+    changed_at TEXT DEFAULT (datetime('now', '+5 hours'))
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_cost_change_log_store ON cost_change_log(store_id, changed_at DESC);`
 ];

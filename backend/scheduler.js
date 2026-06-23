@@ -59,9 +59,12 @@ async function syncStoreInventoryAndCosts(store) {
         if (existing) {
           db.prepare(`
             UPDATE product_master_costs SET
-              shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?, shopify_cost = ?, selling_price = ?, inventory_qty = ?, updated_at = datetime('now')
+              shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?,
+              shopify_cost = ?, selling_price = ?, inventory_qty = ?,
+              variant_image_url = COALESCE(?, variant_image_url),
+              updated_at = datetime('now')
             WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, existing.id);
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, existing.id);
         } else {
           db.prepare(`
             INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, updated_at)
@@ -274,9 +277,9 @@ module.exports = function schedulerInit() {
     }
   });
 
-  // 5. Every 4 hours: Automated background inventory & cost sync
-  cron.schedule('0 */4 * * *', async () => {
-    console.log('📦 [CRON] Automated 4-hour inventory & cost sync starting...');
+  // 5. Every 1 hour: Automated background inventory & cost sync (was 4 hours)
+  cron.schedule('0 * * * *', async () => {
+    console.log('📦 [CRON] Automated 1-hour inventory & cost sync starting...');
     const tenants = getAllTenants();
     for (const tenantId of tenants) {
       await tenantContext.run(tenantId, async () => {
