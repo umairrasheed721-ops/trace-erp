@@ -40,9 +40,13 @@ router.put('/:id/cs-update', async (req, res) => {
         discount_amount = ?,
         cs_notes = ?,
         shipping_fee = ?,
-        notes = json_set(COALESCE(notes, '{}'), '$.cs_discount', ?)
+        notes = CASE 
+          WHEN notes IS NULL OR notes = '' THEN json_set('{}', '$.cs_discount', ?)
+          WHEN json_valid(notes) = 1 THEN json_set(notes, '$.cs_discount', ?)
+          ELSE notes 
+        END
       WHERE id = ?
-    `).run(newItemsStr, price, totalCost, newItemsCount, newProductTitles, discount_amount, req.body.cs_notes || '', shipping_fee || 0, discount_amount, id);
+    `).run(newItemsStr, price, totalCost, newItemsCount, newProductTitles, discount_amount, req.body.cs_notes || '', shipping_fee || 0, discount_amount, discount_amount, id);
 
     const newOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     
