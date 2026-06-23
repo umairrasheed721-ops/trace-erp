@@ -38,6 +38,12 @@ export default function CostManager() {
   const [ghostSearch, setGhostSearch] = useState('')
   const [selectedGhosts, setSelectedGhosts] = useState(new Set())
 
+  // UI Enhancement States
+  const [sortBy, setSortBy] = useState('value')       // 'value' | 'margin' | 'stock' | 'name'
+  const [filterMargin, setFilterMargin] = useState('all') // 'all' | 'low' | 'mid' | 'high'
+  const [inlineEdits, setInlineEdits] = useState({})  // { variantId: { unit_cost, packaging_cost } }
+  const [savingInline, setSavingInline] = useState(null)
+
   useEffect(() => {
     if (activeStoreId) {
       fetchCosts()
@@ -76,39 +82,79 @@ export default function CostManager() {
     acceptedValue: 0,
     acceptedQty: 0,
     pendingValue: 0,
-    totalVariants: costs.length
+    totalVariants: costs.length,
+    totalMarginValue: 0,
+    totalSellingValue: 0,
+    atRiskCount: 0,
   }
 
   const grouped = {}
   costs.forEach(c => {
-    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0 }
+    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0, totalSelling: 0 }
     grouped[c.parent_title].variants.push(c)
     grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
     
     const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
+    const selling = c.selling_price || 0
     if (landed > 0) {
       totals.acceptedValue += landed * (c.inventory_qty || 0)
       totals.acceptedQty += (c.inventory_qty || 0)
+      if (selling > 0) {
+        totals.totalMarginValue += (selling - landed) * (c.inventory_qty || 0)
+        totals.totalSellingValue += selling * (c.inventory_qty || 0)
+      }
     } else if (c.shopify_cost > 0) {
       totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
     }
     
     grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
+    grouped[c.parent_title].totalSelling += selling * (c.inventory_qty || 0)
     if (landed > 0) grouped[c.parent_title].hasCost = true
     
-    // Track Price Drift (Shopify Cost changed but we haven't accepted it)
+    // Track Price Drift
     if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
       grouped[c.parent_title].hasDrift = true
     }
 
-    // Track unique costs for the hint
+    // Track unique costs
     if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
     grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
   })
 
-  const sorted = Object.values(grouped)
+  // Compute per-group margin and at-risk
+  Object.values(grouped).forEach(p => {
+    if (p.totalSelling > 0 && p.totalValue > 0) {
+      p.margin = Math.round(((p.totalSelling - p.totalValue) / p.totalSelling) * 100)
+      if (p.margin < 20) totals.atRiskCount++
+    } else {
+      p.margin = null
+    }
+  })
+
+  const avgMargin = totals.totalSellingValue > 0
+    ? Math.round((totals.totalMarginValue / totals.totalSellingValue) * 100)
+    : 0
+
+  const ghostImpact = ghosts.reduce((sum, g) => sum + (g.count * 500), 0) // rough estimate
+
+  const allGrouped = Object.values(grouped)
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a,b) => b.totalValue - a.totalValue)
+
+  // Apply margin filter
+  const marginFiltered = filterMargin === 'all' ? allGrouped
+    : filterMargin === 'low'  ? allGrouped.filter(p => p.margin !== null && p.margin < 20)
+    : filterMargin === 'mid'  ? allGrouped.filter(p => p.margin !== null && p.margin >= 20 && p.margin < 40)
+    : filterMargin === 'high' ? allGrouped.filter(p => p.margin !== null && p.margin >= 40)
+    : allGrouped
+
+  // Apply sort
+  const sorted = [...marginFiltered].sort((a, b) => {
+    if (sortBy === 'value')  return b.totalValue - a.totalValue
+    if (sortBy === 'margin') return (b.margin ?? -1) - (a.margin ?? -1)
+    if (sortBy === 'stock')  return b.totalQty - a.totalQty
+    if (sortBy === 'name')   return a.name.localeCompare(b.name)
+    return 0
+  })
 
   const pendingItems = sorted.filter(p => !p.hasCost)
   const verifiedItems = sorted.filter(p => p.hasCost)
@@ -323,6 +369,35 @@ export default function CostManager() {
     } catch (e) { addToast('Bulk accept failed', 'error') }
   }
 
+  const handleInlineSave = async (v) => {
+    const key = v.id || `${v.parent_title}@@@${v.variant_title}`
+    const edit = inlineEdits[key]
+    if (!edit) return
+    setSavingInline(key)
+    try {
+      const res = await fetch('/api/finance/master-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          parent_title: v.parent_title,
+          variant_title: v.variant_title,
+          unit_cost: parseFloat(edit.unit_cost) || 0,
+          packaging_cost: parseFloat(edit.packaging_cost) || 0
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`✅ Saved ${v.variant_title || v.parent_title}`, 'success')
+        const next = { ...inlineEdits }
+        delete next[key]
+        setInlineEdits(next)
+        fetchCosts()
+      }
+    } catch (e) { addToast('Save failed: ' + e.message, 'error') }
+    finally { setSavingInline(null) }
+  }
+
   const toggleParent = (name) => {
     const next = new Set(expandedParents)
     if (next.has(name)) next.delete(name)
@@ -446,40 +521,100 @@ export default function CostManager() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 20, marginBottom: 30 }}>
-        <div className="stat-card" style={{ flex: 1, background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', padding: '20px', borderRadius: '16px', boxShadow: '0 10px 20px rgba(79, 70, 229, 0.2)' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.7 }}>💰 Total Inventory Value (Accepted)</div>
-          <div style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: 5 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.8 }}>Asset worth of {totals.acceptedQty} items</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 30 }}>
+        <div style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', padding: '20px 24px', borderRadius: '16px', boxShadow: '0 10px 20px rgba(79,70,229,0.2)' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.75, letterSpacing: 1 }}>💰 Inventory Value</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
+          <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.8 }}>{totals.acceptedQty} units accepted</div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px', borderRadius: '16px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)' }}>⏳ Pending Acceptance</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: 'var(--yellow)' }}>Rs {totals.pendingValue.toLocaleString()}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5, color: 'var(--text-muted)' }}>Value waiting in Shopify drafts</div>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px 24px', borderRadius: '16px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>📈 Avg Profit Margin</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444' }}>{avgMargin}%</div>
+          <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Across verified products</div>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'var(--border)', borderRadius: '0 0 16px 16px' }}>
+            <div style={{ height: '100%', width: `${Math.min(avgMargin, 100)}%`, background: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: '0 0 0 16px', transition: 'width 0.6s ease' }} />
+          </div>
         </div>
-        <div className="stat-card" style={{ flex: 1, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px', borderRadius: '16px' }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)' }}>📦 Total variants</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, marginTop: 5, color: 'var(--text-primary)' }}>{totals.totalVariants}</div>
-          <div style={{ fontSize: '0.75rem', marginTop: 5, opacity: 0.5, color: 'var(--text-muted)' }}>Active SKUs in Registry</div>
+        <div style={{ background: 'var(--bg-surface)', border: `1px solid ${totals.atRiskCount > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`, padding: '20px 24px', borderRadius: '16px' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>⚠️ At Risk SKUs</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: totals.atRiskCount > 0 ? '#ef4444' : 'var(--green)' }}>{totals.atRiskCount}</div>
+          <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Products with margin &lt; 20%</div>
+        </div>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px 24px', borderRadius: '16px' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>⏳ Pending Value</div>
+          <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: 'var(--yellow)' }}>Rs {totals.pendingValue.toLocaleString()}</div>
+          <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Awaiting cost acceptance</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 30, marginBottom: 30, borderBottom: '1px solid var(--border)' }}>
-        <button onClick={() => setActiveTab('pending')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'pending' ? 'var(--yellow)' : 'var(--text-muted)', borderBottom: activeTab === 'pending' ? '2px solid var(--yellow)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-          ⏳ Pending Registry ({pendingItems.length})
-        </button>
-        <button onClick={() => setActiveTab('verified')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'verified' ? 'var(--green)' : 'var(--text-muted)', borderBottom: activeTab === 'verified' ? '2px solid var(--green)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-          ✅ Verified Registry ({verifiedItems.length})
-        </button>
-        <button onClick={() => setActiveTab('ghosts')} style={{ padding: '15px 0', background: 'none', border: 'none', color: activeTab === 'ghosts' ? 'var(--brand)' : 'var(--text-muted)', borderBottom: activeTab === 'ghosts' ? '2px solid var(--brand)' : 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-          👻 Ghost Listings ({ghosts.length})
-        </button>
+      {/* ── Pill Tabs ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
+        {[
+          { key: 'pending',  label: 'Pending',  count: pendingItems.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
+          { key: 'verified', label: 'Verified', count: verifiedItems.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
+          { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: 'var(--brand)', bg: 'var(--brand-glow)',  icon: '👻' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 18px', borderRadius: 50, border: 'none', cursor: 'pointer',
+              background: activeTab === t.key ? t.bg : 'var(--bg-surface)',
+              color: activeTab === t.key ? t.color : 'var(--text-muted)',
+              fontWeight: activeTab === t.key ? 700 : 500,
+              fontSize: '0.88rem',
+              boxShadow: activeTab === t.key ? `0 0 0 1.5px ${t.color}` : '0 0 0 1px var(--border)',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            {t.icon} {t.label}
+            <span style={{
+              background: activeTab === t.key ? t.color : 'var(--bg-elevated)',
+              color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
+              borderRadius: 50, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700, minWidth: 22, textAlign: 'center'
+            }}>{t.count}</span>
+          </button>
+        ))}
       </div>
 
       {(activeTab === 'pending' || activeTab === 'verified') && (
         <>
-          <div style={{ marginBottom: 20 }}>
-            <input type="text" className="form-input" placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
+          {/* ── Smart Toolbar ── */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>🔍</span>
+              <input type="text" className="form-input" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 36, width: '100%' }} />
+            </div>
+            <select
+              className="form-input"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{ width: 'auto', cursor: 'pointer' }}
+            >
+              <option value="value">Sort: By Value</option>
+              <option value="margin">Sort: By Margin</option>
+              <option value="stock">Sort: By Stock</option>
+              <option value="name">Sort: By Name</option>
+            </select>
+            <select
+              className="form-input"
+              value={filterMargin}
+              onChange={e => setFilterMargin(e.target.value)}
+              style={{ width: 'auto', cursor: 'pointer' }}
+            >
+              <option value="all">Margin: All</option>
+              <option value="high">Margin: High (&gt;40%)</option>
+              <option value="mid">Margin: Mid (20–40%)</option>
+              <option value="low">Margin: Low (&lt;20%) ⚠️</option>
+            </select>
+            {(search || filterMargin !== 'all') && (
+              <button
+                className="btn btn-secondary"
+                style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}
+                onClick={() => { setSearch(''); setFilterMargin('all') }}
+              >✕ Clear</button>
+            )}
           </div>
 
           {/* ── Loading State ── */}
@@ -561,19 +696,20 @@ export default function CostManager() {
           <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  <th style={{ width: 40, textAlign: 'center' }}>
+                <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)', borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ width: 40, textAlign: 'center', padding: '12px 0' }}>
                     <input 
                       type="checkbox" 
                       checked={selectedParents.size === currentList.length && currentList.length > 0}
                       onChange={() => toggleSelectAll(selectedParents.size === currentList.length)}
                     />
                   </th>
-                  <th style={{ padding: 15 }}>Product / Variant</th>
-                  <th style={{ textAlign: 'right' }}>Shopify Cost</th>
-                  <th style={{ textAlign: 'right' }}>My Cost</th>
-                  <th style={{ textAlign: 'right' }}>Stock</th>
-                  <th style={{ textAlign: 'right', padding: 15 }}>Actions</th>
+                  <th style={{ padding: '12px 15px' }}>Product / Variant</th>
+                  <th style={{ textAlign: 'right', padding: '12px 8px' }}>Shopify Cost</th>
+                  <th style={{ textAlign: 'right', padding: '12px 8px' }}>My Cost</th>
+                  <th style={{ textAlign: 'center', padding: '12px 16px', minWidth: 140 }}>Margin</th>
+                  <th style={{ textAlign: 'right', padding: '12px 8px' }}>Stock</th>
+                  <th style={{ textAlign: 'right', padding: '12px 15px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -649,9 +785,28 @@ export default function CostManager() {
                           })()}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>—</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? 'var(--green)' : 'var(--text-primary)' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0 (No Stock)') : '—'}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--text-primary)' }}>{p.totalQty}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-muted)', padding: '0 8px' }}>—</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? 'var(--green)' : 'var(--text-primary)', padding: '0 8px' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0') : '—'}</td>
+                      {/* Margin Bar */}
+                      <td style={{ padding: '0 16px' }}>
+                        {p.margin !== null ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden', minWidth: 70 }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${Math.min(p.margin, 100)}%`,
+                                background: p.margin >= 40 ? 'var(--green)' : p.margin >= 20 ? 'var(--yellow)' : '#ef4444',
+                                borderRadius: 3,
+                                transition: 'width 0.4s ease'
+                              }} />
+                            </div>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: p.margin >= 40 ? 'var(--green)' : p.margin >= 20 ? 'var(--yellow)' : '#ef4444', minWidth: 34, textAlign: 'right' }}>
+                              {p.margin}%
+                            </span>
+                          </div>
+                        ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', color: 'var(--text-primary)', padding: '0 8px' }}>{p.totalQty}</td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
                         <button className="btn btn-icon" title="Accept All Shopify Costs" onClick={(e) => { e.stopPropagation(); handleBulkAccept(p.name); }}>✅</button>
                         <button className="btn btn-icon" title="Bulk Set Cost/Pkg" onClick={(e) => { e.stopPropagation(); setBulkItem(p); setBulkForm({ unit_cost: 0, packaging_cost: 0 }); setShowBulkModal(true); }}>⚡</button>
@@ -691,16 +846,94 @@ export default function CostManager() {
                             </div>
                           </div>
                         </td>
-                        <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
-                          {(v.unit_cost + v.packaging_cost) > 0 ? `Rs ${(v.unit_cost + v.packaging_cost).toLocaleString()}` : '—'}
+                        <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                        {/* Inline Edit Cells */}
+                        <td style={{ textAlign: 'right', padding: '8px' }}>
+                          {(() => {
+                            const key = v.id || `${v.parent_title}@@@${v.variant_title}`
+                            const edit = inlineEdits[key]
+                            const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
+                            return edit ? (
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  placeholder="Unit"
+                                  value={edit.unit_cost}
+                                  onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, unit_cost: e.target.value } })}
+                                  style={{ width: 72, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+</span>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  placeholder="Pkg"
+                                  value={edit.packaging_cost}
+                                  onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, packaging_cost: e.target.value } })}
+                                  style={{ width: 56, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                            ) : (
+                              <span style={{ fontWeight: 700, color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                                {landed > 0 ? `Rs ${landed.toLocaleString()}` : '—'}
+                              </span>
+                            )
+                          })()}
                         </td>
-                        <td style={{ textAlign: 'right', color: 'var(--text-primary)' }}>{v.inventory_qty}</td>
-                        <td style={{ textAlign: 'right', padding: 15 }}>
-                          {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                            <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
-                          )}
-                          <button className="btn btn-icon" title="Edit" onClick={() => { setEditingItem(v); setForm(v); setShowModal(true); }}>✏️</button>
+                        {/* Margin Bar for variant */}
+                        <td style={{ padding: '8px 16px' }}>
+                          {(() => {
+                            const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
+                            const selling = v.selling_price || 0
+                            if (landed > 0 && selling > 0) {
+                              const m = Math.round(((selling - landed) / selling) * 100)
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div style={{ width: 50, height: 4, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${Math.min(m, 100)}%`, background: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: 2 }} />
+                                  </div>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444' }}>{m}%</span>
+                                </div>
+                              )
+                            }
+                            return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                          })()}
+                        </td>
+                        <td style={{ textAlign: 'right', color: 'var(--text-primary)', padding: '0 8px' }}>{v.inventory_qty}</td>
+                        <td style={{ textAlign: 'right', padding: '8px 15px' }} onClick={e => e.stopPropagation()}>
+                          {(() => {
+                            const key = v.id || `${v.parent_title}@@@${v.variant_title}`
+                            const edit = inlineEdits[key]
+                            const isSaving = savingInline === key
+                            return edit ? (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '3px 10px', fontSize: '0.75rem', height: 30 }}
+                                  onClick={() => handleInlineSave(v)}
+                                  disabled={isSaving}
+                                >{isSaving ? '⌛' : '✓ Save'}</button>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '3px 8px', fontSize: '0.75rem', height: 30 }}
+                                  onClick={() => { const n={...inlineEdits}; delete n[key]; setInlineEdits(n) }}
+                                >✕</button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                  <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
+                                )}
+                                <button
+                                  className="btn btn-icon"
+                                  title="Edit inline"
+                                  onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })}
+                                >✏️</button>
+                              </div>
+                            )
+                          })()}
                         </td>
                       </tr>
                     ))}
