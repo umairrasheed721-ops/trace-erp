@@ -287,7 +287,8 @@ export default function SearchTool() {
       'price': 'price',
       'courier_fee': 'courier_fee',
       'customer_name': 'customer_name',
-      'delivery_status': 'delivery_status'
+      'delivery_status': 'delivery_status',
+      'profit': 'profit'
     };
     const sCol = backendSortMap[sortKey] || 'created_timestamp';
 

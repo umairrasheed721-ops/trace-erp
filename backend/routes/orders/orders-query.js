@@ -106,10 +106,15 @@ router.get('/', (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Dynamic Sorting
-    const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost'];
+    const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost', 'courier_fee', 'profit'];
     const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
     const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
     const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    let sortExpression = `o.${safeSort}`;
+    if (safeSort === 'profit') {
+      sortExpression = `(COALESCE(o.price, 0) - COALESCE(o.cost, 0) - COALESCE(o.courier_fee, 0))`;
+    }
 
     // COUNT cache: avoid hitting DB on every page change for same filter
     const cacheKey = `${where}::${JSON.stringify(queryParams)}`;
@@ -135,7 +140,7 @@ router.get('/', (req, res) => {
                FROM orders
                WHERE (phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != ''
                       AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10))
-                  OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
+                   OR (email = o.email AND o.email IS NOT NULL AND o.email != '')
              ) as customer_order_count,
              (
                SELECT direction
@@ -160,7 +165,7 @@ router.get('/', (req, res) => {
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE ${where}
-      ORDER BY o.${safeSort} ${safeDir}
+      ORDER BY ${sortExpression} ${safeDir}
       LIMIT ? OFFSET ?
     `).all(...queryParams, parseInt(limit), offset);
 
