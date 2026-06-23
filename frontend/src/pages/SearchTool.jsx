@@ -1439,27 +1439,30 @@ export default function SearchTool() {
 
   const updateOrderField = async (orderId, field, value) => {
     const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o))
+    const isMulti = typeof field === 'object' && field !== null;
+    const payload = isMulti ? field : { [field]: value };
+    
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...payload } : o));
     try {
-      const payload = { [field]: value };
       console.log('📦 [updateOrderField] Sending payload:', payload, '→ PUT /api/orders/' + orderId);
       const res = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (res.ok && data.order) {
-        setAllOrders(prev => prev.map(o => o.id === orderId ? data.order : o))
+        setAllOrders(prev => prev.map(o => o.id === orderId ? data.order : o));
+        addToast('✅ Saved', 'success');
+        return data.order;
       } else if (!res.ok) {
-        throw new Error(data.error || 'Server error')
+        throw new Error(data.error || 'Server error');
       }
-      addToast('✅ Saved', 'success')
     } catch (err) {
-      setAllOrders(previousOrders)
-      addToast(`❌ Failed to save: ${err.message}`, 'error')
+      setAllOrders(previousOrders);
+      addToast(`❌ Failed to save: ${err.message}`, 'error');
     }
-  }
+  };
 
 
 

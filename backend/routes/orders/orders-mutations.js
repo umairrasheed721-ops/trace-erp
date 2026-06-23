@@ -95,6 +95,15 @@ router.put('/:id', async (req, res) => {
       extraValues.push(1);
     }
 
+    // Auto-stamp delivery_status to Booked if tracking number is set manually and order is Pending/Confirmed
+    if (req.body.tracking_number && req.body.tracking_number.trim() !== '') {
+      const currentStatus = (oldOrder.delivery_status || '').toLowerCase();
+      if (currentStatus === 'pending' || currentStatus === 'confirmed' || !oldOrder.delivery_status) {
+        extraSets.push("delivery_status = ?");
+        extraValues.push('Booked');
+      }
+    }
+
     const today = new Date().toISOString().split('T')[0];
 
     // 4. P&L LOGIC: Auto-stamp payment_date when status flips to Delivered
@@ -192,6 +201,25 @@ router.put('/:id', async (req, res) => {
       } catch (shopifyErr) {
         // Dual-save: local DB update succeeded above — Shopify failure is non-blocking
         console.error('⚠️ [ADDRESS_SYNC] Shopify sync error (local DB still saved):', shopifyErr.message);
+      }
+    }
+    // 6. SHOPIFY LIVE SYNC FOR FULFILLMENT: Fulfill order if tracking number/courier updated
+    const hasTrackingChange = req.body.tracking_number !== undefined || req.body.courier !== undefined;
+    if (hasTrackingChange && newOrder.shopify_order_id && newOrder.store_id) {
+      const trackingNo = newOrder.tracking_number;
+      const courierName = newOrder.courier;
+      if (trackingNo && trackingNo.trim() !== '' && trackingNo !== '—' && courierName && courierName.trim() !== '' && courierName !== 'Unassigned') {
+        try {
+          const store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(newOrder.store_id);
+          if (store && store.access_token && store.access_token !== 'PENDING') {
+            const { fulfillShopifyOrder } = require('../../engines/shopify');
+            console.log(`📦 [TRACKING_SYNC] Fulfilling order ${newOrder.shopify_order_id} on Shopify with Tracking #${trackingNo} (${courierName})`);
+            await fulfillShopifyOrder(store, newOrder.shopify_order_id, trackingNo, courierName);
+            console.log(`✅ [TRACKING_SYNC] Shopify fulfillment created for order ${newOrder.shopify_order_id}`);
+          }
+        } catch (shopifyErr) {
+          console.error(`⚠️ [TRACKING_SYNC] Shopify fulfillment failed for order ${newOrder.shopify_order_id}:`, shopifyErr.message);
+        }
       }
     }
 

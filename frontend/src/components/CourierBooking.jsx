@@ -74,17 +74,24 @@ const CourierBooking = React.memo(({
     
     setIsSaving(true);
     try {
+      let updatedOrder = null;
       if (updateOrderField && editingOrder) {
-        await updateOrderField(editingOrder.id, 'courier', finalCourier);
-        await updateOrderField(editingOrder.id, 'tracking_number', localTracking);
+        updatedOrder = await updateOrderField(editingOrder.id, {
+          courier: finalCourier,
+          tracking_number: localTracking
+        });
       }
       
       if (setEditingOrder) {
-        setEditingOrder(prev => ({
-          ...prev,
-          courier: finalCourier,
-          tracking_number: localTracking
-        }));
+        if (updatedOrder) {
+          setEditingOrder(updatedOrder);
+        } else {
+          setEditingOrder(prev => ({
+            ...prev,
+            courier: finalCourier,
+            tracking_number: localTracking
+          }));
+        }
       }
     } catch (err) {
       console.error('Failed to manually update courier details:', err);
