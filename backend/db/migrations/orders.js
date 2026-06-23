@@ -316,5 +316,43 @@ module.exports = [
     } catch (e) {
       console.error('Failed to seed admin user:', e.message);
     }
+  },
+
+  // 16. Retroactively heal self-delivery courier names
+  (db) => {
+    try {
+      console.log('🩹 Running database migration to update existing self-delivery orders to "Self Delivery"...');
+      
+      const orders = db.prepare(`
+        SELECT id, tracking_number, courier 
+        FROM orders 
+        WHERE (courier IS NULL OR courier = '' OR courier = '—' OR courier = 'Unknown')
+        AND tracking_number IS NOT NULL 
+        AND tracking_number != '' 
+        AND tracking_number != '—'
+      `).all();
+
+      const selfKeywords = ['hand', 'self', 'rider', 'local', 'office', 'pickup', 'personal'];
+      const datePattern = /^(?:\d{1,4})[./-]\d{1,2}[./-](?:\d{1,4})$/;
+      let updatedCount = 0;
+
+      const updateStmt = db.prepare("UPDATE orders SET courier = 'Self Delivery' WHERE id = ?");
+
+      for (const order of orders) {
+        const tracking = order.tracking_number.trim().toLowerCase();
+        const isKeywordMatch = selfKeywords.some(kw => tracking.includes(kw));
+        const isDateMatch = datePattern.test(tracking);
+
+        if (isKeywordMatch || isDateMatch) {
+          updateStmt.run(order.id);
+          updatedCount++;
+        }
+      }
+      if (updatedCount > 0) {
+        console.log(`✅ [Migration] Updated ${updatedCount} existing self-delivery orders in DB.`);
+      }
+    } catch (e) {
+      console.error('Failed to update self-delivery orders in migration:', e.message);
+    }
   }
 ];

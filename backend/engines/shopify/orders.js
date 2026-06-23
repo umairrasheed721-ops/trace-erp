@@ -35,6 +35,21 @@ function detectCourier(tracking, tags = '', shopifyCarrier = '') {
   const pvtTag = (tags || '').split(',').find(t => t.trim().toUpperCase().startsWith('PVT:'));
   if (pvtTag) return pvtTag.split(':')[1].trim();
   if (!tracking) return shopifyCarrier === 'Other' ? '' : shopifyCarrier;
+
+  const cleanTracking = tracking.trim().toLowerCase();
+
+  // 1. Detect Keyword Patterns (By Hand, Self, Local Rider, Pickup, etc.)
+  const selfKeywords = ['hand', 'self', 'rider', 'local', 'office', 'pickup', 'personal'];
+  if (selfKeywords.some(kw => cleanTracking.includes(kw))) {
+    return 'Self Delivery';
+  }
+
+  // 2. Detect Date-based tracking numbers (e.g., 01/06/2026)
+  const datePattern = /^(?:\d{1,4})[./-]\d{1,2}[./-](?:\d{1,4})$/;
+  if (datePattern.test(cleanTracking)) {
+    return 'Self Delivery';
+  }
+
   if (tracking.startsWith('28') || tracking.startsWith('21')) return 'PostEx';
   if (tracking.startsWith('LE')) return 'Leopards';
   if (tracking.startsWith('1730')) return 'TCS';

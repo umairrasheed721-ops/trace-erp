@@ -8,6 +8,7 @@ const COURIER_COLORS = {
   InstaLogistics: { bg: '#10b981', glow: 'rgba(16,185,129,0.15)', light: 'rgba(16,185,129,0.1)' },
   Leopards: { bg: '#f59e0b', glow: 'rgba(245,158,11,0.15)', light: 'rgba(245,158,11,0.1)' },
   TCS: { bg: '#ef4444', glow: 'rgba(239,68,68,0.15)', light: 'rgba(239,68,68,0.1)' },
+  'Self Delivery': { bg: '#a855f7', glow: 'rgba(168,85,247,0.15)', light: 'rgba(168,85,247,0.1)' },
   Unknown: { bg: '#6b7280', glow: 'rgba(107,114,128,0.15)', light: 'rgba(107,114,128,0.1)' },
 }
 const getCourier = (name) => COURIER_COLORS[name] || COURIER_COLORS.Unknown
