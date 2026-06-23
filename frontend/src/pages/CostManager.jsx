@@ -6,7 +6,10 @@ export default function CostManager() {
   const [costs, setCosts] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const [loadingGhosts, setLoadingGhosts] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState('')
   const [activeTab, setActiveTab] = useState('pending')
   const [selectedParents, setSelectedParents] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
@@ -41,23 +44,28 @@ export default function CostManager() {
 
   const fetchCosts = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await fetch(`/api/finance/master-costs?store_id=${activeStoreId}`)
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
       const data = await res.json()
       setCosts(Array.isArray(data) ? data : [])
     } catch (e) {
-      addToast('Failed to load cost registry', 'error')
+      setLoadError(e.message || 'Unknown error')
+      addToast('Failed to load cost registry: ' + e.message, 'error')
     } finally {
       setLoading(false)
     }
   }
 
   const fetchGhosts = async () => {
+    setLoadingGhosts(true)
     try {
       const res = await fetch(`/api/finance/missing-product-list?store_id=${activeStoreId}`)
       const data = await res.json()
-      setGhosts(data)
+      setGhosts(Array.isArray(data) ? data : [])
     } catch (e) { console.error('Failed to fetch ghosts', e) }
+    finally { setLoadingGhosts(false) }
   }
 
   // --- Derived Data ---
@@ -106,19 +114,32 @@ export default function CostManager() {
   // --- Handlers ---
   const handleSyncShopify = async () => {
     setIsSyncing(true)
+    setSyncProgress('Connecting to Shopify...')
     try {
+      setSyncProgress('Fetching all product variants via GraphQL...')
       const res = await fetch('/api/finance/sync-shopify-costs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId })
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
       if (data.success) {
+        setSyncProgress(`✅ Successfully synced ${data.count} variants!`)
         addToast(`Synced ${data.count} variants from Shopify`, 'success')
-        fetchCosts()
+        await fetchCosts()
+        await fetchGhosts()
+      } else {
+        throw new Error(data.error || 'Sync failed')
       }
-    } catch (e) { addToast('Sync error: ' + e.message, 'error') }
-    finally { setIsSyncing(false) }
+    } catch (e) {
+      setSyncProgress('')
+      addToast('Sync error: ' + e.message, 'error')
+    }
+    finally {
+      setIsSyncing(false)
+      setTimeout(() => setSyncProgress(''), 3000)
+    }
   }
 
   const handleApplyGhostCosts = async () => {
@@ -302,6 +323,42 @@ export default function CostManager() {
         </div>
       </header>
 
+      {/* ── Sync Progress Banner ── */}
+      {isSyncing && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(79,70,229,0.08))',
+          border: '1px solid rgba(99,102,241,0.4)',
+          borderRadius: 12,
+          padding: '16px 24px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            border: '3px solid var(--brand)',
+            borderTopColor: 'transparent',
+            animation: 'spin 0.8s linear infinite',
+            flexShrink: 0
+          }} />
+          <div>
+            <div style={{ fontWeight: 700, color: 'var(--brand)', fontSize: '0.95rem' }}>🔄 Syncing from Shopify...</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 3 }}>{syncProgress}</div>
+          </div>
+        </div>
+      )}
+      {!isSyncing && syncProgress && (
+        <div style={{
+          background: 'var(--green-dim)', border: '1px solid var(--green)',
+          borderRadius: 12, padding: '12px 20px', marginBottom: 20,
+          color: 'var(--green)', fontWeight: 600, fontSize: '0.9rem'
+        }}>
+          {syncProgress}
+        </div>
+      )}
+
       {selectedParents.size > 0 && (
         <div style={{ 
           background: 'var(--green-dim)', 
@@ -363,6 +420,83 @@ export default function CostManager() {
           <div style={{ marginBottom: 20 }}>
             <input type="text" className="form-input" placeholder="🔍 Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ maxWidth: 400 }} />
           </div>
+
+          {/* ── Loading State ── */}
+          {loading && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '80px 20px', gap: 16
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%',
+                border: '4px solid var(--brand)',
+                borderTopColor: 'transparent',
+                animation: 'spin 0.8s linear infinite'
+              }} />
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Loading cost registry...</div>
+            </div>
+          )}
+
+          {/* ── Error State ── */}
+          {!loading && loadError && (
+            <div style={{
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 12, padding: '30px', textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '2rem', marginBottom: 12 }}>⚠️</div>
+              <div style={{ color: '#ef4444', fontWeight: 700, marginBottom: 6 }}>Failed to Load Registry</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 20 }}>{loadError}</div>
+              <button className="btn btn-primary" onClick={fetchCosts}>🔄 Retry</button>
+            </div>
+          )}
+
+          {/* ── Empty State (no data, no error) ── */}
+          {!loading && !loadError && costs.length === 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(99,102,241,0.06), rgba(79,70,229,0.03))',
+              border: '1.5px dashed rgba(99,102,241,0.35)',
+              borderRadius: 16, padding: '60px 30px', textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '3.5rem', marginBottom: 16 }}>📦</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--brand)', marginBottom: 8 }}>
+                Cost Registry Is Empty
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: 420, margin: '0 auto 24px' }}>
+                No products found for this store. Click <strong>"Sync from Shopify"</strong> to import all products and their costs from your Shopify catalog.
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{ padding: '12px 28px', fontSize: '1rem' }}
+                onClick={handleSyncShopify}
+                disabled={isSyncing}
+              >
+                {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify Now'}
+              </button>
+            </div>
+          )}
+
+          {/* ── Current Tab Empty State ── */}
+          {!loading && !loadError && costs.length > 0 && currentList.length === 0 && (
+            <div style={{
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '40px', textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
+                {activeTab === 'pending' ? '✅' : '⏳'}
+              </div>
+              <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                {activeTab === 'pending' ? 'All products are verified!' : 'No verified products yet'}
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                {activeTab === 'pending'
+                  ? 'Every product in your registry has an accepted cost.'
+                  : 'Accept costs for your products to see them here.'}
+              </div>
+            </div>
+          )}
+
+          {/* ── Main Table (only when data exists) ── */}
+          {!loading && !loadError && currentList.length > 0 && (
           <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -514,8 +648,10 @@ export default function CostManager() {
               </tbody>
             </table>
           </div>
+          )} {/* end !loading && !loadError && currentList.length > 0 */}
         </>
       )}
+
 
       {activeTab === 'ghosts' && (
         <div style={{ position: 'relative' }}>
@@ -806,6 +942,8 @@ export default function CostManager() {
         .btn-icon { background: none; border: none; cursor: pointer; opacity: 0.5; padding: 5px; }
         .btn-icon:hover { opacity: 1; color: var(--brand); }
         .badge-warning { background: var(--yellow-dim); color: var(--yellow); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
     </div>
   )
