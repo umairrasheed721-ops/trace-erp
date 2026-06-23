@@ -11,11 +11,11 @@ router.get('/daily', (req, res) => {
     const params = [Number(store_id)];
 
     if (start_date) {
-      whereClauses.push('order_date >= ?');
+      whereClauses.push('date(order_date) >= ?');
       params.push(start_date);
     }
     if (end_date) {
-      whereClauses.push('order_date <= ?');
+      whereClauses.push('date(order_date) <= ?');
       params.push(end_date);
     }
 
@@ -67,11 +67,11 @@ router.get('/daily', (req, res) => {
     `;
     const fakeParams = [Number(store_id)];
     if (start_date) {
-      fakeReturnsQuery += ' AND o.order_date >= ?';
+      fakeReturnsQuery += ' AND date(o.order_date) >= ?';
       fakeParams.push(start_date);
     }
     if (end_date) {
-      fakeReturnsQuery += ' AND o.order_date <= ?';
+      fakeReturnsQuery += ' AND date(o.order_date) <= ?';
       fakeParams.push(end_date);
     }
     fakeReturnsQuery += ' GROUP BY substr(o.order_date, 1, 10)';
@@ -327,7 +327,7 @@ router.get('/courier-comparison', (req, res) => {
 
   let dateFilter = '';
   if (startDate && endDate) {
-    dateFilter = `AND order_date BETWEEN '${startDate}' AND '${endDate}'`;
+    dateFilter = `AND date(order_date) BETWEEN '${startDate}' AND '${endDate}'`;
   }
 
   try {
@@ -447,7 +447,7 @@ router.get('/logistics-intelligence', (req, res) => {
   let dateFilter = '';
   const baseParams = [Number(store_id)];
   if (startDate && endDate) {
-    dateFilter = `AND order_date BETWEEN ? AND ?`;
+    dateFilter = `AND date(order_date) BETWEEN ? AND ?`;
     baseParams.push(startDate, endDate);
   }
 
@@ -458,7 +458,7 @@ router.get('/logistics-intelligence', (req, res) => {
         ${courierCase} as courier_name,
         COUNT(*) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN 1 ELSE 0 END) as returned,
         ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE NULL END), 0) as avg_fee_delivered,
         ROUND(AVG(courier_fee), 0) as avg_fee_all,
         SUM(courier_fee) as total_fee_paid
@@ -473,10 +473,10 @@ router.get('/logistics-intelligence', (req, res) => {
     const returnLoss = db.prepare(`
       SELECT
         ${courierCase} as courier_name,
-        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as return_count,
-        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN price ELSE 0 END), 0) as lost_revenue,
-        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN courier_fee ELSE 0 END), 0) as return_shipping_cost,
-        ROUND(SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN cost ELSE 0 END), 0) as inventory_cost_at_risk
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN 1 ELSE 0 END) as return_count,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN price ELSE 0 END), 0) as lost_revenue,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN courier_fee ELSE 0 END), 0) as return_shipping_cost,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN cost ELSE 0 END), 0) as inventory_cost_at_risk
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
       GROUP BY courier_name
@@ -488,17 +488,18 @@ router.get('/logistics-intelligence', (req, res) => {
       SELECT
         ${courierCase} as courier_name,
         COUNT(id) as total_landed,
-        SUM(CASE WHEN delivery_status IN ('Booked', 'Picked Up', 'Unassigned') THEN 1 ELSE 0 END) as booked,
-        SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
+        SUM(CASE WHEN COALESCE(delivery_status, '') IN ('Pending', 'Confirmed', 'Booked', 'Picked Up', 'Unassigned', '') THEN 1 ELSE 0 END) as booked,
+        SUM(CASE WHEN delivery_status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused') THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN delivery_status = 'Cancelled' THEN 1 ELSE 0 END) as cancelled,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END), 0) as revenue,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN cost ELSE 0 END), 0) as cogs,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE 0 END), 0) as courier_cost,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE 0 END), 0) as net_profit,
         ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN (price - cost - courier_fee) ELSE NULL END), 0) as avg_profit_per_order,
         ROUND(AVG(CASE WHEN delivery_status = 'Delivered' THEN courier_fee ELSE NULL END), 0) as avg_delivery_cost,
-        ROUND(AVG(CASE WHEN delivery_status IN ('Returned','Return Received') THEN courier_fee ELSE NULL END), 0) as avg_return_cost
+        ROUND(AVG(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused') THEN courier_fee ELSE NULL END), 0) as avg_return_cost
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
       GROUP BY courier_name
@@ -513,7 +514,7 @@ router.get('/logistics-intelligence', (req, res) => {
         ${courierCase} as courier_name,
         COUNT(*) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
-        SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') THEN 1 ELSE 0 END) as returned,
         ROUND(100.0 * SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) / COUNT(*), 1) as delivery_rate
       FROM orders
       WHERE store_id = ? AND city IS NOT NULL AND city != '' 
@@ -528,9 +529,9 @@ router.get('/logistics-intelligence', (req, res) => {
     const pendingExposure = db.prepare(`
       SELECT
         ${courierCase} as courier_name,
-        SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN 1 ELSE 0 END) as in_transit_count,
-        ROUND(SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN COALESCE(courier_fee, 0) ELSE 0 END), 0) as actual_committed_fee,
-        ROUND(SUM(CASE WHEN delivery_status IN ('Booked','In Transit','Out for Delivery','Picked Up','Shipped') THEN price ELSE 0 END), 0) as cod_at_risk
+        SUM(CASE WHEN delivery_status IN ('Pending', 'Confirmed', 'Booked', 'Picked Up', 'Unassigned', 'Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered') THEN 1 ELSE 0 END) as in_transit_count,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Pending', 'Confirmed', 'Booked', 'Picked Up', 'Unassigned', 'Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered') THEN COALESCE(courier_fee, 0) ELSE 0 END), 0) as actual_committed_fee,
+        ROUND(SUM(CASE WHEN delivery_status IN ('Pending', 'Confirmed', 'Booked', 'Picked Up', 'Unassigned', 'Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered') THEN price ELSE 0 END), 0) as cod_at_risk
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
       GROUP BY courier_name
@@ -569,7 +570,7 @@ router.get('/logistics-intelligence', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as total_delivered,
         SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts,0) = 0 THEN 1 ELSE 0 END) as first_attempt_delivered,
         SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as failed_but_delivered,
-        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received') AND COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as failed_and_returned
+        SUM(CASE WHEN delivery_status IN ('Returned', 'Return Received', 'Return Initiated', 'Refused', 'Cancelled') AND COALESCE(failed_attempts,0) > 0 THEN 1 ELSE 0 END) as failed_and_returned
       FROM orders
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
       GROUP BY courier_name

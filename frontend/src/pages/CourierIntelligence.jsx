@@ -77,6 +77,13 @@ const Badge = ({ text, type }) => {
   )
 }
 
+const formatDateLocal = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export default function CourierIntelligence() {
   const { activeStoreId } = useApp()
   const [data, setData] = useState(null)
@@ -95,16 +102,16 @@ export default function CourierIntelligence() {
     const now = new Date()
     if (preset === 'Last 7 Days') {
       const d = new Date(); d.setDate(d.getDate() - 7)
-      startDate = d.toISOString().split('T')[0]; endDate = now.toISOString().split('T')[0]
+      startDate = formatDateLocal(d); endDate = formatDateLocal(now)
     } else if (preset === 'Last 30 Days') {
       const d = new Date(); d.setDate(d.getDate() - 30)
-      startDate = d.toISOString().split('T')[0]; endDate = now.toISOString().split('T')[0]
+      startDate = formatDateLocal(d); endDate = formatDateLocal(now)
     } else if (preset === 'This Month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-      endDate = now.toISOString().split('T')[0]
+      startDate = formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 1))
+      endDate = formatDateLocal(now)
     } else if (preset === 'Last Month') {
-      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0]
-      endDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0]
+      startDate = formatDateLocal(new Date(now.getFullYear(), now.getMonth() - 1, 1))
+      endDate = formatDateLocal(new Date(now.getFullYear(), now.getMonth(), 0))
     } else if (preset === 'Custom') {
       startDate = customStart; endDate = customEnd
     }
@@ -268,7 +275,7 @@ export default function CourierIntelligence() {
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
                   <thead>
                     <tr style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {['Courier', 'Total Landed', 'Booked', 'In Transit', 'Delivered', 'Returned', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
+                      {['Courier', 'Total Landed', 'Booked', 'In Transit', 'Delivered', 'Returned', 'Cancelled', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
                         <th key={h} style={{ padding: '0 16px', textAlign: h === 'Courier' ? 'left' : 'right' }}>{h}</th>
                       ))}
                     </tr>
@@ -289,6 +296,7 @@ export default function CourierIntelligence() {
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>{fmt(c.intransit || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(c.delivered)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#ef4444' }}>{fmt(c.returned || 0)}</td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-muted)' }}>{fmt(c.cancelled || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>Rs {fmtK(c.revenue)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>Rs {fmtK(c.courier_cost)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f59e0b' }}>
