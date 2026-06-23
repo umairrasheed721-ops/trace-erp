@@ -61,7 +61,10 @@ async function processSmartRestock(store, orderId, locationId) {
       currency: "PKR",
       notify: false,
       note: `Stock returned via ERP Bulk Tool`,
-      refund_line_items: refundItems
+      refund_line_items: refundItems,
+      shipping: {
+        full_refund: true
+      }
     }
   };
 
