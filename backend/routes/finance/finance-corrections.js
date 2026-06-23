@@ -278,43 +278,80 @@ router.post('/auto-heal-all', (req, res) => {
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const catalog = db.prepare('SELECT parent_title, variant_title, unit_cost, packaging_cost, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+    const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, unit_cost, packaging_cost, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
     
     const orders = db.prepare('SELECT id, line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(store_id));
-    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
     let healedCount = 0;
 
     const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
     
     db.transaction(() => {
       for (const order of orders) {
-        const itemsStr = order.line_items || order.product_titles;
-        if (!itemsStr) continue;
-
         let totalLanded = 0;
         let totalPackaging = 0;
         let matched = false;
-        let match;
-        regex.lastIndex = 0;
-        
-        while ((match = regex.exec(itemsStr)) !== null) {
-          const fullName = match[1].trim();
-          const qty = parseInt(match[2]) || 0;
-          
-          const parts = fullName.split(' - ');
-          const pName = parts[0].trim();
-          const vName = parts.length > 1 ? parts[1].trim() : '';
-          
-          let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
-          
-          if (!matchRow) {
-            matchRow = catalog.find(c => c.parent_title === pName);
+
+        let parsedItems = [];
+        try {
+          if (order.line_items) parsedItems = JSON.parse(order.line_items);
+        } catch (e) {}
+
+        if (parsedItems.length > 0) {
+          // HYBRID LOGIC: JSON parsing
+          for (const item of parsedItems) {
+            const qty = item.quantity || 0;
+            if (qty === 0) continue;
+
+            let matchRow = null;
+            
+            // 1. Try match by SKU or Variant ID (Active Products)
+            const vId = item.variant_id ? String(item.variant_id) : '';
+            const sku = item.sku ? String(item.sku).trim() : '';
+            
+            if (vId || sku) {
+              matchRow = catalog.find(c => 
+                (vId && c.shopify_variant_id === vId) || 
+                (sku && c.sku === sku)
+              );
+            }
+
+            // 2. Fallback to Name Match (Ghosts / Deleted Products)
+            if (!matchRow && item.title) {
+              const pName = item.title.trim();
+              const vName = item.variant_title ? item.variant_title.trim() : '';
+              
+              matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
+              if (!matchRow) {
+                matchRow = catalog.find(c => c.parent_title === pName); // Parent only fallback
+              }
+            }
+
+            if (matchRow) {
+              totalLanded += matchRow.landed_cost * qty;
+              totalPackaging += (matchRow.packaging_cost || 0) * qty;
+              matched = true;
+            }
           }
-          
-          if (matchRow) {
-            totalLanded += matchRow.landed_cost * qty;
-            totalPackaging += (matchRow.packaging_cost || 0) * qty;
-            matched = true;
+        } else if (order.product_titles) {
+          // LEGACY FALLBACK: String parsing (for very old orders without JSON line_items)
+          const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+          let match;
+          while ((match = regex.exec(order.product_titles)) !== null) {
+            const fullName = match[1].trim();
+            const qty = parseInt(match[2]) || 0;
+            
+            const parts = fullName.split(' - ');
+            const pName = parts[0].trim();
+            const vName = parts.length > 1 ? parts[1].trim() : '';
+            
+            let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
+            if (!matchRow) matchRow = catalog.find(c => c.parent_title === pName);
+            
+            if (matchRow) {
+              totalLanded += matchRow.landed_cost * qty;
+              totalPackaging += (matchRow.packaging_cost || 0) * qty;
+              matched = true;
+            }
           }
         }
 
