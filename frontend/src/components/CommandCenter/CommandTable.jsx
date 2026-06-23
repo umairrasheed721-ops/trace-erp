@@ -23,7 +23,7 @@ const COLUMN_WIDTHS = {
   tracking_number: 130,
   courier: 90,
   courier_status: 120,
-  delivery_status: 120,
+  delivery_status: 160,
   payment_status: 90,
   paid_amount: 100,
   price: 90,

@@ -27,7 +27,7 @@ function getOrderFilters(req) {
     } else if (s.includes('UNPAID DELIVERED')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.paid_amount IS NULL OR o.paid_amount < 1)");
     } else if (s.includes('MISSING COST')) {
-      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0)");
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
     } else if (s.includes('OVERDUE PAYOUT')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.payment_status != 'Paid' AND o.payment_status != 'Payment Posted' OR o.payment_status IS NULL) AND (julianday('now', '+5 hours') - julianday(COALESCE(o.status_date, o.order_date))) > 10");
     } else if (s.includes('MISSING CHARGES')) {

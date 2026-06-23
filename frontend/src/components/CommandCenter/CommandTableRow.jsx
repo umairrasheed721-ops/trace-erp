@@ -559,7 +559,7 @@ const CommandTableRow = React.memo(({
           
           return (
             <td key={col.id}>
-              <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+              <div className="flex items-center gap-2" style={{ flexWrap: 'wrap' }}>
                 {hasAuthority ? (
                   <div className="relative-container">
                     {statusUpdatingId === o.id ? (

@@ -452,7 +452,7 @@ export default function CourierIntelligence() {
               <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
                 {['All', ...new Set(data.weeklyTrend.map(w => w.courier_name))].map(cn => (
                   <button key={cn} onClick={() => setWeeklyFilter(cn)} style={{
-                    padding: '7px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                    padding: '7px 16px', borderRadius: '10px', cursor: 'pointer',
                     fontWeight: 800, fontSize: '0.8rem', transition: 'all 0.2s',
                     background: weeklyFilter === cn ? getCourier(cn).bg || 'var(--brand)' : 'var(--bg-elevated)',
                     color: weeklyFilter === cn ? '#fff' : 'var(--text-muted)',

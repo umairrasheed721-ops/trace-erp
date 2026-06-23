@@ -44,7 +44,7 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN (tracking_number IS NULL OR tracking_number = '') AND delivery_status != 'Cancelled' THEN 1 ELSE 0 END) as without_tracking_id,
         SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN 1 ELSE 0 END) as delivered_payment_pending,
-        SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) THEN 1 ELSE 0 END) as cost_gaps,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) AND items_count > 0 THEN 1 ELSE 0 END) as cost_gaps,
         SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN price ELSE 0 END) as unpaid_amount,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status != 'Paid' AND payment_status != 'Payment Posted' OR payment_status IS NULL) AND (julianday('now', '+5 hours') - julianday(COALESCE(status_date, order_date))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
         SUM(CASE WHEN (courier_fee IS NULL OR courier_fee < 1) AND LOWER(delivery_status) NOT IN ('pending', 'cancelled') AND (tracking_number IS NOT NULL AND tracking_number != '') THEN 1 ELSE 0 END) as zero_expense_count,
