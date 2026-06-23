@@ -78,7 +78,16 @@ function matchesSearch(order, keyword) {
       const [field, value] = actualToken.split(':')
       if (field === 'city') match = (order.city || '').toLowerCase().includes(value)
       else if (field === 'phone') match = (order.phone || '').includes(value)
-      else if (field === 'courier') match = (order.courier || '').toLowerCase().includes(value)
+      else if (field === 'courier') {
+        const courierVal = (order.courier || '').toLowerCase();
+        const trackingVal = (order.tracking_number || '').toLowerCase();
+        if (value === 'unassigned' || value === 'empty' || value === 'none') {
+          match = !order.courier || courierVal === '' || courierVal === '—' || courierVal === 'unassigned' ||
+                  !order.tracking_number || trackingVal === '' || trackingVal === '—';
+        } else {
+          match = courierVal.includes(value);
+        }
+      }
       else if (field === 'ref') match = (order.ref_number || '').toLowerCase().includes(value) || (order.shopify_order_id || '').toLowerCase().includes(value)
       else if (field === 'status') match = (order.delivery_status || '').toLowerCase().includes(value)
       else if (field === 'item') match = itemsText.includes(value)
