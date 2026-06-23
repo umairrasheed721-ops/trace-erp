@@ -10,6 +10,9 @@ export default function CostManager() {
   const [loadingGhosts, setLoadingGhosts] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState('')
+  const [syncWarning, setSyncWarning] = useState('')
+  const [isDiagnosing, setIsDiagnosing] = useState(false)
+  const [diagnoseReport, setDiagnoseReport] = useState(null)
   const [activeTab, setActiveTab] = useState('pending')
   const [selectedParents, setSelectedParents] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
@@ -115,6 +118,7 @@ export default function CostManager() {
   const handleSyncShopify = async () => {
     setIsSyncing(true)
     setSyncProgress('Connecting to Shopify...')
+    setSyncWarning('')
     try {
       setSyncProgress('Fetching all product variants via GraphQL...')
       const res = await fetch('/api/finance/sync-shopify-costs', {
@@ -125,10 +129,16 @@ export default function CostManager() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
       if (data.success) {
-        setSyncProgress(`✅ Successfully synced ${data.count} variants!`)
-        addToast(`Synced ${data.count} variants from Shopify`, 'success')
-        await fetchCosts()
-        await fetchGhosts()
+        if (data.count === 0) {
+          setSyncProgress('')
+          setSyncWarning(data.warning || 'Shopify returned 0 variants. Check your store connection.')
+          addToast('Sync completed but 0 variants found — run Diagnose to identify the issue.', 'warning')
+        } else {
+          setSyncProgress(`✅ Successfully synced ${data.count} variants!`)
+          addToast(`Synced ${data.count} variants from Shopify`, 'success')
+          await fetchCosts()
+          await fetchGhosts()
+        }
       } else {
         throw new Error(data.error || 'Sync failed')
       }
@@ -139,6 +149,20 @@ export default function CostManager() {
     finally {
       setIsSyncing(false)
       setTimeout(() => setSyncProgress(''), 3000)
+    }
+  }
+
+  const handleDiagnose = async () => {
+    setIsDiagnosing(true)
+    setDiagnoseReport(null)
+    try {
+      const res = await fetch(`/api/finance/diagnose-shopify-sync?store_id=${activeStoreId}`)
+      const data = await res.json()
+      setDiagnoseReport(data)
+    } catch (e) {
+      addToast('Diagnose failed: ' + e.message, 'error')
+    } finally {
+      setIsDiagnosing(false)
     }
   }
 
@@ -314,6 +338,14 @@ export default function CostManager() {
           <p style={{ margin: '5px 0 0', opacity: 0.6, color: 'var(--text-secondary)' }}>Manage product costs and fix historical ghost listings.</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleDiagnose}
+            disabled={isDiagnosing || isSyncing}
+            style={{ borderColor: 'rgba(251,146,60,0.5)', color: 'var(--yellow)' }}
+          >
+            {isDiagnosing ? '⏳ Diagnosing...' : '🔬 Diagnose'}
+          </button>
           <button className="btn btn-secondary" onClick={handleSyncShopify} disabled={isSyncing}>
             {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify'}
           </button>
@@ -356,6 +388,35 @@ export default function CostManager() {
           color: 'var(--green)', fontWeight: 600, fontSize: '0.9rem'
         }}>
           {syncProgress}
+        </div>
+      )}
+
+      {/* ── Zero-Sync Warning Banner ── */}
+      {syncWarning && (
+        <div style={{
+          background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.4)',
+          borderRadius: 12, padding: '16px 20px', marginBottom: 20,
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: 'var(--yellow)', marginBottom: 6, fontSize: '0.95rem' }}>
+                ⚠️ Sync completed but 0 variants were imported
+              </div>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>{syncWarning}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+              <button
+                className="btn btn-secondary"
+                style={{ whiteSpace: 'nowrap', borderColor: 'rgba(251,146,60,0.5)', color: 'var(--yellow)', fontSize: '0.82rem' }}
+                onClick={handleDiagnose}
+                disabled={isDiagnosing}
+              >
+                {isDiagnosing ? '⏳...' : '🔬 Run Diagnose'}
+              </button>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.1rem' }} onClick={() => setSyncWarning('')}>×</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -930,6 +991,64 @@ export default function CostManager() {
               )}
             </div>
             <div style={{ marginTop: 20, textAlign: 'right' }}><button className="btn btn-secondary" onClick={() => setShowGhostModal(false)}>Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Diagnose Report Modal ── */}
+      {diagnoseReport && (
+        <div className="modal-overlay" onClick={() => setDiagnoseReport(null)}>
+          <div className="modal-content" style={{ maxWidth: 680, width: '95%', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ margin: 0, color: diagnoseReport.passed ? 'var(--green)' : 'var(--yellow)' }}>
+                {diagnoseReport.passed ? '✅ Shopify Connection Healthy' : '⚠️ Shopify Sync Diagnostic'}
+              </h3>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.4rem' }} onClick={() => setDiagnoseReport(null)}>×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {diagnoseReport.steps.map((step, i) => (
+                <div key={i} style={{
+                  background: step.status.includes('✅') ? 'var(--green-dim)' : step.status.includes('⚠️') ? 'rgba(251,146,60,0.08)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${step.status.includes('✅') ? 'var(--green)' : step.status.includes('⚠️') ? 'rgba(251,146,60,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                  borderRadius: 10, padding: '12px 16px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{step.step}</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                      background: step.status.includes('✅') ? 'var(--green-dim)' : step.status.includes('⚠️') ? 'rgba(251,146,60,0.15)' : 'rgba(239,68,68,0.15)',
+                      color: step.status.includes('✅') ? 'var(--green)' : step.status.includes('⚠️') ? '#fb923c' : '#ef4444'
+                    }}>{step.status}</div>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{step.detail}</div>
+                  {step.sample && step.sample.length > 0 && (
+                    <div style={{ marginTop: 10, background: 'var(--bg-elevated)', borderRadius: 6, padding: 10 }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>Sample Products Found:</div>
+                      {step.sample.map((s, j) => (
+                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '4px 0', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+                          <span>{s.product}{s.variant !== 'Default Title' ? ` — ${s.variant}` : ''}</span>
+                          <span style={{ color: String(s.shopify_cost).includes('null') ? '#ef4444' : 'var(--green)', fontWeight: 600 }}>
+                            {String(s.shopify_cost).includes('null') ? '❌ Cost not set in Shopify' : `Rs ${s.shopify_cost}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {!diagnoseReport.passed && (
+              <div style={{ marginTop: 20, background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 10, padding: 16 }}>
+                <div style={{ fontWeight: 700, color: 'var(--yellow)', marginBottom: 8 }}>🔧 How to Fix</div>
+                <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.9 }}>
+                  <li><strong>REST failed (401/403)</strong>: Token expired. Go to Settings → Stores and reconnect this store.</li>
+                  <li><strong>GraphQL error</strong>: Token is missing read_products or read_inventory scope. Re-install the app.</li>
+                  <li><strong>0 variants found</strong>: Check that Shopify store has active (non-archived) products.</li>
+                </ul>
+              </div>
+            )}
+            <div style={{ textAlign: 'right', marginTop: 20 }}>
+              <button className="btn btn-secondary" onClick={() => setDiagnoseReport(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}

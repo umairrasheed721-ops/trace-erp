@@ -331,9 +331,18 @@ router.post('/sync-shopify-costs', async (req, res) => {
   try {
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
     if (!store) return res.status(404).json({ error: 'Store not found' });
+    if (!store.access_token) return res.status(400).json({ error: 'Store has no Shopify access token configured. Please reconnect this store.' });
 
     const { getShopifyInventoryCosts } = require('../../engines/shopify_finance');
     const products = await getShopifyInventoryCosts(store);
+
+    if (products.length === 0) {
+      return res.json({ 
+        success: true, 
+        count: 0,
+        warning: 'Shopify returned 0 variants. This usually means: (1) no products exist in this Shopify store, (2) the access token is missing read_products or read_inventory scopes, or (3) all products are archived/deleted.'
+      });
+    }
 
     db.transaction(() => {
       for (const p of products) {
@@ -375,7 +384,100 @@ router.post('/sync-shopify-costs', async (req, res) => {
   }
 });
 
+// GET /api/finance/diagnose-shopify-sync?store_id=1
+// Full diagnostic: tests Shopify connection, checks scopes, returns sample data
+router.get('/diagnose-shopify-sync', async (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  const report = { steps: [], passed: true };
+
+  try {
+    // Step 1: Check store exists
+    const store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE id = ?').get(Number(store_id));
+    if (!store) {
+      report.steps.push({ step: 'Store Lookup', status: '❌ FAIL', detail: `No store found with id=${store_id}` });
+      report.passed = false;
+      return res.json(report);
+    }
+    report.steps.push({ step: 'Store Lookup', status: '✅ OK', detail: `Found: ${store.shop_domain}` });
+
+    // Step 2: Check access token exists
+    if (!store.access_token) {
+      report.steps.push({ step: 'Access Token', status: '❌ FAIL', detail: 'No access_token configured. Re-install the Shopify app.' });
+      report.passed = false;
+      return res.json(report);
+    }
+    report.steps.push({ step: 'Access Token', status: '✅ OK', detail: `Token present (${store.access_token.substring(0, 6)}...)` });
+
+    // Step 3: Test basic REST connectivity (shop.json)
+    const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/shop.json`, {
+      headers: { 'X-Shopify-Access-Token': store.access_token }
+    });
+    if (!shopRes.ok) {
+      const errText = await shopRes.text();
+      report.steps.push({ step: 'REST Connectivity', status: `❌ FAIL (HTTP ${shopRes.status})`, detail: errText.substring(0, 200) });
+      report.passed = false;
+      return res.json(report);
+    }
+    const shopData = await shopRes.json();
+    report.steps.push({ step: 'REST Connectivity', status: '✅ OK', detail: `Shop: ${shopData.shop?.name} (${shopData.shop?.email})` });
+
+    // Step 4: Test GraphQL with a tiny product query
+    const gqlRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/graphql.json`, {
+      method: 'POST',
+      headers: { 'X-Shopify-Access-Token': store.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `{ productVariants(first: 5) { edges { node { id title price product { title } inventoryItem { unitCost { amount } } } } } }`
+      })
+    });
+
+    const gqlJson = await gqlRes.json();
+
+    if (!gqlRes.ok) {
+      report.steps.push({ step: 'GraphQL Access', status: `❌ FAIL (HTTP ${gqlRes.status})`, detail: JSON.stringify(gqlJson).substring(0, 300) });
+      report.passed = false;
+      return res.json(report);
+    }
+    if (gqlJson.errors) {
+      report.steps.push({ step: 'GraphQL Access', status: '❌ FAIL (GraphQL Errors)', detail: JSON.stringify(gqlJson.errors).substring(0, 300) });
+      report.passed = false;
+      return res.json(report);
+    }
+
+    const sampleVariants = gqlJson.data?.productVariants?.edges || [];
+    report.steps.push({ 
+      step: 'GraphQL Access', 
+      status: '✅ OK', 
+      detail: `GraphQL working. Sample variants found: ${sampleVariants.length}`,
+      sample: sampleVariants.map(e => ({
+        product: e.node.product?.title,
+        variant: e.node.title,
+        price: e.node.price,
+        shopify_cost: e.node.inventoryItem?.unitCost?.amount || 'null (not set in Shopify)'
+      }))
+    });
+
+    if (sampleVariants.length === 0) {
+      report.steps.push({ step: 'Product Count', status: '⚠️ WARNING', detail: 'GraphQL returned 0 variants. This store may have no active products in Shopify, or all products are archived.' });
+      report.passed = false;
+    } else {
+      // Step 5: Check current DB state
+      const dbCount = db.prepare('SELECT COUNT(*) as cnt FROM product_master_costs WHERE store_id = ?').get(Number(store_id));
+      report.steps.push({ step: 'DB Registry State', status: '✅ OK', detail: `${dbCount.cnt} variants currently saved for this store` });
+    }
+
+    return res.json(report);
+  } catch (err) {
+    report.steps.push({ step: 'Fatal Error', status: '❌ EXCEPTION', detail: err.message });
+    report.passed = false;
+    return res.json(report);
+  }
+});
+
+
 // POST /api/finance/accept-shopify-cost
+
 router.post('/accept-shopify-cost', (req, res) => {
   const { store_id, parent_title, variant_title } = req.body;
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
