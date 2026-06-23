@@ -226,8 +226,11 @@ export default function SearchTool() {
     if (sortMode === 'deep') return allOrders;
     return [...allOrders].sort((a, b) => {
       let valA = a[sortKey], valB = b[sortKey];
-      if (sortKey === 'price' || sortKey === 'cost') {
+      if (sortKey === 'price' || sortKey === 'cost' || sortKey === 'courier_fee') {
         valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0;
+      } else if (sortKey === 'profit') {
+        valA = (parseFloat(a.price) || 0) - (parseFloat(a.cost) || 0) - (parseFloat(a.courier_fee) || 0);
+        valB = (parseFloat(b.price) || 0) - (parseFloat(b.cost) || 0) - (parseFloat(b.courier_fee) || 0);
       }
       if (valA < valB) return sortDir === 'asc' ? -1 : 1;
       if (valA > valB) return sortDir === 'asc' ? 1 : -1;
@@ -282,6 +285,7 @@ export default function SearchTool() {
       'order_date': 'order_date',
       'cost': 'cost',
       'price': 'price',
+      'courier_fee': 'courier_fee',
       'customer_name': 'customer_name',
       'delivery_status': 'delivery_status'
     };
@@ -1077,6 +1081,7 @@ export default function SearchTool() {
     { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
     { id: 'cost', label: 'Cost' },
+    { id: 'courier_fee', label: 'Courier Expense' },
     { id: 'profit', label: 'Profit' },
     { id: 'order_source', label: 'Source' },
     { id: 'status_date', label: 'Last Update' },
@@ -1090,7 +1095,7 @@ export default function SearchTool() {
     const saved = localStorage.getItem('trace_search_cols')
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
     if (user?.role !== 'admin') {
-      baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit')
+      baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
     }
     return baseCols
   })
