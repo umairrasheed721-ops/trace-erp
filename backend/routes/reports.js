@@ -488,6 +488,8 @@ router.get('/logistics-intelligence', (req, res) => {
       SELECT
         ${courierCase} as courier_name,
         COUNT(id) as total_landed,
+        SUM(CASE WHEN delivery_status IN ('Booked', 'Picked Up', 'Unassigned') THEN 1 ELSE 0 END) as booked,
+        SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
         SUM(CASE WHEN delivery_status IN ('Returned','Return Received') THEN 1 ELSE 0 END) as returned,
         ROUND(SUM(CASE WHEN delivery_status = 'Delivered' THEN price ELSE 0 END), 0) as revenue,

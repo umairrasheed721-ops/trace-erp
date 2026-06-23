@@ -268,7 +268,7 @@ export default function CourierIntelligence() {
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
                   <thead>
                     <tr style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {['Courier', 'Total Landed', 'Delivered', 'Returned', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
+                      {['Courier', 'Total Landed', 'Booked', 'In Transit', 'Delivered', 'Returned', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
                         <th key={h} style={{ padding: '0 16px', textAlign: h === 'Courier' ? 'left' : 'right' }}>{h}</th>
                       ))}
                     </tr>
@@ -285,6 +285,8 @@ export default function CourierIntelligence() {
                             </div>
                           </td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-secondary)' }}>{fmt(c.total_landed || 0)}</td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>{fmt(c.booked || 0)}</td>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)' }}>{fmt(c.intransit || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(c.delivered)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#ef4444' }}>{fmt(c.returned || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>Rs {fmtK(c.revenue)}</td>
