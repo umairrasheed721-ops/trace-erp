@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const axios = require('axios');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -11,45 +12,93 @@ app.use(express.json());
 
 const PORT = 9099;
 
-// Helper to download multiple images to temp files
+// Helper to generate md5 hash filename for caching
+function getCachePath(url) {
+  const urlHash = crypto.createHash('md5').update(url).digest('hex');
+  let ext = '.png';
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname;
+    const fileExt = path.extname(pathname);
+    if (fileExt && fileExt.match(/^\.[a-zA-Z0-9]+$/)) {
+      ext = fileExt;
+    }
+  } catch (e) {
+    // fallback to .png
+  }
+  return path.join(__dirname, 'cache', `${urlHash}${ext}`);
+}
+
+// Helper to download multiple images to temp files, utilizing disk cache
 async function downloadImages(urls) {
   const downloadedFiles = [];
   
   // Cleanup any old temp files first
   cleanTempFiles();
 
+  const cacheDir = path.join(__dirname, 'cache');
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+
   for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
     try {
-      const tempPath = path.join(__dirname, `temp_img_${i}.png`);
-      const response = await axios({
-        url: urls[i],
-        method: 'GET',
-        responseType: 'stream'
-      });
-      
-      await new Promise((resolve, reject) => {
-        const writer = fs.createWriteStream(tempPath);
-        response.data.pipe(writer);
-        writer.on('finish', () => {
-          downloadedFiles.push(tempPath);
-          resolve();
+      const cachePath = getCachePath(url);
+      const ext = path.extname(cachePath);
+      const tempPath = path.join(__dirname, `temp_img_${i}${ext}`);
+
+      // Check if image is already cached
+      let useCached = false;
+      if (fs.existsSync(cachePath)) {
+        const stats = fs.statSync(cachePath);
+        if (stats.size > 0) {
+          useCached = true;
+        }
+      }
+
+      if (useCached) {
+        console.log(`⚡ Cache Hit for image ${i + 1}/${urls.length}: ${url}`);
+        fs.copyFileSync(cachePath, tempPath);
+        downloadedFiles.push(tempPath);
+      } else {
+        console.log(`🌐 Cache Miss. Downloading image ${i + 1}/${urls.length}: ${url}`);
+        const response = await axios({
+          url: url,
+          method: 'GET',
+          responseType: 'stream',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
         });
-        writer.on('error', reject);
-      });
-      console.log(`Downloaded image ${i+1}/${urls.length}: ${urls[i]}`);
+        
+        await new Promise((resolve, reject) => {
+          const writer = fs.createWriteStream(cachePath);
+          response.data.pipe(writer);
+          writer.on('finish', () => {
+            fs.copyFileSync(cachePath, tempPath);
+            downloadedFiles.push(tempPath);
+            resolve();
+          });
+          writer.on('error', (err) => {
+            try { fs.unlinkSync(cachePath); } catch (e) {}
+            reject(err);
+          });
+        });
+      }
     } catch (e) {
-      console.error(`Failed to download image at index ${i}:`, e.message);
+      console.error(`Failed to process image at index ${i}:`, e.message);
     }
   }
   return downloadedFiles;
 }
 
-// Clean old temporary files
+// Clean old temporary files (handles any extension)
 function cleanTempFiles() {
   try {
     const files = fs.readdirSync(__dirname);
     for (const file of files) {
-      if (file.startsWith('temp_img_') && file.endsWith('.png')) {
+      if (file.startsWith('temp_img_')) {
         fs.unlinkSync(path.join(__dirname, file));
       }
     }
@@ -57,6 +106,7 @@ function cleanTempFiles() {
     console.error('Failed to cleanup temp images:', e.message);
   }
 }
+
 
 // OS-specific window focusing, clipboard image load, and paste trigger
 function copyImagesToClipboardAndSend(filePaths) {
