@@ -1159,10 +1159,12 @@ input:checked + .slider:before {
 .wa-portal-left {
   width: 320px;
   min-width: 300px;
+  flex-shrink: 0;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   background: var(--bg-elevated);
+  overflow-y: hidden;
 }
 
 .wa-portal-status-bar {
