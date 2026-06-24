@@ -10,7 +10,6 @@ export default function DiagnosticCenter() {
   const [smokeStatus, setSmokeStatus] = useState(null);
   const [smokeLoading, setSmokeLoading] = useState(false);
   const [remoteLogs, setRemoteLogs] = useState([]);
-  const [healingZeroCost, setHealingZeroCost] = useState(false);
   const [healingImages, setHealingImages] = useState(false);
   const [healResult, setHealResult] = useState(null);
   const logEndRef = useRef(null);
@@ -56,24 +55,6 @@ export default function DiagnosticCenter() {
     } finally {
       setActiveAudit(null);
     }
-  };
-
-  const healZeroCosts = async () => {
-    if (!confirm('✨ This will automatically fix costs using Master Cost data. Proceed?')) return;
-    setHealingZeroCost(true);
-    setHealResult(null);
-    try {
-      const res = await fetch('/api/diagnostics/heal/zero-costs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId })
-      });
-      const data = await res.json();
-      setHealResult({ type: 'zero-costs', count: data.healedCount });
-      fetchStats();
-      if (auditResult?.type === 'zero-costs') runAudit('zero-costs');
-    } catch (err) { alert('Heal failed: ' + err.message); }
-    finally { setHealingZeroCost(false); }
   };
 
   const healImages = async () => {
@@ -163,10 +144,6 @@ export default function DiagnosticCenter() {
   }
 
   const auditTools = [
-    {
-      id: 'zero-costs', label: 'Find 0-Cost Orders', icon: '🔍', color: 'var(--red)', bg: 'var(--red-dim)',
-      tip: 'Scans all orders where product cost is Rs. 0 — meaning P&L is wrong. Run this after adding new products to the catalog.'
-    },
     {
       id: 'orphaned-costs', label: 'Find Orphaned Costs', icon: '🔗', color: 'var(--orange)', bg: 'var(--orange-dim)',
       tip: 'Finds cost entries in your registry that no longer match any active Shopify product variant. Safe to clean up these stale records.'
@@ -352,19 +329,7 @@ export default function DiagnosticCenter() {
                 {auditResult.data.length > 0 ? `${auditResult.data.length} issues found` : '✅ All Clear'}
               </span>
             </div>
-            {auditResult.type === 'zero-costs' && auditResult.data.length > 0 && (
-              <button
-                onClick={healZeroCosts}
-                disabled={healingZeroCost}
-                style={{
-                  padding: '7px 16px', borderRadius: 7, border: 'none',
-                  background: 'var(--green)', color: '#fff', fontWeight: 700,
-                  fontSize: '0.8rem', cursor: 'pointer', boxShadow: '0 3px 10px rgba(34,197,94,0.3)'
-                }}
-              >
-                {healingZeroCost ? '⏳ Healing...' : '✨ Heal All Issues'}
-              </button>
-            )}
+
           </div>
           <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {auditResult.data.length === 0 ? (
@@ -413,20 +378,8 @@ export default function DiagnosticCenter() {
         </div>
         <div style={{ padding: 20, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
-            onClick={healZeroCosts}
-            disabled={healingZeroCost || healingImages}
-            style={{
-              padding: '12px 22px', borderRadius: 8, border: 'none',
-              background: 'linear-gradient(135deg, var(--purple), var(--blue))',
-              color: '#fff', fontWeight: 700, cursor: healingZeroCost ? 'not-allowed' : 'pointer',
-              boxShadow: '0 4px 16px rgba(168,85,247,0.3)', display: 'flex', alignItems: 'center', gap: 8
-            }}
-          >
-            {healingZeroCost ? '⏳ Healing...' : '🛠️ Heal All 0-Cost Orders'}
-          </button>
-          <button
             onClick={healImages}
-            disabled={healingImages || healingZeroCost}
+            disabled={healingImages}
             style={{
               padding: '12px 22px', borderRadius: 8, border: 'none',
               background: 'linear-gradient(135deg, #10b981, #0d9488)',
@@ -444,7 +397,7 @@ export default function DiagnosticCenter() {
               display: 'flex', alignItems: 'center', gap: 8
             }}>
               <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: '0.85rem' }}>
-                ✅ {healResult.type === 'zero-costs' ? `Healed ${healResult.count} orders` : `Restored items for ${healResult.count} orders`}
+                ✅ Restored items for {healResult.count} orders
               </span>
             </div>
           )}
