@@ -1,13 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 
 export default function DiagnosticCenter() {
   const { user, activeStoreId } = useApp();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeAudit, setActiveAudit] = useState(null); // which audit button is running
   const [auditResult, setAuditResult] = useState(null);
   const [smokeStatus, setSmokeStatus] = useState(null);
+  const [smokeLoading, setSmokeLoading] = useState(false);
   const [remoteLogs, setRemoteLogs] = useState([]);
+  const [healingZeroCost, setHealingZeroCost] = useState(false);
+  const [healingImages, setHealingImages] = useState(false);
+  const [healResult, setHealResult] = useState(null);
+  const logEndRef = useRef(null);
 
   const fetchStats = async () => {
     try {
@@ -23,7 +29,8 @@ export default function DiagnosticCenter() {
   };
 
   const runSmokeTest = async () => {
-    setLoading(true);
+    setSmokeLoading(true);
+    setSmokeStatus(null);
     try {
       if (!activeStoreId) return;
       const res = await fetch(`/api/diagnostics/smoke-test?store_id=${activeStoreId}`);
@@ -32,12 +39,12 @@ export default function DiagnosticCenter() {
     } catch (err) {
       alert('Smoke test failed');
     } finally {
-      setLoading(false);
+      setSmokeLoading(false);
     }
   };
 
   const runAudit = async (type) => {
-    setLoading(true);
+    setActiveAudit(type);
     setAuditResult(null);
     try {
       if (!activeStoreId) return;
@@ -47,14 +54,53 @@ export default function DiagnosticCenter() {
     } catch (err) {
       alert('Audit failed: ' + err.message);
     } finally {
-      setLoading(false);
+      setActiveAudit(null);
     }
   };
 
-  useEffect(() => {
-    if (activeStoreId) {
+  const healZeroCosts = async () => {
+    if (!confirm('✨ This will automatically fix costs using Master Cost data. Proceed?')) return;
+    setHealingZeroCost(true);
+    setHealResult(null);
+    try {
+      const res = await fetch('/api/diagnostics/heal/zero-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId })
+      });
+      const data = await res.json();
+      setHealResult({ type: 'zero-costs', count: data.healedCount });
       fetchStats();
-    }
+      if (auditResult?.type === 'zero-costs') runAudit('zero-costs');
+    } catch (err) { alert('Heal failed: ' + err.message); }
+    finally { setHealingZeroCost(false); }
+  };
+
+  const healImages = async () => {
+    setHealingImages(true);
+    setHealResult(null);
+    try {
+      let totalHealed = 0;
+      let hasMore = true;
+      while (hasMore) {
+        const res = await fetch('/api/diagnostics/heal/line-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: activeStoreId })
+        });
+        const data = await res.json();
+        totalHealed += data.healedCount;
+        hasMore = data.remaining;
+        if (data.healedCount === 0) break;
+      }
+      setHealResult({ type: 'images', count: totalHealed });
+      fetchStats();
+    } catch (err) { alert('Mass-Restore failed: ' + err.message); }
+    finally { setHealingImages(false); }
+  };
+
+  useEffect(() => {
+    if (activeStoreId) fetchStats();
   }, [activeStoreId]);
 
   useEffect(() => {
@@ -78,258 +124,237 @@ export default function DiagnosticCenter() {
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}?token=${encodeURIComponent(token)}`;
     let socket;
-
     try {
       socket = new WebSocket(wsUrl);
       socket.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data);
           if (parsed.event === 'error_logged') {
-            setRemoteLogs(prev => [...prev.slice(-99), {
-              ts: parsed.data.ts,
-              msg: parsed.data.msg
-            }]);
+            setRemoteLogs(prev => [...prev.slice(-99), { ts: parsed.data.ts, msg: parsed.data.msg }]);
           }
         } catch (e) {}
       };
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
 
-    return () => {
-      if (socket) socket.close();
-    };
+    return () => { if (socket) socket.close(); };
   }, []);
 
-  const handleDownloadLogs = () => {
-    window.open('/api/diagnostics/remote-logs', '_blank');
-  };
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [remoteLogs]);
 
+  const handleDownloadLogs = () => window.open('/api/diagnostics/remote-logs', '_blank');
   const handleClearLogs = async () => {
     if (!confirm('Clear all remote logs?')) return;
     try {
       await fetch('/api/diagnostics/remote-logs/clear', { method: 'POST' });
       setRemoteLogs([]);
-      alert('Logs cleared!');
-    } catch (err) {
-      alert('Failed to clear logs: ' + err.message);
-    }
+    } catch (err) { alert('Failed to clear logs: ' + err.message); }
   };
 
   if (user?.role !== 'admin' && user?.role !== 'owner') {
-    return <div className="p-8">Access Denied. Admins only.</div>;
+    return (
+      <div style={{ padding: 48, textAlign: 'center', color: 'var(--red)' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <h2 style={{ color: 'var(--text-primary)' }}>Access Denied</h2>
+        <p style={{ color: 'var(--text-muted)' }}>This area is restricted to Admins & Owners only.</p>
+      </div>
+    );
   }
 
-  return (
-    <div className="page-container p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="text-2xl font-bold">🛠️ Diagnostic Command Center</h2>
-        <button onClick={fetchStats} className="btn btn-secondary text-xs">Refresh Stats</button>
-      </div>
+  const auditTools = [
+    { id: 'zero-costs', label: 'Find 0-Cost Orders', icon: '🔍', color: 'var(--red)', bg: 'var(--red-dim)' },
+    { id: 'orphaned-costs', label: 'Find Orphaned Costs', icon: '🔗', color: 'var(--orange)', bg: 'var(--orange-dim)' },
+    { id: 'duplicates', label: 'Duplicate Watchdog', icon: '🕵️', color: 'var(--yellow)', bg: 'var(--yellow-dim)' },
+    { id: 'missing-master-costs', label: 'Inventory Leak Audit', icon: '📦', color: 'var(--blue)', bg: 'var(--blue-dim)' },
+    { id: 'profit-anomalies', label: 'Profit Anomalies', icon: '📉', color: 'var(--purple)', bg: 'var(--purple-dim)' },
+  ];
 
+  return (
+    <div className="page-container" style={{ maxWidth: 1300 }}>
+
+      {/* ── Header ── */}
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div>
+          <h1 className="page-title">🛠️ Diagnostic Command Center</h1>
+          <p className="page-subtitle">Deep system audits, real-time error monitoring, and one-click data healing.</p>
+        </div>
+        <button
+          onClick={fetchStats}
+          style={{
+            padding: '10px 18px', borderRadius: 8, border: '1px solid var(--border-bright)',
+            background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+            fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8
+          }}
+        >
+          🔄 Refresh Stats
+        </button>
+      </header>
+
+      {/* ── KPI Stats ── */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <StatCard title="Orders" value={stats.orders} />
-          <StatCard title="Audit Logs" value={stats.auditLogs} />
-          <StatCard title="Fragmentation" value={stats.missingItems} color={stats.missingItems > 0 ? 'text-yellow-500' : 'text-green-500'} />
-          <StatCard title="Memory" value={`${stats.memory.toFixed(1)} MB`} 
-                    color={stats.memory > 400 ? 'text-red-500' : 'text-green-500'} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+          {[
+            { label: 'Total Orders', value: stats.orders, icon: '📦', color: 'var(--blue)', bg: 'var(--blue-dim)' },
+            { label: 'Audit Logs', value: stats.auditLogs, icon: '📋', color: 'var(--purple)', bg: 'var(--purple-dim)' },
+            { label: 'Fragmentation', value: stats.missingItems, icon: '⚠️', color: stats.missingItems > 0 ? 'var(--yellow)' : 'var(--green)', bg: stats.missingItems > 0 ? 'var(--yellow-dim)' : 'var(--green-dim)' },
+            { label: 'Memory Usage', value: `${stats.memory?.toFixed(1)} MB`, icon: '🧠', color: stats.memory > 400 ? 'var(--red)' : 'var(--green)', bg: stats.memory > 400 ? 'var(--red-dim)' : 'var(--green-dim)' },
+          ].map((s, i) => (
+            <div key={i} className="stat-card" style={{
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              position: 'relative', overflow: 'hidden'
+            }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: s.color }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 8, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                  {s.icon}
+                </div>
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value ?? '—'}</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{s.label}</div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* 🚀 SMOKE TEST & ACTIONS */}
-      <div className="bg-surface p-6 rounded-xl border border-border mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold">🚀 Connectivity Status</h3>
-          <button 
-            onClick={runSmokeTest}
-            className="btn btn-secondary text-xs"
-            disabled={loading}
-          >
-            {loading ? '⌛ Checking...' : 'Run Pre-Flight Smoke Test'}
-          </button>
+      {/* ── Two-column: Smoke Test + Audit Tools ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+
+        {/* Connectivity / Smoke Test */}
+        <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div style={{
+            padding: '16px 20px', borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <h3 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              🚀 Connectivity Status
+            </h3>
+            <button
+              onClick={runSmokeTest}
+              disabled={smokeLoading}
+              style={{
+                padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border-bright)',
+                background: 'var(--bg-surface)', color: 'var(--text-primary)',
+                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer'
+              }}
+            >
+              {smokeLoading ? '⌛ Checking...' : '▶ Run Smoke Test'}
+            </button>
+          </div>
+          <div style={{ padding: 20 }}>
+            {smokeLoading ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>⏳</div>
+                <p style={{ margin: 0, fontSize: '0.85rem' }}>Running pre-flight checks...</p>
+              </div>
+            ) : smokeStatus ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <ServiceRow label="Database Health" status={smokeStatus.database} />
+                {smokeStatus.shopify?.map((s, i) => (
+                  <ServiceRow key={i} label={s.domain} status={s.status} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>🔌</div>
+                <p style={{ margin: 0, fontSize: '0.85rem' }}>Click "Run Smoke Test" to verify API health across all services.</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {smokeStatus ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="p-4 bg-black/20 rounded-lg flex items-center justify-between">
-              <span className="text-sm">Database Health</span>
-              <span className="px-2 py-1 bg-green-500/20 text-green-500 text-[10px] font-bold rounded">
-                {smokeStatus.database}
-              </span>
-            </div>
-            {smokeStatus.shopify?.map((s, i) => (
-              <div key={i} className="p-4 bg-black/20 rounded-lg flex items-center justify-between">
-                <span className="text-sm truncate max-w-[150px]">{s.domain}</span>
-                <span className={`px-2 py-1 text-[10px] font-bold rounded ${s.status === 'OK' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
-                  {s.status}
-                </span>
-              </div>
+        {/* Health Audits */}
+        <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+            <h3 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>🔬 Health Audits</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Run targeted scans to detect data issues.</p>
+          </div>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {auditTools.map(tool => (
+              <button
+                key={tool.id}
+                onClick={() => runAudit(tool.id)}
+                disabled={activeAudit !== null}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 16px', borderRadius: 8, border: `1px solid ${activeAudit === tool.id ? tool.color : 'var(--border)'}`,
+                  background: activeAudit === tool.id ? tool.bg : 'var(--bg-elevated)',
+                  color: 'var(--text-primary)', cursor: activeAudit !== null ? 'not-allowed' : 'pointer',
+                  fontWeight: 500, fontSize: '0.88rem', textAlign: 'left',
+                  transition: 'all 0.2s ease', opacity: activeAudit !== null && activeAudit !== tool.id ? 0.5 : 1
+                }}
+                onMouseEnter={e => { if (!activeAudit) { e.currentTarget.style.background = tool.bg; e.currentTarget.style.border = `1px solid ${tool.color}`; } }}
+                onMouseLeave={e => { if (activeAudit !== tool.id) { e.currentTarget.style.background = 'var(--bg-elevated)'; e.currentTarget.style.border = '1px solid var(--border)'; } }}
+              >
+                <span style={{ fontSize: 18, width: 28, textAlign: 'center' }}>{activeAudit === tool.id ? '⏳' : tool.icon}</span>
+                <span>{activeAudit === tool.id ? `Running ${tool.label}...` : tool.label}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 14, opacity: 0.4 }}>›</span>
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="text-center py-4 text-muted text-sm italic">
-            Click 'Run Pre-Flight Smoke Test' to verify API health across all services.
-          </div>
-        )}
-      </div>
-
-      <div className="bg-surface p-6 rounded-xl border border-border mb-8">
-        <h3 className="text-lg font-bold mb-4">Health Audits</h3>
-        <div className="flex gap-4">
-          <button 
-            disabled={loading}
-            onClick={() => runAudit('zero-costs')}
-            className="btn btn-primary"
-          >
-            🔍 Find 0-Cost Orders
-          </button>
-          <button 
-            disabled={loading}
-            onClick={() => runAudit('orphaned-costs')}
-            className="btn btn-secondary"
-          >
-            🔍 Find Orphaned Costs
-          </button>
-          <button 
-            disabled={loading}
-            onClick={() => runAudit('duplicates')}
-            className="btn btn-secondary"
-          >
-            🕵️‍♂️ Duplicate Watchdog
-          </button>
-          <button 
-            disabled={loading}
-            onClick={() => runAudit('missing-master-costs')}
-            className="btn btn-secondary"
-          >
-            🔍 Inventory Leak Audit
-          </button>
-          <button 
-            disabled={loading}
-            onClick={() => runAudit('profit-anomalies')}
-            className="btn btn-secondary"
-          >
-            📉 Profit Anomalies
-          </button>
-        </div>
-
-        <div className="mt-8 pt-8 border-t border-border">
-          <h3 className="text-lg font-bold mb-2">✨ Automated Repair (God-Tier)</h3>
-          <p className="text-sm text-muted mb-4">One-click solutions to repair common data fragmentation issues.</p>
-          <div className="flex gap-4">
-            <button 
-              disabled={loading}
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  const res = await fetch('/api/diagnostics/heal/zero-costs', {
-                    method: 'POST',
-                    headers: { 
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ store_id: activeStoreId })
-                  });
-                  const data = await res.json();
-                  alert(`✨ Healed ${data.healedCount} orders!`);
-                  fetchStats();
-                } catch (err) { alert('Heal failed: ' + err.message); }
-                finally { setLoading(false); }
-              }}
-              className="btn btn-primary bg-gradient-to-r from-purple-500 to-blue-500 border-none"
-            >
-              🛠️ Heal All 0-Cost Orders
-            </button>
-
-            <button 
-              disabled={loading}
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  let totalHealed = 0;
-                  let hasMore = true;
-                  while (hasMore) {
-                    const res = await fetch('/api/diagnostics/heal/line-items', {
-                      method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({ store_id: activeStoreId })
-                    });
-                    const data = await res.json();
-                    totalHealed += data.healedCount;
-                    hasMore = data.remaining;
-                    if (data.healedCount === 0) break;
-                    // Optional: Update some progress UI here
-                  }
-                  alert(`✨ Successfully restored items & images for ${totalHealed} orders!`);
-                  fetchStats();
-                } catch (err) { alert('Mass-Restore failed: ' + err.message); }
-                finally { setLoading(false); }
-              }}
-              className="btn btn-primary bg-gradient-to-r from-emerald-500 to-teal-500 border-none"
-            >
-              🖼️ Mass-Restore All Missing Images
-            </button>
-          </div>
         </div>
       </div>
 
-      {loading && <div className="text-center p-8">Running deep audit... ⏳</div>}
-
+      {/* ── Audit Results ── */}
       {auditResult && (
-        <div className="bg-surface rounded-xl border border-border overflow-hidden">
-          <div className="p-4 bg-black/20 border-b border-border flex justify-between items-center">
-            <h4 className="font-bold">Audit Results: {auditResult.type}</h4>
-            <div className="flex items-center gap-4">
-              <span className="text-xs">{auditResult.data.length} issues found</span>
-              {auditResult.type === 'zero-costs' && auditResult.data.length > 0 && (
-                <button 
-                  onClick={async () => {
-                    if (!confirm('✨ This will automatically fix costs using Master Cost data. Proceed?')) return;
-                    setLoading(true);
-                    try {
-                      const res = await fetch('/api/diagnostics/heal/zero-costs', {
-                        method: 'POST',
-                        headers: { 
-                          'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ store_id: activeStoreId })
-                      });
-                      const data = await res.json();
-                      alert(`✅ Successfully healed ${data.healedCount} orders!`);
-                      runAudit('zero-costs');
-                      fetchStats();
-                    } catch (err) {
-                      alert('Heal failed: ' + err.message);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  className="btn btn-primary text-xs py-1"
-                >
-                  ✨ Heal All Issues
-                </button>
-              )}
+        <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
+          <div style={{
+            padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h4 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                Audit Results: <span style={{ color: 'var(--blue)' }}>{auditResult.type}</span>
+              </h4>
+              <span style={{
+                padding: '3px 10px', borderRadius: 12, fontSize: '0.72rem', fontWeight: 700,
+                background: auditResult.data.length > 0 ? 'var(--red-dim)' : 'var(--green-dim)',
+                color: auditResult.data.length > 0 ? 'var(--red)' : 'var(--green)',
+                border: `1px solid ${auditResult.data.length > 0 ? 'var(--red)' : 'var(--green)'}`
+              }}>
+                {auditResult.data.length > 0 ? `${auditResult.data.length} issues found` : '✅ All Clear'}
+              </span>
             </div>
+            {auditResult.type === 'zero-costs' && auditResult.data.length > 0 && (
+              <button
+                onClick={healZeroCosts}
+                disabled={healingZeroCost}
+                style={{
+                  padding: '7px 16px', borderRadius: 7, border: 'none',
+                  background: 'var(--green)', color: '#fff', fontWeight: 700,
+                  fontSize: '0.8rem', cursor: 'pointer', boxShadow: '0 3px 10px rgba(34,197,94,0.3)'
+                }}
+              >
+                {healingZeroCost ? '⏳ Healing...' : '✨ Heal All Issues'}
+              </button>
+            )}
           </div>
-          <div className="max-h-[400px] overflow-auto">
+          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {auditResult.data.length === 0 ? (
-              <div className="p-8 text-center text-green-500">✅ No issues found! System is healthy.</div>
+              <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--green)' }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+                <p style={{ margin: 0, fontWeight: 600 }}>No issues found! System is healthy.</p>
+              </div>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-black/10">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 5 }}>
                   <tr>
                     {Object.keys(auditResult.data[0]).map(key => (
-                      <th key={key} className="p-3 text-left border-b border-border capitalize">{key.replace('_', ' ')}</th>
+                      <th key={key} style={{
+                        padding: '10px 14px', textAlign: 'left', fontWeight: 600,
+                        fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase',
+                        letterSpacing: '0.06em', borderBottom: '1px solid var(--border)'
+                      }}>
+                        {key.replace(/_/g, ' ')}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {auditResult.data.map((row, i) => (
-                    <tr key={i} className="hover:bg-white/5 border-b border-border/5">
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-hover)' }}>
                       {Object.values(row).map((val, j) => (
-                        <td key={j} className="p-3">{val}</td>
+                        <td key={j} style={{ padding: '10px 14px', color: 'var(--text-primary)' }}>{String(val)}</td>
                       ))}
                     </tr>
                   ))}
@@ -340,45 +365,156 @@ export default function DiagnosticCenter() {
         </div>
       )}
 
-      {/* 🔴 REMOTE ERROR CONSOLE */}
-      <div className="bg-surface p-6 rounded-xl border border-border mt-8">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-red-500 flex items-center gap-2">
-            <span className="w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-            🔴 Real-time Remote Error Stream
-          </h3>
-          <div className="flex gap-2">
-            <button onClick={handleDownloadLogs} className="btn btn-secondary text-xs">
-              📥 Download Log File
-            </button>
-            <button onClick={handleClearLogs} className="btn btn-secondary text-xs text-red-400 border-red-500/20 hover:bg-red-500/10">
-              🗑️ Clear Logs
-            </button>
+      {/* ── God-Tier Repair ── */}
+      <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--purple)', background: 'var(--purple-dim)', marginBottom: 20 }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 20 }}>✨</span>
+          <div>
+            <h3 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--purple)' }}>Automated Repair — God Mode</h3>
+            <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>One-click solutions to repair common data fragmentation issues.</p>
           </div>
         </div>
-        
-        <div className="bg-black/80 font-mono text-xs text-red-400 p-4 rounded-lg h-64 overflow-y-auto flex flex-col gap-1 border border-red-900/30">
-          {remoteLogs.length === 0 ? (
-            <div className="text-center py-24 text-muted italic">No error events captured yet. Monitoring live stream...</div>
-          ) : (
-            remoteLogs.map((log, index) => (
-              <div key={index} className="hover:bg-white/5 py-0.5 border-b border-white/5 flex gap-2">
-                <span className="text-muted shrink-0">[{new Date(log.ts).toLocaleTimeString()}]</span>
-                <span className="break-all">{log.msg}</span>
-              </div>
-            ))
+        <div style={{ padding: 20, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={healZeroCosts}
+            disabled={healingZeroCost || healingImages}
+            style={{
+              padding: '12px 22px', borderRadius: 8, border: 'none',
+              background: 'linear-gradient(135deg, var(--purple), var(--blue))',
+              color: '#fff', fontWeight: 700, cursor: healingZeroCost ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 16px rgba(168,85,247,0.3)', display: 'flex', alignItems: 'center', gap: 8
+            }}
+          >
+            {healingZeroCost ? '⏳ Healing...' : '🛠️ Heal All 0-Cost Orders'}
+          </button>
+          <button
+            onClick={healImages}
+            disabled={healingImages || healingZeroCost}
+            style={{
+              padding: '12px 22px', borderRadius: 8, border: 'none',
+              background: 'linear-gradient(135deg, #10b981, #0d9488)',
+              color: '#fff', fontWeight: 700, cursor: healingImages ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 16px rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: 8
+            }}
+          >
+            {healingImages ? '⏳ Restoring...' : '🖼️ Mass-Restore Missing Images'}
+          </button>
+
+          {healResult && (
+            <div style={{
+              marginLeft: 'auto', padding: '10px 16px', borderRadius: 8,
+              background: 'var(--green-dim)', border: '1px solid var(--green)',
+              display: 'flex', alignItems: 'center', gap: 8
+            }}>
+              <span style={{ color: 'var(--green)', fontWeight: 700, fontSize: '0.85rem' }}>
+                ✅ {healResult.type === 'zero-costs' ? `Healed ${healResult.count} orders` : `Restored items for ${healResult.count} orders`}
+              </span>
+            </div>
           )}
         </div>
       </div>
+
+      {/* ── Real-Time Error Console ── */}
+      <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid rgba(239,68,68,0.3)' }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid rgba(239,68,68,0.2)',
+          background: 'rgba(239,68,68,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <h3 style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              width: 8, height: 8, background: 'var(--red)', borderRadius: '50%',
+              boxShadow: '0 0 0 0 rgba(239,68,68,0.4)',
+              animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
+              display: 'inline-block'
+            }} />
+            Real-Time Remote Error Stream
+            {remoteLogs.length > 0 && (
+              <span style={{ fontSize: '0.72rem', background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid var(--red)', borderRadius: 10, padding: '2px 8px', fontWeight: 700 }}>
+                {remoteLogs.length}
+              </span>
+            )}
+          </h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleDownloadLogs}
+              style={{
+                padding: '6px 12px', borderRadius: 6, background: 'transparent',
+                border: '1px solid var(--border-bright)', color: 'var(--text-secondary)',
+                fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer'
+              }}
+            >
+              📥 Download
+            </button>
+            <button
+              onClick={handleClearLogs}
+              style={{
+                padding: '6px 12px', borderRadius: 6, background: 'transparent',
+                border: '1px solid rgba(239,68,68,0.4)', color: 'var(--red)',
+                fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer'
+              }}
+            >
+              🗑️ Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Terminal */}
+        <div style={{
+          background: '#0d0e12', fontFamily: 'monospace', fontSize: '0.78rem',
+          color: '#f87171', padding: '16px', height: 280, overflowY: 'auto',
+          display: 'flex', flexDirection: 'column', gap: 2
+        }}>
+          {remoteLogs.length === 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.4 }}>
+              <span style={{ fontSize: 28, marginBottom: 8 }}>👁️</span>
+              <span>Monitoring live error stream... No events yet.</span>
+            </div>
+          ) : (
+            remoteLogs.map((log, index) => (
+              <div key={index} style={{
+                display: 'flex', gap: 12, padding: '2px 0',
+                borderBottom: '1px solid rgba(255,255,255,0.03)'
+              }}>
+                <span style={{ color: '#6b7280', flexShrink: 0, fontSize: '0.72rem' }}>
+                  [{new Date(log.ts).toLocaleTimeString()}]
+                </span>
+                <span style={{ wordBreak: 'break-all', color: log.msg.includes('ERROR') ? '#f87171' : '#a3a3a3' }}>
+                  {log.msg}
+                </span>
+              </div>
+            ))
+          )}
+          <div ref={logEndRef} />
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes ping {
+          75%, 100% { transform: scale(2); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }
 
-function StatCard({ title, value, color = '' }) {
+function ServiceRow({ label, status }) {
+  const isOk = status === 'OK' || status === 'connected';
   return (
-    <div className="bg-surface p-4 rounded-xl border border-border text-center">
-      <div className="text-xs text-muted mb-1 uppercase tracking-wider font-bold">{title}</div>
-      <div className={`text-xl font-bold ${color}`}>{value}</div>
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '12px 14px', borderRadius: 8,
+      background: isOk ? 'var(--green-dim)' : 'var(--red-dim)',
+      border: `1px solid ${isOk ? 'var(--green)' : 'var(--red)'}`
+    }}>
+      <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+      <span style={{
+        padding: '3px 10px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 700,
+        background: isOk ? 'var(--green)' : 'var(--red)', color: '#fff'
+      }}>
+        {isOk ? '✓ OK' : '✗ FAIL'}
+      </span>
     </div>
   );
 }
