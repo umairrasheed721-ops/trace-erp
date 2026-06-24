@@ -16,9 +16,7 @@ export default function WhatsAppPortal() {
       try {
         const token = localStorage.getItem('trace_token') || '';
         const res = await fetch('/api/whatsapp-governance/settings', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         setSettings(data);
@@ -27,123 +25,172 @@ export default function WhatsAppPortal() {
       }
     };
     fetchSettings();
-
-    const handleSettingsUpdate = () => {
-      fetchSettings();
-    };
+    const handleSettingsUpdate = () => fetchSettings();
     window.addEventListener('whatsapp_settings_updated', handleSettingsUpdate);
-    return () => {
-      window.removeEventListener('whatsapp_settings_updated', handleSettingsUpdate);
-    };
+    return () => window.removeEventListener('whatsapp_settings_updated', handleSettingsUpdate);
   }, []);
 
   useEffect(() => {
-    // Save original sidebar state
     const originalCollapsed = localStorage.getItem('sidebar_collapsed') === 'true'
     setSidebarCollapsed(true)
-
-    return () => {
-      setSidebarCollapsed(originalCollapsed)
-    }
+    return () => setSidebarCollapsed(originalCollapsed)
   }, [setSidebarCollapsed])
 
   const {
-    chats,
-    activeChat,
-    selectChat,
-    wsStatus,
-    activeNumber,
-    searchText,
-    setSearchText,
-    activeFilter,
-    setActiveFilter,
-    loadingChats,
-    typingStatus,
-    setShowCmdPalette,
-    setShowSettings,
-    isDragging,
-    uploading,
-    handleMediaUpload,
-    syncingMessages,
-    humanHandoffActive,
-    setHumanHandoffActive,
-    messages,
-    loadingMessages,
-    handleQuoteClick,
-    getMediaUrlWithToken,
-    setZoomedImage,
-    timelineEndRef,
-    contextMenu,
-    setContextMenu,
-    activeQuote,
-    clearQuote,
-    quickPills,
-    sendingReply,
-    handleSendMessage,
-    inputText,
-    updateInputText,
-    isRecording,
-    recordingTime,
-    handleDiscardRecording,
-    handleVoiceNote,
-    showQuickReplies,
-    setShowQuickReplies,
-    quickReplies,
-    handleSendQuickReply,
-    showSlashMenu,
-    setShowSlashMenu,
-    SLASH_COMMANDS,
-    slashCmd,
-    setSlashCmd,
-    inputRef,
-    customerInfo,
-    handleTriggerCODVerification,
-    showCustomer360,
-    setShowCustomer360,
-    handleSendInvoice,
-    zoomedImage,
-    showCmdPalette,
-    cmdPaletteInputRef,
-    cmdQuery,
-    setCmdQuery,
-    setCmdActiveIdx,
-    filteredCmdItems,
-    cmdActiveIdx,
-    cmdSections,
-    showSettings,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
+    chats, activeChat, selectChat, wsStatus, activeNumber,
+    searchText, setSearchText, activeFilter, setActiveFilter,
+    loadingChats, typingStatus, setShowCmdPalette, setShowSettings,
+    isDragging, uploading, handleMediaUpload, syncingMessages,
+    humanHandoffActive, setHumanHandoffActive, messages, loadingMessages,
+    handleQuoteClick, getMediaUrlWithToken, setZoomedImage,
+    timelineEndRef, contextMenu, setContextMenu, activeQuote, clearQuote,
+    quickPills, sendingReply, handleSendMessage, inputText, updateInputText,
+    isRecording, recordingTime, handleDiscardRecording, handleVoiceNote,
+    showQuickReplies, setShowQuickReplies, quickReplies, handleSendQuickReply,
+    showSlashMenu, setShowSlashMenu, SLASH_COMMANDS, slashCmd, setSlashCmd,
+    inputRef, customerInfo, handleTriggerCODVerification,
+    showCustomer360, setShowCustomer360, handleSendInvoice,
+    zoomedImage, showCmdPalette, cmdPaletteInputRef, cmdQuery, setCmdQuery,
+    setCmdActiveIdx, filteredCmdItems, cmdActiveIdx, cmdSections,
+    showSettings, handleDragEnter, handleDragLeave, handleDragOver, handleDrop,
     handleCallHandoff
   } = useWhatsAppPortal()
 
+  const ltvTotal = customerInfo.orderHistory?.reduce((sum, o) => sum + Number(o.total_price || 0), 0) || 0
+
   return (
     <div className="page-container p-6">
-      {/* Dynamic styles to inject shimmer and icon animations */}
       <style>{`
         @keyframes rightPanelShimmer {
           0% { background-position: -200% 0; }
           100% { background-position: 200% 0; }
         }
         .right-panel-shimmer {
-          background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+          background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 75%);
           background-size: 200% 100%;
           animation: rightPanelShimmer 1.5s infinite;
         }
         @keyframes lockPulse {
-          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.25); }
-          70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+          0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3); }
+          70% { transform: scale(1.04); box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
           100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
-        .lock-pulse-icon {
-          animation: lockPulse 2s infinite ease-in-out;
+        .lock-pulse-icon { animation: lockPulse 2.5s infinite ease-in-out; }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .wa-header-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 13px;
+          border-radius: 20px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1px solid transparent;
+          text-decoration: none;
+          white-space: nowrap;
+          letter-spacing: 0.01em;
+        }
+        .wa-header-action-btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+        .wa-header-action-btn:active { transform: translateY(0); }
+        .wa-c360-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 12px;
+          padding: 14px 16px;
+          transition: all 0.2s ease;
+        }
+        .wa-c360-card:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); }
+        .wa-c360-label {
+          font-size: 0.68rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: rgba(255,255,255,0.35);
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .wa-c360-action-btn {
+          width: 100%;
+          padding: 9px 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(255,255,255,0.05);
+          color: rgba(255,255,255,0.8);
+          font-size: 0.8rem;
+          font-weight: 500;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          transition: all 0.2s ease;
+        }
+        .wa-c360-action-btn:hover {
+          background: rgba(255,255,255,0.1);
+          border-color: rgba(255,255,255,0.2);
+          color: #fff;
+          transform: translateY(-1px);
+        }
+        .wa-c360-action-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+          transform: none;
+        }
+        .wa-handoff-banner-v2 {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 18px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          border-bottom: 1px solid;
+          animation: fadeInUp 0.3s ease;
+        }
+        .wa-handoff-banner-v2.agent {
+          background: rgba(16, 185, 129, 0.08);
+          border-color: rgba(16, 185, 129, 0.25);
+          color: #10b981;
+        }
+        .wa-handoff-banner-v2.ephemeral {
+          background: rgba(249, 115, 22, 0.08);
+          border-color: rgba(249, 115, 22, 0.25);
+          color: #f97316;
+        }
+        .wa-handoff-banner-v2 .resume-btn {
+          margin-left: auto;
+          padding: 4px 12px;
+          border-radius: 6px;
+          border: 1px solid currentColor;
+          background: transparent;
+          color: currentColor;
+          font-size: 0.72rem;
+          font-weight: 700;
+          cursor: pointer;
+          opacity: 0.8;
+          transition: opacity 0.2s;
+        }
+        .wa-handoff-banner-v2 .resume-btn:hover { opacity: 1; }
+        @keyframes ping {
+          75%, 100% { transform: scale(2); opacity: 0; }
         }
       `}</style>
 
-      <div className="wa-portal-container" style={{ backgroundColor: 'var(--wa-panel-bg)', border: '1px solid var(--wa-border)', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-        
-        {/* --- LEFT PANEL: CONVERSATIONS LIST --- */}
+      <div className="wa-portal-container" style={{
+        backgroundColor: 'var(--wa-panel-bg)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '14px',
+        overflow: 'hidden',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset'
+      }}>
+
+        {/* LEFT: CONVERSATIONS */}
         <ChatContactSidebar
           chats={chats}
           activeChat={activeChat}
@@ -160,8 +207,8 @@ export default function WhatsAppPortal() {
           setShowSettings={setShowSettings}
         />
 
-        {/* --- CENTER PANEL: TIMELINE & CHAT INTERACTION --- */}
-        <div 
+        {/* CENTER: CHAT AREA */}
+        <div
           className="wa-portal-center"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -171,108 +218,117 @@ export default function WhatsAppPortal() {
         >
           {activeChat ? (
             <div className="wa-portal-main" style={{ display: 'flex', flexDirection: 'row', flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
-              {/* Wrapped Chat Area */}
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%', position: 'relative' }}>
-                {/* Drag & Drop + Upload Overlay — decoupled Module 8 component */}
+
                 <MediaUploadOverlay
                   isDragging={isDragging}
                   uploading={uploading}
-                  onUpload={(file) => {
-                    handleMediaUpload(file)
-                  }}
+                  onUpload={(file) => handleMediaUpload(file)}
                 />
-                
-                {/* Header */}
-                <div className="wa-portal-chat-header" style={{ backgroundColor: 'var(--wa-header-bg)', borderBottom: '1px solid var(--wa-border)' }}>
+
+                {/* ── PREMIUM CHAT HEADER ── */}
+                <div className="wa-portal-chat-header" style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  backdropFilter: 'blur(12px)',
+                  borderBottom: '1px solid rgba(255,255,255,0.07)',
+                  padding: '12px 18px'
+                }}>
                   <div className="wa-portal-chat-header-info">
-                    <div className="wa-portal-avatar">
+                    {/* Avatar */}
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 800, fontSize: '0.95rem', color: '#fff', flexShrink: 0,
+                      boxShadow: '0 0 0 2px rgba(37,211,102,0.25)'
+                    }}>
                       {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
                     </div>
                     <div>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--wa-text-primary)', lineHeight: 1.2 }}>
                         {activeChat.customerName || `+${activeChat.phone}`}
-                      </h3>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        {typingStatus[activeChat.phone] ? 'typing...' : `+${activeChat.phone}`}
-                      </span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: typingStatus[activeChat.phone] ? '#25d366' : 'rgba(255,255,255,0.4)', fontWeight: typingStatus[activeChat.phone] ? 600 : 400, marginTop: 2 }}>
+                        {typingStatus[activeChat.phone] ? '✦ typing...' : `+${activeChat.phone}`}
+                      </div>
                     </div>
                   </div>
-                  
-                  {/* Actions */}
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {/* Module 8: Smart Call Handoff */}
+
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <a
                       href={`whatsapp://send?phone=${activeChat.phone}`}
                       onClick={handleCallHandoff}
-                      className="btn btn-secondary btn-sm"
-                      title="Open native WhatsApp app to call this customer"
-                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.3)', color: '#25d366', transition: 'all 0.2s ease' }}
+                      className="wa-header-action-btn"
+                      title="Open native WhatsApp to call"
+                      style={{ background: 'rgba(37,211,102,0.12)', borderColor: 'rgba(37,211,102,0.3)', color: '#25d366' }}
                     >
                       📞 Call
                     </a>
-                    <button 
-                      className="btn btn-secondary btn-sm"
+                    <button
+                      className="wa-header-action-btn"
                       onClick={handleTriggerCODVerification}
                       disabled={!customerInfo.latestOrder}
-                      title="Send COD Verification Message to Customer"
-                      style={{ background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.3)', color: '#c084fc' }}
+                      title="Send COD Verification"
+                      style={{ background: 'rgba(168,85,247,0.1)', borderColor: 'rgba(168,85,247,0.3)', color: '#c084fc' }}
                     >
                       🔐 COD Verify
                     </button>
-                    <button 
-                      className="btn btn-secondary btn-sm"
+                    <button
+                      className="wa-header-action-btn"
                       onClick={handleSendInvoice}
                       disabled={!customerInfo.latestOrder}
-                      title="Send PDF Invoice to Customer"
+                      title="Send PDF Invoice"
+                      style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.3)', color: '#60a5fa' }}
                     >
                       📄 Invoice
                     </button>
                     <button
-                      className="btn btn-secondary btn-sm"
+                      className="wa-header-action-btn"
                       onClick={() => setShowCustomer360(prev => !prev)}
-                      title="Toggle Customer Info"
+                      title="Toggle Customer 360"
                       style={{
-                        background: showCustomer360 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                        border: showCustomer360 ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255, 255, 255, 0.15)',
-                        color: showCustomer360 ? 'var(--green, #10B981)' : 'var(--text-color, #ffffff)',
-                        fontWeight: 600
+                        background: showCustomer360 ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)',
+                        borderColor: showCustomer360 ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.12)',
+                        color: showCustomer360 ? '#34d399' : 'rgba(255,255,255,0.6)',
                       }}
                     >
-                      👤 Info {showCustomer360 ? '◀' : '▶'}
+                      👤 {showCustomer360 ? 'Hide Info' : 'Customer'}
                     </button>
-                    <button 
-                      onClick={() => selectChat(activeChat)} 
-                      className="btn btn-secondary btn-sm"
+                    <button
+                      onClick={() => selectChat(activeChat)}
+                      className="wa-header-action-btn"
                       title="Reload chat timeline"
+                      style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}
                     >
-                      🔄 Sync
+                      🔄
                     </button>
                   </div>
                 </div>
 
-                {/* Sync Progress Bar — Module 7 */}
+                {/* Sync Progress Bar */}
                 {syncingMessages && (
                   <div className="wa-sync-progress">
                     <div className="wa-sync-progress-bar" />
                   </div>
                 )}
 
-                 {/* Human Handoff Banner — Module 5/7 */}
-                 {humanHandoffActive && (
-                   <div className="wa-handoff-banner">
-                     <span>🧑</span>
-                     <span>Human Agent Mode — Bot is silent for this chat</span>
-                     <button onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
-                   </div>
-                 )}
+                {/* Human Handoff Banner */}
+                {humanHandoffActive && (
+                  <div className="wa-handoff-banner-v2 agent">
+                    <span>🧑‍💼</span>
+                    <span>Human Agent Mode — Bot is paused for this conversation</span>
+                    <button className="resume-btn" onClick={() => setHumanHandoffActive(false)}>Resume Bot</button>
+                  </div>
+                )}
 
-                 {/* Ephemeral Mode Warning Banner */}
-                 {settings && settings.ephemeral_mode === 1 && (
-                   <div className="wa-handoff-banner" style={{ background: 'rgba(249, 115, 22, 0.12)', borderBottom: '1px solid rgba(249, 115, 22, 0.3)', color: '#f97316', gap: 8, padding: '8px 16px', display: 'flex', alignItems: 'center', fontSize: '0.85rem', fontWeight: 600 }}>
-                     <span>🛡️</span>
-                     <span>Stateless Ephemeral Mode Active: Chat logs, voice notes, and media are not saved. Confirmations are handled in-memory only.</span>
-                   </div>
-                 )}
+                {/* Ephemeral Mode Banner */}
+                {settings && settings.ephemeral_mode === 1 && (
+                  <div className="wa-handoff-banner-v2 ephemeral">
+                    <span>🛡️</span>
+                    <span>Stateless Ephemeral Mode — Logs, voice notes & media are not persisted</span>
+                  </div>
+                )}
 
                 {/* Message Timeline */}
                 <ChatMessageList
@@ -320,174 +376,203 @@ export default function WhatsAppPortal() {
                 />
               </div>
 
-              {/* CUSTOMER 360 RIGHT PANEL */}
-              <div 
-                className="wa-portal-right-panel wa-portal-right" 
-                style={{
-                  width: '320px', 
-                  borderLeft: '1px solid var(--wa-border)', 
-                  background: 'var(--wa-panel-bg)', 
-                  display: showCustomer360 ? 'flex' : 'none',
+              {/* ── CUSTOMER 360 RIGHT PANEL ── */}
+              {showCustomer360 && (
+                <div style={{
+                  width: 300,
+                  borderLeft: '1px solid rgba(255,255,255,0.07)',
+                  background: 'rgba(255,255,255,0.015)',
+                  display: 'flex',
                   flexDirection: 'column',
-                  gap: '15px',
-                  padding: '15px',
-                  overflowY: 'auto'
-                }}
-              >
-                {/* Profile Card */}
-                <div className="wa-portal-profile-section" style={{ textAlign: 'center', backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
-                  <div className="wa-portal-profile-avatar" style={{ margin: '0 auto 10px auto' }}>
-                    {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
+                  gap: 10,
+                  padding: '16px 12px',
+                  overflowY: 'auto',
+                  backdropFilter: 'blur(8px)'
+                }}>
+                  {/* Profile Card */}
+                  <div style={{ textAlign: 'center', paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                    <div style={{
+                      width: 64, height: 64, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #25d366 0%, #128c7e 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 800, fontSize: '1.5rem', color: '#fff',
+                      margin: '0 auto 10px auto',
+                      boxShadow: '0 0 0 3px rgba(37,211,102,0.2), 0 8px 24px rgba(37,211,102,0.15)'
+                    }}>
+                      {activeChat.customerName ? activeChat.customerName.substring(0, 2).toUpperCase() : 'WA'}
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--wa-text-primary)', marginBottom: 3 }}>
+                      {activeChat.customerName || 'WhatsApp Customer'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace' }}>
+                      +{activeChat.phone}
+                    </div>
                   </div>
-                  <h4 className="wa-portal-profile-name" style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>{activeChat.customerName || 'WhatsApp Customer'}</h4>
-                  <div className="wa-portal-profile-phone" style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)' }}>+{activeChat.phone}</div>
-                </div>
 
-                {/* Order Status & COD Verification Badge Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>📦 Order Status</h5>
-                  {loadingMessages ? (
-                    <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
-                  ) : customerInfo.latestOrder ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--wa-text-primary)' }}>Order #{customerInfo.latestOrder.id}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
-                        <span className="wa-badge-status" style={{ 
-                          backgroundColor: customerInfo.latestOrder.cod_verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)', 
-                          color: customerInfo.latestOrder.cod_verified ? '#10b981' : '#f59e0b', 
-                          fontSize: '0.75rem', 
-                          padding: '4px 8px', 
-                          borderRadius: '6px', 
-                          fontWeight: 'bold' 
-                        }}>
-                          {customerInfo.latestOrder.cod_verified ? '🔐 COD Verified' : '⏳ COD Pending'}
-                        </span>
+                  {/* LTV Card */}
+                  <div className="wa-c360-card">
+                    <div className="wa-c360-label">💳 Customer LTV</div>
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div className="right-panel-shimmer" style={{ height: 24, borderRadius: 6 }} />
+                        <div className="right-panel-shimmer" style={{ height: 12, width: '60%', borderRadius: 4 }} />
                       </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)', fontStyle: 'italic' }}>No active orders found.</div>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#34d399', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                          Rs. {ltvTotal.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+                          across {customerInfo.orderHistory?.length || 0} orders
+                        </div>
+                      </>
+                    )}
+                  </div>
 
-                {/* Quick Actions Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)' }}>⚡ Quick Actions</h5>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={handleSendInvoice}
-                      disabled={!customerInfo.latestOrder}
-                      style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      📄 Send PDF Invoice
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => selectChat(activeChat)}
-                      style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      🔄 Sync Chat Timeline
-                    </button>
+                  {/* Order Status Card */}
+                  <div className="wa-c360-card">
+                    <div className="wa-c360-label">📦 Latest Order</div>
+                    {loadingMessages ? (
+                      <div className="right-panel-shimmer" style={{ height: 20, borderRadius: 4 }} />
+                    ) : customerInfo.latestOrder ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
+                          Order #{customerInfo.latestOrder.id}
+                        </div>
+                        <div>
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: 20,
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            background: customerInfo.latestOrder.cod_verified ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                            color: customerInfo.latestOrder.cod_verified ? '#10b981' : '#f59e0b',
+                            border: `1px solid ${customerInfo.latestOrder.cod_verified ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`
+                          }}>
+                            {customerInfo.latestOrder.cod_verified ? '🔐 COD Verified' : '⏳ COD Pending'}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>No active orders found.</div>
+                    )}
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="wa-c360-card">
+                    <div className="wa-c360-label">⚡ Quick Actions</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <button
+                        className="wa-c360-action-btn"
+                        onClick={handleSendInvoice}
+                        disabled={!customerInfo.latestOrder}
+                      >
+                        📄 Send PDF Invoice
+                      </button>
+                      <button
+                        className="wa-c360-action-btn"
+                        onClick={handleTriggerCODVerification}
+                        disabled={!customerInfo.latestOrder}
+                        style={{ borderColor: 'rgba(168,85,247,0.2)', color: '#c084fc' }}
+                      >
+                        🔐 COD Verification
+                      </button>
+                      <button
+                        className="wa-c360-action-btn"
+                        onClick={() => selectChat(activeChat)}
+                      >
+                        🔄 Sync Timeline
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AI Memory */}
+                  <div className="wa-c360-card">
+                    <div className="wa-c360-label">🧠 Gemini Memory</div>
+                    {loadingMessages ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {[100, 85, 50].map((w, i) => (
+                          <div key={i} className="right-panel-shimmer" style={{ height: 11, width: `${w}%`, borderRadius: 3 }} />
+                        ))}
+                      </div>
+                    ) : customerInfo.geminiMemory ? (
+                      <div style={{
+                        background: 'rgba(168,85,247,0.07)',
+                        border: '1px solid rgba(168,85,247,0.15)',
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        fontSize: '0.78rem',
+                        color: 'rgba(255,255,255,0.7)',
+                        lineHeight: 1.6
+                      }}>
+                        {customerInfo.geminiMemory}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        border: '1px dashed rgba(255,255,255,0.1)',
+                        fontSize: '0.75rem',
+                        color: 'rgba(255,255,255,0.25)',
+                        fontStyle: 'italic'
+                      }}>
+                        No AI memory recorded yet.
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {/* Customer 360 Insights / LTV Card */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>💳 Customer LTV</h5>
-                  {loadingMessages ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div className="right-panel-shimmer" style={{ height: '20px', width: '120px', borderRadius: '4px' }}></div>
-                      <div className="right-panel-shimmer" style={{ height: '12px', width: '180px', borderRadius: '4px' }}></div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--brand, #10B981)' }}>
-                        Rs. {customerInfo.orderHistory?.reduce((sum, o) => sum + Number(o.total_price || 0), 0).toLocaleString() || '0'}
-                      </div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--wa-text-muted)' }}>Total value over {customerInfo.orderHistory?.length || 0} orders</span>
-                    </>
-                  )}
-                </div>
-
-                {/* Gemini Chat Memory Section */}
-                <div className="wa-portal-profile-section" style={{ backgroundColor: 'var(--wa-panel-bg)', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid var(--wa-border)' }}>
-                  <h5 className="wa-portal-profile-title" style={{ margin: '0 0 8px 0', fontSize: '0.85rem', fontWeight: 600, color: 'var(--wa-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>🧠 Gemini Active Memory</h5>
-                  {loadingMessages ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div className="right-panel-shimmer" style={{ height: '12px', width: '100%', borderRadius: '4px' }}></div>
-                      <div className="right-panel-shimmer" style={{ height: '12px', width: '90%', borderRadius: '4px' }}></div>
-                      <div className="right-panel-shimmer" style={{ height: '12px', width: '40%', borderRadius: '4px' }}></div>
-                    </div>
-                  ) : customerInfo.geminiMemory ? (
-                    <div className="wa-gemini-memory" style={{ background: 'var(--wa-header-bg)', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', color: 'var(--wa-text-primary)' }}>
-                      {customerInfo.geminiMemory}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--wa-text-muted)', fontStyle: 'italic', padding: '8px', background: 'var(--wa-header-bg)', borderRadius: '6px', border: '1px dashed var(--wa-border)' }}>
-                      No AI-extracted memory recorded yet.
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
             </div>
           ) : (
-            <div 
-              className="wa-portal-chat-empty"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                background: 'radial-gradient(circle at center, #ffffff 0%, #f4f6f8 100%)',
-                padding: '40px',
-                textAlign: 'center'
-              }}
-            >
-              <div 
+            /* ── PREMIUM EMPTY STATE ── */
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', height: '100%',
+              background: 'radial-gradient(ellipse at 50% 40%, rgba(37,211,102,0.06) 0%, transparent 65%), var(--wa-chat-bg)',
+              padding: 40, textAlign: 'center', gap: 0
+            }}>
+              <div
                 className="lock-pulse-icon"
-                style={{ 
-                  width: '72px', 
-                  height: '72px', 
-                  borderRadius: '50%', 
-                  backgroundColor: 'rgba(16, 185, 129, 0.08)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  fontSize: '2.2rem', 
-                  marginBottom: '20px',
-                  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.12)',
-                  border: '1px solid rgba(16, 185, 129, 0.15)'
+                style={{
+                  width: 80, height: 80, borderRadius: '50%',
+                  background: 'radial-gradient(circle, rgba(37,211,102,0.15) 0%, rgba(37,211,102,0.04) 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '2.2rem', marginBottom: 22,
+                  boxShadow: '0 0 0 1px rgba(37,211,102,0.2), 0 12px 32px rgba(37,211,102,0.12)',
+                  border: '1px solid rgba(37,211,102,0.15)'
                 }}
               >
-                🔒
+                💬
               </div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: 600, color: '#1f2937', marginBottom: '8px', letterSpacing: '-0.02em' }}>
-                TracePK Workspace - End-to-End Encrypted
-              </h2>
-              <p style={{ color: '#6b7280', fontSize: '0.92rem', maxWidth: '340px', lineHeight: '1.6', margin: '0 auto 30px auto' }}>
-                Select a chat to view messages and customer history
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#10b981', fontWeight: 500, backgroundColor: 'rgba(16, 185, 129, 0.06)', padding: '6px 12px', borderRadius: '20px' }}>
-                <span>🛡️ Secure Connection Active</span>
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', marginBottom: 8, letterSpacing: '-0.02em' }}>
+                TracePK Live Chat
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.88rem', maxWidth: 320, lineHeight: 1.65, margin: '0 auto 24px auto' }}>
+                Select a conversation from the left panel to start chatting with your customers in real-time.
+              </div>
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: '0.72rem', color: '#25d366', fontWeight: 600,
+                background: 'rgba(37,211,102,0.08)',
+                border: '1px solid rgba(37,211,102,0.2)',
+                padding: '6px 14px', borderRadius: 20
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#25d366', display: 'inline-block', animation: 'ping 2s ease infinite' }} />
+                End-to-End Encrypted · Secure Connection Active
               </div>
             </div>
           )}
         </div>
-
       </div>
 
-      {/* --- IMAGE ZOOM MODAL OVERLAY --- */}
+      {/* IMAGE ZOOM MODAL */}
       {zoomedImage && (
-        <div 
-          className="wa-image-zoom-overlay"
-          onClick={() => setZoomedImage(null)}
-        >
+        <div className="wa-image-zoom-overlay" onClick={() => setZoomedImage(null)}>
           <img src={zoomedImage} alt="Zoomed View" className="wa-image-zoom-img" />
         </div>
       )}
 
-      {/* --- MODULE 7: GLOBAL COMMAND PALETTE (Cmd+K) --- */}
+      {/* GLOBAL COMMAND PALETTE */}
       {showCmdPalette && (
         <div
           className="cmd-palette-overlay"
@@ -515,7 +600,7 @@ export default function WhatsAppPortal() {
                 cmdSections.map(section => (
                   <div key={section}>
                     <div className="cmd-palette-section-title">{section}</div>
-                    {filteredCmdItems.filter(c => c.section === section).map((item, idx) => {
+                    {filteredCmdItems.filter(c => c.section === section).map((item) => {
                       const globalIdx = filteredCmdItems.indexOf(item)
                       return (
                         <div
@@ -543,6 +628,7 @@ export default function WhatsAppPortal() {
           </div>
         </div>
       )}
+
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
