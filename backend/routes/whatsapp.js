@@ -401,4 +401,50 @@ router.get('/poll-statuses', authenticateToken, (req, res) => {
   }
 });
 
+// GET /api/whatsapp/in-stock-images?size=XL
+router.get('/in-stock-images', authenticateToken, (req, res) => {
+  try {
+    const { db } = require('../db');
+    const { size } = req.query;
+    if (!size) return res.status(400).json({ error: 'Size parameter is required' });
+
+    const normSize = size.trim().toUpperCase();
+
+    // Fetch the first store for store_id fallback
+    const store = db.prepare('SELECT id FROM stores LIMIT 1').get();
+    if (!store) {
+      return res.status(400).json({ error: 'No stores found in database' });
+    }
+
+    // Query in-stock variants matching the size from SKU or title
+    const rows = db.prepare(`
+      SELECT DISTINCT image_url 
+      FROM products 
+      WHERE store_id = ? 
+      AND inventory_qty > 0 
+      AND image_url IS NOT NULL 
+      AND image_url != ''
+      AND (
+        sku LIKE ? 
+        OR title LIKE ? 
+        OR title LIKE ? 
+        OR title LIKE ?
+      )
+      LIMIT 30
+    `).all(
+      store.id,
+      `%-${normSize}`,
+      `%(${normSize})%`,
+      `%/ ${normSize})%`,
+      `%(${normSize} /%`
+    );
+
+    const imageUrls = rows.map(r => r.image_url);
+    res.json({ success: true, size: normSize, imageUrls });
+  } catch (err) {
+    console.error('WhatsApp /in-stock-images error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

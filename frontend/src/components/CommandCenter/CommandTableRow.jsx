@@ -396,7 +396,7 @@ const CommandTableRow = React.memo(({
                       color: 'var(--text-muted)'
                     }}
                     value=""
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const actionValue = e.target.value;
                       if (!actionValue) return;
                       
@@ -484,6 +484,27 @@ const CommandTableRow = React.memo(({
                           const items = JSON.parse(o.line_items || '[]');
                           imageUrls = items.map(i => i.image_url).filter(Boolean);
                         } catch (e) {}
+
+                        // Fallback: If no images are cached locally, resolve them from the backend via Shopify GraphQL
+                        if (imageUrls.length === 0) {
+                          addToast(`🔍 Resolving product images for ${o.ref_number || o.id}...`, 'info');
+                          try {
+                            const res = await fetch(`/api/orders/${o.id}/details`, {
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+                              }
+                            });
+                            if (res.ok) {
+                              const freshOrder = await res.json();
+                              if (freshOrder.line_items) {
+                                const items = Array.isArray(freshOrder.line_items) ? freshOrder.line_items : JSON.parse(freshOrder.line_items || '[]');
+                                imageUrls = items.map(i => i.image_url).filter(Boolean);
+                              }
+                            }
+                          } catch (err) {
+                            console.warn('Failed to resolve fresh order details:', err);
+                          }
+                        }
 
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
                         const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';

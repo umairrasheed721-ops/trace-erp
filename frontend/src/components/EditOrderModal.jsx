@@ -104,6 +104,119 @@ export default function EditOrderModal({
   const [waTemplates, setWATemplates] = useState([]);
   const [activeCouriers, setActiveCouriers] = useState([]);
 
+  const [selectedSize, setSelectedSize] = useState('M');
+
+  const normalizeSize = (str) => {
+    if (!str) return null;
+    const norm = str.trim().toUpperCase();
+    const sizes = ['6XL', '5XL', '4XL', '3XL', '2XL', 'XXL', 'XL', 'L', 'M', 'S', 'XS'];
+    for (const size of sizes) {
+      const regex = new RegExp(`(?:\\b|[-/_()\\\\s])${size}(?:\\b|[-/_()\\\\s])`, 'i');
+      if (regex.test(norm)) {
+        return size === 'XXL' ? '2XL' : size;
+      }
+    }
+    const numMatch = norm.match(/\\b(30|32|34|36|38|40|42|44|46)\\b/);
+    if (numMatch) return numMatch[1];
+    return null;
+  };
+
+  const extractSizeFromOrder = (order) => {
+    if (!order) return 'M';
+    if (order.size_preference) return order.size_preference;
+
+    let lineItems = [];
+    try {
+      lineItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+    } catch (e) {}
+
+    for (const item of lineItems) {
+      const vt = String(item.variant_title || '').trim().toUpperCase();
+      if (vt && vt !== 'DEFAULT TITLE') {
+        const sizeMatch = normalizeSize(vt);
+        if (sizeMatch) return sizeMatch;
+      }
+      
+      const title = String(item.title || '').trim().toUpperCase();
+      const sku = String(item.sku || '').trim().toUpperCase();
+      
+      const sizeMatch = normalizeSize(title) || normalizeSize(sku);
+      if (sizeMatch) return sizeMatch;
+    }
+    return 'M';
+  };
+
+  useEffect(() => {
+    if (editingOrder) {
+      const extracted = extractSizeFromOrder(editingOrder);
+      setSelectedSize(extracted);
+    }
+  }, [editingOrder]);
+
+  const [sendingCatalog, setSendingCatalog] = useState(false);
+
+  const handleSendCatalogImages = async () => {
+    if (!editingOrder) return;
+    setSendingCatalog(true);
+    addToast(`🔍 Querying in-stock items for size ${selectedSize}...`, 'info');
+
+    try {
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(selectedSize)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to retrieve catalog images');
+      }
+
+      const imageUrls = data.imageUrls || [];
+      if (imageUrls.length === 0) {
+        addToast(`⚠️ No in-stock items found matching size: ${selectedSize}`, 'warning');
+        setSendingCatalog(false);
+        return;
+      }
+
+      addToast(`📦 Found ${imageUrls.length} items. Opening WhatsApp...`, 'success');
+
+      const name = editingOrder.customer_name ? editingOrder.customer_name.trim() : 'Customer';
+      const cleanName = name.replace(/\s+/g, ' '); 
+      
+      const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items in your size (${selectedSize}):`;
+      
+      const waPhone = String(editingOrder.phone || '').replace(/\D/g, '').replace(/^0/, '92');
+      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      
+      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(message)}`;
+      if (imageUrls.length > 0) {
+        waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
+      }
+      
+      window.open(waLink, '_blank');
+
+      const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
+      if (useLocalHelper && imageUrls.length > 0) {
+        setTimeout(async () => {
+          try {
+            await fetch('http://127.0.0.1:9099/paste-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrls })
+            });
+          } catch (err) {
+            console.warn('Local helper not running:', err.message);
+          }
+        }, 1500);
+      }
+    } catch (err) {
+      addToast(`❌ Error: ${err.message}`, 'error');
+    } finally {
+      setSendingCatalog(false);
+    }
+  };
+
   useEffect(() => {
     if (editingOrder) {
       fetch('/api/whatsapp/templates', {
@@ -499,6 +612,88 @@ export default function EditOrderModal({
                       Launches your device's native WhatsApp desktop or mobile client with custom variables pre-filled.
                     </span>
                   </div>
+                </div>
+
+                {/* 1.5. Send Catalog by Size (Manual Dispatch) */}
+                <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#fff', borderBottom: '1px solid #334155', paddingBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '1.1rem' }}>📏</span> Send Catalog by Size (Manual)
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <select
+                      value={selectedSize}
+                      onChange={(e) => setSelectedSize(e.target.value)}
+                      style={{ 
+                        flex: 1, 
+                        background: '#0f172a', 
+                        border: '1px solid #334155', 
+                        borderRadius: 12, 
+                        padding: '10px 12px', 
+                        color: '#fff', 
+                        fontSize: '0.85rem', 
+                        outline: 'none', 
+                        cursor: 'pointer',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <optgroup label="Standard Sizes">
+                        <option value="S">S</option>
+                        <option value="M">M</option>
+                        <option value="L">L</option>
+                        <option value="XL">XL</option>
+                        <option value="2XL">2XL</option>
+                        <option value="3XL">3XL</option>
+                        <option value="4XL">4XL</option>
+                        <option value="5XL">5XL</option>
+                        <option value="6XL">6XL</option>
+                      </optgroup>
+                      <optgroup label="Waist/Numeric Sizes">
+                        <option value="30">30</option>
+                        <option value="32">32</option>
+                        <option value="34">34</option>
+                        <option value="36">36</option>
+                        <option value="38">38</option>
+                        <option value="40">40</option>
+                        <option value="42">42</option>
+                        <option value="44">44</option>
+                        <option value="46">46</option>
+                      </optgroup>
+                    </select>
+
+                    <button 
+                      type="button"
+                      onClick={handleSendCatalogImages} 
+                      disabled={sendingCatalog}
+                      style={{ 
+                        background: 'linear-gradient(135deg, #10b981, #059669)', 
+                        color: '#fff', 
+                        border: 'none', 
+                        padding: '10px 16px', 
+                        borderRadius: 12, 
+                        fontSize: '0.78rem', 
+                        fontWeight: 700, 
+                        cursor: 'pointer', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: 6,
+                        transition: 'transform 0.1s, opacity 0.2s',
+                        opacity: sendingCatalog ? 0.7 : 1
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!sendingCatalog) e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!sendingCatalog) e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <span>{sendingCatalog ? '⏳ Sending...' : '📸 Send Images'}</span>
+                    </button>
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>
+                    Sends all in-stock items in the selected size to this customer.
+                  </span>
                 </div>
 
                 {/* 2. Baileys WebSocket API Actions (Auto Dispatch) */}

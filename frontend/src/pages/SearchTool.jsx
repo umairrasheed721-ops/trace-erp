@@ -751,9 +751,9 @@ export default function SearchTool() {
     setShowWAQueue(true);
   }
 
-  const sendNextWA = () => {
+  const sendNextWA = async () => {
     const orderId = selectedIds[waQueueIndex];
-    const o = allOrders.find(item => item.id === orderId);
+    let o = allOrders.find(item => item.id === orderId);
     if (!o) return;
 
     const name = formatCustomerName(o.customer_name);
@@ -817,6 +817,28 @@ export default function SearchTool() {
         const items = JSON.parse(o.line_items || '[]');
         imageUrls = items.map(i => i.image_url).filter(Boolean);
       } catch (e) {}
+
+      // Fallback: If no images are cached locally, resolve them from the backend via Shopify GraphQL
+      if (imageUrls.length === 0) {
+        addToast(`🔍 Resolving product images for ${o.ref_number || o.id}...`, 'info');
+        try {
+          const res = await fetch(`/api/orders/${o.id}/details`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+            }
+          });
+          if (res.ok) {
+            const freshOrder = await res.json();
+            o = freshOrder;
+            if (o.line_items) {
+              const items = Array.isArray(o.line_items) ? o.line_items : JSON.parse(o.line_items || '[]');
+              imageUrls = items.map(i => i.image_url).filter(Boolean);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to resolve fresh order details:', err);
+        }
+      }
 
       const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
       let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
