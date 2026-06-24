@@ -432,26 +432,23 @@ const CommandTableRow = React.memo(({
                         return;
                       }
 
-                      if (actionValue === 'manual_cod_web' || actionValue === 'manual_cod_native') {
+                      if (actionValue === 'manual_cod') {
                         e.target.value = ""; // Reset
                         const name = formatCustomerName(o.customer_name);
                         const orderId = o.ref_number || o.shopify_order_id;
                         const amount = Math.round(parseFloat(o.price) || 0);
                         const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                        const useWaWeb = actionValue === 'manual_cod_web';
+                        const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
                         const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
                         const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
                         window.open(waLink, '_blank');
                         return;
                       }
 
-                      if (actionValue.startsWith('template_web_') || actionValue.startsWith('template_native_')) {
+                      if (actionValue.startsWith('template_')) {
                         e.target.value = ""; // Reset
-                        const isWeb = actionValue.startsWith('template_web_');
-                        const templateId = isWeb 
-                          ? actionValue.replace('template_web_', '') 
-                          : actionValue.replace('template_native_', '');
+                        const templateId = actionValue.replace('template_', '');
                         const template = waTemplates.find(t => t.id === parseInt(templateId));
                         if (!template) return;
 
@@ -489,7 +486,8 @@ const CommandTableRow = React.memo(({
                         } catch (e) {}
 
                         const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                        const waBase = isWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+                        const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+                        const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
                         let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
                         if (imageUrls.length > 0) {
                           waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
@@ -518,16 +516,10 @@ const CommandTableRow = React.memo(({
                       <option value="auto_cod">Auto COD Confirm</option>
                       <option value="send_images">🖼️ Send Product Images</option>
                     </optgroup>
-                    <optgroup label="Manual Dispatch (WhatsApp Web)">
-                      <option value="manual_cod_web">Manual COD Confirm</option>
-                      {waTemplates.map(t => (
-                        <option key={t.id} value={`template_web_${t.id}`}>{t.name}</option>
-                      ))}
-                    </optgroup>
                     <optgroup label="Manual Dispatch (Native App)">
-                      <option value="manual_cod_native">Manual COD Confirm</option>
+                      <option value="manual_cod">Manual COD Confirm</option>
                       {waTemplates.map(t => (
-                        <option key={t.id} value={`template_native_${t.id}`}>{t.name}</option>
+                        <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
                       ))}
                     </optgroup>
                   </select>
