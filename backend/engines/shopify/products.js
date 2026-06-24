@@ -231,8 +231,8 @@ function syncShopifyProduct(dbInstance, storeId, shopDomain, p) {
       const imageUrl = image.src || '';
 
       dbInstance.prepare(`
-        INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price, inventory_qty, product_url, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        INSERT OR REPLACE INTO products (store_id, shopify_product_id, shopify_variant_id, sku, title, image_url, price, inventory_qty, product_url, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `).run(
         storeId,
         String(p.id),
@@ -242,7 +242,8 @@ function syncShopifyProduct(dbInstance, storeId, shopDomain, p) {
         imageUrl,
         parseFloat(v.price || 0),
         v.inventory_quantity || 0,
-        productUrl
+        productUrl,
+        p.status ? String(p.status).toLowerCase() : 'active'
       );
 
       try {

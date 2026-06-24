@@ -45,6 +45,8 @@ function processProductUpdateForCosts(storeId, payload) {
       // Fallback: first product image
       if (!imageUrl && payload.image?.src) imageUrl = payload.image.src;
 
+      const status = payload.status ? String(payload.status).toLowerCase() : 'active';
+
       // Find existing row
       const existing = db.prepare(`
         SELECT id, unit_cost, shopify_cost, selling_price
@@ -56,16 +58,17 @@ function processProductUpdateForCosts(storeId, payload) {
       `).get(Number(storeId), String(v.id), `gid://shopify/ProductVariant/${v.id}`, parentTitle, variantTitle);
 
       if (existing) {
-        // Update selling_price and image — but NOT unit_cost (user controls that)
+        // Update selling_price, image, and status — but NOT unit_cost (user controls that)
         db.prepare(`
           UPDATE product_master_costs SET
             selling_price = ?,
             variant_image_url = COALESCE(?, variant_image_url),
+            status = ?,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(newPrice, imageUrl || null, existing.id);
+        `).run(newPrice, imageUrl || null, status, existing.id);
 
-        console.log(`🔔 [Webhook] Updated price/image for "${parentTitle} - ${variantTitle}" → Rs ${newPrice}`);
+        console.log(`🔔 [Webhook] Updated price/image/status for "${parentTitle} - ${variantTitle}" (${status}) → Rs ${newPrice}`);
       }
     }
   } catch (e) {

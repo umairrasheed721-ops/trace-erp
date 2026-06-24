@@ -424,6 +424,7 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
       AND inventory_qty > 0 
       AND image_url IS NOT NULL 
       AND image_url != ''
+      AND (status = 'active' OR status IS NULL)
       AND (
         sku LIKE ? 
         OR title LIKE ? 

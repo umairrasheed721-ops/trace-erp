@@ -96,6 +96,7 @@ module.exports = [
     price REAL,
     inventory_qty INTEGER DEFAULT 0,
     product_url TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(store_id, shopify_variant_id)
   );`,
@@ -160,6 +161,7 @@ module.exports = [
     shopify_cost REAL DEFAULT 0,
     selling_price REAL DEFAULT 0,
     variant_image_url TEXT DEFAULT NULL,
+    status TEXT DEFAULT 'active',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(store_id, parent_title, variant_title)
@@ -290,7 +292,9 @@ module.exports = [
       "ALTER TABLE product_master_costs ADD COLUMN variant_image_url TEXT DEFAULT NULL",
       "ALTER TABLE orders ADD COLUMN tracking_history TEXT DEFAULT NULL",
       "ALTER TABLE orders ADD COLUMN shipping_fee REAL DEFAULT 0",
-      "ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0"
+      "ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0",
+      "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'active'",
+      "ALTER TABLE product_master_costs ADD COLUMN status TEXT DEFAULT 'active'"
     ];
 
     alters.forEach(sql => {

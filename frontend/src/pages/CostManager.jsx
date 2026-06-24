@@ -770,8 +770,29 @@ export default function CostManager() {
                           })()}
 
                           <span style={{ color: 'var(--text-primary)' }}>{p.name}</span>
-                          {p.hasCost && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
-                          {p.hasDrift && <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
+                           {(() => {
+                             const status = p.variants[0]?.status || 'active';
+                             if (status !== 'active') {
+                               return (
+                                 <span style={{ 
+                                   fontSize: '0.65rem', 
+                                   fontWeight: 700,
+                                   textTransform: 'uppercase',
+                                   color: status === 'draft' ? '#fb923c' : '#94a3b8', 
+                                   background: status === 'draft' ? 'rgba(251,146,60,0.1)' : 'rgba(148,163,184,0.1)', 
+                                   border: `1px solid ${status === 'draft' ? '#fb923c' : '#94a3b8'}`,
+                                   padding: '2px 6px', 
+                                   borderRadius: 4,
+                                   marginLeft: 6
+                                 }}>
+                                   {status}
+                                 </span>
+                               );
+                             }
+                             return null;
+                           })()}
+                           {p.hasCost && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                           {p.hasDrift && <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
                         </div>
                         <div style={{ fontSize: '0.7rem', marginTop: 4, marginLeft: 52, opacity: 0.6, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
                           {(() => {

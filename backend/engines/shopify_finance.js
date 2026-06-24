@@ -240,6 +240,7 @@ async function getShopifyInventoryCosts(store) {
               }
               product {
                 title
+                status
               }
               inventoryItem {
                 unitCost {
@@ -292,6 +293,7 @@ async function getShopifyInventoryCosts(store) {
     const rawCost = node.inventoryItem?.unitCost?.amount;
     const cost = rawCost ? parseFloat(rawCost) : 0;
     const sellingPrice = parseFloat(node.price || 0);
+    const status = node.product?.status ? String(node.product.status).toLowerCase() : 'active';
 
     let qty = 0;
     const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
@@ -309,7 +311,8 @@ async function getShopifyInventoryCosts(store) {
         shopify_cost: cost, 
         selling_price: sellingPrice,
         qty: qty,
-        image_url: node.image?.url || ''
+        image_url: node.image?.url || '',
+        status: status
       };
     } else {
       aggregated[key].qty += qty;

@@ -62,21 +62,23 @@ async function syncStoreInventoryAndCosts(store) {
               shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?,
               shopify_cost = ?, selling_price = ?, inventory_qty = ?,
               variant_image_url = COALESCE(?, variant_image_url),
+              status = ?,
               updated_at = datetime('now')
             WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, existing.id);
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.status || 'active', existing.id);
         } else {
           db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, status, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
               shopify_variant_id = excluded.shopify_variant_id,
               sku = COALESCE(excluded.sku, product_master_costs.sku),
               shopify_cost = excluded.shopify_cost,
               selling_price = excluded.selling_price,
               inventory_qty = excluded.inventory_qty,
+              status = excluded.status,
               updated_at = datetime('now')
-          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty);
+          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.status || 'active');
         }
       }
     })();
