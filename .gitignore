@@ -67,4 +67,6 @@ shopify_theme/
 # WhatsApp Local Helper temporary assets
 whatsapp-local-helper/helper-app/temp_img_*
 whatsapp-local-helper/helper-app/macro.*
+whatsapp-local-helper/helper-app/cache/
+
 

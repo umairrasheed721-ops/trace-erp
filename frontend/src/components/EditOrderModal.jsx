@@ -174,6 +174,18 @@ export default function EditOrderModal({
         // Auto-select first 30 variants
         const initialSelected = new Set(list.slice(0, 30).map(v => v.shopify_variant_id));
         setSelectedCatalogVariants(initialSelected);
+
+        if (list.length > 0) {
+          const imageUrls = list.map(v => v.image_url).filter(Boolean);
+          const useLocalHelper = localStorage.getItem('trace_use_local_helper') === 'true';
+          if (useLocalHelper && imageUrls.length > 0) {
+            fetch('http://127.0.0.1:9099/pre-fetch-images', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrls })
+            }).catch(err => console.debug('Local helper background pre-fetch failed/inactive:', err.message));
+          }
+        }
       } else {
         setCatalogVariants([]);
         setSelectedCatalogVariants(new Set());

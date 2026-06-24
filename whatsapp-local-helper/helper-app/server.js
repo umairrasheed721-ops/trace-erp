@@ -214,6 +214,90 @@ app.get('/fetch-image', async (req, res) => {
   }
 });
 
+// Background prefetch worker queue
+let prefetchQueue = [];
+let isPrefetching = false;
+
+async function processPrefetchQueue() {
+  if (isPrefetching || prefetchQueue.length === 0) return;
+  isPrefetching = true;
+
+  const cacheDir = path.join(__dirname, 'cache');
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+
+  while (prefetchQueue.length > 0) {
+    const url = prefetchQueue.shift();
+    try {
+      const cachePath = getCachePath(url);
+      
+      // If already cached, skip
+      if (fs.existsSync(cachePath) && fs.statSync(cachePath).size > 0) {
+        continue;
+      }
+
+      console.log(`⚡ [Background Cache] Downloading: ${url}`);
+      const response = await axios({
+        url: url,
+        method: 'GET',
+        responseType: 'stream',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: 10000 // 10s timeout
+      });
+
+      await new Promise((resolve, reject) => {
+        const writer = fs.createWriteStream(cachePath);
+        response.data.pipe(writer);
+        writer.on('finish', resolve);
+        writer.on('error', (err) => {
+          try { fs.unlinkSync(cachePath); } catch (e) {}
+          reject(err);
+        });
+      });
+      
+      // Sleep 200ms between downloads
+      await new Promise(r => setTimeout(r, 200));
+
+    } catch (err) {
+      console.warn(`⚠️ [Background Cache] Failed for ${url}: ${err.message}`);
+    }
+  }
+
+  isPrefetching = false;
+}
+
+// Auto clean cache older than 30 days
+function autoCleanCache() {
+  const cacheDir = path.join(__dirname, 'cache');
+  if (!fs.existsSync(cacheDir)) return;
+  
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  
+  try {
+    const files = fs.readdirSync(cacheDir);
+    let cleanedCount = 0;
+    for (const file of files) {
+      const filePath = path.join(cacheDir, file);
+      const stats = fs.statSync(filePath);
+      if (now - stats.mtimeMs > THIRTY_DAYS_MS) {
+        fs.unlinkSync(filePath);
+        cleanedCount++;
+      }
+    }
+    if (cleanedCount > 0) {
+      console.log(`🧹 Cache Garbage Collector: Removed ${cleanedCount} cached images older than 30 days.`);
+    } else {
+      console.log(`🧹 Cache Garbage Collector: Cache is clean. No images older than 30 days.`);
+    }
+  } catch (err) {
+    console.error('Failed to run cache clean:', err.message);
+  }
+}
+
 // End-point called by ERP page
 app.post('/paste-image', async (req, res) => {
   const { imageUrl, imageUrls } = req.body;
@@ -240,6 +324,29 @@ app.post('/paste-image', async (req, res) => {
   }
 });
 
+// Endpoint to pre-fetch/cache images in the background
+app.post('/pre-fetch-images', (req, res) => {
+  const { imageUrls } = req.body;
+  if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
+    return res.status(400).json({ error: 'imageUrls array is required' });
+  }
+
+  imageUrls.forEach(url => {
+    if (!prefetchQueue.includes(url)) {
+      prefetchQueue.push(url);
+    }
+  });
+
+  processPrefetchQueue();
+
+  res.json({ success: true, message: `Queued ${imageUrls.length} images for background pre-fetching.` });
+});
+
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`🔌 Trace WhatsApp Local Helper Daemon running on http://127.0.0.1:${PORT}`);
+  // Run cache cleaner on startup
+  autoCleanCache();
+  // Run cache cleaner every 24 hours
+  setInterval(autoCleanCache, 24 * 60 * 60 * 1000);
 });
+
