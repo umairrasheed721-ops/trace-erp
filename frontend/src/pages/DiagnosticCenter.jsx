@@ -163,11 +163,26 @@ export default function DiagnosticCenter() {
   }
 
   const auditTools = [
-    { id: 'zero-costs', label: 'Find 0-Cost Orders', icon: '🔍', color: 'var(--red)', bg: 'var(--red-dim)' },
-    { id: 'orphaned-costs', label: 'Find Orphaned Costs', icon: '🔗', color: 'var(--orange)', bg: 'var(--orange-dim)' },
-    { id: 'duplicates', label: 'Duplicate Watchdog', icon: '🕵️', color: 'var(--yellow)', bg: 'var(--yellow-dim)' },
-    { id: 'missing-master-costs', label: 'Inventory Leak Audit', icon: '📦', color: 'var(--blue)', bg: 'var(--blue-dim)' },
-    { id: 'profit-anomalies', label: 'Profit Anomalies', icon: '📉', color: 'var(--purple)', bg: 'var(--purple-dim)' },
+    {
+      id: 'zero-costs', label: 'Find 0-Cost Orders', icon: '🔍', color: 'var(--red)', bg: 'var(--red-dim)',
+      tip: 'Scans all orders where product cost is Rs. 0 — meaning P&L is wrong. Run this after adding new products to the catalog.'
+    },
+    {
+      id: 'orphaned-costs', label: 'Find Orphaned Costs', icon: '🔗', color: 'var(--orange)', bg: 'var(--orange-dim)',
+      tip: 'Finds cost entries in your registry that no longer match any active Shopify product variant. Safe to clean up these stale records.'
+    },
+    {
+      id: 'duplicates', label: 'Duplicate Watchdog', icon: '🕵️', color: 'var(--yellow)', bg: 'var(--yellow-dim)',
+      tip: 'Detects orders that have been processed or reconciled more than once. Critical to catch before payout calculations are finalized.'
+    },
+    {
+      id: 'missing-master-costs', label: 'Inventory Leak Audit', icon: '📦', color: 'var(--blue)', bg: 'var(--blue-dim)',
+      tip: 'Finds variants in Shopify with stock but no cost mapping in the Master Registry. These are invisible profit leaks waiting to happen.'
+    },
+    {
+      id: 'profit-anomalies', label: 'Profit Anomalies', icon: '📉', color: 'var(--purple)', bg: 'var(--purple-dim)',
+      tip: 'Highlights orders where margin is suspiciously high (>90%) or negative — usually caused by wrong cost data or courier fee errors.'
+    },
   ];
 
   return (
@@ -277,18 +292,40 @@ export default function DiagnosticCenter() {
                 disabled={activeAudit !== null}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 16px', borderRadius: 8, border: `1px solid ${activeAudit === tool.id ? tool.color : 'var(--border)'}`,
+                  padding: '12px 16px', borderRadius: 8,
+                  border: `1px solid ${activeAudit === tool.id ? tool.color : 'var(--border)'}`,
                   background: activeAudit === tool.id ? tool.bg : 'var(--bg-elevated)',
                   color: 'var(--text-primary)', cursor: activeAudit !== null ? 'not-allowed' : 'pointer',
-                  fontWeight: 500, fontSize: '0.88rem', textAlign: 'left',
-                  transition: 'all 0.2s ease', opacity: activeAudit !== null && activeAudit !== tool.id ? 0.5 : 1
+                  textAlign: 'left', transition: 'all 0.2s ease',
+                  opacity: activeAudit !== null && activeAudit !== tool.id ? 0.5 : 1,
+                  width: '100%'
                 }}
                 onMouseEnter={e => { if (!activeAudit) { e.currentTarget.style.background = tool.bg; e.currentTarget.style.border = `1px solid ${tool.color}`; } }}
                 onMouseLeave={e => { if (activeAudit !== tool.id) { e.currentTarget.style.background = 'var(--bg-elevated)'; e.currentTarget.style.border = '1px solid var(--border)'; } }}
               >
-                <span style={{ fontSize: 18, width: 28, textAlign: 'center' }}>{activeAudit === tool.id ? '⏳' : tool.icon}</span>
-                <span>{activeAudit === tool.id ? `Running ${tool.label}...` : tool.label}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 14, opacity: 0.4 }}>›</span>
+                {/* Icon */}
+                <span style={{
+                  fontSize: 20, width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: activeAudit === tool.id ? tool.color + '33' : 'var(--bg-hover)'
+                }}>
+                  {activeAudit === tool.id ? '⏳' : tool.icon}
+                </span>
+
+                {/* Label + Tip */}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.88rem', color: activeAudit === tool.id ? tool.color : 'var(--text-primary)' }}>
+                    {activeAudit === tool.id ? `Running ${tool.label}...` : tool.label}
+                  </span>
+                  {activeAudit !== tool.id && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400, lineHeight: 1.4 }}>
+                      {tool.tip}
+                    </span>
+                  )}
+                </span>
+
+                {/* Arrow */}
+                <span style={{ fontSize: 16, opacity: 0.3, flexShrink: 0 }}>›</span>
               </button>
             ))}
           </div>
