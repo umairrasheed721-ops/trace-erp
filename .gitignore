@@ -63,3 +63,8 @@ improvement_sheet.md
 
 # Shopify Theme files (handled in a separate git repository)
 shopify_theme/
+
+# WhatsApp Local Helper temporary assets
+whatsapp-local-helper/helper-app/temp_img_*
+whatsapp-local-helper/helper-app/macro.*
+

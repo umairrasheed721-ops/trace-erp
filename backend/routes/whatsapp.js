@@ -418,7 +418,7 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
 
     // Query in-stock variants matching the size from SKU or title
     const rows = db.prepare(`
-      SELECT DISTINCT image_url 
+      SELECT shopify_variant_id, sku, title, image_url, price, inventory_qty
       FROM products 
       WHERE store_id = ? 
       AND inventory_qty > 0 
@@ -431,7 +431,7 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
         OR title LIKE ? 
         OR title LIKE ?
       )
-      LIMIT 30
+      LIMIT 100
     `).all(
       store.id,
       `%-${normSize}`,
@@ -440,8 +440,7 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
       `%(${normSize} /%`
     );
 
-    const imageUrls = rows.map(r => r.image_url);
-    res.json({ success: true, size: normSize, imageUrls });
+    res.json({ success: true, size: normSize, variants: rows });
   } catch (err) {
     console.error('WhatsApp /in-stock-images error:', err.message);
     res.status(500).json({ error: err.message });

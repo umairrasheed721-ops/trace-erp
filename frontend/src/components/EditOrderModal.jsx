@@ -154,36 +154,98 @@ export default function EditOrderModal({
   }, [editingOrder]);
 
   const [sendingCatalog, setSendingCatalog] = useState(false);
+  const [catalogVariants, setCatalogVariants] = useState([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [selectedCatalogVariants, setSelectedCatalogVariants] = useState(new Set());
 
-  const handleSendCatalogImages = async () => {
-    if (!editingOrder) return;
-    setSendingCatalog(true);
-    addToast(`🔍 Querying in-stock items for size ${selectedSize}...`, 'info');
-
+  const fetchCatalogVariants = async (size) => {
+    if (!editingOrder || !size) return;
+    setLoadingCatalog(true);
     try {
       const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(selectedSize)}`, {
+      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
       
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to retrieve catalog images');
+      if (res.ok && data.success) {
+        const list = data.variants || [];
+        setCatalogVariants(list);
+        // Auto-select first 30 variants
+        const initialSelected = new Set(list.slice(0, 30).map(v => v.shopify_variant_id));
+        setSelectedCatalogVariants(initialSelected);
+      } else {
+        setCatalogVariants([]);
+        setSelectedCatalogVariants(new Set());
       }
+    } catch (err) {
+      console.error('Error fetching catalog variants:', err);
+      setCatalogVariants([]);
+      setSelectedCatalogVariants(new Set());
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
 
-      const imageUrls = data.imageUrls || [];
-      if (imageUrls.length === 0) {
-        addToast(`⚠️ No in-stock items found matching size: ${selectedSize}`, 'warning');
-        setSendingCatalog(false);
+  useEffect(() => {
+    if (editingOrder && selectedSize) {
+      fetchCatalogVariants(selectedSize);
+    }
+  }, [selectedSize, editingOrder]);
+
+  const toggleVariantSelection = (variantId) => {
+    const next = new Set(selectedCatalogVariants);
+    if (next.has(variantId)) {
+      next.delete(variantId);
+    } else {
+      if (next.size >= 30) {
+        addToast('⚠️ Cannot select more than 30 images to respect WhatsApp anti-spam policies.', 'warning');
         return;
       }
+      next.add(variantId);
+    }
+    setSelectedCatalogVariants(next);
+  };
 
-      addToast(`📦 Found ${imageUrls.length} items. Opening WhatsApp...`, 'success');
+  const handleSelectAllToggle = () => {
+    const totalVariants = catalogVariants.length;
+    if (totalVariants === 0) return;
+    
+    // Target cap is either total count or 30
+    const targetCap = Math.min(totalVariants, 30);
+    const isAllSelected = selectedCatalogVariants.size >= targetCap;
+    
+    if (isAllSelected) {
+      setSelectedCatalogVariants(new Set());
+    } else {
+      const next = new Set(catalogVariants.slice(0, 30).map(v => v.shopify_variant_id));
+      setSelectedCatalogVariants(next);
+      if (totalVariants > 30) {
+        addToast('ℹ️ Selected first 30 items to respect WhatsApp limit.', 'info');
+      }
+    }
+  };
+
+  const handleSendCatalogImages = async () => {
+    if (!editingOrder) return;
+    if (selectedCatalogVariants.size === 0) {
+      addToast('⚠️ Please select at least one item to send.', 'warning');
+      return;
+    }
+    
+    setSendingCatalog(true);
+    try {
+      const selectedObjects = catalogVariants.filter(v => selectedCatalogVariants.has(v.shopify_variant_id));
+      const imageUrls = selectedObjects.map(v => v.image_url);
+      
+      addToast(`📦 Preparing ${imageUrls.length} items. Opening WhatsApp...`, 'success');
 
       const name = editingOrder.customer_name ? editingOrder.customer_name.trim() : 'Customer';
       const cleanName = name.replace(/\s+/g, ' '); 
       
-      const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items in your size (${selectedSize}):`;
+      // Structured list of variants
+      const itemsListText = selectedObjects.map((v, idx) => `*${idx + 1}.* ${v.title} - Rs. ${v.price.toLocaleString()}`).join('\n');
+      const message = `Assalam o Alaikum ${cleanName}, here are the available in-stock items in your size (${selectedSize}):\n\n${itemsListText}`;
       
       const waPhone = String(editingOrder.phone || '').replace(/\D/g, '').replace(/^0/, '92');
       const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
@@ -664,7 +726,7 @@ export default function EditOrderModal({
                     <button 
                       type="button"
                       onClick={handleSendCatalogImages} 
-                      disabled={sendingCatalog}
+                      disabled={sendingCatalog || selectedCatalogVariants.size === 0}
                       style={{ 
                         background: 'linear-gradient(135deg, #10b981, #059669)', 
                         color: '#fff', 
@@ -679,20 +741,109 @@ export default function EditOrderModal({
                         justifyContent: 'center', 
                         gap: 6,
                         transition: 'transform 0.1s, opacity 0.2s',
-                        opacity: sendingCatalog ? 0.7 : 1
+                        opacity: (sendingCatalog || selectedCatalogVariants.size === 0) ? 0.6 : 1
                       }}
                       onMouseEnter={(e) => {
-                        if (!sendingCatalog) e.currentTarget.style.transform = 'translateY(-1px)';
+                        if (!sendingCatalog && selectedCatalogVariants.size > 0) e.currentTarget.style.transform = 'translateY(-1px)';
                       }}
                       onMouseLeave={(e) => {
-                        if (!sendingCatalog) e.currentTarget.style.transform = 'translateY(0)';
+                        if (!sendingCatalog && selectedCatalogVariants.size > 0) e.currentTarget.style.transform = 'translateY(0)';
                       }}
                     >
-                      <span>{sendingCatalog ? '⏳ Sending...' : '📸 Send Images'}</span>
+                      <span>{sendingCatalog ? '⏳ Sending...' : `📸 Send Images (${selectedCatalogVariants.size})`}</span>
                     </button>
                   </div>
+
+                  {/* Checklist & Preview Section */}
+                  {loadingCatalog ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+                      <span style={{ width: 16, height: 16, border: '2px solid #6366f1', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }}></span>
+                      <span>Loading items in size {selectedSize}...</span>
+                    </div>
+                  ) : catalogVariants.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        <input
+                          type="checkbox"
+                          checked={catalogVariants.length > 0 && selectedCatalogVariants.size >= Math.min(catalogVariants.length, 30)}
+                          onChange={handleSelectAllToggle}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span onClick={handleSelectAllToggle} style={{ cursor: 'pointer', fontWeight: 600, color: '#fff' }}>
+                          Select All ({selectedCatalogVariants.size} / {Math.min(catalogVariants.length, 30)} selected)
+                        </span>
+                        {catalogVariants.length > 30 && (
+                          <span style={{ color: '#fb923c', marginLeft: 'auto' }}>
+                            ⚠️ Max 30 limit
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ 
+                        maxHeight: 200, 
+                        overflowY: 'auto', 
+                        border: '1px solid #334155', 
+                        borderRadius: 12, 
+                        background: '#0f172a',
+                        padding: 8,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8
+                      }}>
+                        {catalogVariants.map((v) => {
+                          const isSelected = selectedCatalogVariants.has(v.shopify_variant_id);
+                          return (
+                            <div 
+                              key={v.shopify_variant_id}
+                              onClick={() => toggleVariantSelection(v.shopify_variant_id)}
+                              style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: 10, 
+                                padding: '6px 8px', 
+                                borderRadius: 8, 
+                                background: isSelected ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                                border: `1px solid ${isSelected ? 'rgba(16, 185, 129, 0.3)' : 'transparent'}`,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => { e.stopPropagation(); toggleVariantSelection(v.shopify_variant_id); }}
+                                style={{ cursor: 'pointer' }}
+                              />
+                              <img 
+                                src={v.image_url} 
+                                alt={v.title} 
+                                style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', border: '1px solid #334155' }} 
+                              />
+                              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {v.title}
+                                </span>
+                                {v.sku && (
+                                  <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                                    {v.sku}
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981', flexShrink: 0 }}>
+                                Rs. {v.price.toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ padding: '16px', border: '1px dashed #334155', borderRadius: 12, textAlign: 'center', color: '#fb923c', fontSize: '0.8rem' }}>
+                      ⚠️ No in-stock items found matching size: {selectedSize}
+                    </div>
+                  )}
                   <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>
-                    Sends all in-stock items in the selected size to this customer.
+                    Selects available catalog items of size {selectedSize} to dispatch. WhatsApp dispatches are capped at 30 items per message to avoid spam flags.
                   </span>
                 </div>
 
