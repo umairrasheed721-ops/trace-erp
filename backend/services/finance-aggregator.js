@@ -4,34 +4,52 @@ class FinanceAggregator {
   static async getMissingProductList(storeId) {
     const orders = db.prepare('SELECT line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(storeId));
     const productCounts = {};
-    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
 
     console.log(`🔍 Scanning missing costs for Store ${storeId}. Orders found: ${orders.length}`);
     
     orders.forEach(o => {
-      const itemsStr = o.line_items || o.product_titles;
-      if (!itemsStr) return;
-      
-      let match;
-      regex.lastIndex = 0; 
-      while ((match = regex.exec(itemsStr)) !== null) {
-        const fullName = match[1].trim();
-        if (!fullName) continue;
-        
-        const parts = fullName.split(' - ');
-        const parentName = parts[0].trim();
-        const variantName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
-        const qty = parseInt(match[2]) || 0;
+      let parsedItems = [];
+      try {
+        if (o.line_items) parsedItems = JSON.parse(o.line_items);
+      } catch (e) {}
 
-        if (!productCounts[parentName]) {
-          productCounts[parentName] = { name: parentName, count: 0, variants: {} };
+      if (parsedItems.length > 0) {
+        for (const item of parsedItems) {
+          const parentName = (item.title || '').trim();
+          const variantName = (item.variant_title || '').trim();
+          if (!parentName) continue;
+
+          if (!productCounts[parentName]) {
+            productCounts[parentName] = { name: parentName, count: 0, variants: {} };
+          }
+          productCounts[parentName].count += 1;
+          
+          if (!productCounts[parentName].variants[variantName]) {
+            productCounts[parentName].variants[variantName] = { name: variantName, count: 0 };
+          }
+          productCounts[parentName].variants[variantName].count += 1;
         }
-        productCounts[parentName].count += 1; // Number of orders
-        
-        if (!productCounts[parentName].variants[variantName]) {
-          productCounts[parentName].variants[variantName] = { name: variantName, count: 0 };
+      } else if (o.product_titles) {
+        const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+        let match;
+        while ((match = regex.exec(o.product_titles)) !== null) {
+          const fullName = match[1].trim();
+          if (!fullName) continue;
+          
+          const parts = fullName.split(' - ');
+          const parentName = parts[0].trim();
+          const variantName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
+
+          if (!productCounts[parentName]) {
+            productCounts[parentName] = { name: parentName, count: 0, variants: {} };
+          }
+          productCounts[parentName].count += 1;
+          
+          if (!productCounts[parentName].variants[variantName]) {
+            productCounts[parentName].variants[variantName] = { name: variantName, count: 0 };
+          }
+          productCounts[parentName].variants[variantName].count += 1;
         }
-        productCounts[parentName].variants[variantName].count += 1;
       }
     });
 
