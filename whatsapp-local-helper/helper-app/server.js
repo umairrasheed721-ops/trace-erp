@@ -5,12 +5,25 @@ const path = require('path');
 const { exec } = require('child_process');
 const axios = require('axios');
 const crypto = require('crypto');
+const http = require('http');
+const https = require('https');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const PORT = 9099;
+
+// Keep-Alive connection pool for faster subsequent downloads
+const axiosInstance = axios.create({
+  httpAgent: new http.Agent({ keepAlive: true, maxSockets: 25, keepAliveMsecs: 1000 }),
+  httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 25, keepAliveMsecs: 1000 }),
+  timeout: 10000 // 10s timeout
+});
+
+
+// Global dispatching flag to prioritize user dispatch network traffic
+let isDispatching = false;
 
 // Helper to generate md5 hash filename for caching
 function getCachePath(url) {
@@ -29,8 +42,8 @@ function getCachePath(url) {
   return path.join(__dirname, 'cache', `${urlHash}${ext}`);
 }
 
-// Helper to download multiple images to temp files, utilizing disk cache
-async function downloadImages(urls) {
+// Helper to download multiple images to temp files, utilizing disk cache & downloading in parallel
+async function downloadImages(urls, concurrency = 5) {
   const downloadedFiles = [];
   
   // Cleanup any old temp files first
@@ -41,56 +54,80 @@ async function downloadImages(urls) {
     fs.mkdirSync(cacheDir, { recursive: true });
   }
 
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
-    try {
-      const cachePath = getCachePath(url);
-      const ext = path.extname(cachePath);
-      const tempPath = path.join(__dirname, `temp_img_${i}${ext}`);
+  isDispatching = true;
+  console.log(`🚀 Dispatch started. Pausing background pre-fetching queue.`);
 
-      // Check if image is already cached
-      let useCached = false;
-      if (fs.existsSync(cachePath)) {
-        const stats = fs.statSync(cachePath);
-        if (stats.size > 0) {
-          useCached = true;
+  try {
+    const tasks = urls.map((url, index) => ({ url, index }));
+    const total = urls.length;
+
+    const worker = async () => {
+      while (tasks.length > 0) {
+        const task = tasks.shift();
+        if (!task) break;
+        const { url, index } = task;
+
+        try {
+          const cachePath = getCachePath(url);
+          const ext = path.extname(cachePath);
+          const tempPath = path.join(__dirname, `temp_img_${index}${ext}`);
+
+          // Check if image is already cached
+          let useCached = false;
+          if (fs.existsSync(cachePath)) {
+            const stats = fs.statSync(cachePath);
+            if (stats.size > 0) {
+              useCached = true;
+            }
+          }
+
+          if (useCached) {
+            console.log(`⚡ Cache Hit [${index + 1}/${total}]: ${url}`);
+            fs.copyFileSync(cachePath, tempPath);
+            downloadedFiles[index] = tempPath;
+          } else {
+            console.log(`🌐 Cache Miss [${index + 1}/${total}]. Downloading image...`);
+            const response = await axiosInstance({
+              url: url,
+              method: 'GET',
+              responseType: 'stream',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              }
+            });
+
+            await new Promise((resolve, reject) => {
+              const writer = fs.createWriteStream(cachePath);
+              response.data.pipe(writer);
+              writer.on('finish', () => {
+                fs.copyFileSync(cachePath, tempPath);
+                downloadedFiles[index] = tempPath;
+                resolve();
+              });
+              writer.on('error', (err) => {
+                try { fs.unlinkSync(cachePath); } catch (e) {}
+                reject(err);
+              });
+            });
+            console.log(`✅ Cache Saved [${index + 1}/${total}]: ${url}`);
+          }
+        } catch (e) {
+          console.error(`❌ Failed to process image at index ${index}:`, e.message);
         }
       }
+    };
 
-      if (useCached) {
-        console.log(`⚡ Cache Hit for image ${i + 1}/${urls.length}: ${url}`);
-        fs.copyFileSync(cachePath, tempPath);
-        downloadedFiles.push(tempPath);
-      } else {
-        console.log(`🌐 Cache Miss. Downloading image ${i + 1}/${urls.length}: ${url}`);
-        const response = await axios({
-          url: url,
-          method: 'GET',
-          responseType: 'stream',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          }
-        });
-        
-        await new Promise((resolve, reject) => {
-          const writer = fs.createWriteStream(cachePath);
-          response.data.pipe(writer);
-          writer.on('finish', () => {
-            fs.copyFileSync(cachePath, tempPath);
-            downloadedFiles.push(tempPath);
-            resolve();
-          });
-          writer.on('error', (err) => {
-            try { fs.unlinkSync(cachePath); } catch (e) {}
-            reject(err);
-          });
-        });
-      }
-    } catch (e) {
-      console.error(`Failed to process image at index ${i}:`, e.message);
-    }
+    // Run parallel workers
+    const workers = Array(Math.min(concurrency, total)).fill(null).map(() => worker());
+    await Promise.all(workers);
+
+  } finally {
+    isDispatching = false;
+    console.log(`🏁 Dispatch complete. Resuming background pre-fetching queue.`);
+    processPrefetchQueue();
   }
-  return downloadedFiles;
+
+  return downloadedFiles.filter(Boolean);
 }
 
 // Clean old temporary files (handles any extension)
@@ -228,6 +265,13 @@ async function processPrefetchQueue() {
   }
 
   while (prefetchQueue.length > 0) {
+    // Yield network bandwidth to active send operation
+    if (isDispatching) {
+      console.log(`⏳ [Background Cache] Yielding network bandwidth to active sending...`);
+      await new Promise(r => setTimeout(r, 1000));
+      continue;
+    }
+
     const url = prefetchQueue.shift();
     try {
       const cachePath = getCachePath(url);
@@ -238,14 +282,13 @@ async function processPrefetchQueue() {
       }
 
       console.log(`⚡ [Background Cache] Downloading: ${url}`);
-      const response = await axios({
+      const response = await axiosInstance({
         url: url,
         method: 'GET',
         responseType: 'stream',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 10000 // 10s timeout
+        }
       });
 
       await new Promise((resolve, reject) => {
