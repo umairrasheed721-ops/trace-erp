@@ -159,13 +159,22 @@ export default function CostManager() {
   const pendingItems = sorted.filter(p => !p.hasCost)
   const verifiedItems = sorted.filter(p => p.hasCost)
   const continueSellingItems = sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue'))
+  const activeItems = sorted.filter(p => (p.variants[0]?.status || 'active') === 'active')
+  const draftItems = sorted.filter(p => p.variants[0]?.status === 'draft')
+  const archivedItems = sorted.filter(p => p.variants[0]?.status === 'archived')
   const currentList = activeTab === 'pending'
     ? pendingItems
     : activeTab === 'verified'
       ? verifiedItems
       : activeTab === 'continue_selling'
         ? continueSellingItems
-        : []
+        : activeTab === 'active'
+          ? activeItems
+          : activeTab === 'draft'
+            ? draftItems
+            : activeTab === 'archived'
+              ? archivedItems
+              : []
 
   // --- Handlers ---
   const handleSyncShopify = async () => {
@@ -560,6 +569,9 @@ export default function CostManager() {
           { key: 'pending',  label: 'Pending',  count: pendingItems.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
           { key: 'verified', label: 'Verified', count: verifiedItems.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
           { key: 'continue_selling', label: 'Continue Selling', count: continueSellingItems.length, color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🔄' },
+          { key: 'active',   label: 'Active',   count: activeItems.length,   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',   icon: '🟢' },
+          { key: 'draft',    label: 'Draft',    count: draftItems.length,    color: '#fb923c', bg: 'rgba(251,146,60,0.12)',   icon: '📝' },
+          { key: 'archived', label: 'Archived', count: archivedItems.length, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)',  icon: '📦' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: 'var(--brand)', bg: 'var(--brand-glow)',  icon: '👻' },
         ].map(t => (
           <button
@@ -586,7 +598,7 @@ export default function CostManager() {
         ))}
       </div>
 
-      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling') && (
+      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'archived') && (
         <>
           {/* ── Smart Toolbar ── */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -686,21 +698,33 @@ export default function CostManager() {
               borderRadius: 12, padding: '40px', textAlign: 'center'
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
-                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : '⏳'}
+                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'archived' ? '📦' : '⏳'}
               </div>
               <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
                 {activeTab === 'pending'
                   ? 'All products are verified!'
                   : activeTab === 'continue_selling'
                     ? 'No continue selling products'
-                    : 'No verified products yet'}
+                    : activeTab === 'active'
+                      ? 'No active products'
+                      : activeTab === 'draft'
+                        ? 'No draft products'
+                        : activeTab === 'archived'
+                          ? 'No archived products'
+                          : 'No verified products yet'}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {activeTab === 'pending'
                   ? 'Every product in your registry has an accepted cost.'
                   : activeTab === 'continue_selling'
                     ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
-                    : 'Accept costs for your products to see them here.'}
+                    : activeTab === 'active'
+                      ? 'No products are currently active on your Shopify store.'
+                      : activeTab === 'draft'
+                        ? 'No products are in draft status.'
+                        : activeTab === 'archived'
+                          ? 'No products are archived.'
+                          : 'Accept costs for your products to see them here.'}
               </div>
             </div>
           )}
