@@ -151,32 +151,33 @@ function copyImagesToClipboardAndSend(filePaths) {
   if (filePaths.length === 0) return;
 
   if (platform === 'darwin') {
-    // macOS: Copy each file as TIFF picture data to clipboard and paste sequentially.
-    // Pasting subsequent images in WhatsApp Desktop adds them to the media group.
-    let scriptActions = '';
-    for (let i = 0; i < filePaths.length; i++) {
-      const absolutePath = path.resolve(filePaths[i]);
-      scriptActions += `
-        try
-          set the clipboard to (read (POSIX file "${absolutePath}") as TIFF picture)
-          delay 0.3
-          tell application "System Events"
-            keystroke "v" using {command down}
-          end tell
-          delay 0.6
-        on error errMsg
-          log errMsg
-        end try
-      `;
-    }
+    // macOS: Use Cocoa AppKit Framework via scripting additions to set NSPasteboard.
+    // This allows copying multiple file URLs to the clipboard at once, so WhatsApp pastes them in one go.
+    const fileAdditions = filePaths.map(fp => {
+      const absolutePath = path.resolve(fp);
+      return `fileURLs's addObject:(current application's NSURL's fileURLWithPath:"${absolutePath}")`;
+    }).join('\n');
 
     const appleScript = `
+      use framework "AppKit"
+      use framework "Foundation"
+      use scripting additions
+
       try
+        set fileURLs to current application's NSMutableArray's array()
+        ${fileAdditions}
+        
+        set pb to current application's NSPasteboard's generalPasteboard()
+        pb's clearContents()
+        pb's writeObjects:fileURLs
+        
+        delay 0.3
         tell application "System Events"
           set frontmost of process "WhatsApp" to true
           delay 0.5
+          keystroke "v" using {command down}
         end tell
-        ${scriptActions}
+        delay 0.5
       on error errMsg
         log errMsg
       end try
