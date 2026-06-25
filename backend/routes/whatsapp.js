@@ -416,15 +416,25 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'No stores found in database' });
     }
 
-    // Query in-stock variants matching the size from SKU or title
-    const rows = db.prepare(`
-      SELECT shopify_variant_id, sku, title, image_url, price, inventory_qty
+    const includeContinue = req.query.include_continue_selling === 'true';
+
+    // Query in-stock variants (and optionally continue-selling variants) matching the size
+    let queryStr = `
+      SELECT shopify_variant_id, sku, title, image_url, price, inventory_qty, inventory_policy
       FROM products 
       WHERE store_id = ? 
-      AND inventory_qty > 0 
       AND image_url IS NOT NULL 
       AND image_url != ''
       AND (status = 'active' OR status IS NULL)
+    `;
+
+    if (includeContinue) {
+      queryStr += ` AND (inventory_qty > 0 OR inventory_policy = 'continue')`;
+    } else {
+      queryStr += ` AND inventory_qty > 0`;
+    }
+
+    queryStr += `
       AND (
         sku LIKE ? 
         OR title LIKE ? 
@@ -432,7 +442,9 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
         OR title LIKE ?
       )
       LIMIT 100
-    `).all(
+    `;
+
+    const rows = db.prepare(queryStr).all(
       store.id,
       `%-${normSize}`,
       `%(${normSize})%`,

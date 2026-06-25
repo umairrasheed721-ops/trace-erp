@@ -95,6 +95,7 @@ module.exports = [
     image_url TEXT,
     price REAL,
     inventory_qty INTEGER DEFAULT 0,
+    inventory_policy TEXT DEFAULT 'deny',
     product_url TEXT DEFAULT '',
     status TEXT DEFAULT 'active',
     updated_at TEXT DEFAULT (datetime('now')),
@@ -294,7 +295,8 @@ module.exports = [
       "ALTER TABLE orders ADD COLUMN shipping_fee REAL DEFAULT 0",
       "ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0",
       "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'active'",
-      "ALTER TABLE product_master_costs ADD COLUMN status TEXT DEFAULT 'active'"
+      "ALTER TABLE product_master_costs ADD COLUMN status TEXT DEFAULT 'active'",
+      "ALTER TABLE products ADD COLUMN inventory_policy TEXT DEFAULT 'deny'"
     ];
 
     alters.forEach(sql => {

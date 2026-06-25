@@ -157,13 +157,14 @@ export default function EditOrderModal({
   const [catalogVariants, setCatalogVariants] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [selectedCatalogVariants, setSelectedCatalogVariants] = useState(new Set());
+  const [includeContinueSelling, setIncludeContinueSelling] = useState(true);
 
-  const fetchCatalogVariants = async (size) => {
+  const fetchCatalogVariants = async (size, includeContinue) => {
     if (!editingOrder || !size) return;
     setLoadingCatalog(true);
     try {
       const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}`, {
+      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}&include_continue_selling=${includeContinue ? 'true' : 'false'}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -201,9 +202,9 @@ export default function EditOrderModal({
 
   useEffect(() => {
     if (editingOrder && selectedSize) {
-      fetchCatalogVariants(selectedSize);
+      fetchCatalogVariants(selectedSize, includeContinueSelling);
     }
-  }, [selectedSize, editingOrder]);
+  }, [selectedSize, includeContinueSelling, editingOrder]);
 
   const toggleVariantSelection = (variantId) => {
     const next = new Set(selectedCatalogVariants);
@@ -764,6 +765,20 @@ export default function EditOrderModal({
                     >
                       <span>{sendingCatalog ? '⏳ Sending...' : `📸 Send Images (${selectedCatalogVariants.size})`}</span>
                     </button>
+                  </div>
+
+                  {/* Option for including out-of-stock but continue selling items */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#cbd5e1', padding: '0 4px', margin: '-4px 0 6px 0' }}>
+                    <input
+                      type="checkbox"
+                      id="wa-include-continue-selling"
+                      checked={includeContinueSelling}
+                      onChange={(e) => setIncludeContinueSelling(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <label htmlFor="wa-include-continue-selling" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Include out-of-stock variants set to "Continue Selling"
+                    </label>
                   </div>
 
                   {/* Checklist & Preview Section */}
