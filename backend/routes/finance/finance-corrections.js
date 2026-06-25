@@ -167,16 +167,6 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
   if (!store_id || !mappings) return res.status(400).json({ error: 'store_id and mappings required' });
 
   try {
-    const orders = db.prepare('SELECT id, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(store_id));
-    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
-    let healedCount = 0;
-
-    console.log(`🚀 Healing costs for Store ${store_id}. Orders to check: ${orders.length}`);
-
-    const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
-    
-    const catalog = db.prepare('SELECT parent_title, variant_title, landed_cost, packaging_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
-
     db.transaction(() => {
       for (const [pName, pCost] of Object.entries(mappings)) {
         db.prepare(`
@@ -188,48 +178,10 @@ router.post('/apply-bulk-product-costs', async (req, res) => {
             updated_at = datetime('now')
         `).run(Number(store_id), pName, pCost, pCost);
       }
-
-      for (const order of orders) {
-        const itemsStr = order.line_items || order.product_titles;
-        if (!itemsStr) continue;
-
-        let totalLanded = 0;
-        let totalPackaging = 0;
-        let match;
-        regex.lastIndex = 0;
-        
-        while ((match = regex.exec(itemsStr)) !== null) {
-          const fullName = match[1].trim();
-          const qty = parseInt(match[2]) || 0;
-          
-          const parts = fullName.split(' - ');
-          const pName = parts[0].trim();
-          const vName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
-
-          let unitPrice = mappings[fullName];
-          if (unitPrice === undefined) unitPrice = mappings[pName];
-
-          if (unitPrice === undefined) {
-             let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
-             if (!matchRow) matchRow = catalog.find(c => c.parent_title === pName);
-             if (matchRow) {
-                unitPrice = matchRow.landed_cost;
-                totalPackaging += (matchRow.packaging_cost || 0) * qty;
-             }
-          }
-          
-          if (unitPrice !== undefined) {
-            totalLanded += unitPrice * qty;
-          }
-        }
-
-        if (totalLanded > 0) {
-          updateStmt.run(totalLanded, totalPackaging, order.id);
-          healedCount++;
-        }
-      }
     })();
 
+    // Propagate cost updates using our robust helper function
+    const healedCount = healCostsForStore(store_id);
     res.json({ success: true, count: healedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -553,6 +505,10 @@ router.post('/accept-shopify-cost', (req, res) => {
       db.prepare(`INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, old_shopify_cost, new_shopify_cost, changed_by) VALUES (?,?,?,?,?,?,?,?,'bulk_accept')`)
         .run(Number(store_id), parent_title, variant_title || '', existing?.shopify_variant_id || null, existing?.unit_cost ?? null, existing?.shopify_cost ?? null, existing?.shopify_cost ?? null, existing?.shopify_cost ?? null);
     } catch (_) {}
+    
+    // Auto-heal orders matching these variants
+    healCostsForStore(store_id);
+
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -569,6 +525,10 @@ router.post('/bulk-sync-parent-costs', (req, res) => {
       SET unit_cost = ?, packaging_cost = ?, landed_cost = ?, updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ?
     `).run(unit_cost || 0, packaging_cost || 0, landed_cost, Number(store_id), parent_title);
+
+    // Auto-heal orders matching this parent title
+    healCostsForStore(store_id);
+
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -599,6 +559,9 @@ router.post('/bulk-accept-shopify-costs', (req, res) => {
       }
     } catch (_) {}
 
+    // Auto-heal orders matching these parent variants
+    healCostsForStore(store_id);
+
     res.json({ success: true, message: `Accepted costs for ${result.changes} variants` });
   } catch (error) {
     console.error("Bulk Accept Error:", error);
@@ -619,6 +582,10 @@ router.post('/revert-cost', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND variant_title = ?
     `).run(Number(store_id), parent_title, variant_title || '');
+
+    // Auto-heal orders matching these variants
+    healCostsForStore(store_id);
+
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -636,6 +603,10 @@ router.post('/bulk-revert-cost', (req, res) => {
           updated_at = datetime('now')
       WHERE store_id = ? AND parent_title = ? AND previous_unit_cost > 0
     `).run(Number(store_id), parent_title);
+
+    // Auto-heal orders matching these parent variants
+    healCostsForStore(store_id);
+
     res.json({ success: true, count: result.changes });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
