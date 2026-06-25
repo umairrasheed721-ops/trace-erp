@@ -27,6 +27,7 @@ export default function useCommandCenterBulkActions({
   keyword,
   colFilters,
   activeStoreId,
+  fetchBacklogDates,
 }) {
   const { addToast } = useApp()
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
@@ -62,6 +63,7 @@ export default function useCommandCenterBulkActions({
             addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
             setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
             setSelectedIds([])
+            if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
           }
         } catch { addToast('Status update failed', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
@@ -96,6 +98,7 @@ export default function useCommandCenterBulkActions({
             addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
             setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
             setSelectedIds([])
+            if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
           }
         } catch { addToast('Bulk error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
@@ -125,6 +128,7 @@ export default function useCommandCenterBulkActions({
             addToast(`↩️ ${selectedIds.length} orders reverted!`, 'info')
             setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Pending', tracking_number: null, courier: null } : o))
             setSelectedIds([])
+            if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
           }
         } catch { addToast('Bulk error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
@@ -251,6 +255,7 @@ export default function useCommandCenterBulkActions({
           })
           addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
           setSelectedIds([])
+          if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
         } catch { addToast('Bulk booking error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
@@ -284,6 +289,7 @@ export default function useCommandCenterBulkActions({
           })
           addToast(`🚀 Background Booking Started! Check Topbar.`, 'info')
           setSelectedIds([])
+          if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
         } catch { addToast('Bulk booking error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
@@ -310,6 +316,7 @@ export default function useCommandCenterBulkActions({
           })
           addToast(`🛑 Cancellation sequence started.`, 'info')
           setSelectedIds([])
+          if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
         } catch { addToast('Bulk cancel error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }

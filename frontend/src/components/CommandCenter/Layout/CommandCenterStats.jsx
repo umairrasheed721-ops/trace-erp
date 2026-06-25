@@ -71,7 +71,14 @@ export default function CommandCenterStats({
               return (
                 <div
                   key={bucket.label}
-                  onClick={() => setActiveAgingBucket(isActive ? null : bucket.label)}
+                  onClick={() => {
+                    if (isActive) {
+                      setActiveAgingBucket(null);
+                    } else {
+                      setStatus('Pending');
+                      setActiveAgingBucket(bucket.label);
+                    }
+                  }}
                   style={{
                     flex: 1,
                     padding: '4px 8px',

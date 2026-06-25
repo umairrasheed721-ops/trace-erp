@@ -62,6 +62,35 @@ router.get('/all-ids', (req, res) => {
   res.json({ ids: rows.map(r => r.id) });
 });
 
+// GET /api/orders/backlog-dates?store_id=1
+router.get('/backlog-dates', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  try {
+    const rows = db.prepare(`
+      SELECT order_date
+      FROM orders
+      WHERE store_id = ?
+        AND LOWER(delivery_status) LIKE '%pending%'
+        AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—' OR LENGTH(tracking_number) <= 3)
+        AND (courier IS NULL OR courier = '' OR courier = '—')
+        AND LOWER(delivery_status) NOT LIKE '%booked%'
+        AND LOWER(delivery_status) NOT LIKE '%picked%'
+        AND LOWER(delivery_status) NOT LIKE '%transit%'
+        AND LOWER(delivery_status) NOT LIKE '%attempt%'
+        AND LOWER(delivery_status) NOT LIKE '%delivered%'
+        AND LOWER(delivery_status) NOT LIKE '%return%'
+        AND LOWER(delivery_status) NOT LIKE '%cancel%'
+        AND LOWER(delivery_status) NOT LIKE '%warehouse%'
+        AND LOWER(delivery_status) NOT LIKE '%available%'
+    `).all(Number(store_id));
+    res.json({ dates: rows.map(r => r.order_date).filter(Boolean) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // GET /api/orders/:id/customer-intelligence
 router.get('/:id/customer-intelligence', (req, res) => {
   const { id } = req.params;

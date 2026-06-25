@@ -175,6 +175,7 @@ export default function SearchTool() {
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
   const [allOrders, setAllOrders] = useState([])
+  const [backlogDates, setBacklogDates] = useState([])
   const [loading, setLoading] = useState(false)
   const [debugWhere, setDebugWhere] = useState('')
   const lastSearchRef = useRef('')
@@ -341,6 +342,20 @@ export default function SearchTool() {
     fetchOrders({ isRefresh: true, wasProgrammatic: true });
   }, [fetchOrders]);
 
+  const fetchBacklogDates = useCallback(async () => {
+    if (!activeStoreId) return;
+    try {
+      const res = await fetch(`/api/orders/backlog-dates?store_id=${activeStoreId}&t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBacklogDates(data.dates || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch backlog dates:', e);
+    }
+  }, [activeStoreId]);
+
+
   // ─── Route Persistence ───────────────────────────────────────────
   const { registerModule, unregisterModule, persistModuleState, getModuleState } = useRoutePersistence()
   const pendingScrollRestoreRef = useRef(null)
@@ -499,6 +514,7 @@ export default function SearchTool() {
     keyword,
     colFilters,
     activeStoreId,
+    fetchBacklogDates,
   })
 
   const handleConfirmOrder = async (orderId) => {
@@ -514,6 +530,7 @@ export default function SearchTool() {
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/confirm`, { method: 'POST' })
       if (res.ok) {
         addToast('✅ Order Confirmed!', 'success')
+        fetchBacklogDates();
       } else {
         throw new Error('Server rejected confirmation')
       }
@@ -531,6 +548,7 @@ export default function SearchTool() {
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/revert-confirm`, { method: 'POST' })
       if (res.ok) {
         addToast('↩️ Order reverted to Pending', 'info')
+        fetchBacklogDates();
       } else {
         throw new Error('Server rejected revert')
       }
@@ -605,6 +623,7 @@ export default function SearchTool() {
             })
             if (!forceRes.ok) throw new Error((await forceRes.json()).error)
             addToast('Status updated successfully (Forced)', 'success')
+            fetchBacklogDates();
           } else {
             setAllOrders(previousOrders)
           }
@@ -613,6 +632,7 @@ export default function SearchTool() {
         }
       } else {
         addToast(`ERP Status updated to ${newStatus}`, 'success')
+        fetchBacklogDates();
       }
     } catch (err) {
       setAllOrders(previousOrders)
@@ -635,6 +655,7 @@ export default function SearchTool() {
       const data = await res.json()
       if (data.success) {
         addToast('✅ Booking Cancelled', 'info')
+        fetchBacklogDates();
       } else {
         throw new Error(data.error || 'Courier rejected cancellation')
       }
@@ -699,6 +720,7 @@ export default function SearchTool() {
       if (data.success) {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: courier, delivery_status: 'Booked' } : o))
+        fetchBacklogDates();
       } else {
         throw new Error(data.error || 'Booking rejected')
       }
@@ -727,6 +749,7 @@ export default function SearchTool() {
       if (data.success) {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
         setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'PostEx', delivery_status: 'Booked' } : o))
+        fetchBacklogDates();
       } else {
         throw new Error(data.error || 'Booking rejected')
       }
@@ -1074,16 +1097,14 @@ export default function SearchTool() {
   const agingCounts = useMemo(() => {
     const counts = {}
     const todayVal = new Date(); todayVal.setHours(0,0,0,0)
-    allOrders.forEach(o => {
-      if (!o.order_date || !isBacklogOrder(o)) return
-      
-      const d = new Date(o.order_date); d.setHours(0,0,0,0)
+    backlogDates.forEach(dateStr => {
+      const d = new Date(dateStr); d.setHours(0,0,0,0)
       const diff = Math.floor((todayVal - d) / 86400000)
       const b = agingBuckets.find(bucket => diff >= bucket.min && diff <= bucket.max)
       if (b) counts[b.label] = (counts[b.label] || 0) + 1
     })
     return counts
-  }, [allOrders, agingBuckets])
+  }, [backlogDates, agingBuckets])
 
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
@@ -1285,6 +1306,10 @@ export default function SearchTool() {
     sortMode, refreshTrigger, fetchOrders
   ]);
 
+  useEffect(() => {
+    fetchBacklogDates();
+  }, [activeStoreId, refreshTrigger, fetchBacklogDates]);
+
   // Live Updates Connection (SSE)
   useEffect(() => {
     if (!activeStoreId) return;
@@ -1346,6 +1371,7 @@ export default function SearchTool() {
                     return newOrders;
                   });
                   console.log(`[Live UI] Silently updated ${fetchedOrders.length} orders: ${fetchedOrders.map(o => o.shopify_order_id).join(', ')}`);
+                  fetchBacklogDates();
                 }
               }
             }, 2000); // 2-second buffer window
@@ -1376,7 +1402,7 @@ export default function SearchTool() {
       source.close();
       if (flushTimeout) clearTimeout(flushTimeout);
     };
-  }, [activeStoreId]);
+  }, [activeStoreId, fetchBacklogDates]);
 
   const filteredOrders = useMemo(() => {
     let result = [...displayedOrders];
