@@ -63,13 +63,14 @@ async function syncStoreInventoryAndCosts(store) {
               shopify_cost = ?, selling_price = ?, inventory_qty = ?,
               variant_image_url = COALESCE(?, variant_image_url),
               status = ?,
+              inventory_policy = ?,
               updated_at = datetime('now')
             WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.status || 'active', existing.id);
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.status || 'active', p.inventory_policy || 'deny', existing.id);
         } else {
           db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, status, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, status, inventory_policy, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
               shopify_variant_id = excluded.shopify_variant_id,
               sku = COALESCE(excluded.sku, product_master_costs.sku),
@@ -77,8 +78,9 @@ async function syncStoreInventoryAndCosts(store) {
               selling_price = excluded.selling_price,
               inventory_qty = excluded.inventory_qty,
               status = excluded.status,
+              inventory_policy = excluded.inventory_policy,
               updated_at = datetime('now')
-          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.status || 'active');
+          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.status || 'active', p.inventory_policy || 'deny');
         }
       }
     })();

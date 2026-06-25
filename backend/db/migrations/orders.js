@@ -163,6 +163,7 @@ module.exports = [
     selling_price REAL DEFAULT 0,
     variant_image_url TEXT DEFAULT NULL,
     status TEXT DEFAULT 'active',
+    inventory_policy TEXT DEFAULT 'deny',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(store_id, parent_title, variant_title)
@@ -296,7 +297,8 @@ module.exports = [
       "ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0",
       "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'active'",
       "ALTER TABLE product_master_costs ADD COLUMN status TEXT DEFAULT 'active'",
-      "ALTER TABLE products ADD COLUMN inventory_policy TEXT DEFAULT 'deny'"
+      "ALTER TABLE products ADD COLUMN inventory_policy TEXT DEFAULT 'deny'",
+      "ALTER TABLE product_master_costs ADD COLUMN inventory_policy TEXT DEFAULT 'deny'"
     ];
 
     alters.forEach(sql => {

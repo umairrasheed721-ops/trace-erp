@@ -235,6 +235,7 @@ async function getShopifyInventoryCosts(store) {
               title
               sku
               price
+              inventoryPolicy
               image {
                 url
               }
@@ -312,7 +313,8 @@ async function getShopifyInventoryCosts(store) {
         selling_price: sellingPrice,
         qty: qty,
         image_url: node.image?.url || '',
-        status: status
+        status: status,
+        inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
       };
     } else {
       aggregated[key].qty += qty;

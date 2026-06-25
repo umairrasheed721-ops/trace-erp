@@ -250,7 +250,9 @@ function syncShopifyProduct(dbInstance, storeId, shopDomain, p) {
       try {
         dbInstance.prepare(`
           UPDATE product_master_costs
-          SET variant_image_url = ?, updated_at = datetime('now')
+          SET variant_image_url = ?,
+              inventory_policy = ?,
+              updated_at = datetime('now')
           WHERE store_id = ? AND (
             shopify_variant_id = ? OR
             shopify_variant_id = ? OR
@@ -258,6 +260,7 @@ function syncShopifyProduct(dbInstance, storeId, shopDomain, p) {
           )
         `).run(
           imageUrl || null,
+          v.inventory_policy || 'deny',
           storeId,
           `gid://shopify/ProductVariant/${v.id}`,
           String(v.id),

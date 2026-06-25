@@ -158,7 +158,14 @@ export default function CostManager() {
 
   const pendingItems = sorted.filter(p => !p.hasCost)
   const verifiedItems = sorted.filter(p => p.hasCost)
-  const currentList = activeTab === 'pending' ? pendingItems : activeTab === 'verified' ? verifiedItems : []
+  const continueSellingItems = sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue'))
+  const currentList = activeTab === 'pending'
+    ? pendingItems
+    : activeTab === 'verified'
+      ? verifiedItems
+      : activeTab === 'continue_selling'
+        ? continueSellingItems
+        : []
 
   // --- Handlers ---
   const handleSyncShopify = async () => {
@@ -552,6 +559,7 @@ export default function CostManager() {
         {[
           { key: 'pending',  label: 'Pending',  count: pendingItems.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
           { key: 'verified', label: 'Verified', count: verifiedItems.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
+          { key: 'continue_selling', label: 'Continue Selling', count: continueSellingItems.length, color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🔄' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: 'var(--brand)', bg: 'var(--brand-glow)',  icon: '👻' },
         ].map(t => (
           <button
@@ -578,7 +586,7 @@ export default function CostManager() {
         ))}
       </div>
 
-      {(activeTab === 'pending' || activeTab === 'verified') && (
+      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling') && (
         <>
           {/* ── Smart Toolbar ── */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -678,15 +686,21 @@ export default function CostManager() {
               borderRadius: 12, padding: '40px', textAlign: 'center'
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
-                {activeTab === 'pending' ? '✅' : '⏳'}
+                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : '⏳'}
               </div>
               <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-                {activeTab === 'pending' ? 'All products are verified!' : 'No verified products yet'}
+                {activeTab === 'pending'
+                  ? 'All products are verified!'
+                  : activeTab === 'continue_selling'
+                    ? 'No continue selling products'
+                    : 'No verified products yet'}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {activeTab === 'pending'
                   ? 'Every product in your registry has an accepted cost.'
-                  : 'Accept costs for your products to see them here.'}
+                  : activeTab === 'continue_selling'
+                    ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
+                    : 'Accept costs for your products to see them here.'}
               </div>
             </div>
           )}
@@ -861,6 +875,9 @@ export default function CostManager() {
                                 {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
                                 {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
                                   <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
+                                )}
+                                {v.inventory_policy === 'continue' && (
+                                  <span style={{ fontSize: '0.6rem', color: '#a855f7', background: 'rgba(168,85,247,0.1)', border: '1px solid #a855f7', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>CONTINUE SELLING</span>
                                 )}
                               </div>
                               {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}

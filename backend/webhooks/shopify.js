@@ -58,17 +58,18 @@ function processProductUpdateForCosts(storeId, payload) {
       `).get(Number(storeId), String(v.id), `gid://shopify/ProductVariant/${v.id}`, parentTitle, variantTitle);
 
       if (existing) {
-        // Update selling_price, image, and status — but NOT unit_cost (user controls that)
+        // Update selling_price, image, status, and inventory_policy — but NOT unit_cost (user controls that)
         db.prepare(`
           UPDATE product_master_costs SET
             selling_price = ?,
             variant_image_url = COALESCE(?, variant_image_url),
             status = ?,
+            inventory_policy = ?,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(newPrice, imageUrl || null, status, existing.id);
+        `).run(newPrice, imageUrl || null, status, v.inventory_policy || 'deny', existing.id);
 
-        console.log(`🔔 [Webhook] Updated price/image/status for "${parentTitle} - ${variantTitle}" (${status}) → Rs ${newPrice}`);
+        console.log(`🔔 [Webhook] Updated price/image/status/policy for "${parentTitle} - ${variantTitle}" (${status}/${v.inventory_policy || 'deny'}) → Rs ${newPrice}`);
       }
     }
   } catch (e) {
