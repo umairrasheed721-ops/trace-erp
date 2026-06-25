@@ -225,44 +225,6 @@ export default function CommandTable({
   }, [debugWhere]);
 
   const tableRef = useRef(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
-
-  const handleScroll = useCallback(() => {
-    if (tableRef.current) {
-      const rect = tableRef.current.getBoundingClientRect()
-      const offset = rect.top < 0 ? -rect.top : 0
-      setScrollTop(offset)
-    }
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    window.addEventListener('resize', handleScroll)
-    handleScroll()
-    return () => {
-      window.removeEventListener('scroll', handleScroll)
-      window.removeEventListener('resize', handleScroll)
-    }
-  }, [handleScroll, filteredOrders])
-
-  const rowHeight = 44
-  const buffer = 10
-
-  const { startIndex, endIndex, topPadding, bottomPadding, visibleOrders } = useMemo(() => {
-    const start = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer)
-    const end = Math.min(filteredOrders.length, Math.ceil((scrollTop + viewportHeight) / rowHeight) + buffer)
-    const topPad = start * rowHeight
-    const bottomPad = (filteredOrders.length - end) * rowHeight
-    const visible = filteredOrders.slice(start, end)
-    return {
-      startIndex: start,
-      endIndex: end,
-      topPadding: topPad,
-      bottomPadding: bottomPad,
-      visibleOrders: visible
-    }
-  }, [scrollTop, viewportHeight, filteredOrders])
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
   const [activeTooltipOrderId, setActiveTooltipOrderId] = useState(null)
   const [breakdown, setBreakdown] = useState(null)
@@ -386,18 +348,12 @@ export default function CommandTable({
                 </td>
               </tr>
             )}
-            {topPadding > 0 && (
-              <tr style={{ height: topPadding }}>
-                <td colSpan={cols.length + 1} style={{ padding: 0, height: topPadding, border: 'none' }} />
-              </tr>
-            )}
-            {visibleOrders.map((o, index) => {
-              const actualIndex = startIndex + index;
+            {filteredOrders.map((o, index) => {
               return (
                 <CommandTableRow 
                   key={o.id} o={o} cols={cols}
                   isSelected={selectedIds.includes(o.id)}
-                  currentIndex={actualIndex}
+                  currentIndex={index}
                   lastSelectedIndex={lastSelectedIndex} setSelectedIds={setSelectedIds} setLastSelectedIndex={setLastSelectedIndex}
                   filteredOrdersLength={filteredOrders.length}
                   filteredOrdersIds={filteredOrdersIds}
@@ -419,11 +375,6 @@ export default function CommandTable({
                 />
               )
             })}
-            {bottomPadding > 0 && (
-              <tr style={{ height: bottomPadding }}>
-                <td colSpan={cols.length + 1} style={{ padding: 0, height: bottomPadding, border: 'none' }} />
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
