@@ -6,6 +6,7 @@ export default function Connect() {
   const [form, setForm] = useState({
     store_name: '', shop_domain: '', client_id: '', client_secret: '',
     postex_token: '', instaworld_key: '', instaworld_key_backup: '', instaworld_key_3: '',
+    google_maps_key: '',
     sync_start_date: ''
   })
   const [loading, setLoading] = useState(false)
@@ -74,6 +75,7 @@ export default function Connect() {
         instaworld_key: store.instaworld_key || '',
         instaworld_key_backup: store.instaworld_key_backup || '',
         instaworld_key_3: store.instaworld_key_3 || '',
+        google_maps_key: store.google_maps_key || '',
         sync_start_date: store.sync_start_date || '',
         postex_track_url: store.postex_track_url || '',
         instaworld_track_url: store.instaworld_track_url || '',
@@ -201,6 +203,10 @@ export default function Connect() {
           <div className="form-group" style={{ marginTop: 8 }}>
             <label className="form-label">Instaworld Key 3 (Optional)</label>
             <input className="form-input font-mono" placeholder="3rd API Key" value={form.instaworld_key_3} onChange={set('instaworld_key_3')} />
+          </div>
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label className="form-label">Google Maps API Key (Optional)</label>
+            <input className="form-input font-mono" placeholder="GCP API Key for Address Verification" value={form.google_maps_key} onChange={set('google_maps_key')} />
           </div>
 
           <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ marginTop: 8 }}>
@@ -349,6 +355,10 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
               <label className="form-label">Instaworld Backup Key</label>
               <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
             </div>
+          </div>
+          <div className="form-group" style={{ marginTop: 8 }}>
+            <label className="form-label">Google Maps API Key (Billing Enabled)</label>
+            <input className="form-input font-mono" placeholder="API Key for Geocoding / Address verification" value={local.google_maps_key || ''} onChange={setL('google_maps_key')} />
           </div>
           <div className="form-group">
             <label className="form-label">Instaworld proxy (Google Apps Script URL)</label>

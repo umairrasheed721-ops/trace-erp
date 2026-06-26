@@ -571,6 +571,74 @@ router.post('/:id/resync', async (req, res) => {
   }
 });
 
+// POST /api/orders/:id/verify-address - Geocode and verify address using Google Maps Geocoding API
+router.post('/:id/verify-address', async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const order = db.prepare(`
+      SELECT o.address, o.city, s.google_maps_key
+      FROM orders o
+      JOIN stores s ON o.store_id = s.id
+      WHERE o.id = ?
+    `).get(orderId);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const apiKey = order.google_maps_key;
+    if (!apiKey) {
+      return res.status(400).json({ error: 'Google Maps API Key is not configured for this store. Please set it in Connect Store settings.' });
+    }
+
+    const fullAddress = `${order.address}, ${order.city || ''}`.trim();
+    if (!fullAddress) {
+      return res.status(400).json({ error: 'Order has an empty address' });
+    }
+
+    console.log(`🗺️ [Address Verification] Querying Geocoding API for: "${fullAddress}"`);
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${apiKey}`;
+    
+    const response = await fetch(geocodeUrl);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const firstResult = data.results[0];
+      const locationType = firstResult.geometry?.location_type || 'APPROXIMATE';
+      
+      let resolvedCity = '';
+      if (firstResult.address_components) {
+        const localityComponent = firstResult.address_components.find(c => c.types.includes('locality'));
+        const admin2Component = firstResult.address_components.find(c => c.types.includes('administrative_area_level_2'));
+        const subLocalityComponent = firstResult.address_components.find(c => c.types.includes('sublocality'));
+        resolvedCity = (localityComponent || admin2Component || subLocalityComponent || {}).long_name || '';
+      }
+
+      res.json({
+        success: true,
+        status: data.status,
+        formatted_address: firstResult.formatted_address,
+        location: firstResult.geometry?.location || null,
+        location_type: locationType,
+        types: firstResult.types,
+        resolved_city: resolvedCity,
+        original_address: order.address,
+        original_city: order.city
+      });
+    } else {
+      res.json({
+        success: false,
+        status: data.status,
+        error_message: data.error_message || 'No matches found on Google Maps.',
+        results: data.results || []
+      });
+    }
+  } catch (err) {
+    console.error('Verify Address Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/update-legacy-financials - Run historical financials sync for all tenants
 router.post('/update-legacy-financials', async (req, res) => {
   const filterMissingOnly = req.body.filterMissingOnly !== false; // default to true for safety

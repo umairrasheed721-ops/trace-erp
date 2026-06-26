@@ -30,6 +30,10 @@ export default function useOrderSave({
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [sendingInvoice, setSendingInvoice] = useState(false);
 
+  // Google Maps Verification State
+  const [mapsVerifyLoading, setMapsVerifyLoading] = useState(false);
+  const [mapsVerifyResult, setMapsVerifyResult] = useState(null);
+
   // Live Math & Profit Margins
   const liveTotal = useMemo(() => {
     return Math.max(0, liveSubtotal - parseFloat(localDiscount || 0) + parseFloat(localShippingFee || 0));
@@ -217,6 +221,38 @@ export default function useOrderSave({
     }
   }, [apiBase, editingOrder, setChatMessages]);
 
+  const handleGoogleMapsVerify = useCallback(async () => {
+    if (!editingOrder?.id) return;
+    setMapsVerifyLoading(true);
+    setMapsVerifyResult(null);
+    try {
+      const res = await fetch(`${apiBase}/api/orders/${editingOrder.id}/verify-address`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        }
+      });
+      const data = await res.json();
+      setMapsVerifyResult(data);
+    } catch (err) {
+      setMapsVerifyResult({ success: false, error_message: 'Network error verifying address.' });
+    } finally {
+      setMapsVerifyLoading(false);
+    }
+  }, [apiBase, editingOrder?.id]);
+
+  const handleApplyStandardAddress = useCallback((stdAddress, stdCity) => {
+    if (!editingOrder) return;
+    const updated = { ...editingOrder, address: stdAddress, city: stdCity };
+    setEditingOrder(updated);
+    if (updateOrderField) {
+      updateOrderField(editingOrder.id, 'address', stdAddress);
+      updateOrderField(editingOrder.id, 'city', stdCity);
+    }
+    setMapsVerifyResult(null);
+  }, [editingOrder, setEditingOrder, updateOrderField]);
+
   // AI Address Quality Heuristic Score
   const addrScore = useMemo(() => {
     const addr = editingOrder?.address;
@@ -253,6 +289,11 @@ export default function useOrderSave({
     handleAddressCleanse,
     handleBookCourier,
     handleSendInvoice,
+    mapsVerifyLoading,
+    mapsVerifyResult,
+    setMapsVerifyResult,
+    handleGoogleMapsVerify,
+    handleApplyStandardAddress,
     liveTotal,
     totalOrderCost,
     netProfit,

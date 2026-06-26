@@ -26,6 +26,7 @@ module.exports = [
     sync_processed INTEGER DEFAULT 0,
     meta_ad_account_id TEXT,
     meta_access_token TEXT,
+    google_maps_key TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );`,
 
@@ -298,7 +299,8 @@ module.exports = [
       "ALTER TABLE products ADD COLUMN status TEXT DEFAULT 'active'",
       "ALTER TABLE product_master_costs ADD COLUMN status TEXT DEFAULT 'active'",
       "ALTER TABLE products ADD COLUMN inventory_policy TEXT DEFAULT 'deny'",
-      "ALTER TABLE product_master_costs ADD COLUMN inventory_policy TEXT DEFAULT 'deny'"
+      "ALTER TABLE product_master_costs ADD COLUMN inventory_policy TEXT DEFAULT 'deny'",
+      "ALTER TABLE stores ADD COLUMN google_maps_key TEXT"
     ];
 
     alters.forEach(sql => {
