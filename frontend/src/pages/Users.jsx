@@ -665,16 +665,19 @@ function RoleAuthorityMatrix({ addToast, token }) {
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading matrix...</div>
           ) : (
-            <table style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
                 <tr>
-                  <th style={{ background: 'var(--bg-elevated)', textAlign: 'left', fontWeight: 600, fontSize: '0.72rem' }}>
+                  <th style={{
+                    background: 'var(--bg-elevated)', textAlign: 'left',
+                    fontWeight: 600, fontSize: '0.72rem', padding: '12px 20px'
+                  }}>
                     Module / Tab
                   </th>
                   {roles.map(role => (
                     <th key={role} style={{
                       background: 'var(--bg-elevated)', textAlign: 'center',
-                      fontWeight: 600, fontSize: '0.72rem', minWidth: 140
+                      fontWeight: 600, fontSize: '0.72rem', minWidth: 140, padding: '12px 20px'
                     }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                         <span>{ROLE_META[role]?.icon} {role.toUpperCase()} ACCESS</span>
@@ -686,13 +689,15 @@ function RoleAuthorityMatrix({ addToast, token }) {
               <tbody>
                 {pages.map((page, idx) => (
                   <tr key={page.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)' }}>
-                    <td style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', fontWeight: 500, fontSize: '0.82rem' }}>
-                      <span style={{ fontSize: '1rem', minWidth: 20, textAlign: 'center' }}>{page.icon}</span>
-                      <span>{page.label}</span>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400 }}>{page.id}</span>
+                    <td style={{ padding: '10px 20px', fontWeight: 500, fontSize: '0.82rem', maxWidth: 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ fontSize: '1rem', minWidth: 20, textAlign: 'center' }}>{page.icon}</span>
+                        <span>{page.label}</span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400 }}>{page.id}</span>
+                      </div>
                     </td>
                     {roles.map(role => (
-                      <td key={role} style={{ textAlign: 'center', padding: '10px 16px' }}>
+                      <td key={role} style={{ textAlign: 'center', padding: '10px 20px' }}>
                         <label className="switch" style={{ display: 'inline-block' }}>
                           <input
                             type="checkbox"
