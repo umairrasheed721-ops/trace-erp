@@ -63,7 +63,9 @@ router.put('/:id/cs-update', async (req, res) => {
       const store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(newOrder.store_id);
       if (store) {
         const { appendShopifyNote } = require('../../engines/shopify_finance');
-        const note = `[TRACE ERP] Order manually edited by CS. New Total: Rs ${price}. Discount applied: Rs ${discount_amount}.`;
+        const formattedPrice = Number(price || 0).toFixed(2);
+        const formattedDiscount = Number(discount_amount || 0).toFixed(2);
+        const note = `[TRACE ERP] Order manually edited by CS. New Total: Rs ${formattedPrice}. Discount applied: Rs ${formattedDiscount}.`;
         appendShopifyNote(store, newOrder.shopify_order_id, note).catch(console.error);
       }
     }
