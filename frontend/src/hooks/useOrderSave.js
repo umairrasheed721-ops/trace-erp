@@ -162,20 +162,27 @@ export default function useOrderSave({
     fetch(`${apiBase}/api/bulk/book`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` },
-      body: JSON.stringify({ order_ids: [editingOrder.id], courier: courierName })
+      body: JSON.stringify({ ids: [editingOrder.id], courier: courierName })
     })
       .then(r => r.json())
       .then(res => {
         setBookingCourier(false);
         if (res.error) throw new Error(res.error);
-        alert(`Successfully booked with ${courierName}! Tracking #${res.results?.[0]?.tracking_number || 'GENERATED'}`);
+        
+        let displayCourier = courierName;
+        if (courierName === 'insta:primary') displayCourier = 'Instaworld API 1';
+        else if (courierName === 'insta:backup') displayCourier = 'Instaworld API 2';
+        else if (courierName === 'insta:key3') displayCourier = 'Instaworld API 3';
+        
+        alert(`Successfully booked with ${displayCourier}! (Background booking started)`);
         if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        setEditingOrder({ 
-          ...editingOrder, 
-          tracking_number: res.results?.[0]?.tracking_number || 'TRK-' + Math.floor(Math.random()*1000000),
-          courier: courierName,
+        
+        setEditingOrder(prev => ({ 
+          ...prev, 
+          tracking_number: prev.tracking_number || 'GENERATED',
+          courier: courierName.startsWith('insta:') ? 'Instaworld' : courierName,
           delivery_status: 'Booked'
-        });
+        }));
       })
       .catch(err => {
         setBookingCourier(false);

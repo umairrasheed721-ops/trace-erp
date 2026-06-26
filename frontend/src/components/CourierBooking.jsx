@@ -13,7 +13,8 @@ const CourierBooking = React.memo(({
   editingOrder,
   setEditingOrder
 }) => {
-  const standardCouriers = ['PostEx', 'Leopards', 'TCS', 'Self Delivery', 'InstaLogistics', 'Unassigned'];
+  const { activeStore } = useApp();
+  const standardCouriers = ['PostEx', 'Self Delivery', 'Unassigned'];
   const [localCourier, setLocalCourier] = React.useState('Unassigned');
   const [localTracking, setLocalTracking] = React.useState('');
   const [showCustomInput, setShowCustomInput] = React.useState(false);
@@ -163,24 +164,39 @@ const CourierBooking = React.memo(({
               <span>🚀 Book with PostEx</span>
               <span style={{ fontSize: '0.75rem', color: '#818cf8' }}>API Active</span>
             </button>
-            <button 
-              type="button"
-              onClick={() => handleBookCourier('Instaworld')} 
-              disabled={bookingCourier}
-              style={{ background: '#0f172a', color: '#fff', border: '1px solid #10b981', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-            >
-              <span>🚀 Book with Instaworld</span>
-              <span style={{ fontSize: '0.75rem', color: '#34d399' }}>API Active</span>
-            </button>
-            <button 
-              type="button"
-              onClick={() => handleBookCourier('Leopards')} 
-              disabled={bookingCourier}
-              style={{ background: '#0f172a', color: '#fff', border: '1px solid #f59e0b', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
-            >
-              <span>🚀 Book with Leopards</span>
-              <span style={{ fontSize: '0.75rem', color: '#fbbf24' }}>API Active</span>
-            </button>
+            {activeStore?.instaworld_key && (
+              <button 
+                type="button"
+                onClick={() => handleBookCourier('insta:primary')} 
+                disabled={bookingCourier}
+                style={{ background: '#0f172a', color: '#fff', border: '1px solid #10b981', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
+              >
+                <span>🚀 Book Instaworld (API 1: {activeStore.instaworld_key.substring(0, 4)}...)</span>
+                <span style={{ fontSize: '0.75rem', color: '#34d399' }}>API Active</span>
+              </button>
+            )}
+            {activeStore?.instaworld_key_backup && (
+              <button 
+                type="button"
+                onClick={() => handleBookCourier('insta:backup')} 
+                disabled={bookingCourier}
+                style={{ background: '#0f172a', color: '#fff', border: '1px solid #3b82f6', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
+              >
+                <span>🚀 Book Instaworld (API 2: {activeStore.instaworld_key_backup.substring(0, 4)}...)</span>
+                <span style={{ fontSize: '0.75rem', color: '#60a5fa' }}>API Active</span>
+              </button>
+            )}
+            {activeStore?.instaworld_key_3 && (
+              <button 
+                type="button"
+                onClick={() => handleBookCourier('insta:key3')} 
+                disabled={bookingCourier}
+                style={{ background: '#0f172a', color: '#fff', border: '1px solid #eab308', padding: '12px 16px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between' }}
+              >
+                <span>🚀 Book Instaworld (API 3: {activeStore.instaworld_key_3.substring(0, 4)}...)</span>
+                <span style={{ fontSize: '0.75rem', color: '#facc15' }}>API Active</span>
+              </button>
+            )}
           </div>
 
           {trackingNumber && (

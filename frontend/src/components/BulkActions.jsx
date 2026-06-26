@@ -174,12 +174,19 @@ export default function BulkActions({
         <option value="" disabled>🚀 BOOK ORDER...</option>
         {activeStore?.postex_token && <option value="postex">PostEx</option>}
         {activeStore?.instaworld_key && (
-          <>
-            <option value="Trax">Trax</option>
-            <option value="Leopards">Leopards</option>
-            <option value="TCS">TCS</option>
-            <option value="M&P">M&P</option>
-          </>
+          <option value="insta:primary">
+            Instaworld (API 1: {activeStore.instaworld_key.substring(0, 4)}...)
+          </option>
+        )}
+        {activeStore?.instaworld_key_backup && (
+          <option value="insta:backup">
+            Instaworld (API 2: {activeStore.instaworld_key_backup.substring(0, 4)}...)
+          </option>
+        )}
+        {activeStore?.instaworld_key_3 && (
+          <option value="insta:key3">
+            Instaworld (API 3: {activeStore.instaworld_key_3.substring(0, 4)}...)
+          </option>
         )}
       </select>
 

@@ -16,14 +16,21 @@ async function processBulkBooking(storeId, ids, courier) {
   global.syncProgress[storeId] = { status: `Bulk Booking via ${courier}...`, processed: 0, total: ids.length, success, failed };
   broadcast('sync_progress', global.syncProgress[storeId]);
 
-  let createOrderFn;
-  let cancelOrderFn;
+  let isInstaworld = false;
+  let accountType = 'primary';
+  if (courier.startsWith('insta:')) {
+    isInstaworld = true;
+    accountType = courier.split(':')[1];
+  } else if (['Trax', 'Leopards', 'CallCourier', 'TCS', 'M&P'].includes(courier)) {
+    isInstaworld = true;
+    accountType = 'primary';
+  }
 
   if (courier === 'PostEx') {
     const { createPostExOrder, cancelPostExOrder } = require('../engines/postex');
     createOrderFn = createPostExOrder;
     cancelOrderFn = cancelPostExOrder;
-  } else if (['Trax', 'Leopards', 'CallCourier', 'TCS', 'M&P'].includes(courier)) {
+  } else if (isInstaworld) {
     const { createInstaworldOrder } = require('../engines/instaworld');
     createOrderFn = createInstaworldOrder;
     cancelOrderFn = null; 
@@ -46,7 +53,7 @@ async function processBulkBooking(storeId, ids, courier) {
     try {
       // 1. Fetch Order
       const order = db.prepare(`
-        SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.gas_proxy_url
+        SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url
         FROM orders o 
         JOIN stores s ON o.store_id = s.id 
         WHERE o.id = ?
@@ -81,13 +88,22 @@ async function processBulkBooking(storeId, ids, courier) {
       let trackingNumber;
       if (courier === 'PostEx') {
         trackingNumber = await createOrderFn(order, order);
+      } else if (isInstaworld) {
+        let apiKey = order.instaworld_key;
+        if (accountType === 'backup') {
+          apiKey = order.instaworld_key_backup;
+        } else if (accountType === 'key3') {
+          apiKey = order.instaworld_key_3;
+        }
+        trackingNumber = await createOrderFn(order, order, 'TCS', apiKey);
       } else {
         trackingNumber = await createOrderFn(order, order, courier);
       }
       
-      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier, id);
+      const dbCourier = isInstaworld ? 'Instaworld' : courier;
+      db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, dbCourier, id);
       
-      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier); } catch(e) {}
+      try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, dbCourier); } catch(e) {}
       
       success++;
       broadcast('order_updated', { storeId, shopifyOrderId: order.shopify_order_id });
@@ -118,7 +134,8 @@ async function processBulkBooking(storeId, ids, courier) {
 
 // POST /api/bulk/book
 router.post('/book', (req, res) => {
-  const { ids, courier } = req.body;
+  const ids = req.body.ids || req.body.order_ids;
+  const { courier } = req.body;
   if (!ids || !ids.length || !courier) return res.status(400).json({ error: 'ids and courier required' });
 
   // Get storeId from first order
@@ -151,7 +168,7 @@ router.post('/cancel', async (req, res) => {
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
     try {
-      const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
+      const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
       if (!order) continue;
 
       const courier = (order.courier || '').toLowerCase();
@@ -161,9 +178,10 @@ router.post('/cancel', async (req, res) => {
         const { cancelPostExOrder } = require('../engines/postex');
         await cancelPostExOrder(order.tracking_number, order);
         cancelOk = true;
-      } else if (courier.includes('trax') || courier.includes('leopards') || courier.includes('callcourier')) {
-        // generic instaworld cancel if supported, else just assume local cancel
-        cancelOk = true; 
+      } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
+        const { cancelInstaworldOrder } = require('../engines/instaworld');
+        await cancelInstaworldOrder(order, order.tracking_number);
+        cancelOk = true;
       } else {
         cancelOk = true; // No courier API to hit
       }

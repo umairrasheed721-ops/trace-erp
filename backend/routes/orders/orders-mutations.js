@@ -456,10 +456,10 @@ router.post('/:id/book-instaworld', async (req, res) => {
   const { createInstaworldOrder } = require('../../engines/instaworld');
   const { fulfillShopifyOrder } = require('../../engines/shopify');
   const { getBestMatch } = require('../../engines/logistics');
-  const { courier_name } = req.body; // TCS, LCS, Leopards
+  const { account_type } = req.body;
   
   try {
-    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.store_name FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.store_name, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
@@ -469,16 +469,23 @@ router.post('/:id/book-instaworld', async (req, res) => {
     const matchedCity = getBestMatch(order.city, 'Instaworld');
     if (matchedCity) order.city = matchedCity;
 
-    // 1. Create booking
-    const trackingNumber = await createInstaworldOrder(order, order, courier_name || 'TCS');
+    let apiKey = order.instaworld_key;
+    if (account_type === 'backup') {
+      apiKey = order.instaworld_key_backup;
+    } else if (account_type === 'key3') {
+      apiKey = order.instaworld_key_3;
+    }
+
+    // 1. Create booking (default courier_name to TCS under the hood for API compatibility)
+    const trackingNumber = await createInstaworldOrder(order, order, 'TCS', apiKey);
     
     // 2. Update local database
     db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
-      .run(trackingNumber, courier_name || 'Instaworld', req.params.id);
+      .run(trackingNumber, 'Instaworld', req.params.id);
 
     // 3. Fulfill in Shopify
     try {
-      await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name || 'Instaworld');
+      await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'Instaworld');
     } catch (shopifyErr) {
       console.warn('Instaworld Booked but Shopify Fulfillment Failed:', shopifyErr.message);
     }
@@ -498,7 +505,7 @@ router.post('/:id/cancel-booking', async (req, res) => {
   const { cancelInstaworldOrder } = require('../../engines/instaworld');
   
   try {
-    const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order || !order.tracking_number) return res.status(404).json({ error: 'Order has no booking to cancel' });
 
     const courier = (order.courier || '').toLowerCase();

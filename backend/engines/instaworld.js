@@ -4,10 +4,10 @@ const { instaworldBreaker } = require('./circuit_breaker');
 /**
  * Creates a booking in Instaworld (Supports TCS, LCS, etc.)
  */
-async function createInstaworldOrder(store, order, courierName = 'TCS') {
+async function createInstaworldOrder(store, order, courierName = 'TCS', targetKey = null) {
   return instaworldBreaker.execute(async () => {
-    const { instaworld_key } = store;
-    if (!instaworld_key) throw new Error('Instaworld API Key missing');
+    const apiKey = targetKey || store.instaworld_key;
+    if (!apiKey) throw new Error('Instaworld API Key missing');
 
     // URL for one-be production
     const url = 'https://one-be.instaworld.pk/logistics/v1/bookOrder';
@@ -30,7 +30,7 @@ async function createInstaworldOrder(store, order, courierName = 'TCS') {
     const response = await instaworldFetch(url, {
       method: 'POST',
       headers: {
-        'api-key': instaworld_key,
+        'api-key': apiKey,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload),
@@ -52,22 +52,35 @@ async function createInstaworldOrder(store, order, courierName = 'TCS') {
  */
 async function cancelInstaworldOrder(store, trackingNumber) {
   return instaworldBreaker.execute(async () => {
-    const { instaworld_key } = store;
-    if (!instaworld_key) throw new Error('Instaworld API Key missing');
+    const keys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
+    if (keys.length === 0) throw new Error('Instaworld API Key missing');
 
     const url = 'https://one-be.instaworld.pk/logistics/v1/cancelOrder';
-    const response = await instaworldFetch(url, {
-      method: 'POST',
-      headers: {
-        'api-key': instaworld_key,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ tracking_number: trackingNumber }),
-      proxyUrl: store.gas_proxy_url,
-    });
+    let lastError = null;
 
-    const data = await response.json();
-    return data.success;
+    for (const key of keys) {
+      try {
+        const response = await instaworldFetch(url, {
+          method: 'POST',
+          headers: {
+            'api-key': key,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ tracking_number: trackingNumber }),
+          proxyUrl: store.gas_proxy_url,
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          return true;
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (lastError) throw lastError;
+    return false;
   });
 }
 

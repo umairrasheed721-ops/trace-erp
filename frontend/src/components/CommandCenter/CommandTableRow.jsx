@@ -22,7 +22,7 @@ const CommandTableRow = React.memo(({
 }) => {
   const diff = (parseFloat(o.price)||0) - (parseFloat(o.paid_amount)||0);
   const navigate = useNavigate();
-  const { addToast } = useApp();
+  const { addToast, activeStore } = useApp();
 
   const handleAutoCODConfirm = async () => {
     addToast("⏳ Triggering Auto COD confirmation...", "info");
@@ -183,10 +183,21 @@ const CommandTableRow = React.memo(({
                   {!o.tracking_number && s === 'confirmed' && (
                     <>
                       <option value="postex" disabled={o.cost <= 0}>⚡ Book PostEx</option>
-                      <option value="insta:TCS" disabled={o.cost <= 0}>🌐 Book TCS</option>
-                      <option value="insta:LCS" disabled={o.cost <= 0}>🌐 Book LCS</option>
-                      <option value="insta:Leopards" disabled={o.cost <= 0}>🌐 Book Leopards</option>
-                      <option value="insta:InstaLogicstics" disabled={o.cost <= 0}>🌐 Book InstaLog</option>
+                      {activeStore?.instaworld_key && (
+                        <option value="insta:primary" disabled={o.cost <= 0}>
+                          🌐 Book Instaworld (API 1: {activeStore.instaworld_key.substring(0, 4)}...)
+                        </option>
+                      )}
+                      {activeStore?.instaworld_key_backup && (
+                        <option value="insta:backup" disabled={o.cost <= 0}>
+                          🌐 Book Instaworld (API 2: {activeStore.instaworld_key_backup.substring(0, 4)}...)
+                        </option>
+                      )}
+                      {activeStore?.instaworld_key_3 && (
+                        <option value="insta:key3" disabled={o.cost <= 0}>
+                          🌐 Book Instaworld (API 3: {activeStore.instaworld_key_3.substring(0, 4)}...)
+                        </option>
+                      )}
                     </>
                   )}
                   {!!o.tracking_number && ['booked','pending','confirmed'].includes(s) && (

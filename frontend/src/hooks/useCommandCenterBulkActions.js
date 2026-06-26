@@ -271,10 +271,15 @@ export default function useCommandCenterBulkActions({
       return
     }
 
+    let label = 'Instaworld';
+    if (courier === 'insta:primary') label = 'Instaworld API 1 (Primary)';
+    else if (courier === 'insta:backup') label = 'Instaworld API 2 (Backup)';
+    else if (courier === 'insta:key3') label = 'Instaworld API 3 (Optional)';
+
     setConfirmDialog({
       isOpen: true,
-      title: `🌐 ${courier} Booking`,
-      message: `Book ${selectedIds.length} orders with ${courier} in background?`,
+      title: `🌐 ${label} Booking`,
+      message: `Book ${selectedIds.length} orders with ${label} in background?`,
       onConfirm: async () => {
         setBulkActionLoading(true)
         try {

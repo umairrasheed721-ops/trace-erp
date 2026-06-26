@@ -699,27 +699,28 @@ export default function SearchTool() {
     }
   }
 
-  const handleBookInstaworld = async (orderId, courier = 'TCS') => {
+  const handleBookInstaworld = async (orderId, accountType = 'primary') => {
     const order = allOrders.find(o => o.id === orderId)
     if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
       return
     }
-    if (!confirm(`🌐 Book this order with ${courier}?`)) return
+    const label = accountType === 'backup' ? 'Instaworld API 2 (Backup)' : accountType === 'key3' ? 'Instaworld API 3 (Optional)' : 'Instaworld API 1 (Primary)';
+    if (!confirm(`🌐 Book this order with ${label}?`)) return
     const previousOrders = [...allOrders];
-    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: courier, delivery_status: 'Booked' } : o))
+    setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, courier: 'Instaworld', delivery_status: 'Booked' } : o))
     setBookingId(orderId)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/orders/${orderId}/book-instaworld`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courier_name: courier })
+        body: JSON.stringify({ account_type: accountType })
       })
       const data = await res.json()
       if (data.success) {
         addToast(`✅ Booked! Tracking: ${data.tracking_number}`, 'success')
-        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: courier, delivery_status: 'Booked' } : o))
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: data.tracking_number, courier: 'Instaworld', delivery_status: 'Booked' } : o))
         fetchBacklogDates();
       } else {
         throw new Error(data.error || 'Booking rejected')
