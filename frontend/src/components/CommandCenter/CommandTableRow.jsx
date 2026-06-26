@@ -15,7 +15,7 @@ const formatPhone = (phoneVal) => {
 const CommandTableRow = React.memo(({ 
   o, cols, isSelected, currentIndex, lastSelectedIndex, setSelectedIds, setLastSelectedIndex, filteredOrdersLength,
   filteredOrdersIds, fetchOrderDetails, onViewHistory, bookingId, handleConfirmOrder, handleRevertConfirm, handleBookPostEx,
-  handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, getCustomerOrderCount,
+  handleCancelBooking, handleBookInstaworld, formatCustomerName, waTemplates, allOrdersCount, orderCountsMap,
   setCustomerHistoryPhone, updateOrderField, canSeeFinancials, activeTooltipOrderId, setActiveTooltipOrderId,
   fetchBreakdown, user, statusUpdatingId, handleManualStatusChange, ERP_STATUSES, getStatusColor,
   activeShopDomain, setTooltipTriggerEl, onForceResync, activeRowId, setActiveRowId
@@ -246,7 +246,7 @@ const CommandTableRow = React.memo(({
           )
         }
         if (col.id === 'customer_history') {
-          const count = o.customer_order_count !== undefined ? o.customer_order_count : getCustomerOrderCount(o.phone, o.email);
+          const count = o.customer_order_count !== undefined ? o.customer_order_count : (orderCountsMap[o.id] || 1);
           const hasIdentifier = o.phone || o.email;
           const formattedPhone = formatPhone(o.phone);
           return (
@@ -834,6 +834,7 @@ const CommandTableRow = React.memo(({
          prev.activeTooltipOrderId === next.activeTooltipOrderId &&
          prev.cols === next.cols &&
          prev.onForceResync === next.onForceResync &&
+         prev.orderCountsMap[prev.o.id] === next.orderCountsMap[next.o.id] &&
          ((prev.activeRowId === prev.o.id) === (next.activeRowId === next.o.id));
 });
 

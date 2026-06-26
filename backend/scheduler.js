@@ -27,6 +27,30 @@ function getAllTenants() {
   return tenants;
 }
 
+const activeLocks = new Set();
+
+async function runMultiTenant(jobName, task) {
+  const tenants = getAllTenants();
+  const promises = tenants.map(async (tenantId) => {
+    const lockKey = `${tenantId}:${jobName}`;
+    if (activeLocks.has(lockKey)) {
+      console.log(`[Scheduler] ⚠️ Lock active for ${lockKey}. Skipping execution.`);
+      return;
+    }
+    activeLocks.add(lockKey);
+    try {
+      await tenantContext.run(tenantId, async () => {
+        await task(tenantId);
+      });
+    } catch (err) {
+      console.error(`[Scheduler] ❌ Error in job "${jobName}" for tenant "${tenantId}":`, err.message);
+    } finally {
+      activeLocks.delete(lockKey);
+    }
+  });
+  await Promise.allSettled(promises);
+}
+
 async function syncStoreInventoryAndCosts(store) {
   console.log(`📦 [CRON] Background Inventory & Cost Sync starting for Store ${store.id}...`);
   try {
@@ -91,49 +115,42 @@ async function syncStoreInventoryAndCosts(store) {
 }
 
 async function runDynamicScheduler() {
-  try {
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const schedules = db.prepare('SELECT * FROM sync_schedules WHERE is_active = 1').all();
-          const now = new Date();
+  await runMultiTenant('dynamic_sync', async (tenantId) => {
+    try {
+      const schedules = db.prepare('SELECT * FROM sync_schedules WHERE is_active = 1').all();
+      const now = new Date();
+      
+      for (const s of schedules) {
+        const nextRun = s.next_run_at ? new Date(s.next_run_at) : null;
+        
+        if (!nextRun || nextRun <= now) {
+          console.log(`🚚 [DYNAMIC] Tenant [${tenantId}] - Triggering ${s.courier} (${s.sync_type}) sync...`);
           
-          for (const s of schedules) {
-            const nextRun = s.next_run_at ? new Date(s.next_run_at) : null;
-            
-            if (!nextRun || nextRun <= now) {
-              console.log(`🚚 [DYNAMIC] Tenant [${tenantId}] - Triggering ${s.courier} (${s.sync_type}) sync...`);
-              
-              // Calculate and save next run time FIRST to prevent overlap if check runs again
-              const intervalMs = (s.interval_minutes || 60) * 60000;
-              const newNextRun = new Date(now.getTime() + intervalMs);
-              
-              db.prepare('UPDATE sync_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?')
-                .run(now.toISOString(), newNextRun.toISOString(), s.id);
+          // Calculate and save next run time FIRST to prevent overlap if check runs again
+          const intervalMs = (s.interval_minutes || 60) * 60000;
+          const newNextRun = new Date(now.getTime() + intervalMs);
+          
+          db.prepare('UPDATE sync_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?')
+            .run(now.toISOString(), newNextRun.toISOString(), s.id);
 
-              const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-              for (const store of stores) {
-                try {
-                  if (s.courier === 'PostEx') {
-                    await syncPostEx(store, s.sync_type);
-                  } else {
-                    await syncInstaworld(store, s.sync_type);
-                  }
-                } catch (e) {
-                  console.error(`Error in dynamic sync for ${s.courier} (Tenant: ${tenantId}):`, e.message);
-                }
+          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+          for (const store of stores) {
+            try {
+              if (s.courier === 'PostEx') {
+                await syncPostEx(store, s.sync_type);
+              } else {
+                await syncInstaworld(store, s.sync_type);
               }
+            } catch (e) {
+              console.error(`Error in dynamic sync for ${s.courier} (Tenant: ${tenantId}):`, e.message);
             }
           }
-        } catch (err) {
-          // Ignore table not found errors for uninitialized/incomplete databases
         }
-      });
+      }
+    } catch (err) {
+      // Ignore table not found errors for uninitialized/incomplete databases
     }
-  } catch (err) {
-    console.error('Dynamic Scheduler Error:', err.message);
-  }
+  });
 }
 
 async function sendReviewEmails() {
@@ -215,146 +232,119 @@ module.exports = function schedulerInit() {
   // 1b. Every 10 minutes: Automated background Shopify order ingestion (Hybrid Engine Recovery)
   cron.schedule('*/10 * * * *', async () => {
     console.log('🔄 [CRON] 10-minute Shopify order ingestion polling starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try {
-              console.log(`[Shopify Poll] Fetching orders for store ${store.shop_domain} (Tenant: ${tenantId})...`);
-              await fetchShopifyOrders(store);
-            } catch (e) {
-              console.error(`[Shopify Poll Error] for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message);
-            }
+    await runMultiTenant('shopify_poll_10m', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try {
+            console.log(`[Shopify Poll] Fetching orders for store ${store.shop_domain} (Tenant: ${tenantId})...`);
+            await fetchShopifyOrders(store);
+          } catch (e) {
+            console.error(`[Shopify Poll Error] for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message);
           }
-        } catch (err) {}
-      });
-    }
+        }
+      } catch (err) {}
+    });
   });
 
   // 2. Every 1 hour: Fetch new Shopify orders
   cron.schedule('0 * * * *', async () => {
     console.log('🔄 [CRON] Hourly Shopify fetch starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try { await fetchShopifyOrders(store); } catch (e) { console.error(`[CRON] Hourly fetch error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-          }
-        } catch (err) {}
-      });
-    }
+    await runMultiTenant('shopify_fetch_1h', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try { await fetchShopifyOrders(store); } catch (e) { console.error(`[CRON] Hourly fetch error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
+        }
+      } catch (err) {}
+    });
   });
 
   // 3. Every 2 hours: Refresh recent Shopify updates
   cron.schedule('0 */2 * * *', async () => {
     console.log('🔄 [CRON] Shopify refresh starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try { await refreshShopifyUpdates(store); } catch (e) { console.error(`[CRON] Refresh error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-          }
-        } catch (err) {}
-      });
-    }
+    await runMultiTenant('shopify_refresh_2h', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try { await refreshShopifyUpdates(store); } catch (e) { console.error(`[CRON] Refresh error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
+        }
+      } catch (err) {}
+    });
   });
 
   // 4. Every 30 minutes: Watchdog audit
   cron.schedule('*/30 * * * *', async () => {
     console.log('🐕 [CRON] Watchdog audit starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try { await runWatchdog(store); } catch (e) { console.error(`[CRON] Watchdog error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-          }
-        } catch (err) {}
-      });
-    }
+    await runMultiTenant('watchdog_audit_30m', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try { await runWatchdog(store); } catch (e) { console.error(`[CRON] Watchdog error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
+        }
+      } catch (err) {}
+    });
   });
 
-  // 5. Every 1 hour: Automated background inventory & cost sync (was 4 hours)
+  // 5. Every 1 hour: Automated background inventory & cost sync
   cron.schedule('0 * * * *', async () => {
     console.log('📦 [CRON] Automated 1-hour inventory & cost sync starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try { await syncStoreInventoryAndCosts(store); } catch (e) { console.error(`[CRON] Catalog sync error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-          }
-        } catch (err) {}
-      });
-    }
+    await runMultiTenant('inventory_sync_1h', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try { await syncStoreInventoryAndCosts(store); } catch (e) { console.error(`[CRON] Catalog sync error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
+        }
+      } catch (err) {}
+    });
   });
 
   // 5b. Every 4 hours: Run tracking reconciler script
   cron.schedule('0 */4 * * *', async () => {
     console.log('🔄 [CRON] Starting 4-hour tracking reconciliation...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { runReconciliation } = require('./scripts/trackingReconciler');
-          await runReconciliation();
-        } catch (e) {
-          console.error(`Reconciliation cron error (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('tracking_reconciler_4h', async (tenantId) => {
+      try {
+        const { runReconciliation } = require('./scripts/trackingReconciler');
+        await runReconciliation();
+      } catch (e) {
+        console.error(`Reconciliation cron error (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // 6. Every 2 hours: Stuck Parcel Sniper — auto-alert customers with stuck parcels
   cron.schedule('0 */2 * * *', async () => {
     console.log('🎯 [CRON] Stuck Parcel Sniper scan starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try { await runSniperScan(); } catch (e) { console.error(`Sniper cron error (Tenant: ${tenantId}):`, e.message); }
-      });
-    }
+    await runMultiTenant('parcel_sniper_2h', async (tenantId) => {
+      try { await runSniperScan(); } catch (e) { console.error(`Sniper cron error (Tenant: ${tenantId}):`, e.message); }
+    });
   });
 
   // 7. Every day at midnight: Automated database backups
   cron.schedule('0 0 * * *', async () => {
     console.log('💾 [CRON] Starting daily database backup...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          if (typeof db.backupDatabase === 'function') {
-            db.backupDatabase();
-          }
-        } catch (e) {
-          console.error(`Backup cron error (Tenant: ${tenantId}):`, e.message);
+    await runMultiTenant('db_backup_daily', async (tenantId) => {
+      try {
+        if (typeof db.backupDatabase === 'function') {
+          db.backupDatabase();
         }
-      });
-    }
+      } catch (e) {
+        console.error(`Backup cron error (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // 8. Every day at midnight UTC: Nightly Self-Learning Audit Loop
   cron.schedule('0 0 * * *', async () => {
     console.log('🌙 [CRON] Starting Self-Learning Audit Loop...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { runNightlyAuditService } = require('./engines/audit_service');
-          await runNightlyAuditService();
-        } catch (e) {
-          console.error(`[Audit Cron Error] (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('self_learning_audit_daily', async (tenantId) => {
+      try {
+        const { runNightlyAuditService } = require('./engines/audit_service');
+        await runNightlyAuditService();
+      } catch (e) {
+        console.error(`[Audit Cron Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   }, {
     timezone: "UTC"
   });
@@ -363,49 +353,40 @@ module.exports = function schedulerInit() {
   cron.schedule('0 1 * * *', async () => {
     console.log('🔄 [CRON] Starting daily full Shopify catalog pull & sync...');
     const { syncFullProductCatalog } = require('./engines/shopify');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-          for (const store of stores) {
-            try { await syncFullProductCatalog(store); } catch (e) { console.error(`Full catalog sync cron error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-          }
-        } catch (err) {}
-      });
-    }
+    await runMultiTenant('full_catalog_sync_daily', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        for (const store of stores) {
+          try { await syncFullProductCatalog(store); } catch (e) { console.error(`Full catalog sync cron error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
+        }
+      } catch (err) {}
+    });
   });
 
   // 10. Every day at 2:00 AM: Purge old media files from Google Drive and SQLite
   cron.schedule('0 2 * * *', async () => {
     console.log('🗑️ [CRON] Starting daily WhatsApp media purge cycle...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { runPurge } = require('./scripts/purge_old_media');
-          await runPurge();
-        } catch (e) {
-          console.error(`Media purge cron error (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('media_purge_daily', async (tenantId) => {
+      try {
+        const { runPurge } = require('./scripts/purge_old_media');
+        await runPurge();
+      } catch (e) {
+        console.error(`Media purge cron error (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // 11. Every day at 3:00 AM: Clean up sync_journal and report files older than 3 days
   cron.schedule('0 3 * * *', async () => {
     console.log('🗑️ [CRON] Sync journal auto-cleanup starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { runJournalCleanup } = require('./engines/shopify_sync');
-          await runJournalCleanup();
-        } catch (e) {
-          console.error(`Sync journal cleanup cron error (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('journal_cleanup_daily', async (tenantId) => {
+      try {
+        const { runJournalCleanup } = require('./engines/shopify_sync');
+        await runJournalCleanup();
+      } catch (e) {
+        console.error(`Sync journal cleanup cron error (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // 12. Every day at 3:30 AM: Clean up reconciliation sessions older than 3 days
@@ -460,68 +441,57 @@ module.exports = function schedulerInit() {
   // 14. Every 30 minutes: 24-Hour COD Verification Follow-up reminder
   cron.schedule('*/30 * * * *', async () => {
     console.log('⏰ [CRON] 24-Hour COD Verification Follow-up reminder scan starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
-          const bot = require('./engines/whatsapp_bot');
-          await checkAndSendCODFollowUps(db, bot);
-        } catch (e) {
-          console.error(`[Follow-up Cron Error] (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('cod_followups_30m', async (tenantId) => {
+      try {
+        const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+        const bot = require('./engines/whatsapp_bot');
+        await checkAndSendCODFollowUps(db, bot);
+      } catch (e) {
+        console.error(`[Follow-up Cron Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // 15. Every 30 minutes: 24-Hour Post-Delivery Feedback review requests
   cron.schedule('*/30 * * * *', async () => {
     console.log('⏰ [CRON] 24-Hour Post-Delivery Feedback scan starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
-          const bot = require('./engines/whatsapp_bot');
-          await checkAndSendPostDeliveryFeedback(db, bot);
-        } catch (e) {
-          console.error(`[Feedback Cron Error] (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('post_delivery_feedback_30m', async (tenantId) => {
+      try {
+        const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
+        const bot = require('./engines/whatsapp_bot');
+        await checkAndSendPostDeliveryFeedback(db, bot);
+      } catch (e) {
+        console.error(`[Feedback Cron Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   });
 
   // Fire sniper, follow-ups & feedback once on boot (after 60s delay to let bot connect)
   setTimeout(async () => {
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try { await runSniperScan(); } catch(e) {}
-        try {
-          const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
-          const bot = require('./engines/whatsapp_bot');
-          await checkAndSendCODFollowUps(db, bot);
-        } catch(e) {}
-        try {
-          const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
-          const bot = require('./engines/whatsapp_bot');
-          await checkAndSendPostDeliveryFeedback(db, bot);
-        } catch(e) {}
-      });
-    }
+    await runMultiTenant('boot_initial_checks', async (tenantId) => {
+      try { await runSniperScan(); } catch(e) {}
+      try {
+        const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+        const bot = require('./engines/whatsapp_bot');
+        await checkAndSendCODFollowUps(db, bot);
+      } catch(e) {}
+      try {
+        const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
+        const bot = require('./engines/whatsapp_bot');
+        await checkAndSendPostDeliveryFeedback(db, bot);
+      } catch(e) {}
+    });
   }, 60000);
+
   // 16. Every day at 10:00 AM PKT (5:00 AM UTC): Send review request emails
   cron.schedule('0 5 * * *', async () => {
     console.log('⭐ [CRON] Review request email scan starting...');
-    const tenants = getAllTenants();
-    for (const tenantId of tenants) {
-      await tenantContext.run(tenantId, async () => {
-        try {
-          await sendReviewEmails();
-        } catch (e) {
-          console.error(`[Review Email Cron Error] (Tenant: ${tenantId}):`, e.message);
-        }
-      });
-    }
+    await runMultiTenant('review_emails_daily', async (tenantId) => {
+      try {
+        await sendReviewEmails();
+      } catch (e) {
+        console.error(`[Review Email Cron Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
   }, { timezone: 'UTC' });
 };

@@ -78,103 +78,119 @@ export default function CostManager() {
   }
 
   // --- Derived Data ---
-  const totals = {
-    acceptedValue: 0,
-    acceptedQty: 0,
-    pendingValue: 0,
-    totalVariants: costs.length,
-    totalMarginValue: 0,
-    totalSellingValue: 0,
-    atRiskCount: 0,
-  }
+  const { totals, grouped } = useMemo(() => {
+    const totals = {
+      acceptedValue: 0,
+      acceptedQty: 0,
+      pendingValue: 0,
+      totalVariants: costs.length,
+      totalMarginValue: 0,
+      totalSellingValue: 0,
+      atRiskCount: 0,
+    }
 
-  const grouped = {}
-  costs.forEach(c => {
-    if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0, totalSelling: 0 }
-    grouped[c.parent_title].variants.push(c)
-    grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
-    
-    const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
-    const selling = c.selling_price || 0
-    if (landed > 0) {
-      totals.acceptedValue += landed * (c.inventory_qty || 0)
-      totals.acceptedQty += (c.inventory_qty || 0)
-      if (selling > 0) {
-        totals.totalMarginValue += (selling - landed) * (c.inventory_qty || 0)
-        totals.totalSellingValue += selling * (c.inventory_qty || 0)
+    const grouped = {}
+    costs.forEach(c => {
+      if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0, totalSelling: 0 }
+      grouped[c.parent_title].variants.push(c)
+      grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
+      
+      const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
+      const selling = c.selling_price || 0
+      if (landed > 0) {
+        totals.acceptedValue += landed * (c.inventory_qty || 0)
+        totals.acceptedQty += (c.inventory_qty || 0)
+        if (selling > 0) {
+          totals.totalMarginValue += (selling - landed) * (c.inventory_qty || 0)
+          totals.totalSellingValue += selling * (c.inventory_qty || 0)
+        }
+      } else if (c.shopify_cost > 0) {
+        totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
       }
-    } else if (c.shopify_cost > 0) {
-      totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
-    }
-    
-    grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
-    grouped[c.parent_title].totalSelling += selling * (c.inventory_qty || 0)
-    if (landed > 0) grouped[c.parent_title].hasCost = true
-    
-    // Track Price Drift
-    if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
-      grouped[c.parent_title].hasDrift = true
-    }
+      
+      grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
+      grouped[c.parent_title].totalSelling += selling * (c.inventory_qty || 0)
+      if (landed > 0) grouped[c.parent_title].hasCost = true
+      
+      // Track Price Drift
+      if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
+        grouped[c.parent_title].hasDrift = true
+      }
 
-    // Track unique costs
-    if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
-    grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
-  })
+      // Track unique costs
+      if (!grouped[c.parent_title].uniqueCosts) grouped[c.parent_title].uniqueCosts = new Set()
+      grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
+    })
 
-  // Compute per-group margin and at-risk
-  Object.values(grouped).forEach(p => {
-    if (p.totalSelling > 0 && p.totalValue > 0) {
-      p.margin = Math.round(((p.totalSelling - p.totalValue) / p.totalSelling) * 100)
-      if (p.margin < 20) totals.atRiskCount++
-    } else {
-      p.margin = null
-    }
-  })
+    // Compute per-group margin and at-risk
+    Object.values(grouped).forEach(p => {
+      if (p.totalSelling > 0 && p.totalValue > 0) {
+        p.margin = Math.round(((p.totalSelling - p.totalValue) / p.totalSelling) * 100)
+        if (p.margin < 20) totals.atRiskCount++
+      } else {
+        p.margin = null
+      }
+    })
 
-  const avgMargin = totals.totalSellingValue > 0
-    ? Math.round((totals.totalMarginValue / totals.totalSellingValue) * 100)
-    : 0
+    return { totals, grouped }
+  }, [costs])
 
-  const ghostImpact = ghosts.reduce((sum, g) => sum + (g.count * 500), 0) // rough estimate
+  const avgMargin = useMemo(() => {
+    return totals.totalSellingValue > 0
+      ? Math.round((totals.totalMarginValue / totals.totalSellingValue) * 100)
+      : 0
+  }, [totals])
 
-  const allGrouped = Object.values(grouped)
-    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+  const ghostImpact = useMemo(() => {
+    return ghosts.reduce((sum, g) => sum + (g.count * 500), 0) // rough estimate
+  }, [ghosts])
+
+  const allGrouped = useMemo(() => {
+    return Object.values(grouped)
+      .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+  }, [grouped, search])
 
   // Apply margin filter
-  const marginFiltered = filterMargin === 'all' ? allGrouped
-    : filterMargin === 'low'  ? allGrouped.filter(p => p.margin !== null && p.margin < 20)
-    : filterMargin === 'mid'  ? allGrouped.filter(p => p.margin !== null && p.margin >= 20 && p.margin < 40)
-    : filterMargin === 'high' ? allGrouped.filter(p => p.margin !== null && p.margin >= 40)
-    : allGrouped
+  const marginFiltered = useMemo(() => {
+    return filterMargin === 'all' ? allGrouped
+      : filterMargin === 'low'  ? allGrouped.filter(p => p.margin !== null && p.margin < 20)
+      : filterMargin === 'mid'  ? allGrouped.filter(p => p.margin !== null && p.margin >= 20 && p.margin < 40)
+      : filterMargin === 'high' ? allGrouped.filter(p => p.margin !== null && p.margin >= 40)
+      : allGrouped
+  }, [allGrouped, filterMargin])
 
   // Apply sort
-  const sorted = [...marginFiltered].sort((a, b) => {
-    if (sortBy === 'value')  return b.totalValue - a.totalValue
-    if (sortBy === 'margin') return (b.margin ?? -1) - (a.margin ?? -1)
-    if (sortBy === 'stock')  return b.totalQty - a.totalQty
-    if (sortBy === 'name')   return a.name.localeCompare(b.name)
-    return 0
-  })
+  const sorted = useMemo(() => {
+    return [...marginFiltered].sort((a, b) => {
+      if (sortBy === 'value')  return b.totalValue - a.totalValue
+      if (sortBy === 'margin') return (b.margin ?? -1) - (a.margin ?? -1)
+      if (sortBy === 'stock')  return b.totalQty - a.totalQty
+      if (sortBy === 'name')   return a.name.localeCompare(b.name)
+      return 0
+    })
+  }, [marginFiltered, sortBy])
 
-  const pendingItems = sorted.filter(p => !p.hasCost)
-  const verifiedItems = sorted.filter(p => p.hasCost)
-  const continueSellingItems = sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue'))
-  const activeItems = sorted.filter(p => (p.variants[0]?.status || 'active') === 'active')
-  const draftItems = sorted.filter(p => p.variants[0]?.status === 'draft')
-  const archivedItems = sorted.filter(p => p.variants[0]?.status === 'archived')
-  const currentList = activeTab === 'pending'
-    ? pendingItems
-    : activeTab === 'verified'
-      ? verifiedItems
-      : activeTab === 'continue_selling'
-        ? continueSellingItems
-        : activeTab === 'active'
-          ? activeItems
-          : activeTab === 'draft'
-            ? draftItems
-            : activeTab === 'archived'
-              ? archivedItems
-              : []
+  const currentList = useMemo(() => {
+    const pendingItems = sorted.filter(p => !p.hasCost)
+    const verifiedItems = sorted.filter(p => p.hasCost)
+    const continueSellingItems = sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue'))
+    const activeItems = sorted.filter(p => (p.variants[0]?.status || 'active') === 'active')
+    const draftItems = sorted.filter(p => p.variants[0]?.status === 'draft')
+    const archivedItems = sorted.filter(p => p.variants[0]?.status === 'archived')
+    return activeTab === 'pending'
+      ? pendingItems
+      : activeTab === 'verified'
+        ? verifiedItems
+        : activeTab === 'continue_selling'
+          ? continueSellingItems
+          : activeTab === 'active'
+            ? activeItems
+            : activeTab === 'draft'
+              ? draftItems
+              : activeTab === 'archived'
+                ? archivedItems
+                : []
+  }, [sorted, activeTab])
 
   // --- Handlers ---
   const handleSyncShopify = async () => {

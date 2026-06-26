@@ -35,7 +35,6 @@ export default function FinanceManager() {
       style={{
         padding: '10px 20px',
         borderRadius: '30px',
-        border: 'none',
         backgroundColor: activeTab === id ? 'var(--blue-dim)' : 'transparent',
         color: activeTab === id ? 'var(--blue)' : 'var(--text-secondary)',
         fontWeight: activeTab === id ? 700 : 500,

@@ -298,9 +298,11 @@ async function syncFullProductCatalog(store) {
       const shopifyProducts = data.products || [];
       console.log(`📦 Received ${shopifyProducts.length} products on page ${page}`);
       
-      shopifyProducts.forEach(p => {
-        syncShopifyProduct(dbConn, store.id, store.shop_domain, p);
-      });
+      dbConn.transaction(() => {
+        shopifyProducts.forEach(p => {
+          syncShopifyProduct(dbConn, store.id, store.shop_domain, p);
+        });
+      })();
       
       const linkHeader = res.headers.get('link');
       url = null;

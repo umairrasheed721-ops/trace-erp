@@ -230,21 +230,47 @@ export default function CommandTable({
   const [breakdown, setBreakdown] = useState(null)
   const [loadingBreakdown, setLoadingBreakdown] = useState(false)
   const [tooltipTriggerEl, setTooltipTriggerEl] = useState(null)
-
   const filteredOrdersIds = useMemo(() => filteredOrders.map(x => x.id), [filteredOrders])
-  const getCustomerOrderCount = useCallback((phone, email) => {
-    if (!phone && !email) return 0;
-    const cleanPhone = phone ? phone.replace(/\D/g, '').slice(-10) : '';
-    return allOrders.filter(o => {
-      let phoneMatch = false;
-      if (cleanPhone && o.phone) {
-        const oCleanPhone = o.phone.replace(/\D/g, '').slice(-10);
-        phoneMatch = oCleanPhone && oCleanPhone === cleanPhone;
+  const orderCountsMap = useMemo(() => {
+    const phoneGroups = new Map();
+    const emailGroups = new Map();
+    
+    const cleanAndSlice = (ph) => ph ? ph.replace(/\D/g, '').slice(-10) : '';
+
+    // Step 1: Group order IDs by phone and email
+    allOrders.forEach(o => {
+      const cleanPh = cleanAndSlice(o.phone);
+      const email = o.email ? o.email.toLowerCase().trim() : '';
+
+      if (cleanPh) {
+        if (!phoneGroups.has(cleanPh)) phoneGroups.set(cleanPh, []);
+        phoneGroups.get(cleanPh).push(o.id);
       }
-      const emailMatch = email && o.email && o.email === email;
-      return phoneMatch || emailMatch;
-    }).length;
-  }, [allOrders])
+      if (email) {
+        if (!emailGroups.has(email)) emailGroups.set(email, []);
+        emailGroups.get(email).push(o.id);
+      }
+    });
+
+    // Step 2: Build a map of orderId -> unique customer order count
+    const counts = {};
+    allOrders.forEach(o => {
+      const cleanPh = cleanAndSlice(o.phone);
+      const email = o.email ? o.email.toLowerCase().trim() : '';
+      const matchedIds = new Set();
+
+      if (cleanPh && phoneGroups.has(cleanPh)) {
+        phoneGroups.get(cleanPh).forEach(id => matchedIds.add(id));
+      }
+      if (email && emailGroups.has(email)) {
+        emailGroups.get(email).forEach(id => matchedIds.add(id));
+      }
+
+      counts[o.id] = matchedIds.size || 1;
+    });
+
+    return counts;
+  }, [allOrders]);
 
   const totalTableWidth = useMemo(() => {
     const checkboxWidth = 40;
@@ -361,7 +387,7 @@ export default function CommandTable({
                   handleConfirmOrder={handleConfirmOrder} handleRevertConfirm={handleRevertConfirm}
                   handleBookPostEx={handleBookPostEx} handleCancelBooking={handleCancelBooking} handleBookInstaworld={handleBookInstaworld}
                   formatCustomerName={formatCustomerName} waTemplates={waTemplates} allOrdersCount={allOrders.length}
-                  getCustomerOrderCount={getCustomerOrderCount}
+                  orderCountsMap={orderCountsMap}
                   setCustomerHistoryPhone={setCustomerHistoryPhone} updateOrderField={updateOrderField}
                   canSeeFinancials={canSeeFinancials} activeTooltipOrderId={activeTooltipOrderId}
                   setActiveTooltipOrderId={setActiveTooltipOrderId} fetchBreakdown={fetchBreakdown}

@@ -31,144 +31,6 @@ function useDebounce(value, delay) {
   return debouncedValue
 }
 
-function matchesSearch(order, keyword) {
-  if (!keyword) return true
-  const kw = keyword.toLowerCase().trim().replace(/^#/, '')
-  
-  // 1. Handle Bulk OR Search (Comma, Newline, or Pasted Space-separated IDs)
-  const spaceTokens = kw.split(/\s+/).filter(Boolean);
-  const isBulkSpacePasted = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{4,}$/.test(t) && /\d/.test(t));
-
-  if (kw.includes(',') || kw.includes('\n') || isBulkSpacePasted) {
-    const terms = kw.split(/[\n,\s]+/).map(t => t.trim()).filter(Boolean)
-    const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.tracking_number||''} ${order.phone||''}`.toLowerCase()
-    return terms.some(t => searchable.includes(t))
-  }
-
-  // 2. Tokenize Advanced Query
-  // Supports: city:karachi -tcs >5000 "exact phrase"
-  const tokens = kw.match(/[^\s"']+|"([^"]*)"|'([^']*)'/g) || []
-  const searchable = `${order.shopify_order_id||''} ${order.ref_number||''} ${order.customer_name||''} ${order.phone||''} ${order.city||''} ${order.tracking_number||''} ${order.courier||''} ${order.delivery_status||''} ${order.notes||''}`.toLowerCase()
-  
-  // Scan items safely
-  let itemsText = (order.product_titles || '').toLowerCase()
-  try {
-    if (order.line_items) {
-      const parsedItems = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items
-      if (Array.isArray(parsedItems)) {
-        itemsText += ' ' + parsedItems.map(li => `${li.title || ''} ${li.sku || ''}`).join(' ').toLowerCase()
-      }
-    }
-  } catch (e) {
-    // Fallback to product_titles if parse fails
-  }
-  const fullText = searchable + ' ' + itemsText
-
-  for (let token of tokens) {
-    token = token.replace(/['"]/g, '') // Remove quotes
-    const isNegated = token.startsWith('-')
-    const actualToken = isNegated ? token.slice(1) : token
-    
-    if (!actualToken) continue
-
-    let match = false
-    
-    // Field Prefixes: city:, phone:, courier:, ref:, status:
-    if (actualToken.includes(':')) {
-      const [field, value] = actualToken.split(':')
-      if (field === 'city') match = (order.city || '').toLowerCase().includes(value)
-      else if (field === 'phone') match = (order.phone || '').includes(value)
-      else if (field === 'courier') {
-        const courierVal = (order.courier || '').toLowerCase();
-        const trackingVal = (order.tracking_number || '').toLowerCase();
-        if (value === 'unassigned' || value === 'empty' || value === 'none') {
-          match = !order.courier || courierVal === '' || courierVal === '—' || courierVal === 'unassigned' ||
-                  !order.tracking_number || trackingVal === '' || trackingVal === '—';
-        } else {
-          match = courierVal.includes(value);
-        }
-      }
-      else if (field === 'ref') match = (order.ref_number || '').toLowerCase().includes(value) || (order.shopify_order_id || '').toLowerCase().includes(value)
-      else if (field === 'status') match = (order.delivery_status || '').toLowerCase().includes(value)
-      else if (field === 'item') match = itemsText.includes(value)
-      else if (field === 'note') match = (order.notes || '').toLowerCase().includes(value)
-      else match = fullText.includes(actualToken)
-    } 
-    // Numeric Ranges: >1000, <5000, 2000-4000
-    else if (actualToken.startsWith('>') || actualToken.startsWith('<')) {
-      const op = actualToken[0]
-      const val = parseFloat(actualToken.slice(1))
-      const price = parseFloat(order.price) || 0
-      if (op === '>') match = price > val
-      else match = price < val
-    }
-    else if (actualToken.includes('-') && /^\d+-\d+$/.test(actualToken)) {
-      const [min, max] = actualToken.split('-').map(Number)
-      const price = parseFloat(order.price) || 0
-      match = price >= min && price <= max
-    }
-    // Global Search
-    else {
-      match = fullText.includes(actualToken)
-    }
-
-    if (isNegated && match) return false;
-    if (!isNegated && !match) return false;
-  }
-
-  return true;
-}
-
-function applySpecialMode(order, mode, today) {
-  const s = (order.delivery_status || '').toLowerCase()
-  const paid = parseFloat(order.paid_amount) || 0
-  const price = parseFloat(order.price) || 0
-  const statusDate = order.status_date ? new Date(order.status_date) : null
-  const daysOld = statusDate ? Math.floor((today - statusDate) / 86400000) : 999
-
-  const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
-  
-  if (mode === '[ACTIVE PIPELINE]') return hasTracking && !['delivered','return received','cancelled','returned','void','voided'].includes(s)
-  if (mode === '[UNBOOKED]') return !hasTracking && !['delivered','return received','cancelled','returned','void','voided'].includes(s)
-  if (mode === '[READY TO BOOK]') {
-    const hasTracking = !!order.tracking_number && order.tracking_number.trim() !== '' && order.tracking_number !== '—'
-    return s === 'confirmed' && !hasTracking
-  }
-  if (mode === '[GHOST PIPELINE]') return (s.includes('pending')||s===''||s.includes('unbooked')||s.includes('returned')) && daysOld > 3
-  if (mode === '[NEEDS ADJUSTMENT]') {
-    const delivered = s.includes('delivered')
-    const returnedOrCancelled = s.includes('return') || s.includes('cancel')
-    const diff = price - paid
-    
-    // Flag if:
-    // 1. Delivered but essentially unpaid (balance > 1)
-    // 2. Delivered but partially paid (balance > 1)
-    // 3. Returned/Cancelled but has any significant payment (> 1)
-    // 4. Significant overpayment (balance < -1)
-    return (delivered && paid < 1 && price > 1) || 
-           (delivered && diff > 1 && paid >= 1) || 
-           (returnedOrCancelled && paid > 1) || 
-           (diff < -1)
-  }
-  if (mode === '[WATCHDOG FRAUD]') {
-    return true; 
-  }
-  if (mode === '[NO TRACKING]') {
-    return (!order.tracking_number || order.tracking_number.trim() === '') && s !== 'cancelled'
-  }
-  if (mode === '[UNPAID DELIVERED]') {
-    return s.includes('delivered') && paid < 1
-  }
-  if (mode === '[MISSING COST]') {
-    return s.includes('delivered') && (!order.cost || parseFloat(order.cost) === 0) && (parseInt(order.items_count) > 0)
-  }
-  if (mode === '[AUDIT: MISSING CHARGES]') {
-    const fee = parseFloat(order.courier_fee) || 0
-    return fee < 1 && !['pending','cancelled'].includes(s) && !!order.tracking_number
-  }
-  return true
-}
-
 export default function SearchTool() {
   const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed } = useApp()
   const [activeRowId, setActiveRowId] = useState(null)
@@ -517,7 +379,7 @@ export default function SearchTool() {
     fetchBacklogDates,
   })
 
-  const handleConfirmOrder = async (orderId) => {
+  const handleConfirmOrder = useCallback(async (orderId) => {
     const order = allOrders.find(o => o.id === orderId)
     if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
       addToast('🛑 Zero Cost Block: Heal cost before confirming', 'error')
@@ -538,9 +400,9 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Network error / Failed to confirm order', 'error')
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
-  const handleRevertConfirm = async (orderId) => {
+  const handleRevertConfirm = useCallback(async (orderId) => {
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending' } : o))
     try {
@@ -556,9 +418,9 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Network error / Failed to revert order', 'error')
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
-  const handleUpdateNotes = async (orderId, notes) => {
+  const handleUpdateNotes = useCallback(async (orderId, notes) => {
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes } : o))
     try {
@@ -577,9 +439,9 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Sync error / Failed to update notes', 'error')
     }
-  }
+  }, [allOrders, addToast])
 
-  const handleUpdateAddress = async (orderId, address) => {
+  const handleUpdateAddress = useCallback(async (orderId, address) => {
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, address } : o))
     try {
@@ -598,9 +460,9 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Sync error / Failed to update address', 'error')
     }
-  }
+  }, [allOrders, addToast])
 
-  const handleManualStatusChange = async (orderId, newStatus) => {
+  const handleManualStatusChange = useCallback(async (orderId, newStatus) => {
     if (!newStatus) return
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: newStatus } : o))
@@ -640,11 +502,9 @@ export default function SearchTool() {
     } finally {
       setStatusUpdatingId(null)
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
-
-
-  const handleCancelBooking = async (orderId) => {
+  const handleCancelBooking = useCallback(async (orderId) => {
     if (!confirm('🛑 Cancel this courier booking?')) return
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, tracking_number: null, delivery_status: 'Confirmed' } : o))
@@ -665,9 +525,9 @@ export default function SearchTool() {
     } finally {
       setBookingId(null)
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
-  const handleForceResync = async (orderId) => {
+  const handleForceResync = useCallback(async (orderId) => {
     setBookingId(orderId)
     try {
       const token = localStorage.getItem('trace_token');
@@ -697,9 +557,9 @@ export default function SearchTool() {
     } finally {
       setBookingId(null)
     }
-  }
+  }, [addToast])
 
-  const handleBookInstaworld = async (orderId, accountType = 'primary') => {
+  const handleBookInstaworld = useCallback(async (orderId, accountType = 'primary') => {
     const order = allOrders.find(o => o.id === orderId)
     if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
@@ -731,9 +591,9 @@ export default function SearchTool() {
     } finally {
       setBookingId(null)
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
-  const handleBookPostEx = async (orderId) => {
+  const handleBookPostEx = useCallback(async (orderId) => {
     const order = allOrders.find(o => o.id === orderId)
     if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
       addToast('🛑 Zero Cost Block: Heal cost before booking', 'error')
@@ -760,7 +620,7 @@ export default function SearchTool() {
     } finally {
       setBookingId(null)
     }
-  }
+  }, [allOrders, addToast, fetchBacklogDates])
 
   const toggleCompact = () => {
     setCompactMode(prev => {
@@ -1501,7 +1361,7 @@ export default function SearchTool() {
     } catch (e) { addToast('Delete failed', 'error') }
   }
 
-  const updateOrderField = async (orderId, field, value) => {
+  const updateOrderField = useCallback(async (orderId, field, value) => {
     const previousOrders = [...allOrders];
     const isMulti = typeof field === 'object' && field !== null;
     const payload = isMulti ? field : { [field]: value };
@@ -1526,7 +1386,7 @@ export default function SearchTool() {
       setAllOrders(previousOrders);
       addToast(`❌ Failed to save: ${err.message}`, 'error');
     }
-  };
+  }, [allOrders, addToast]);
 
 
 
@@ -1720,7 +1580,7 @@ export default function SearchTool() {
         setPage={setPage}
         limit={limit}
         setLimit={setLimit}
-        onViewHistory={(o) => setHistoryOrder(o)}
+        onViewHistory={setHistoryOrder}
         clearAllFilters={handleClear}
         activeRowId={activeRowId}
         setActiveRowId={setActiveRowId}

@@ -456,18 +456,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
               const queryVariantId2 = gidVariantId || '__NONE__';
               const querySku = sku || '__NONE__';
 
-              const registry = db.prepare(`
-                SELECT landed_cost, shopify_cost FROM product_master_costs 
-                WHERE store_id = ? 
-                AND (
-                  shopify_variant_id = ? 
-                  OR shopify_variant_id = ? 
-                  OR (sku = ? AND sku != '')
-                )
-                ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
-                         (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
-                LIMIT 1
-              `).get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+              const registry = registryLookupStmt.get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
               
               if (registry) unitCost = registry.landed_cost || registry.shopify_cost || 0;
             }

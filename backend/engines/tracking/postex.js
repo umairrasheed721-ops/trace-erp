@@ -5,11 +5,11 @@ const { DEAD_STATUSES, EARLY_STATUSES, ATTEMPT_FAILURE_STATUSES, loadStatusMaps,
 const { auditPostExOrder } = require('../watchdog');
 
 const CONCURRENT = 5;
-const BASE_SLEEP_MS = 1200;
+const BASE_SLEEP_MS = 600;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const sleepWithJitter = async () => {
-  const jitter = Math.floor(Math.random() * 800);
+  const jitter = Math.floor(Math.random() * 400);
   await new Promise(r => setTimeout(r, BASE_SLEEP_MS + jitter));
 };
 
@@ -60,7 +60,9 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
   let processed = 0;
   const statusMap = loadStatusMaps();
 
-  for (const batch of chunks(toProcess, CONCURRENT)) {
+  const batchChunks = chunks(toProcess, CONCURRENT);
+  for (let idx = 0; idx < batchChunks.length; idx++) {
+    const batch = batchChunks[idx];
     if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
       console.log(`🛑 PostEx Sync aborted by user`);
       auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Processed ${processed}/${toProcess.length}` });
@@ -200,7 +202,9 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     const currentOrder = batch[0]?.ref_number || '';
     if (onProgress) onProgress('Syncing PostEx Tracking', processed, toProcess.length, currentOrder);
 
-    await sleepWithJitter();
+    if (idx < batchChunks.length - 1) {
+      await sleepWithJitter();
+    }
   }
 
   const updateStmt = db.prepare(`
@@ -228,12 +232,21 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     }
   });
   updateMany(updatesToApply);
-  for (const u of updatesToApply) {
-    if (u.erp_status) {
-      try {
-        const row = lookupStmt.get(u.id);
-        if (row) broadcast('order_updated', { storeId: row.store_id, shopifyOrderId: row.shopify_order_id });
-      } catch(e) {}
+  if (updatesToApply.length > 5) {
+    try {
+      broadcast('orders_bulk_updated', {
+        storeId,
+        updates: updatesToApply.map(u => ({ orderId: u.id, erpStatus: u.erp_status }))
+      });
+    } catch(e) {}
+  } else {
+    for (const u of updatesToApply) {
+      if (u.erp_status) {
+        try {
+          const row = lookupStmt.get(u.id);
+          if (row) broadcast('order_updated', { storeId: row.store_id, shopifyOrderId: row.shopify_order_id });
+        } catch(e) {}
+      }
     }
   }
 

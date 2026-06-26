@@ -180,7 +180,9 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
         processed++;
         if (onProgress) onProgress(processed, total, `Syncing Instaworld tracking...`);
       }));
-      await sleep(1500); 
+      if (i + batchSize < otherOrders.length) {
+        await sleep(1500);
+      }
     }
   }
 
@@ -198,15 +200,30 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     const updateMany = db.transaction(items => {
       for (const u of items) {
         updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
-        broadcast('message', { 
-          type: 'order_updated', 
-          orderId: u.id, 
-          status: u.delivery_status,
-          courier_status: u.courier_status
-        });
       }
     });
     updateMany(updatesToApply);
+
+    if (updatesToApply.length > 5) {
+      try {
+        broadcast('message', {
+          type: 'orders_bulk_updated',
+          count: updatesToApply.length,
+          updates: updatesToApply.map(u => ({ orderId: u.id, status: u.delivery_status, courier_status: u.courier_status }))
+        });
+      } catch(e) {}
+    } else {
+      for (const u of updatesToApply) {
+        try {
+          broadcast('message', { 
+            type: 'order_updated', 
+            orderId: u.id, 
+            status: u.delivery_status,
+            courier_status: u.courier_status
+          });
+        } catch(e) {}
+      }
+    }
   }
 
   return { updatedCount: updatesToApply.length, logs };
