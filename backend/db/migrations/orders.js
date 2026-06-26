@@ -239,6 +239,8 @@ module.exports = [
   `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email);`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_phone_last10 ON orders(SUBSTR(phone, -10));`,
 
   // 14. Idempotent Schema Alterations (Try-catch wrapper)
   (db) => {

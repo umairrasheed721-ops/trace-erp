@@ -144,6 +144,7 @@ Please reply with:
   `CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone_time ON whatsapp_messages(phone, created_at DESC);`,
   `CREATE INDEX IF NOT EXISTS idx_wa_msgs_tenant_phone ON whatsapp_messages(tenant_id, phone);`,
   `CREATE INDEX IF NOT EXISTS idx_wa_msgs_tenant ON whatsapp_messages(tenant_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_wa_msgs_phone_last10 ON whatsapp_messages(SUBSTR(phone, -10));`,
 
   // 11. CREATE gemini_bot_settings TABLE
   `CREATE TABLE IF NOT EXISTS gemini_bot_settings (
