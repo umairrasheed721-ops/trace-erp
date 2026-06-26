@@ -39,8 +39,20 @@ router.post('/login', async (req, res) => {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
+    let allowedStores = [];
+    try {
+      allowedStores = JSON.parse(user.allowed_stores || '[]');
+    } catch (_) {}
+
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, can_set_final_status: user.can_set_final_status, tenant_id: req.tenantId || 'default' },
+      { 
+        id: user.id, 
+        username: user.username, 
+        role: user.role, 
+        can_set_final_status: user.can_set_final_status, 
+        tenant_id: req.tenantId || 'default',
+        allowed_stores: allowedStores
+      },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -74,8 +86,13 @@ router.get('/me', (req, res) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, username, role, email, can_override_erp_status, permissions FROM users WHERE id = ?').get(decoded.id);
+    const user = db.prepare('SELECT id, username, role, email, can_override_erp_status, permissions, allowed_stores FROM users WHERE id = ?').get(decoded.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let allowedStores = [];
+    try {
+      allowedStores = JSON.parse(user.allowed_stores || '[]');
+    } catch (_) {}
 
     res.json({
       id: user.id,
@@ -83,7 +100,8 @@ router.get('/me', (req, res) => {
       email: user.email,
       role: user.role,
       can_override_erp_status: user.can_override_erp_status === 1,
-      permissions: JSON.parse(user.permissions || '[]')
+      permissions: JSON.parse(user.permissions || '[]'),
+      allowed_stores: allowedStores
     });
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });

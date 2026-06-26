@@ -133,6 +133,7 @@ module.exports = [
     role TEXT NOT NULL DEFAULT 'staff',
     can_override_erp_status INTEGER DEFAULT 0,
     email TEXT,
+    allowed_stores TEXT DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now'))
   );`,
 
@@ -302,6 +303,7 @@ module.exports = [
       "ALTER TABLE product_master_costs ADD COLUMN inventory_policy TEXT DEFAULT 'deny'",
       "ALTER TABLE stores ADD COLUMN google_maps_key TEXT",
       "ALTER TABLE orders ADD COLUMN email TEXT",
+      "ALTER TABLE users ADD COLUMN allowed_stores TEXT DEFAULT '[]'",
       "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
       "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)"
     ];

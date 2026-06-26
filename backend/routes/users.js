@@ -57,11 +57,18 @@ router.get('/', authenticateToken, isAdmin, (req, res) => {
   try {
     const users = db.prepare(`
       SELECT id, username, email, role, created_at,
-             can_override_erp_status, can_set_final_status
+             can_override_erp_status, can_set_final_status, allowed_stores
       FROM users
       ORDER BY id ASC
     `).all();
-    res.json(users);
+    const parsedUsers = users.map(u => {
+      let allowedStores = [];
+      try {
+        allowedStores = JSON.parse(u.allowed_stores || '[]');
+      } catch (_) {}
+      return { ...u, allowed_stores: allowedStores };
+    });
+    res.json(parsedUsers);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -69,7 +76,7 @@ router.get('/', authenticateToken, isAdmin, (req, res) => {
 
 // POST /api/users - Create new user (Admin only)
 router.post('/', authenticateToken, isAdmin, async (req, res) => {
-  const { username, password, role, email, can_override_erp_status, can_set_final_status } = req.body;
+  const { username, password, role, email, can_override_erp_status, can_set_final_status, allowed_stores } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ error: 'Username, password and role are required' });
   }
@@ -77,17 +84,23 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
   try {
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
+    const serializedAllowedStores = JSON.stringify(Array.isArray(allowed_stores) ? allowed_stores : []);
     const result = db.prepare(`
-      INSERT INTO users (username, password_hash, role, email, can_override_erp_status, can_set_final_status)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, password_hash, role, email, can_override_erp_status, can_set_final_status, allowed_stores)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       username.trim(), hash, role,
       email ? email.trim() : null,
       can_override_erp_status ? 1 : 0,
-      can_set_final_status ? 1 : 0
+      can_set_final_status ? 1 : 0,
+      serializedAllowedStores
     );
-    const newUser = db.prepare('SELECT id, username, email, role, created_at, can_override_erp_status, can_set_final_status FROM users WHERE id = ?').get(result.lastInsertRowid);
-    res.json({ success: true, user: newUser });
+    const newUser = db.prepare('SELECT id, username, email, role, created_at, can_override_erp_status, can_set_final_status, allowed_stores FROM users WHERE id = ?').get(result.lastInsertRowid);
+    let allowedStoresParsed = [];
+    try {
+      allowedStoresParsed = JSON.parse(newUser.allowed_stores || '[]');
+    } catch (_) {}
+    res.json({ success: true, user: { ...newUser, allowed_stores: allowedStoresParsed } });
   } catch (err) {
     if (err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Username already exists. Please choose a different username.' });
@@ -136,7 +149,7 @@ router.delete('/:id', authenticateToken, isAdmin, (req, res) => {
 
 // PUT /api/users/:id - Update user (Admin only)
 router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
-  const { username, role, email, password, can_override_erp_status, can_set_final_status } = req.body;
+  const { username, role, email, password, can_override_erp_status, can_set_final_status, allowed_stores } = req.body;
   if (!username || !role) {
     return res.status(400).json({ error: 'Username and role are required' });
   }
@@ -148,26 +161,32 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     const existing = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
     if (!existing) return res.status(404).json({ error: 'User not found' });
 
+    const serializedAllowedStores = JSON.stringify(Array.isArray(allowed_stores) ? allowed_stores : []);
+
     if (password) {
       const salt = bcrypt.genSaltSync(10);
       const hash = bcrypt.hashSync(password, salt);
       db.prepare(`
         UPDATE users SET username = ?, role = ?, email = ?, password_hash = ?,
-                         can_override_erp_status = ?, can_set_final_status = ?
+                         can_override_erp_status = ?, can_set_final_status = ?, allowed_stores = ?
         WHERE id = ?
       `).run(username.trim(), role, email ? email.trim() : null, hash,
-             can_override_erp_status ? 1 : 0, can_set_final_status ? 1 : 0, id);
+             can_override_erp_status ? 1 : 0, can_set_final_status ? 1 : 0, serializedAllowedStores, id);
     } else {
       db.prepare(`
         UPDATE users SET username = ?, role = ?, email = ?,
-                         can_override_erp_status = ?, can_set_final_status = ?
+                         can_override_erp_status = ?, can_set_final_status = ?, allowed_stores = ?
         WHERE id = ?
       `).run(username.trim(), role, email ? email.trim() : null,
-             can_override_erp_status ? 1 : 0, can_set_final_status ? 1 : 0, id);
+             can_override_erp_status ? 1 : 0, can_set_final_status ? 1 : 0, serializedAllowedStores, id);
     }
 
-    const updated = db.prepare('SELECT id, username, email, role, created_at, can_override_erp_status, can_set_final_status FROM users WHERE id = ?').get(id);
-    res.json({ success: true, user: updated });
+    const updated = db.prepare('SELECT id, username, email, role, created_at, can_override_erp_status, can_set_final_status, allowed_stores FROM users WHERE id = ?').get(id);
+    let allowedStoresParsed = [];
+    try {
+      allowedStoresParsed = JSON.parse(updated.allowed_stores || '[]');
+    } catch (_) {}
+    res.json({ success: true, user: { ...updated, allowed_stores: allowedStoresParsed } });
   } catch (err) {
     if (err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Username already taken by another account' });

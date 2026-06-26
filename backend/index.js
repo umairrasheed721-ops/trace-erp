@@ -48,6 +48,7 @@ app.use(responseWrapper);
 
 // --- 🛡️ MULTI-TENANT ISOLATION MIDDLEWARE ---
 const tenantMiddleware = require('./middleware/tenant');
+const storeAccessMiddleware = require('./middleware/storeAccess');
 const jwt = require('jsonwebtoken');
 
 if (!process.env.JWT_SECRET) {
@@ -114,6 +115,7 @@ app.use((req, res, next) => {
 });
 
 app.use(tenantMiddleware);
+app.use(storeAccessMiddleware);
 
 // --- 🏪 STATIC MEDIA & UPLOADS ---
 app.use('/uploads', express.static(path.join(DB_DIR, 'uploads')));

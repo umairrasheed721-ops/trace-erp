@@ -83,9 +83,17 @@ function ConfirmDeleteModal({ user, onConfirm, onCancel, loading }) {
 }
 
 // ─── User Form Modal ───
-function UserFormModal({ editUser, onClose, onSave, loading }) {
+function UserFormModal({ editUser, stores, onClose, onSave, loading }) {
   const isNew = !editUser?.id
-  const [form, setForm] = useState(editUser || { username: '', password: '', email: '', role: 'agent', can_override_erp_status: 0, can_set_final_status: 0 })
+  const [form, setForm] = useState(() => {
+    if (editUser) {
+      return {
+        ...editUser,
+        allowed_stores: Array.isArray(editUser.allowed_stores) ? editUser.allowed_stores : []
+      }
+    }
+    return { username: '', password: '', email: '', role: 'agent', can_override_erp_status: 0, can_set_final_status: 0, allowed_stores: [] }
+  })
 
   const set = (field, val) => setForm(prev => ({ ...prev, [field]: val }))
 
@@ -168,6 +176,42 @@ function UserFormModal({ editUser, onClose, onSave, loading }) {
             </div>
           </div>
 
+          {/* Store Permissions */}
+          {form.role !== 'admin' && (
+            <div style={{
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '14px 16px', marginBottom: 22
+            }}>
+              <p style={{ fontSize: '0.73rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                Authorized Store Access
+              </p>
+              {stores.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No connected stores found.</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px' }}>
+                  {stores.map(store => {
+                    const isChecked = form.allowed_stores.includes(store.id);
+                    return (
+                      <label key={store.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            const nextAllowed = e.target.checked
+                              ? [...form.allowed_stores, store.id]
+                              : form.allowed_stores.filter(id => id !== store.id);
+                            set('allowed_stores', nextAllowed);
+                          }}
+                        />
+                        <span style={{ fontSize: '0.82rem' }}>🏪 {store.store_name || store.shop_domain}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Permissions */}
           <div style={{
             background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -209,7 +253,7 @@ function UserFormModal({ editUser, onClose, onSave, loading }) {
 }
 
 // ─── User Card Row ───
-function UserRow({ u, currentUserId, onEdit, onDelete }) {
+function UserRow({ u, stores, currentUserId, onEdit, onDelete }) {
   const av = getAvatar(u.username)
   const role = ROLE_META[u.role] || ROLE_META.agent
   const isSelf = currentUserId === u.id
@@ -258,6 +302,29 @@ function UserRow({ u, currentUserId, onEdit, onDelete }) {
               <span style={{ fontSize: '0.63rem', color: 'var(--brand)', fontWeight: 600 }}>⚡ Final Status</span>
             )}
           </div>
+          {u.role !== 'admin' && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              {Array.isArray(u.allowed_stores) && u.allowed_stores.length > 0 ? (
+                u.allowed_stores.map(sid => {
+                  const s = stores.find(store => store.id === sid);
+                  return (
+                    <span key={sid} style={{ fontSize: '0.63rem', background: 'var(--bg-elevated)', color: 'var(--text-secondary)', padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                      🏪 {s ? (s.store_name || s.shop_domain) : `Store #${sid}`}
+                    </span>
+                  );
+                })
+              ) : (
+                <span style={{ fontSize: '0.63rem', color: '#f87171', fontWeight: 500 }}>🚫 No store access</span>
+              )}
+            </div>
+          )}
+          {u.role === 'admin' && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+              <span style={{ fontSize: '0.63rem', background: 'rgba(168,85,247,0.08)', color: '#a855f7', padding: '1px 6px', borderRadius: 4, border: '1px solid rgba(168,85,247,0.15)', fontWeight: 600 }}>
+                🏪 All Stores
+              </span>
+            </div>
+          )}
         </div>
       </td>
       <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -296,7 +363,7 @@ export default function Users() {
   const [showModal, setShowModal] = useState(false)
   const [editTarget, setEditTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
-  const { addToast, token, user: currentUser } = useApp()
+  const { addToast, token, user: currentUser, stores } = useApp()
 
   const fetchUsers = async () => {
     try {
@@ -491,6 +558,7 @@ export default function Users() {
                     <UserRow
                       key={u.id}
                       u={u}
+                      stores={stores}
                       currentUserId={currentUser?.id}
                       onEdit={u => { setEditTarget({ ...u, password: '' }); setShowModal(true) }}
                       onDelete={setDeleteTarget}
@@ -522,6 +590,7 @@ export default function Users() {
       {showModal && (
         <UserFormModal
           editUser={editTarget}
+          stores={stores}
           onClose={() => { setShowModal(false); setEditTarget(null) }}
           onSave={handleSave}
           loading={saving}

@@ -2,20 +2,32 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 // Removed top-level require for shopify engine to avoid circular dependency
-
 // GET /api/stores - List all connected stores
 router.get('/', (req, res) => {
-  const stores = db.prepare(`
+  let query = `
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
            postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3, google_maps_key, sync_start_date,
            sync_status, sync_progress, postex_track_url, instaworld_track_url, gas_proxy_url,
            CASE WHEN access_token != 'PENDING' THEN 1 ELSE 0 END as is_connected
-    FROM stores ORDER BY created_at DESC
-  `).all();
-  res.json(stores);
-});
+    FROM stores
+  `;
+  let params = [];
 
-// GET /api/stores/:id - Get single store info
+  if (req.user && req.user.role !== 'admin' && Array.isArray(req.user.allowed_stores)) {
+    if (req.user.allowed_stores.length > 0) {
+      const placeholders = req.user.allowed_stores.map(() => '?').join(',');
+      query += ` WHERE id IN (${placeholders})`;
+      params = req.user.allowed_stores;
+    } else {
+      query += ` WHERE 1 = 0`;
+    }
+  }
+
+  query += ` ORDER BY created_at DESC`;
+
+  const stores = db.prepare(query).all(...params);
+  res.json(stores);
+});// GET /api/stores/:id - Get single store info
 router.get('/:id', (req, res) => {
   const store = db.prepare(`
     SELECT id, shop_domain, store_name, last_synced_at, created_at,
