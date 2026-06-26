@@ -1,4 +1,5 @@
 import React from 'react';
+import RtoRiskAlert from '@components/EditOrderModal/RtoRiskAlert';
 
 const OrderHeader = React.memo(({
   editingOrder,
@@ -19,26 +20,11 @@ const OrderHeader = React.memo(({
   return (
     <>
       {/* 🚨 Automated RTO Risk Warning Banner (Pillar 1) */}
-      {(custIntel.returned > 0 || custIntel.blacklist) && (
-        <div style={{ background: 'linear-gradient(90deg, #9f1239 0%, #be123c 100%)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyItems: 'space-between', justifyContent: 'space-between', color: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: '1.5rem' }}>🚨</span>
-            <div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>High RTO Risk Detected</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
-                Customer has {custIntel.returned} previous refused/returned parcels. Historical RTO Rate: {custIntel.rto_rate}%. {custIntel.blacklist ? '⚠️ ACTIVE BLACKLIST STRIKE.' : ''}
-              </div>
-            </div>
-          </div>
-          <button 
-            onClick={() => handleWaSimulate('SIMULATE_CANCEL')} 
-            disabled={waSimulating}
-            style={{ background: '#0f172a', color: '#fda4af', border: '1px solid #f43f5e', padding: '6px 14px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-          >
-            ❌ Cancel & Restock
-          </button>
-        </div>
-      )}
+      <RtoRiskAlert 
+        custIntel={custIntel} 
+        handleWaSimulate={handleWaSimulate} 
+        waSimulating={waSimulating} 
+      />
 
       {/* Modal Header & Navigation Tabs */}
       <div style={{ padding: '20px 28px 0', borderBottom: '1px solid #334155', background: '#1e293b', display: 'flex', flexDirection: 'column', gap: 16 }}>

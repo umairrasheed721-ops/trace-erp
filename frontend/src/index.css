@@ -3859,3 +3859,89 @@ a.btn[href^="whatsapp:"]:hover {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* ==========================================================================
+   EditOrderModal Refactored Component Styles (Phase 3 Optimization)
+   ========================================================================== */
+
+.rto-risk-alert-banner {
+  background: linear-gradient(90deg, #9f1239 0%, #be123c 100%);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+}
+
+.rto-risk-alert-btn {
+  background: #0f172a;
+  color: #fda4af;
+  border: 1px solid #f43f5e;
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.rto-risk-alert-btn:hover {
+  transform: translateY(-1px);
+}
+
+.address-verification-card {
+  margin-top: 12px;
+  padding: 16px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+}
+
+.cs-update-input {
+  width: 90px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 0.85rem;
+  text-align: right;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.cs-update-input:focus {
+  border-color: var(--brand) !important;
+}
+
+.cs-update-input-blue {
+  width: 90px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 6px 10px;
+  color: #38bdf8;
+  font-size: 0.85rem;
+  text-align: right;
+  font-weight: 700;
+  outline: none;
+}
+
+.cs-update-notes-textarea {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 12px;
+  color: #fff;
+  font-size: 0.85rem;
+  outline: none;
+  resize: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.cs-update-notes-textarea:focus {
+  border-color: var(--brand) !important;
+}
