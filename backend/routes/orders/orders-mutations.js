@@ -614,10 +614,15 @@ router.post('/:id/verify-address', async (req, res) => {
         resolvedCity = (localityComponent || admin2Component || subLocalityComponent || {}).long_name || '';
       }
 
+      // Merge Google suggestion with user's original landmark details
+      const suggested = firstResult.formatted_address;
+      const mergedAddress = smartMergeAddress(order.address, suggested);
+
       res.json({
         success: true,
         status: data.status,
-        formatted_address: firstResult.formatted_address,
+        formatted_address: suggested,
+        merged_address: mergedAddress,
         location: firstResult.geometry?.location || null,
         location_type: locationType,
         types: firstResult.types,
@@ -638,6 +643,43 @@ router.post('/:id/verify-address', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function smartMergeAddress(original, suggested) {
+  if (!original || !suggested) return suggested || original;
+  
+  // Normalize commas and convert to whitespace
+  const normOriginal = original.replace(/,/g, ' ');
+  const normSuggested = suggested.replace(/,/g, ' ');
+  
+  // Extract words
+  const origWords = normOriginal.split(/\s+/).filter(w => w.trim().length > 0);
+  const suggWords = normSuggested.split(/\s+/).filter(w => w.trim().length > 0).map(w => w.toLowerCase());
+  
+  // Find words in original address that are not present in suggested address
+  const extraWords = [];
+  origWords.forEach(word => {
+    const cleanWord = word.replace(/[^\w]/g, '').toLowerCase();
+    if (!cleanWord) return;
+    
+    const isMatched = suggWords.some(sw => {
+      const cleanSw = sw.replace(/[^\w]/g, '');
+      return cleanSw === cleanWord || cleanSw.includes(cleanWord) || cleanWord.includes(cleanSw);
+    });
+    
+    if (!isMatched) {
+      extraWords.push(word);
+    }
+  });
+  
+  // Prepend extra words (like house number, landmark, shop name) to standardized Google address
+  if (extraWords.length > 0) {
+    const prefix = extraWords.join(' ');
+    const cleanSuggested = suggested.replace(/^[, ]+/, '');
+    return `${prefix}, ${cleanSuggested}`;
+  }
+  
+  return suggested;
+}
 
 // POST /api/orders/update-legacy-financials - Run historical financials sync for all tenants
 router.post('/update-legacy-financials', async (req, res) => {
