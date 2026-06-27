@@ -145,27 +145,77 @@ export default function ReturnsManager() {
       if (match) {
         handleBulkVerify([match.id])
         setTrackingInput('')
+      } else {
+        // Look in returns history
+        const historyMatch = returnHistory.find(r => r.tracking_number === lastScan)
+        if (historyMatch) {
+          handleBulkVerify([historyMatch.order_id || historyMatch.id])
+          setTrackingInput('')
+        } else {
+          // Query the backend search API
+          fetch(`/api/orders?store_id=${activeStoreId}&search=${encodeURIComponent(lastScan)}&limit=1`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+          })
+            .then(r => r.status === 401 ? null : r.json())
+            .then(data => {
+              if (!data) return
+              const orders = data.orders || data.data || []
+              if (orders.length > 0) {
+                handleBulkVerify([orders[0].id])
+                setTrackingInput('')
+              } else {
+                addToast(`Order not found for tracking barcode: ${lastScan}`, 'warning')
+              }
+            })
+            .catch(() => {})
+        }
       }
     }
   }
 
-  const handleBulkAction = () => {
+  const handleBulkAction = async () => {
     const lines = trackingInput.split('\n').map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) return
 
     const idsToVerify = []
+    const missingLines = []
+
     lines.forEach(line => {
       const match = pendingReturns.find(r => r.tracking_number === line)
       if (match) {
         idsToVerify.push(match.id)
+      } else {
+        const historyMatch = returnHistory.find(r => r.tracking_number === line)
+        if (historyMatch) {
+          idsToVerify.push(historyMatch.order_id || historyMatch.id)
+        } else {
+          missingLines.push(line)
+        }
       }
     })
+
+    if (missingLines.length > 0) {
+      for (const line of missingLines) {
+        try {
+          const res = await fetch(`/api/orders?store_id=${activeStoreId}&search=${encodeURIComponent(line)}&limit=1`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
+          })
+          if (res.ok) {
+            const data = await res.json()
+            const orders = data.orders || data.data || []
+            if (orders.length > 0) {
+              idsToVerify.push(orders[0].id)
+            }
+          }
+        } catch (e) {}
+      }
+    }
 
     if (idsToVerify.length > 0) {
       handleBulkVerify(idsToVerify)
       setTrackingInput('')
     } else {
-      addToast('No matching pending returns found', 'warning')
+      addToast('No matching returns found', 'warning')
     }
   }
 
@@ -443,6 +493,7 @@ export default function ReturnsManager() {
                     <th>Tracking</th>
                     <th>Verified By</th>
                     <th>Shopify Restock</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -508,11 +559,20 @@ export default function ReturnsManager() {
                           {row.restocked_shopify ? '✅ Yes' : '❌ No'}
                         </span>
                       </td>
+                      <td>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          onClick={() => handleBulkVerify([row.order_id || row.id])}
+                          disabled={isProcessing}
+                        >
+                          Verify Again
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {filteredHistory.length === 0 && (
                     <tr>
-                      <td colSpan="5" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No history records found.</td>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No history records found.</td>
                     </tr>
                   )}
                 </tbody>

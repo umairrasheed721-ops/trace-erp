@@ -24,18 +24,36 @@ async function shopifyFetch(store, endpoint, options = {}) {
 }
 
 async function getPrimaryLocationId(store) {
-  const res = await shopifyFetch(store, 'locations.json');
-  if (!res.ok) throw new Error("Could not fetch locations.");
-  const data = await res.json();
-  const activeLoc = data.locations.find(l => l.active) || data.locations[0];
-  if (!activeLoc) throw new Error("No active location found.");
-  return activeLoc.id;
+  try {
+    const res = await shopifyFetch(store, 'locations.json');
+    if (!res.ok) {
+      console.warn(`[shopify_finance] locations.json failed with status ${res.status}: ${await res.text()}`);
+      return null;
+    }
+    const data = await res.json();
+    const activeLoc = data.locations?.find(l => l.active) || data.locations?.[0];
+    return activeLoc ? activeLoc.id : null;
+  } catch (err) {
+    console.warn(`[shopify_finance] locations.json error:`, err.message);
+    return null;
+  }
 }
 
 async function processSmartRestock(store, orderId, locationId) {
-  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,line_items,shipping_lines`);
+  const res = await shopifyFetch(store, `orders/${orderId}.json?fields=id,line_items,shipping_lines,fulfillments`);
   if (!res.ok) throw new Error(`Order Fetch Failed: ${res.status}`);
   const order = (await res.json()).order;
+
+  // Resolve locationId from fulfillments if not provided or if location fetch failed (e.g. read_locations scope missing)
+  let resolvedLocationId = locationId;
+  if (!resolvedLocationId && order.fulfillments && order.fulfillments.length > 0) {
+    resolvedLocationId = order.fulfillments[0].location_id;
+    console.log(`[shopify_finance] Resolved location ID ${resolvedLocationId} from order fulfillments for order ${orderId}`);
+  }
+
+  if (!resolvedLocationId) {
+    throw new Error("Merchant approval/permission for 'read_locations' scope is missing and order has no fulfillments to resolve location ID from.");
+  }
   
   const refundItems = [];
   if (order.line_items) {
@@ -47,7 +65,7 @@ async function processSmartRestock(store, orderId, locationId) {
             line_item_id: item.id,
             quantity: remainingQty,
             restock_type: "return",
-            location_id: Number(locationId)
+            location_id: Number(resolvedLocationId)
           });
         }
       }

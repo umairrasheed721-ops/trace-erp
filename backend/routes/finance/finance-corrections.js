@@ -65,7 +65,21 @@ router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
 
     try {
       if (order.delivery_status === 'Return Received') {
-        results.push({ id, tracking: order.tracking_number, status: '⚠️ Already Verified', shopifyStatus: '⏭️ Skipped' });
+        let shopifyStatus = '⏭️ Skipped';
+        let restocked = 0;
+        if (restockShopify && order.shopify_order_id) {
+          shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+          if (shopifyStatus.includes('✅')) restocked = 1;
+          
+          db.prepare(`
+            INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
+          
+          results.push({ id, tracking: order.tracking_number, status: '✅ Re-Processed Shopify', shopifyStatus });
+        } else {
+          results.push({ id, tracking: order.tracking_number, status: '⚠️ Already Verified', shopifyStatus: '⏭️ Skipped' });
+        }
         continue;
       }
 
@@ -150,7 +164,7 @@ router.post('/returns', authenticateToken, async (req, res) => {
 
     results.push({ tracking: track, erpStatus, shopifyStatus });
 
-    if (erpStatus === '✅ Updated') {
+    if (erpStatus === '✅ Updated' || (restockShopify && shopifyStatus.includes('✅'))) {
       db.prepare(`
         INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
         VALUES (?, ?, ?, ?, ?)

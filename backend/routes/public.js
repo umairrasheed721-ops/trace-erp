@@ -138,51 +138,6 @@ router.get('/poll-diag', (req, res) => {
   }
 });
 
-// --- 🧪 TEMP DIAGNOSTIC FOR BARCODE RETURN ERROR (remove after debugging) ---
-router.get('/temp-test-return-verification', async (req, res) => {
-  try {
-    const allStores = db.prepare('SELECT * FROM stores').all();
-    const store = allStores.find(s => s.id === 14);
-
-    let shopTest = {};
-    if (store) {
-      try {
-        const fetch = require('node-fetch');
-        const orderRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/orders/7832564793534.json?fields=id,line_items,fulfillments`, {
-          headers: {
-            'X-Shopify-Access-Token': store.access_token,
-            'Content-Type': 'application/json'
-          }
-        });
-        const orderData = await orderRes.json();
-        
-        let resolvedLocationId = null;
-        if (orderData.order && orderData.order.fulfillments && orderData.order.fulfillments.length > 0) {
-          resolvedLocationId = orderData.order.fulfillments[0].location_id;
-        }
-
-        shopTest = {
-          ok: orderRes.ok,
-          status: orderRes.status,
-          resolvedLocationId,
-          fulfillmentsCount: orderData.order?.fulfillments?.length || 0,
-          fulfillments: orderData.order?.fulfillments?.map(f => ({ id: f.id, status: f.status, location_id: f.location_id }))
-        };
-      } catch (e) {
-        shopTest = { error: e.message };
-      }
-    }
-
-    res.json({
-      success: true,
-      shopTest,
-      storeFound: !!store,
-      storeDomain: store?.shop_domain,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // --- 🔍 TEMP SESSION RESET ENDPOINT (remove after debugging) ---
 router.post('/reset-session', (req, res) => {
