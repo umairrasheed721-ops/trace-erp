@@ -11,25 +11,34 @@ const CSUpdateForm = React.memo(({
   localNotes,
   setLocalNotes
 }) => {
+  const handleNumericChange = (setter) => (e) => {
+    const val = e.target.value;
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setter(val);
+    }
+  };
+
   const renderInputs = () => (
     <>
       <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
         <span>CS Discount</span>
         <input 
-          type="number"
+          type="text"
+          inputMode="decimal"
           className="cs-update-input"
           value={localDiscount}
-          onChange={e => setLocalDiscount(e.target.value)}
+          onChange={handleNumericChange(setLocalDiscount)}
         />
       </div>
 
       <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.85rem', color: '#94a3b8', alignItems: 'center' }}>
         <span title="Shipping fee charged to the customer (adds to Revenue)">Shipping Fee (Customer)</span>
         <input 
-          type="number"
+          type="text"
+          inputMode="decimal"
           className="cs-update-input"
           value={shippingFee}
-          onChange={e => setShippingFee(e.target.value)}
+          onChange={handleNumericChange(setShippingFee)}
         />
       </div>
 
@@ -38,10 +47,11 @@ const CSUpdateForm = React.memo(({
           Courier Expense 📦
         </span>
         <input 
-          type="number"
+          type="text"
+          inputMode="decimal"
           className="cs-update-input-blue"
           value={courierFee}
-          onChange={e => setCourierFee(e.target.value)}
+          onChange={handleNumericChange(setCourierFee)}
         />
       </div>
     </>
