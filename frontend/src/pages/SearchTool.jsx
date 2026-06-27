@@ -1007,7 +1007,7 @@ export default function SearchTool() {
     return baseCols
   })
 
-  // Enforce role-based column visibility reactively when user loads or columns are set/restored
+  // Enforce role-based column visibility reactively and persist to localStorage
   useEffect(() => {
     if (!user) return
     // Always filter out 'courier' since it has been merged
@@ -1018,20 +1018,18 @@ export default function SearchTool() {
     if (filtered.length !== cols.length) {
       setCols(filtered)
       localStorage.setItem('trace_search_cols', JSON.stringify(filtered))
+    } else {
+      localStorage.setItem('trace_search_cols', JSON.stringify(cols))
     }
   }, [user, cols])
 
-  // Smart-inject missing essential columns without resetting the whole layout
+  // Smart-inject missing essential locked columns without resetting the whole layout
   useEffect(() => {
     if (!user) return
     const currentIds = cols.map(c => c.id)
     
-    // Profit is only essential for admin users; regular agents/managers cannot see it
-    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'paid_amount', 'address', 'wa_erp_status']
-    if (user.role === 'admin') {
-      essentials.push('profit')
-    }
-    
+    // Only force-inject columns that can NEVER be removed (locked columns)
+    const essentials = ['delivery_status', 'edit']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
