@@ -939,15 +939,15 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       const variantGid = `gid://shopify/ProductVariant/${target.variantId}`;
       console.log(`[OrderEdit] Adding new variant: ${variantGid} with quantity ${target.quantity}`);
       const addMutation = `
-        mutation orderEditAddLineItem($id: ID!, $variantId: ID!, $quantity: Int!) {
-          orderEditAddLineItem(id: $id, variantId: $variantId, quantity: $quantity) {
+        mutation orderEditAddVariant($id: ID!, $variantId: ID!, $quantity: Int!) {
+          orderEditAddVariant(id: $id, variantId: $variantId, quantity: $quantity) {
             userErrors { message }
           }
         }
       `;
       const addRes = await runQuery(addMutation, { id: calculatedOrderId, variantId: variantGid, quantity: target.quantity });
-      if (addRes.orderEditAddLineItem?.userErrors?.length) {
-        throw new Error(`orderEditAddLineItem error: ${addRes.orderEditAddLineItem.userErrors.map(u => u.message).join(', ')}`);
+      if (addRes.orderEditAddVariant?.userErrors?.length) {
+        throw new Error(`orderEditAddVariant error: ${addRes.orderEditAddVariant.userErrors.map(u => u.message).join(', ')}`);
       }
     }
   }
