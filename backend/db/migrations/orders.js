@@ -304,6 +304,7 @@ module.exports = [
       "ALTER TABLE stores ADD COLUMN google_maps_key TEXT",
       "ALTER TABLE orders ADD COLUMN email TEXT",
       "ALTER TABLE users ADD COLUMN allowed_stores TEXT DEFAULT '[]'",
+      "ALTER TABLE orders ADD COLUMN is_cs_edited INTEGER DEFAULT 0",
       "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
       "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)"
     ];

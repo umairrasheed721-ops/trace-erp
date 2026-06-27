@@ -90,6 +90,7 @@ exports.csUpdate = async (req, res) => {
         discount_amount = ?,
         cs_notes = ?,
         shipping_fee = ?,
+        is_cs_edited = 1,
         notes = CASE 
           WHEN notes IS NULL OR notes = '' THEN json_set('{}', '$.cs_discount', ?)
           WHEN json_valid(notes) = 1 THEN json_set(notes, '$.cs_discount', ?)

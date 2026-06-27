@@ -418,10 +418,19 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
 
     let count = 0;
     const updateStmt = db.prepare(`
-      UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-      payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?,
-      shipping_fee=?, discount_amount=?
-      WHERE id=?
+      UPDATE orders SET 
+        price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
+        items_count = ?,
+        notes = ?,
+        product_titles = ?,
+        payment_status = ?,
+        cost = ?,
+        tracking_number = ?,
+        courier = ?,
+        delivery_status = ?,
+        shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
+        discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END
+      WHERE id = ?
     `);
 
     const updateMany = db.transaction(rows => {
@@ -632,10 +641,21 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
 
       db.prepare(`
-        UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-        payment_status=?, cost=?, tracking_number=?, courier=?, delivery_status=?, 
-        line_items=?, shipping_fee=?, discount_amount=?, status_date=datetime('now')
-        WHERE id=?
+        UPDATE orders SET 
+          price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
+          items_count = ?,
+          notes = ?,
+          product_titles = ?,
+          payment_status = ?,
+          cost = ?,
+          tracking_number = ?,
+          courier = ?,
+          delivery_status = ?, 
+          line_items = ?,
+          shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
+          discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
+          status_date = datetime('now')
+        WHERE id = ?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles,
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
@@ -742,10 +762,19 @@ async function syncSpecificOrders(store, shopifyIds) {
     const shopifyOrders = data.orders || [];
 
     const updateStmt = db.prepare(`
-      UPDATE orders SET price=?, items_count=?, notes=?, product_titles=?,
-      payment_status=?, tracking_number=?, courier=?, delivery_status=?,
-      shipping_fee=?, discount_amount=?, status_date=datetime('now')
-      WHERE shopify_order_id=? AND store_id=?
+      UPDATE orders SET 
+        price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
+        items_count = ?,
+        notes = ?,
+        product_titles = ?,
+        payment_status = ?,
+        tracking_number = ?,
+        courier = ?,
+        delivery_status = ?,
+        shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
+        discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
+        status_date = datetime('now')
+      WHERE shopify_order_id = ? AND store_id = ?
     `);
 
     for (const fresh of shopifyOrders) {
