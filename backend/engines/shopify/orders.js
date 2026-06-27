@@ -856,6 +856,11 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
                 variant {
                   id
                 }
+                calculatedDiscountAllocations {
+                  discountApplication {
+                    id
+                  }
+                }
               }
             }
           }
@@ -905,10 +910,25 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       }
     `;
     const discountsRes = await runQuery(getDiscountsQuery, { id: orderGid });
-    existingDiscountIds = discountsRes.order?.discountApplications?.edges?.map(e => e.node.id) || [];
+    const orderDiscountIds = discountsRes.order?.discountApplications?.edges?.map(e => e.node.id) || [];
+    existingDiscountIds = [...orderDiscountIds];
   } catch (discountsErr) {
     console.warn(`[OrderEdit] Warning fetching existing discounts:`, discountsErr.message);
   }
+
+  // Also query existing calculated line-item discounts from the edit session
+  if (calculatedOrder?.lineItems?.edges) {
+    calculatedOrder.lineItems.edges.forEach(e => {
+      e.node.calculatedDiscountAllocations?.forEach(da => {
+        if (da.discountApplication?.id) {
+          existingDiscountIds.push(da.discountApplication.id);
+        }
+      });
+    });
+  }
+
+  // Ensure unique discount IDs to prevent redundant removals
+  existingDiscountIds = [...new Set(existingDiscountIds)];
 
   // Remove existing manual discounts if we want to change or clear them
   if (existingDiscountIds.length > 0) {
