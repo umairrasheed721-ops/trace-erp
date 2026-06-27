@@ -951,7 +951,6 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
         userErrors { message }
       }
     }
-  }
   `;
   const shippingRes = await runQuery(shippingMutation, {
     id: calculatedOrderId,
