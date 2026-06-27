@@ -148,7 +148,7 @@ router.get('/temp-test-return-verification', async (req, res) => {
     if (store) {
       try {
         const fetch = require('node-fetch');
-        const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/shop.json`, {
+        const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/locations.json`, {
           headers: {
             'X-Shopify-Access-Token': store.access_token,
             'Content-Type': 'application/json'
