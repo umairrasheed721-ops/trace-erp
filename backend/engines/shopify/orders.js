@@ -854,6 +854,8 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
 
   console.log(`[OrderEdit] Found ${existingItems.length} existing line items in edit session`);
 
+  let changeCount = 0;
+
   // 2. Process Line Items: Add, Remove, or Update Quantities
   const targetItems = newLineItems.map(item => {
     const rawId = String(item.variant_id || '');
@@ -868,6 +870,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
   for (const existing of existingItems) {
     const target = targetItems.find(t => t.variantId === existing.variantId);
     if (!target || target.quantity === 0) {
+      changeCount++;
       // Remove item
       console.log(`[OrderEdit] Removing line item: calculated ID ${existing.calculatedLineItemId}`);
       const removeMutation = `
@@ -882,6 +885,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
         throw new Error(`orderEditRemoveLineItem error: ${removeRes.orderEditRemoveLineItem.userErrors.map(u => u.message).join(', ')}`);
       }
     } else if (target.quantity !== existing.quantity) {
+      changeCount++;
       // Update quantity
       console.log(`[OrderEdit] Updating line item quantity: calculated ID ${existing.calculatedLineItemId} to ${target.quantity}`);
       const setQtyMutation = `
@@ -902,6 +906,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
   for (const target of targetItems) {
     const exists = existingItems.some(e => e.variantId === target.variantId);
     if (!exists && target.quantity > 0) {
+      changeCount++;
       const variantGid = `gid://shopify/ProductVariant/${target.variantId}`;
       console.log(`[OrderEdit] Adding new variant: ${variantGid} with quantity ${target.quantity}`);
       const addMutation = `
@@ -920,6 +925,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
 
   // 3. Set Custom Discount
   if (discountAmount > 0) {
+    changeCount++;
     console.log(`[OrderEdit] Applying custom discount: Rs ${discountAmount}`);
     const discountMutation = `
       mutation orderEditAddCustomDiscount($id: ID!, $discount: OrderEditAppliedDiscountInput!) {
@@ -944,6 +950,11 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
   }
 
   // Shipping edits are not supported in standard Shopify GraphQL Order Edit APIs without Plus, so we skip it to prevent crashes. The new total is logged in Shopify timeline notes.
+
+  if (changeCount === 0) {
+    console.log(`[OrderEdit] No line items or discount changes detected. Skipping Shopify commit.`);
+    return true;
+  }
 
   // 5. Commit Order Edit
   console.log(`[OrderEdit] Committing edit session: ${calculatedOrderId}`);
