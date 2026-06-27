@@ -151,9 +151,25 @@ router.get('/temp-test-return-verification', async (req, res) => {
     
     let shopifyLocationId = null;
     try {
-      shopifyLocationId = await getPrimaryLocationId(store);
+      const { shopifyFetch } = require('../engines/shopify_finance');
+      const locationRes = await shopifyFetch(store, 'locations.json');
+      if (!locationRes.ok) {
+        const errBody = await locationRes.text();
+        return res.json({
+          success: false,
+          phase: 'location_fetch_api',
+          status: locationRes.status,
+          error: errBody
+        });
+      }
+      const data = await locationRes.json();
+      const activeLoc = data.locations?.find(l => l.active) || data.locations?.[0];
+      if (!activeLoc) {
+        return res.json({ success: false, phase: 'location_search', error: 'No active location in list', data });
+      }
+      shopifyLocationId = activeLoc.id;
     } catch (e) {
-      return res.json({ success: false, phase: 'location_fetch', error: e.message });
+      return res.json({ success: false, phase: 'location_fetch_js', error: e.message });
     }
 
     let shopifyStatus = 'none';
