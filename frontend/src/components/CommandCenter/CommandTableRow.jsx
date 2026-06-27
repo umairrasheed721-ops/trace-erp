@@ -692,25 +692,38 @@ const CommandTableRow = React.memo(({
             </td>
           )
         }
-        if (col.id === 'courier') return <td key={col.id} style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{o.courier || '—'}</td>
         if (col.id === 'tracking_number') {
           const courierStr = (o.courier || '').toLowerCase();
           const isInstaPortal = courierStr.includes('insta') || courierStr.includes('lcs') || courierStr.includes('leopard') || courierStr.includes('tcs') || courierStr.includes('private rider');
           
           return (
-            <td key={col.id} style={{ fontSize: '0.75rem' }}>
+            <td key={col.id} style={{ fontSize: '0.75rem', lineHeight: '13px', verticalAlign: 'middle' }}>
               {o.tracking_number ? (
-                <a 
-                  href={isInstaPortal 
-                    ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
-                    : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  style={{ color: 'var(--blue)', textDecoration: 'none' }}
-                >
-                  🚚 {o.tracking_number}
-                </a>
-              ) : '—'}
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <a 
+                    href={isInstaPortal 
+                      ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
+                      : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 600, display: 'block', marginBottom: '1px' }}
+                  >
+                    🚚 {o.tracking_number}
+                  </a>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', paddingLeft: '14px', display: 'block' }}>
+                    {o.courier || '—'}
+                  </span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <span style={{ opacity: 0.3, display: 'block' }}>—</span>
+                  {o.courier && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', display: 'block', marginTop: '1px' }}>
+                      {o.courier}
+                    </span>
+                  )}
+                </div>
+              )}
             </td>
           )
         }

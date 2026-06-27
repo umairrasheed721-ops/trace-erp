@@ -84,7 +84,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, 
     },
     {
       title: '🚚 Logistics & Status',
-      ids: ['tracking_number', 'courier', 'courier_status', 'delivery_status', 'wa_erp_status', 'postex_weight', 'status_date']
+      ids: ['tracking_number', 'courier_status', 'delivery_status', 'wa_erp_status', 'postex_weight', 'status_date']
     },
     {
       title: '💰 Financials & Performance',

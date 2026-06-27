@@ -114,6 +114,48 @@ export default function TableHeader({
                       )}
                     </span>
                   </span>
+                ) : col.id === 'tracking_number' ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} onClick={(e) => e.stopPropagation()}>
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); handleHeaderSort('tracking_number'); }}
+                      style={{
+                        cursor: 'pointer',
+                        fontWeight: sortKey === 'tracking_number' ? 700 : 400,
+                        color: sortKey === 'tracking_number' ? 'var(--brand)' : 'inherit',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 2
+                      }}
+                      title="Sort by Tracking #"
+                    >
+                      Tracking
+                      {sortKey === 'tracking_number' && (
+                        <span style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ opacity: 0.4 }}>/</span>
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); handleHeaderSort('courier'); }}
+                      style={{
+                        cursor: 'pointer',
+                        fontWeight: sortKey === 'courier' ? 700 : 400,
+                        color: sortKey === 'courier' ? 'var(--brand)' : 'inherit',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 2
+                      }}
+                      title="Sort by Courier"
+                    >
+                      Courier
+                      {sortKey === 'courier' && (
+                        <span style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </span>
+                  </span>
                 ) : col.label}
               </span>
               <span style={{
@@ -124,7 +166,7 @@ export default function TableHeader({
                 marginLeft: 6,
                 zIndex: TABLE_CONSTANTS.Z_INDEX.TABLE_HEADER
               }}>
-                {sortKey === col.id && col.id !== 'ref_number' && (
+                {sortKey === col.id && col.id !== 'ref_number' && col.id !== 'tracking_number' && (
                   <span style={{ fontSize: '0.65rem', color: 'var(--brand)', flexShrink: 0 }}>
                     {sortDir === 'asc' ? '▲' : '▼'}
                   </span>

@@ -977,8 +977,7 @@ export default function SearchTool() {
     { id: 'address', label: 'Shipping Address' },
     { id: 'city', label: 'City' },
     { id: 'items', label: 'Line Items' },
-    { id: 'tracking_number', label: 'Tracking #' },
-    { id: 'courier', label: 'Courier' },
+    { id: 'tracking_number', label: 'Tracking # / Courier' },
     { id: 'courier_status', label: 'Courier Status' },
     { id: 'delivery_status', label: 'ERP Status' },
     { id: 'wa_erp_status', label: '📱 COD Status' },
@@ -999,8 +998,9 @@ export default function SearchTool() {
   const [cols, setCols] = useState(() => {
     const saved = localStorage.getItem('trace_search_cols')
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
-    baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date')
+    baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date' && c.id !== 'courier')
     baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
+    baseCols = baseCols.map(c => c.id === 'tracking_number' ? { ...c, label: 'Tracking # / Courier' } : c)
     if (user && user.role !== 'admin') {
       baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
     }
@@ -1010,12 +1010,14 @@ export default function SearchTool() {
   // Enforce role-based column visibility reactively when user loads or columns are set/restored
   useEffect(() => {
     if (!user) return
+    // Always filter out 'courier' since it has been merged
+    let filtered = cols.filter(c => c.id !== 'courier')
     if (user.role !== 'admin') {
-      const filtered = cols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
-      if (filtered.length !== cols.length) {
-        setCols(filtered)
-        localStorage.setItem('trace_search_cols', JSON.stringify(filtered))
-      }
+      filtered = filtered.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
+    }
+    if (filtered.length !== cols.length) {
+      setCols(filtered)
+      localStorage.setItem('trace_search_cols', JSON.stringify(filtered))
     }
   }, [user, cols])
 
