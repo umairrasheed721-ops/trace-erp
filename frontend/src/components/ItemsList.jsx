@@ -80,6 +80,7 @@ function ParentProductCard({ g, localItems, setLocalItems, setShowProductSearch,
                     ...localItems,
                     {
                       id: Date.now() + Math.random(),
+                      variant_id: sz.shopify_variant_id,
                       sku: sz.sku,
                       title: g.parent_title,
                       variant_title: sz.variant_title || `${sz.clean_size} / ${sz.clean_color}`,
