@@ -943,25 +943,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
     }
   }
 
-  // 4. Set Shipping Line (Official API mutation)
-  console.log(`[OrderEdit] Setting shipping fee: Rs ${shippingFee}`);
-  const shippingMutation = `
-    mutation orderEditSetShippingLine($id: ID!, $shippingLine: OrderEditShippingLineInput!) {
-      orderEditSetShippingLine(id: $id, shippingLine: $shippingLine) {
-        userErrors { message }
-      }
-    }
-  `;
-  const shippingRes = await runQuery(shippingMutation, {
-    id: calculatedOrderId,
-    shippingLine: {
-      price: Number(shippingFee).toFixed(2),
-      title: shippingFee > 0 ? "Shipping" : "Free Shipping"
-    }
-  });
-  if (shippingRes.orderEditSetShippingLine?.userErrors?.length) {
-    console.warn(`[OrderEdit] Shipping mutation warning:`, shippingRes.orderEditSetShippingLine.userErrors.map(u => u.message).join(', '));
-  }
+  // Shipping edits are not supported in standard Shopify GraphQL Order Edit APIs without Plus, so we skip it to prevent crashes. The new total is logged in Shopify timeline notes.
 
   // 5. Commit Order Edit
   console.log(`[OrderEdit] Committing edit session: ${calculatedOrderId}`);
