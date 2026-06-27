@@ -147,8 +147,13 @@ router.get('/temp-test-return-verification', async (req, res) => {
     let shopTest = {};
     if (store) {
       try {
-        const { shopifyFetch } = require('../engines/shopify_finance');
-        const shopRes = await shopifyFetch(store, 'shop.json');
+        const fetch = require('node-fetch');
+        const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/shop.json`, {
+          headers: {
+            'X-Shopify-Access-Token': store.access_token,
+            'Content-Type': 'application/json'
+          }
+        });
         const text = await shopRes.text();
         shopTest = {
           ok: shopRes.ok,
