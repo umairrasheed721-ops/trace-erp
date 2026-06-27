@@ -95,34 +95,45 @@ const CommandTableRow = React.memo(({
       {cols.map(col => {
         if (col.id === 'ref_number') return (
           <td key={col.id}>
-            <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
-              <button 
-                onClick={() => { setActiveRowId(o.id); fetchOrderDetails(o.id); }}
-                className="btn btn-primary btn-sm"
-                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
-                title="Edit Full Order"
-              >
-                ✏️
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+                <button 
+                  onClick={() => { setActiveRowId(o.id); fetchOrderDetails(o.id); }}
+                  className="btn btn-primary btn-sm"
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  title="Edit Full Order"
+                >
+                  ✏️
+                </button>
 
-              <button 
-                onClick={(e) => { e.stopPropagation(); setActiveRowId(o.id); onViewHistory(o); }}
-                className="btn btn-secondary btn-sm"
-                style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
-                title="View History Timeline"
-              >
-                📜
-              </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setActiveRowId(o.id); onViewHistory(o); }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  title="View History Timeline"
+                >
+                  📜
+                </button>
 
-              <a 
-                href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
-                target="_blank" 
-                rel="noreferrer" 
-                onClick={() => setActiveRowId(o.id)}
-                style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
-              >
-                {o.ref_number || o.shopify_order_id}
-              </a>
+                <a 
+                  href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  onClick={() => setActiveRowId(o.id)}
+                  style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+                >
+                  {o.ref_number || o.shopify_order_id}
+                </a>
+              </div>
+              <div style={{ 
+                fontSize: '0.72rem', 
+                color: dateAged ? 'var(--orange)' : 'var(--text-muted)', 
+                fontWeight: dateAged ? 700 : 400,
+                paddingLeft: '32px'
+              }}>
+                {o.order_date || '—'}
+                {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
+              </div>
             </div>
           </td>
         )

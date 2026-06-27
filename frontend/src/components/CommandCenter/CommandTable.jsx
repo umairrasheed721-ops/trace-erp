@@ -12,7 +12,7 @@ import TablePagination from '../OrderTableParts/TablePagination'
 
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
-  ref_number: 160,
+  ref_number: 175,
   order_date: 125,
   customer_name: 140,
   customer_history: 100,

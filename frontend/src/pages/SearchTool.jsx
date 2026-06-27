@@ -971,8 +971,7 @@ export default function SearchTool() {
 
   // ─── Drag & Drop Columns ─────────────────
   const DEFAULT_COLS = [
-    { id: 'ref_number', label: 'Ref #' },
-    { id: 'order_date', label: 'Date' },
+    { id: 'ref_number', label: 'Ref # / Date' },
     { id: 'customer_name', label: 'Customer' },
     { id: 'phone', label: 'Phone' },
     { id: 'address', label: 'Shipping Address' },
@@ -1000,7 +999,8 @@ export default function SearchTool() {
   const [cols, setCols] = useState(() => {
     const saved = localStorage.getItem('trace_search_cols')
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
-    baseCols = baseCols.filter(c => c.id !== 'customer_history')
+    baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date')
+    baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
     if (user?.role !== 'admin') {
       baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
     }

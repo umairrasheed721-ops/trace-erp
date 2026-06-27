@@ -76,7 +76,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, 
   const CATEGORIES = [
     {
       title: '📦 Order & Source',
-      ids: ['ref_number', 'order_date', 'items', 'order_source', 'notes']
+      ids: ['ref_number', 'items', 'order_source', 'notes']
     },
     {
       title: '👤 Customer Info',

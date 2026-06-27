@@ -39,10 +39,10 @@ export default function TableHeader({
             onDragStart={() => onDragStart(idx)}
             onDragOver={onDragOver}
             onDrop={() => onDrop(idx)}
-            onClick={() => handleHeaderSort(col.id)}
+            onClick={col.id === 'ref_number' ? undefined : () => handleHeaderSort(col.id)}
             className={col.id === 'phone' ? 'min-w-[250px] whitespace-nowrap shrink-0' : (col.id === 'address' ? 'break-words whitespace-normal' : '')}
             style={{ 
-              cursor: 'pointer', 
+              cursor: col.id === 'ref_number' ? 'default' : 'pointer', 
               userSelect: 'none',
               width: COLUMN_WIDTHS[col.id] || 120,
               minWidth: col.id === 'phone' ? 250 : (COLUMN_WIDTHS[col.id] || 120),
@@ -72,6 +72,48 @@ export default function TableHeader({
                     {col.label}
                     <span style={{ fontSize: '0.65rem', opacity: 0.5, flexShrink: 0 }}>ℹ️</span>
                   </span>
+                ) : col.id === 'ref_number' ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); handleHeaderSort('ref_number'); }}
+                      style={{
+                        cursor: 'pointer',
+                        fontWeight: sortKey === 'ref_number' ? 700 : 400,
+                        color: sortKey === 'ref_number' ? 'var(--brand)' : 'inherit',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 2
+                      }}
+                      title="Sort by Ref #"
+                    >
+                      Ref #
+                      {sortKey === 'ref_number' && (
+                        <span style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ opacity: 0.4 }}>/</span>
+                    <span 
+                      onClick={(e) => { e.stopPropagation(); handleHeaderSort('order_date'); }}
+                      style={{
+                        cursor: 'pointer',
+                        fontWeight: sortKey === 'order_date' ? 700 : 400,
+                        color: sortKey === 'order_date' ? 'var(--brand)' : 'inherit',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 2
+                      }}
+                      title="Sort by Date"
+                    >
+                      Date
+                      {sortKey === 'order_date' && (
+                        <span style={{ fontSize: '0.65rem', flexShrink: 0 }}>
+                          {sortDir === 'asc' ? '▲' : '▼'}
+                        </span>
+                      )}
+                    </span>
+                  </span>
                 ) : col.label}
               </span>
               <span style={{
@@ -82,7 +124,7 @@ export default function TableHeader({
                 marginLeft: 6,
                 zIndex: TABLE_CONSTANTS.Z_INDEX.TABLE_HEADER
               }}>
-                {sortKey === col.id && (
+                {sortKey === col.id && col.id !== 'ref_number' && (
                   <span style={{ fontSize: '0.65rem', color: 'var(--brand)', flexShrink: 0 }}>
                     {sortDir === 'asc' ? '▲' : '▼'}
                   </span>
