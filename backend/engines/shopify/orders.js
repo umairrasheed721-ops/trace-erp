@@ -980,7 +980,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       changeCount++;
       console.log(`[OrderEdit] Applying discount of Rs ${discountAmount} to line item ${targetLineItemId}`);
       const discountMutation = `
-        mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedLineItemDiscountInput!) {
+        mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedDiscountInput!) {
           orderEditAddLineItemDiscount(id: $id, lineItemId: $lineItemId, discount: $discount) {
             userErrors { message }
           }
