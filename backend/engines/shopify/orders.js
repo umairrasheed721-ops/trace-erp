@@ -1077,7 +1077,12 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
   const commitRes = await runQuery(commitMutation, { id: calculatedOrderId });
   const commitData = commitRes.orderEditCommit;
   if (commitData.userErrors?.length) {
-    throw new Error(`orderEditCommit user error: ${commitData.userErrors.map(u => u.message).join(', ')}`);
+    const errorMsg = commitData.userErrors.map(u => u.message).join(', ');
+    if (errorMsg.toLowerCase().includes('there must be at least one change')) {
+      console.log(`[OrderEdit] Ignoring harmless no-op commit error: ${errorMsg}`);
+      return true;
+    }
+    throw new Error(`orderEditCommit user error: ${errorMsg}`);
   }
 
   console.log(`[OrderEdit] Successfully committed edit for Shopify Order ${shopifyOrderId}`);
