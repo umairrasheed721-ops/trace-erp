@@ -80,7 +80,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, 
     },
     {
       title: '👤 Customer Info',
-      ids: ['customer_name', 'customer_history', 'phone', 'address', 'city']
+      ids: ['customer_name', 'phone', 'address', 'city']
     },
     {
       title: '🚚 Logistics & Status',

@@ -974,7 +974,6 @@ export default function SearchTool() {
     { id: 'ref_number', label: 'Ref #' },
     { id: 'order_date', label: 'Date' },
     { id: 'customer_name', label: 'Customer' },
-    { id: 'customer_history', label: 'History' },
     { id: 'phone', label: 'Phone' },
     { id: 'address', label: 'Shipping Address' },
     { id: 'city', label: 'City' },
@@ -1001,6 +1000,7 @@ export default function SearchTool() {
   const [cols, setCols] = useState(() => {
     const saved = localStorage.getItem('trace_search_cols')
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
+    baseCols = baseCols.filter(c => c.id !== 'customer_history')
     if (user?.role !== 'admin') {
       baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
     }
@@ -1010,7 +1010,7 @@ export default function SearchTool() {
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
     const currentIds = cols.map(c => c.id)
-    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'customer_history', 'wa_erp_status']
+    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'wa_erp_status']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {

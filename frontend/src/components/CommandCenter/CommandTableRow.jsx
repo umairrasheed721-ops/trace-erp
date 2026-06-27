@@ -218,13 +218,14 @@ const CommandTableRow = React.memo(({
         if (col.id === 'customer_name') {
           const hasIdentifier = o.phone || o.email;
           const formattedPhone = formatPhone(o.phone);
+          const count = o.customer_order_count !== undefined ? o.customer_order_count : (orderCountsMap[o.id] || 1);
           return (
             <td 
               key={col.id} 
               title={o.customer_name}
               style={{ verticalAlign: 'middle' }}
             >
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px' }}>
                 <span
                   onClick={hasIdentifier ? (e) => {
                     e.stopPropagation();
@@ -241,6 +242,34 @@ const CommandTableRow = React.memo(({
                 >
                   {formatCustomerName(o.customer_name)}
                 </span>
+                {count > 1 ? (
+                  <span
+                    onClick={hasIdentifier ? (e) => {
+                      e.stopPropagation();
+                      setActiveRowId(o.id);
+                      setCustomerHistoryPhone({ phone: formattedPhone, email: o.email, name: o.customer_name });
+                    } : undefined}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      background: 'var(--green-dim)',
+                      color: 'var(--green)',
+                      fontSize: '0.58rem',
+                      fontWeight: 700,
+                      padding: '1px 5px',
+                      borderRadius: 10,
+                      cursor: hasIdentifier ? 'pointer' : 'default',
+                      border: '1px solid var(--green)',
+                      userSelect: 'none',
+                      marginTop: '2px'
+                    }}
+                    title="View customer order history"
+                  >
+                    {count} Orders
+                  </span>
+                ) : count === 1 ? (
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>1 Order</span>
+                ) : null}
               </div>
             </td>
           )
