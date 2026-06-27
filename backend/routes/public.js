@@ -138,6 +138,49 @@ router.get('/poll-diag', (req, res) => {
   }
 });
 
+// --- 🧪 TEMP DIAGNOSTIC FOR BARCODE RETURN ERROR (remove after debugging) ---
+router.get('/temp-test-return-verification', async (req, res) => {
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = 14').get();
+    if (!store) return res.status(404).json({ error: 'Store 14 not found' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = 202122').get();
+    if (!order) return res.status(404).json({ error: 'Order 202122 not found' });
+
+    const { getPrimaryLocationId, processSmartRestock } = require('../engines/shopify_finance');
+    
+    let shopifyLocationId = null;
+    try {
+      shopifyLocationId = await getPrimaryLocationId(store);
+    } catch (e) {
+      return res.json({ success: false, phase: 'location_fetch', error: e.message });
+    }
+
+    let shopifyStatus = 'none';
+    try {
+      shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+    } catch (e) {
+      return res.json({
+        success: false,
+        phase: 'restock_execution',
+        error: e.message,
+        shopifyLocationId,
+        shopifyOrderId: order.shopify_order_id
+      });
+    }
+
+    res.json({
+      success: true,
+      shopifyStatus,
+      shopifyLocationId,
+      shopifyOrderId: order.shopify_order_id,
+      orderDeliveryStatus: order.delivery_status
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- 🔍 TEMP SESSION RESET ENDPOINT (remove after debugging) ---
 router.post('/reset-session', (req, res) => {
   try {
