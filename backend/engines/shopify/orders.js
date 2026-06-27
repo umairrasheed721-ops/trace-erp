@@ -882,7 +882,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
     calculatedLineItemId: e.node.id,
     quantity: e.node.quantity,
     variantId: e.node.variant?.id ? e.node.variant.id.split('/').pop() : null
-  })).filter(item => item.variantId);
+  })).filter(item => item.variantId && item.quantity > 0);
 
   console.log(`[OrderEdit] Found ${existingItems.length} existing line items in edit session`);
 
