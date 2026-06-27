@@ -781,11 +781,219 @@ async function syncSpecificOrders(store, shopifyIds) {
   return updatedCount;
 }
 
+async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, discountAmount, shippingFee) {
+  const { shop_domain, access_token } = store;
+  const graphqlUrl = `https://${shop_domain}/admin/api/2024-10/graphql.json`;
+  
+  const headers = {
+    'X-Shopify-Access-Token': access_token,
+    'Content-Type': 'application/json'
+  };
+
+  const runQuery = async (query, variables = {}) => {
+    const res = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, variables })
+    });
+    if (!res.ok) {
+      throw new Error(`Shopify GraphQL error: ${res.statusText} (${res.status})`);
+    }
+    const data = await res.json();
+    if (data.errors) {
+      throw new Error(`Shopify GraphQL errors: ${data.errors.map(e => e.message).join(', ')}`);
+    }
+    return data.data;
+  };
+
+  // Ensure Shopify GID formats
+  const orderGid = shopifyOrderId.startsWith('gid://') ? shopifyOrderId : `gid://shopify/Order/${shopifyOrderId}`;
+
+  // 1. Begin Order Edit
+  console.log(`[OrderEdit] Beginning edit session for order ${orderGid}`);
+  const beginMutation = `
+    mutation orderEditBegin($id: ID!) {
+      orderEditBegin(id: $id) {
+        calculatedOrder {
+          id
+          lineItems(first: 50) {
+            edges {
+              node {
+                id
+                quantity
+                variant {
+                  id
+                }
+              }
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const beginRes = await runQuery(beginMutation, { id: orderGid });
+  const beginData = beginRes.orderEditBegin;
+  if (beginData.userErrors?.length) {
+    throw new Error(`orderEditBegin user error: ${beginData.userErrors.map(u => u.message).join(', ')}`);
+  }
+
+  const calculatedOrder = beginData.calculatedOrder;
+  const calculatedOrderId = calculatedOrder.id;
+  
+  // Create a map of existing calculated line items by variant ID for easy comparison
+  const existingItems = calculatedOrder.lineItems.edges.map(e => ({
+    calculatedLineItemId: e.node.id,
+    quantity: e.node.quantity,
+    variantId: e.node.variant?.id ? e.node.variant.id.split('/').pop() : null
+  })).filter(item => item.variantId);
+
+  console.log(`[OrderEdit] Found ${existingItems.length} existing line items in edit session`);
+
+  // 2. Process Line Items: Add, Remove, or Update Quantities
+  const targetItems = newLineItems.map(item => {
+    const rawId = String(item.variant_id || '');
+    const numId = rawId.includes('/') ? rawId.split('/').pop() : rawId;
+    return {
+      variantId: numId,
+      quantity: parseInt(item.quantity) || 0
+    };
+  }).filter(item => item.variantId);
+
+  // A. Determine items to update or remove
+  for (const existing of existingItems) {
+    const target = targetItems.find(t => t.variantId === existing.variantId);
+    if (!target || target.quantity === 0) {
+      // Remove item
+      console.log(`[OrderEdit] Removing line item: calculated ID ${existing.calculatedLineItemId}`);
+      const removeMutation = `
+        mutation orderEditRemoveLineItem($id: ID!, $lineItemId: ID!) {
+          orderEditRemoveLineItem(id: $id, lineItemId: $lineItemId) {
+            userErrors { message }
+          }
+        }
+      `;
+      const removeRes = await runQuery(removeMutation, { id: calculatedOrderId, lineItemId: existing.calculatedLineItemId });
+      if (removeRes.orderEditRemoveLineItem?.userErrors?.length) {
+        throw new Error(`orderEditRemoveLineItem error: ${removeRes.orderEditRemoveLineItem.userErrors.map(u => u.message).join(', ')}`);
+      }
+    } else if (target.quantity !== existing.quantity) {
+      // Update quantity
+      console.log(`[OrderEdit] Updating line item quantity: calculated ID ${existing.calculatedLineItemId} to ${target.quantity}`);
+      const setQtyMutation = `
+        mutation orderEditSetQuantity($id: ID!, $lineItemId: ID!, $quantity: Int!) {
+          orderEditSetQuantity(id: $id, lineItemId: $lineItemId, quantity: $quantity) {
+            userErrors { message }
+          }
+        }
+      `;
+      const qtyRes = await runQuery(setQtyMutation, { id: calculatedOrderId, lineItemId: existing.calculatedLineItemId, quantity: target.quantity });
+      if (qtyRes.orderEditSetQuantity?.userErrors?.length) {
+        throw new Error(`orderEditSetQuantity error: ${qtyRes.orderEditSetQuantity.userErrors.map(u => u.message).join(', ')}`);
+      }
+    }
+  }
+
+  // B. Determine new items to add
+  for (const target of targetItems) {
+    const exists = existingItems.some(e => e.variantId === target.variantId);
+    if (!exists && target.quantity > 0) {
+      const variantGid = `gid://shopify/ProductVariant/${target.variantId}`;
+      console.log(`[OrderEdit] Adding new variant: ${variantGid} with quantity ${target.quantity}`);
+      const addMutation = `
+        mutation orderEditAddLineItem($id: ID!, $variantId: ID!, $quantity: Int!) {
+          orderEditAddLineItem(id: $id, variantId: $variantId, quantity: $quantity) {
+            userErrors { message }
+          }
+        }
+      `;
+      const addRes = await runQuery(addMutation, { id: calculatedOrderId, variantId: variantGid, quantity: target.quantity });
+      if (addRes.orderEditAddLineItem?.userErrors?.length) {
+        throw new Error(`orderEditAddLineItem error: ${addRes.orderEditAddLineItem.userErrors.map(u => u.message).join(', ')}`);
+      }
+    }
+  }
+
+  // 3. Set Custom Discount
+  if (discountAmount > 0) {
+    console.log(`[OrderEdit] Applying custom discount: Rs ${discountAmount}`);
+    const discountMutation = `
+      mutation orderEditAddCustomDiscount($id: ID!, $discount: OrderEditAppliedDiscountInput!) {
+        orderEditAddCustomDiscount(id: $id, discount: $discount) {
+          userErrors { message }
+        }
+      }
+    `;
+    const discountRes = await runQuery(discountMutation, {
+      id: calculatedOrderId,
+      discount: {
+        fixedAmount: {
+          amount: Number(discountAmount).toFixed(2),
+          currencyCode: "PKR"
+        },
+        title: "CS Discount"
+      }
+    });
+    if (discountRes.orderEditAddCustomDiscount?.userErrors?.length) {
+      console.warn(`[OrderEdit] Discount mutation warning:`, discountRes.orderEditAddCustomDiscount.userErrors.map(u => u.message).join(', '));
+    }
+  }
+
+  // 4. Set Shipping Line (Official API mutation)
+  console.log(`[OrderEdit] Setting shipping fee: Rs ${shippingFee}`);
+  const shippingMutation = `
+    mutation orderEditSetShippingLine($id: ID!, $shippingLine: OrderEditShippingLineInput!) {
+      orderEditSetShippingLine(id: $id, shippingLine: $shippingLine) {
+        userErrors { message }
+      }
+    }
+  }
+  `;
+  const shippingRes = await runQuery(shippingMutation, {
+    id: calculatedOrderId,
+    shippingLine: {
+      price: Number(shippingFee).toFixed(2),
+      title: shippingFee > 0 ? "Shipping" : "Free Shipping"
+    }
+  });
+  if (shippingRes.orderEditSetShippingLine?.userErrors?.length) {
+    console.warn(`[OrderEdit] Shipping mutation warning:`, shippingRes.orderEditSetShippingLine.userErrors.map(u => u.message).join(', '));
+  }
+
+  // 5. Commit Order Edit
+  console.log(`[OrderEdit] Committing edit session: ${calculatedOrderId}`);
+  const commitMutation = `
+    mutation orderEditCommit($id: ID!) {
+      orderEditCommit(id: $id) {
+        order {
+          id
+        }
+        userErrors {
+          message
+        }
+      }
+    }
+  `;
+  const commitRes = await runQuery(commitMutation, { id: calculatedOrderId });
+  const commitData = commitRes.orderEditCommit;
+  if (commitData.userErrors?.length) {
+    throw new Error(`orderEditCommit user error: ${commitData.userErrors.map(u => u.message).join(', ')}`);
+  }
+
+  console.log(`[OrderEdit] Successfully committed edit for Shopify Order ${shopifyOrderId}`);
+  return true;
+}
+
 module.exports = {
   fetchShopifyOrders,
   refreshShopifyUpdates,
   syncSingleShopifyOrder,
   syncOrderByNumber,
   syncSpecificOrders,
-  mapShopifyStatus
+  mapShopifyStatus,
+  editShopifyOrderGraphQL
 };

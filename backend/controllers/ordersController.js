@@ -48,6 +48,21 @@ exports.csUpdate = async (req, res) => {
     const oldOrder = db.db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     if (!oldOrder) return res.status(404).json({ error: 'Order not found' });
 
+    let shopifyWarning = null;
+    if (oldOrder.shopify_order_id && oldOrder.store_id) {
+      const store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(oldOrder.store_id);
+      if (store && store.access_token && store.access_token !== 'PENDING') {
+        try {
+          const { editShopifyOrderGraphQL } = require('../engines/shopify/orders');
+          await editShopifyOrderGraphQL(store, oldOrder.shopify_order_id, line_items, discount_amount, shipping_fee);
+          console.log(`✅ [ShopifyOrderEdit] GraphQL live edit succeeded for order ${oldOrder.shopify_order_id}`);
+        } catch (shopifyErr) {
+          console.error(`⚠️ [ShopifyOrderEdit] GraphQL live edit failed:`, shopifyErr.message);
+          shopifyWarning = `Shopify API rejected live update: ${shopifyErr.message}. Local ERP updated successfully.`;
+        }
+      }
+    }
+
     const newItemsStr = JSON.stringify(line_items || []);
     
     // Calculate new total cost based on new line items
@@ -106,7 +121,7 @@ exports.csUpdate = async (req, res) => {
     }
 
     broadcast('order_updated', { storeId: newOrder.store_id, shopifyOrderId: newOrder.shopify_order_id });
-    res.json({ success: true, order: newOrder });
+    res.json({ success: true, order: newOrder, warning: shopifyWarning });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

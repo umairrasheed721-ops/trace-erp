@@ -80,7 +80,11 @@ export default function useOrderSave({
       const data = await res.json();
       if (data.success) {
         setEditingOrder(data.order);
-        alert('Order updated successfully!');
+        if (data.warning) {
+          alert(data.warning);
+        } else {
+          alert('Order updated successfully!');
+        }
       } else {
         alert(data.error);
       }
