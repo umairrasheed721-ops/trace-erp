@@ -1001,16 +1001,35 @@ export default function SearchTool() {
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
     baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date')
     baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
-    if (user?.role !== 'admin') {
+    if (user && user.role !== 'admin') {
       baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
     }
     return baseCols
   })
 
+  // Enforce role-based column visibility reactively when user loads or columns are set/restored
+  useEffect(() => {
+    if (!user) return
+    if (user.role !== 'admin') {
+      const filtered = cols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
+      if (filtered.length !== cols.length) {
+        setCols(filtered)
+        localStorage.setItem('trace_search_cols', JSON.stringify(filtered))
+      }
+    }
+  }, [user, cols])
+
   // Smart-inject missing essential columns without resetting the whole layout
   useEffect(() => {
+    if (!user) return
     const currentIds = cols.map(c => c.id)
-    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'profit', 'paid_amount', 'address', 'wa_erp_status']
+    
+    // Profit is only essential for admin users; regular agents/managers cannot see it
+    const essentials = ['delivery_status', 'courier_status', 'edit', 'tracking_number', 'paid_amount', 'address', 'wa_erp_status']
+    if (user.role === 'admin') {
+      essentials.push('profit')
+    }
+    
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
@@ -1023,7 +1042,7 @@ export default function SearchTool() {
       localStorage.setItem('trace_search_cols', JSON.stringify(newCols))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [user])
 
   // ─── Live WA ERP Status Polling (every 5 seconds) ─────────────────────────
   // Batch-fetches wa_erp_status for all visible orders from the backend and
