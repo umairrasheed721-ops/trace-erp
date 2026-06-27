@@ -148,17 +148,25 @@ router.get('/temp-test-return-verification', async (req, res) => {
     if (store) {
       try {
         const fetch = require('node-fetch');
-        const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/locations.json`, {
+        const orderRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/orders/7832564793534.json?fields=id,line_items,fulfillments`, {
           headers: {
             'X-Shopify-Access-Token': store.access_token,
             'Content-Type': 'application/json'
           }
         });
-        const text = await shopRes.text();
+        const orderData = await orderRes.json();
+        
+        let resolvedLocationId = null;
+        if (orderData.order && orderData.order.fulfillments && orderData.order.fulfillments.length > 0) {
+          resolvedLocationId = orderData.order.fulfillments[0].location_id;
+        }
+
         shopTest = {
-          ok: shopRes.ok,
-          status: shopRes.status,
-          response: text.substring(0, 300)
+          ok: orderRes.ok,
+          status: orderRes.status,
+          resolvedLocationId,
+          fulfillmentsCount: orderData.order?.fulfillments?.length || 0,
+          fulfillments: orderData.order?.fulfillments?.map(f => ({ id: f.id, status: f.status, location_id: f.location_id }))
         };
       } catch (e) {
         shopTest = { error: e.message };
