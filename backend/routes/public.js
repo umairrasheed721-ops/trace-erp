@@ -144,53 +144,26 @@ router.get('/temp-test-return-verification', async (req, res) => {
     const store = db.prepare('SELECT * FROM stores WHERE id = 14').get();
     if (!store) return res.status(404).json({ error: 'Store 14 not found' });
 
+    const allStores = db.prepare('SELECT * FROM stores').all();
+    const maskedStores = allStores.map(s => {
+      const copy = { ...s };
+      if (copy.access_token) copy.access_token = `len: ${copy.access_token.length}, prefix: ${copy.access_token.substring(0, 10)}...`;
+      if (copy.postex_token) copy.postex_token = 'present';
+      if (copy.leopards_token) copy.leopards_token = 'present';
+      if (copy.tcs_token) copy.tcs_token = 'present';
+      return copy;
+    });
+
     const order = db.prepare('SELECT * FROM orders WHERE id = 202122').get();
-    if (!order) return res.status(404).json({ error: 'Order 202122 not found' });
-
-    const { getPrimaryLocationId, processSmartRestock } = require('../engines/shopify_finance');
-    
-    let shopifyLocationId = null;
-    try {
-      const { shopifyFetch } = require('../engines/shopify_finance');
-      const locationRes = await shopifyFetch(store, 'locations.json');
-      if (!locationRes.ok) {
-        const errBody = await locationRes.text();
-        return res.json({
-          success: false,
-          phase: 'location_fetch_api',
-          status: locationRes.status,
-          error: errBody
-        });
-      }
-      const data = await locationRes.json();
-      const activeLoc = data.locations?.find(l => l.active) || data.locations?.[0];
-      if (!activeLoc) {
-        return res.json({ success: false, phase: 'location_search', error: 'No active location in list', data });
-      }
-      shopifyLocationId = activeLoc.id;
-    } catch (e) {
-      return res.json({ success: false, phase: 'location_fetch_js', error: e.message });
-    }
-
-    let shopifyStatus = 'none';
-    try {
-      shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
-    } catch (e) {
-      return res.json({
-        success: false,
-        phase: 'restock_execution',
-        error: e.message,
-        shopifyLocationId,
-        shopifyOrderId: order.shopify_order_id
-      });
-    }
 
     res.json({
       success: true,
-      shopifyStatus,
-      shopifyLocationId,
-      shopifyOrderId: order.shopify_order_id,
-      orderDeliveryStatus: order.delivery_status
+      storeFound: !!store,
+      storeDomain: store.shop_domain,
+      orderFound: !!order,
+      orderTracking: order?.tracking_number,
+      orderStatus: order?.delivery_status,
+      stores: maskedStores
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
