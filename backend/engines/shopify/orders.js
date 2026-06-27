@@ -888,6 +888,50 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
 
   let changeCount = 0;
 
+  // Query existing discount applications on the order
+  let existingDiscountIds = [];
+  try {
+    const getDiscountsQuery = `
+      query getOrderDiscounts($id: ID!) {
+        order(id: $id) {
+          discountApplications(first: 50) {
+            edges {
+              node {
+                id
+              }
+            }
+          }
+        }
+      }
+    `;
+    const discountsRes = await runQuery(getDiscountsQuery, { id: orderGid });
+    existingDiscountIds = discountsRes.order?.discountApplications?.edges?.map(e => e.node.id) || [];
+  } catch (discountsErr) {
+    console.warn(`[OrderEdit] Warning fetching existing discounts:`, discountsErr.message);
+  }
+
+  // Remove existing manual discounts if we want to change or clear them
+  if (existingDiscountIds.length > 0) {
+    for (const discountId of existingDiscountIds) {
+      changeCount++;
+      console.log(`[OrderEdit] Removing existing discount application: ${discountId}`);
+      const removeDiscountMutation = `
+        mutation orderEditRemoveDiscount($id: ID!, $discountApplicationId: ID!) {
+          orderEditRemoveDiscount(id: $id, discountApplicationId: $discountApplicationId) {
+            userErrors { message }
+          }
+        }
+      `;
+      const removeDiscountRes = await runQuery(removeDiscountMutation, {
+        id: calculatedOrderId,
+        discountApplicationId: discountId
+      });
+      if (removeDiscountRes.orderEditRemoveDiscount?.userErrors?.length) {
+        console.warn(`[OrderEdit] Warning removing discount ${discountId}:`, removeDiscountRes.orderEditRemoveDiscount.userErrors.map(u => u.message).join(', '));
+      }
+    }
+  }
+
   // 2. Process Line Items: Add, Remove, or Update Quantities
   const targetItems = newLineItems.map(item => {
     const rawId = String(item.variant_id || '');
