@@ -14,13 +14,15 @@ export default function EditOrderModal({
   editorLoading,
   fetchOrderDetails,
   updateOrderField,
-  isCityValid
+  isCityValid,
+  onLocalOrderUpdate
 }) {
   const management = useOrderManagement({
     editingOrder,
     setEditingOrder,
     fetchOrderDetails,
-    updateOrderField
+    updateOrderField,
+    onLocalOrderUpdate
   });
 
   const {

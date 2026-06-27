@@ -1393,6 +1393,11 @@ export default function SearchTool() {
     } catch (e) { addToast('Delete failed', 'error') }
   }
 
+  const handleLocalOrderUpdate = useCallback((updatedOrder) => {
+    if (!updatedOrder?.id) return;
+    setAllOrders(prev => prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
+  }, []);
+
   const updateOrderField = useCallback(async (orderId, field, value) => {
     const previousOrders = [...allOrders];
     const isMulti = typeof field === 'object' && field !== null;
@@ -1627,6 +1632,7 @@ export default function SearchTool() {
         updateOrderField={updateOrderField}
         isCityValid={isCityValid}
         addToast={addToast}
+        onLocalOrderUpdate={handleLocalOrderUpdate}
       />
 
       {customerHistoryPhone && (

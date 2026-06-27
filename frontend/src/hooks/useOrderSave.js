@@ -10,7 +10,8 @@ export default function useOrderSave({
   liveSubtotal,
   apiBase,
   activeTab,
-  setChatMessages
+  setChatMessages,
+  onLocalOrderUpdate
 }) {
   // CS Edit State
   const [localDiscount, setLocalDiscount] = useState(0);
@@ -80,6 +81,7 @@ export default function useOrderSave({
       const data = await res.json();
       if (data.success) {
         setEditingOrder(data.order);
+        if (onLocalOrderUpdate) onLocalOrderUpdate(data.order);
         if (data.warning) {
           alert(data.warning);
         } else {
@@ -93,7 +95,7 @@ export default function useOrderSave({
     } finally {
       setIsSavingCS(false);
     }
-  }, [apiBase, localItems, localDiscount, localShippingFee, localNotes, editingOrder, setEditingOrder]);
+  }, [apiBase, localItems, localDiscount, localShippingFee, localNotes, editingOrder, setEditingOrder, onLocalOrderUpdate]);
 
   const handleWaSimulate = useCallback((action) => {
     setWaSimulating(true);
@@ -108,15 +110,22 @@ export default function useOrderSave({
         if (res.error) throw new Error(res.error);
         alert(res.message);
         if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
-        if (action === 'SIMULATE_CONFIRM') setEditingOrder({ ...editingOrder, wa_verification_status: 'verified' });
-        if (action === 'SIMULATE_CANCEL') setEditingOrder({ ...editingOrder, wa_verification_status: 'Cancelled' });
-        if (action === 'SEND_VERIFICATION') setEditingOrder({ ...editingOrder, wa_verification_status: 'Pending' });
+        
+        let updatedVer = null;
+        if (action === 'SIMULATE_CONFIRM') updatedVer = { ...editingOrder, wa_verification_status: 'verified' };
+        if (action === 'SIMULATE_CANCEL') updatedVer = { ...editingOrder, wa_verification_status: 'Cancelled' };
+        if (action === 'SEND_VERIFICATION') updatedVer = { ...editingOrder, wa_verification_status: 'Pending' };
+        
+        if (updatedVer) {
+          setEditingOrder(updatedVer);
+          if (onLocalOrderUpdate) onLocalOrderUpdate(updatedVer);
+        }
       })
       .catch(err => {
         setWaSimulating(false);
         alert(err.message || 'WhatsApp simulation failed');
       });
-  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder]);
+  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder, onLocalOrderUpdate]);
 
   const handleSendItemImages = useCallback(async () => {
     setSendingImages(true);
@@ -185,18 +194,22 @@ export default function useOrderSave({
         alert(`Successfully booked with ${displayCourier}! (Background booking started)`);
         if (fetchOrderDetails) fetchOrderDetails(editingOrder.id);
         
-        setEditingOrder(prev => ({ 
-          ...prev, 
-          tracking_number: prev.tracking_number || 'GENERATED',
-          courier: courierName.startsWith('insta:') ? 'Instaworld' : courierName,
-          delivery_status: 'Booked'
-        }));
+        setEditingOrder(prev => {
+          const updated = { 
+            ...prev, 
+            tracking_number: prev.tracking_number || 'GENERATED',
+            courier: courierName.startsWith('insta:') ? 'Instaworld' : courierName,
+            delivery_status: 'Booked'
+          };
+          if (onLocalOrderUpdate) onLocalOrderUpdate(updated);
+          return updated;
+        });
       })
       .catch(err => {
         setBookingCourier(false);
         alert(err.message || 'Courier booking failed');
       });
-  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder]);
+  }, [apiBase, editingOrder, fetchOrderDetails, setEditingOrder, onLocalOrderUpdate]);
 
   const handleSendInvoice = useCallback(async () => {
     setSendingInvoice(true);

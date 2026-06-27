@@ -10,7 +10,8 @@ export default function useOrderManagement({
   editingOrder,
   setEditingOrder,
   fetchOrderDetails,
-  updateOrderField
+  updateOrderField,
+  onLocalOrderUpdate
 }) {
   const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
@@ -70,7 +71,8 @@ export default function useOrderManagement({
     liveSubtotal: itemsHook.liveSubtotal,
     apiBase,
     activeTab,
-    setChatMessages
+    setChatMessages,
+    onLocalOrderUpdate
   });
 
   // Pillar 1: Customer Intelligence & WhatsApp State Fetchers
