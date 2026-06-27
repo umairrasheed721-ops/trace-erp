@@ -107,6 +107,95 @@ router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
   res.json({ success: true, results });
 });
 
+// POST /api/finance/returns/verify-by-tracking
+router.post('/returns/verify-by-tracking', authenticateToken, async (req, res) => {
+  const { store_id, tracking_number, restockShopify } = req.body;
+  if (!store_id || !tracking_number) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const cleanTracking = String(tracking_number).trim();
+  if (!cleanTracking) return res.status(400).json({ error: 'Invalid tracking number' });
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, cleanTracking);
+    if (!order) {
+      return res.status(404).json({ error: `No order found with tracking number: ${cleanTracking}` });
+    }
+
+    let shopifyLocationId = null;
+    if (restockShopify) {
+      try { shopifyLocationId = await getPrimaryLocationId(store); } catch (e) {}
+    }
+
+    let shopifyStatus = '⏭️ Skipped';
+    let restocked = 0;
+
+    if (order.delivery_status === 'Return Received') {
+      if (restockShopify && order.shopify_order_id) {
+        shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+        if (shopifyStatus.includes('✅')) restocked = 1;
+
+        db.prepare(`
+          INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
+
+        return res.json({
+          success: true,
+          result: {
+            id: order.id,
+            tracking: order.tracking_number,
+            ref_number: order.ref_number,
+            status: '✅ Re-Processed Shopify',
+            shopifyStatus
+          }
+        });
+      } else {
+        return res.json({
+          success: true,
+          result: {
+            id: order.id,
+            tracking: order.tracking_number,
+            ref_number: order.ref_number,
+            status: '⚠️ Already Verified',
+            shopifyStatus: '⏭️ Skipped'
+          }
+        });
+      }
+    }
+
+    db.prepare("UPDATE orders SET delivery_status = 'Return Received', cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
+      .run(`\n[Audit] Return verified on ${new Date().toLocaleDateString()}`, order.id);
+
+    if (restockShopify && order.shopify_order_id) {
+      shopifyStatus = await processSmartRestock(store, order.shopify_order_id, shopifyLocationId);
+      if (shopifyStatus.includes('✅')) restocked = 1;
+    }
+
+    db.prepare(`
+      INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(store_id, order.id, order.tracking_number, restocked, req.user?.username || 'system');
+
+    res.json({
+      success: true,
+      result: {
+        id: order.id,
+        tracking: order.tracking_number,
+        ref_number: order.ref_number,
+        status: '✅ Verified',
+        shopifyStatus
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/finance/returns
 router.post('/returns', authenticateToken, async (req, res) => {
   const { store_id, trackingNumbers, updateERP, restockShopify } = req.body;

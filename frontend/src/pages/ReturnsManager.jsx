@@ -127,6 +127,100 @@ export default function ReturnsManager() {
     window.open(url, '_blank')
   }
 
+  const verifyTracking = async (trackNum) => {
+    if (!activeStoreId || isProcessing) return
+    setIsProcessing(true)
+    try {
+      const res = await fetch(`/api/finance/returns/verify-by-tracking`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          tracking_number: trackNum,
+          restockShopify
+        })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const r = data.result
+        if (r.status.includes('Re-Processed')) {
+          addToast(`🔄 Shopify re-processed for order ${r.ref_number}`, 'success')
+        } else if (r.status.includes('Already')) {
+          addToast(`⚠️ Order ${r.ref_number} already verified`, 'info')
+        } else {
+          addToast(`✅ Return processed for order ${r.ref_number}`, 'success')
+        }
+        setResults(prev => [r, ...prev])
+        fetchPending()
+        fetchHistory()
+      } else {
+        const errMsg = data.error || 'Failed to verify tracking barcode'
+        addToast(`❌ Error: ${errMsg}`, 'error')
+        setResults(prev => [{
+          tracking: trackNum,
+          status: '❌ Error: ' + errMsg,
+          shopifyStatus: '❌ Failed'
+        }, ...prev])
+      }
+    } catch (e) {
+      addToast('Network error: ' + e.message, 'error')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleBulkVerifyTracking = async (trackNums) => {
+    if (!activeStoreId || trackNums.length === 0 || isProcessing) return
+    setIsProcessing(true)
+    let successCount = 0
+
+    for (const trackNum of trackNums) {
+      try {
+        const res = await fetch(`/api/finance/returns/verify-by-tracking`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+          },
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            tracking_number: trackNum,
+            restockShopify
+          })
+        })
+        const data = await res.json()
+        if (res.ok && data.success) {
+          const r = data.result
+          setResults(prev => [r, ...prev])
+          successCount++
+        } else {
+          const errMsg = data.error || 'Error'
+          setResults(prev => [{
+            tracking: trackNum,
+            status: '❌ ' + errMsg,
+            shopifyStatus: '❌ Failed'
+          }, ...prev])
+        }
+      } catch (e) {
+        setResults(prev => [{
+          tracking: trackNum,
+          status: '❌ Network Error',
+          shopifyStatus: '❌ Failed'
+        }, ...prev])
+      }
+    }
+
+    if (successCount > 0) {
+      addToast(`Processed ${successCount} tracking codes`, 'success')
+      fetchPending()
+      fetchHistory()
+    }
+    setIsProcessing(false)
+  }
+
   // Handle Scanning
   const handleScanInput = (val) => {
     setTrackingInput(val)
@@ -134,89 +228,25 @@ export default function ReturnsManager() {
     if (lines.length > 0) {
       const lastScan = lines[lines.length - 1]
       
-      // Prevent duplicate processing of the same scan in a short window (3 seconds)
-      const now = Date.now()
-      if (lastScan === lastScanRef.current.code && (now - lastScanRef.current.time < 3000)) {
-        return 
-      }
-      lastScanRef.current = { code: lastScan, time: now }
-
-      const match = pendingReturns.find(r => r.tracking_number === lastScan)
-      if (match) {
-        handleBulkVerify([match.id])
-        setTrackingInput('')
-      } else {
-        // Look in returns history
-        const historyMatch = returnHistory.find(r => r.tracking_number === lastScan)
-        if (historyMatch) {
-          handleBulkVerify([historyMatch.order_id || historyMatch.id])
-          setTrackingInput('')
-        } else {
-          // Query the backend search API
-          fetch(`/api/orders?store_id=${activeStoreId}&search=${encodeURIComponent(lastScan)}&limit=1`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-          })
-            .then(r => r.status === 401 ? null : r.json())
-            .then(data => {
-              if (!data) return
-              const orders = data.orders || data.data || []
-              if (orders.length > 0) {
-                handleBulkVerify([orders[0].id])
-                setTrackingInput('')
-              } else {
-                addToast(`Order not found for tracking barcode: ${lastScan}`, 'warning')
-              }
-            })
-            .catch(() => {})
+      if (val.endsWith('\n')) {
+        // Prevent duplicate processing of the same scan in a short window
+        const now = Date.now()
+        if (lastScan === lastScanRef.current.code && (now - lastScanRef.current.time < 2000)) {
+          return 
         }
+        lastScanRef.current = { code: lastScan, time: now }
+        
+        verifyTracking(lastScan)
+        setTrackingInput('')
       }
     }
   }
 
-  const handleBulkAction = async () => {
-    const lines = trackingInput.split('\n').map(l => l.trim()).filter(Boolean)
+  const handleBulkAction = () => {
+    const lines = trackingInput.split(/[\n,]+/).map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) return
-
-    const idsToVerify = []
-    const missingLines = []
-
-    lines.forEach(line => {
-      const match = pendingReturns.find(r => r.tracking_number === line)
-      if (match) {
-        idsToVerify.push(match.id)
-      } else {
-        const historyMatch = returnHistory.find(r => r.tracking_number === line)
-        if (historyMatch) {
-          idsToVerify.push(historyMatch.order_id || historyMatch.id)
-        } else {
-          missingLines.push(line)
-        }
-      }
-    })
-
-    if (missingLines.length > 0) {
-      for (const line of missingLines) {
-        try {
-          const res = await fetch(`/api/orders?store_id=${activeStoreId}&search=${encodeURIComponent(line)}&limit=1`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
-          })
-          if (res.ok) {
-            const data = await res.json()
-            const orders = data.orders || data.data || []
-            if (orders.length > 0) {
-              idsToVerify.push(orders[0].id)
-            }
-          }
-        } catch (e) {}
-      }
-    }
-
-    if (idsToVerify.length > 0) {
-      handleBulkVerify(idsToVerify)
-      setTrackingInput('')
-    } else {
-      addToast('No matching returns found', 'warning')
-    }
+    handleBulkVerifyTracking(lines)
+    setTrackingInput('')
   }
 
   const handleKeyDown = (e) => {
@@ -269,52 +299,166 @@ export default function ReturnsManager() {
       <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: 24, alignItems: 'start' }}>
         
         {/* --- LEFT: SCANNER MODULE --- */}
-        <div className="card" style={{ padding: 20, position: 'sticky', top: 20 }}>
+        <div className="card" style={{ 
+          padding: 20, 
+          position: 'sticky', 
+          top: 20,
+          background: 'rgba(15, 12, 28, 0.95)',
+          border: '1px solid rgba(168, 85, 247, 0.2)',
+          boxShadow: '0 8px 32px 0 rgba(168, 85, 247, 0.05)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <style>{`
+            @keyframes scanline-anim {
+              0% { transform: translateY(-100%); }
+              100% { transform: translateY(100%); }
+            }
+            .scanner-console-wrapper {
+              position: relative;
+              overflow: hidden;
+              border-radius: 12px;
+              border: 1px solid rgba(168, 85, 247, 0.2);
+              box-shadow: 0 0 15px rgba(168, 85, 247, 0.05);
+              transition: all 0.3s ease;
+            }
+            .scanner-console-wrapper:focus-within {
+              border-color: rgba(168, 85, 247, 0.8);
+              box-shadow: 0 0 25px rgba(168, 85, 247, 0.25);
+            }
+            .scanner-scanline {
+              position: absolute;
+              top: 0; left: 0; right: 0;
+              height: 4px;
+              background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.6), transparent);
+              animation: scanline-anim 2.5s linear infinite;
+              pointer-events: none;
+              z-index: 10;
+            }
+            .scanner-glow-text {
+              text-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+            }
+          `}</style>
+
           <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ width: 12, height: 12, background: isProcessing ? 'var(--yellow)' : 'var(--brand)', borderRadius: '50%', boxShadow: isProcessing ? '0 0 10px var(--yellow)' : '0 0 10px var(--brand)', transition: 'all 0.3s' }}></div>
-              <h3 style={{ margin: 0, fontSize: '1rem' }}>{isProcessing ? 'Processing...' : 'Parcel Scanner'}</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ 
+                  width: 12, 
+                  height: 12, 
+                  background: isProcessing ? '#fbbf24' : '#a855f7', 
+                  borderRadius: '50%', 
+                  boxShadow: isProcessing ? '0 0 10px #fbbf24' : '0 0 10px #a855f7', 
+                  transition: 'all 0.3s' 
+                }}></div>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {isProcessing ? 'Processing Scan...' : 'Console Scanner'}
+                </h3>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', padding: '2px 8px', fontSize: '0.7rem' }}>
+                  Scans: {results.length}
+                </span>
+                <span className="badge" style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '2px 8px', fontSize: '0.7rem' }}>
+                  OK: {results.filter(r => r.status.includes('✅')).length}
+                </span>
+              </div>
             </div>
-            <textarea
-              ref={inputRef}
-              value={trackingInput}
-              onChange={e => handleScanInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isProcessing}
-              placeholder={isProcessing ? "Wait..." : "Scan tracking barcode..."}
-              style={{
-                width: '100%', height: 120, background: '#000', border: `2px solid ${isProcessing ? 'var(--yellow)' : 'var(--border)'}`,
-                color: 'var(--brand)', padding: 15, borderRadius: 12, fontSize: '1.1rem',
-                fontFamily: 'monospace', outline: 'none', transition: 'all 0.3s'
-              }}
-            />
+
+            <div className="scanner-console-wrapper">
+              <div className="scanner-scanline"></div>
+              <textarea
+                ref={inputRef}
+                value={trackingInput}
+                onChange={e => handleScanInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isProcessing}
+                placeholder={isProcessing ? "INITIALIZING SECURE LINK..." : "SCAN BARCODE / ENTER TRACKING ID..."}
+                style={{
+                  width: '100%', 
+                  height: 130, 
+                  background: 'rgba(10, 8, 20, 0.95)', 
+                  border: 'none',
+                  color: '#e9d5ff', 
+                  padding: '16px', 
+                  fontSize: '1.05rem',
+                  fontFamily: '"Share Tech Mono", monospace', 
+                  outline: 'none', 
+                  resize: 'none',
+                  lineHeight: '1.4',
+                  letterSpacing: '1px'
+                }}
+                className="scanner-glow-text"
+              />
+            </div>
+
             <button
-              className="btn btn-brand"
+              className="btn"
               onClick={handleBulkAction}
               disabled={isProcessing || !trackingInput.trim()}
-              style={{ width: '100%', marginTop: 12, fontWeight: 700 }}
+              style={{ 
+                width: '100%', 
+                marginTop: 12, 
+                fontWeight: 700,
+                background: 'linear-gradient(135deg, #a855f7, #6366f1)',
+                color: '#fff',
+                border: 'none',
+                padding: '10px',
+                borderRadius: '8px',
+                transition: 'all 0.2s',
+                cursor: 'pointer'
+              }}
             >
-              {isProcessing ? 'Processing...' : 'Run Bulk Action'}
+              {isProcessing ? '⚡ EXECUTING...' : '⚙️ RUN BULK ACTION'}
             </button>
-            <p style={{ fontSize: '0.75rem', opacity: 0.5, marginTop: 8 }}>Auto-verifies orders found in the queue.</p>
+            <p style={{ fontSize: '0.72rem', opacity: 0.5, marginTop: 8, textAlign: 'center' }}>
+              Bypasses ERP restrictions. Processes any scanned tracking ID.
+            </p>
           </div>
 
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', opacity: 0.7 }}>Last Actions</h4>
-            <div style={{ maxHeight: 400, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 700, opacity: 0.7 }}>Last Actions Log</h4>
+              {results.length > 0 && (
+                <button 
+                  onClick={() => setResults([])} 
+                  style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.72rem', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  Clear Logs
+                </button>
+              )}
+            </div>
+            <div style={{ maxHeight: 350, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {results.map((r, i) => {
-                let borderColor = 'var(--red)'
-                if (r.status.includes('✅')) borderColor = 'var(--green)'
-                if (r.status.includes('⚠️')) borderColor = 'var(--yellow)'
+                let borderColor = '#ef4444'
+                let bg = 'rgba(239, 68, 68, 0.03)'
+                if (r.status.includes('✅')) {
+                  borderColor = '#22c55e'
+                  bg = 'rgba(34, 197, 94, 0.03)'
+                }
+                if (r.status.includes('⚠️')) {
+                  borderColor = '#eab308'
+                  bg = 'rgba(234, 179, 8, 0.03)'
+                }
                 
                 return (
-                  <div key={i} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: '0.8rem', borderLeft: `3px solid ${borderColor}` }}>
-                    <div style={{ fontWeight: 700 }}>{r.tracking}</div>
-                    <div style={{ opacity: 0.7 }}>{r.status} | {r.shopifyStatus}</div>
+                  <div key={i} style={{ 
+                    padding: '10px 12px', 
+                    background: bg, 
+                    borderRadius: 8, 
+                    fontSize: '0.78rem', 
+                    border: '1px solid rgba(255,255,255,0.03)',
+                    borderLeft: `4px solid ${borderColor}`,
+                    fontFamily: 'monospace'
+                  }}>
+                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{r.tracking}</div>
+                    <div style={{ opacity: 0.8, marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{r.status}</span>
+                      <span style={{ opacity: 0.6 }}>{r.shopifyStatus}</span>
+                    </div>
                   </div>
                 )
               })}
-              {results.length === 0 && <div style={{ opacity: 0.3, fontSize: '0.8rem', textAlign: 'center' }}>No recent scans</div>}
+              {results.length === 0 && <div style={{ opacity: 0.3, fontSize: '0.78rem', textAlign: 'center', padding: '20px 0' }}>No scans recorded in session.</div>}
             </div>
           </div>
         </div>
