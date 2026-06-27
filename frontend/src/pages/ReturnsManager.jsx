@@ -299,19 +299,27 @@ export default function ReturnsManager() {
       <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: 24, alignItems: 'start' }}>
         
         {/* --- LEFT: SCANNER MODULE --- */}
-        <div className="card" style={{ 
-          padding: 20, 
-          position: 'sticky', 
-          top: 20,
-          background: 'rgba(15, 12, 28, 0.95)',
-          border: '1px solid rgba(168, 85, 247, 0.2)',
-          boxShadow: '0 8px 32px 0 rgba(168, 85, 247, 0.05)',
-          backdropFilter: 'blur(10px)'
-        }}>
+        <div className="scanner-card">
           <style>{`
             @keyframes scanline-anim {
               0% { transform: translateY(-100%); }
               100% { transform: translateY(100%); }
+            }
+            .scanner-card {
+              padding: 20px;
+              position: sticky;
+              top: 20px;
+              background: rgba(15, 12, 28, 0.95);
+              border: 1px solid rgba(168, 85, 247, 0.2);
+              box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.05);
+              backdrop-filter: blur(10px);
+              border-radius: var(--radius);
+              transition: all 0.3s ease;
+            }
+            [data-theme='light'] .scanner-card {
+              background: rgba(245, 243, 255, 0.9);
+              border-color: rgba(168, 85, 247, 0.25);
+              box-shadow: 0 8px 32px 0 rgba(168, 85, 247, 0.08);
             }
             .scanner-console-wrapper {
               position: relative;
@@ -320,6 +328,9 @@ export default function ReturnsManager() {
               border: 1px solid rgba(168, 85, 247, 0.2);
               box-shadow: 0 0 15px rgba(168, 85, 247, 0.05);
               transition: all 0.3s ease;
+            }
+            [data-theme='light'] .scanner-console-wrapper {
+              border-color: rgba(168, 85, 247, 0.3);
             }
             .scanner-console-wrapper:focus-within {
               border-color: rgba(168, 85, 247, 0.8);
@@ -334,8 +345,46 @@ export default function ReturnsManager() {
               pointer-events: none;
               z-index: 10;
             }
+            [data-theme='light'] .scanner-scanline {
+              background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.8), transparent);
+            }
+            .scanner-textarea {
+              width: 100%; 
+              height: 130px; 
+              background: rgba(10, 8, 20, 0.95); 
+              border: none;
+              color: #e9d5ff; 
+              padding: 16px; 
+              fontSize: 1.05rem;
+              font-family: "Share Tech Mono", monospace; 
+              outline: none; 
+              resize: none;
+              line-height: 1.4;
+              letter-spacing: 1px;
+              transition: all 0.3s ease;
+            }
+            [data-theme='light'] .scanner-textarea {
+              background: rgba(255, 255, 255, 0.95);
+              color: #581c87;
+              border: 1px solid rgba(168, 85, 247, 0.15);
+            }
             .scanner-glow-text {
               text-shadow: 0 0 8px rgba(168, 85, 247, 0.5);
+            }
+            [data-theme='light'] .scanner-glow-text {
+              text-shadow: none;
+            }
+            .scanner-log-item {
+              padding: 10px 12px; 
+              border: 1px solid rgba(255,255,255,0.03);
+              border-radius: 8px; 
+              font-size: 0.78rem; 
+              font-family: monospace;
+              transition: all 0.3s ease;
+            }
+            [data-theme='light'] .scanner-log-item {
+              border: 1px solid rgba(168, 85, 247, 0.08);
+              background: rgba(255, 255, 255, 0.6) !important;
             }
           `}</style>
 
@@ -350,7 +399,7 @@ export default function ReturnsManager() {
                   boxShadow: isProcessing ? '0 0 10px #fbbf24' : '0 0 10px #a855f7', 
                   transition: 'all 0.3s' 
                 }}></div>
-                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>
                   {isProcessing ? 'Processing Scan...' : 'Console Scanner'}
                 </h3>
               </div>
@@ -373,21 +422,7 @@ export default function ReturnsManager() {
                 onKeyDown={handleKeyDown}
                 disabled={isProcessing}
                 placeholder={isProcessing ? "INITIALIZING SECURE LINK..." : "SCAN BARCODE / ENTER TRACKING ID..."}
-                style={{
-                  width: '100%', 
-                  height: 130, 
-                  background: 'rgba(10, 8, 20, 0.95)', 
-                  border: 'none',
-                  color: '#e9d5ff', 
-                  padding: '16px', 
-                  fontSize: '1.05rem',
-                  fontFamily: '"Share Tech Mono", monospace', 
-                  outline: 'none', 
-                  resize: 'none',
-                  lineHeight: '1.4',
-                  letterSpacing: '1px'
-                }}
-                className="scanner-glow-text"
+                className="scanner-textarea scanner-glow-text"
               />
             </div>
 
@@ -441,16 +476,11 @@ export default function ReturnsManager() {
                 }
                 
                 return (
-                  <div key={i} style={{ 
-                    padding: '10px 12px', 
+                  <div key={i} className="scanner-log-item" style={{ 
                     background: bg, 
-                    borderRadius: 8, 
-                    fontSize: '0.78rem', 
-                    border: '1px solid rgba(255,255,255,0.03)',
                     borderLeft: `4px solid ${borderColor}`,
-                    fontFamily: 'monospace'
                   }}>
-                    <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{r.tracking}</div>
+                    <div style={{ fontWeight: 700 }}>{r.tracking}</div>
                     <div style={{ opacity: 0.8, marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
                       <span>{r.status}</span>
                       <span style={{ opacity: 0.6 }}>{r.shopifyStatus}</span>
