@@ -900,18 +900,18 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
     const target = targetItems.find(t => t.variantId === existing.variantId);
     if (!target || target.quantity === 0) {
       changeCount++;
-      // Remove item
+      // Remove item by setting quantity to 0
       console.log(`[OrderEdit] Removing line item: calculated ID ${existing.calculatedLineItemId}`);
-      const removeMutation = `
-        mutation orderEditRemoveLineItem($id: ID!, $lineItemId: ID!) {
-          orderEditRemoveLineItem(id: $id, lineItemId: $lineItemId) {
+      const setQtyMutation = `
+        mutation orderEditSetQuantity($id: ID!, $lineItemId: ID!, $quantity: Int!) {
+          orderEditSetQuantity(id: $id, lineItemId: $lineItemId, quantity: $quantity) {
             userErrors { message }
           }
         }
       `;
-      const removeRes = await runQuery(removeMutation, { id: calculatedOrderId, lineItemId: existing.calculatedLineItemId });
-      if (removeRes.orderEditRemoveLineItem?.userErrors?.length) {
-        throw new Error(`orderEditRemoveLineItem error: ${removeRes.orderEditRemoveLineItem.userErrors.map(u => u.message).join(', ')}`);
+      const removeRes = await runQuery(setQtyMutation, { id: calculatedOrderId, lineItemId: existing.calculatedLineItemId, quantity: 0 });
+      if (removeRes.orderEditSetQuantity?.userErrors?.length) {
+        throw new Error(`orderEditSetQuantity (remove) error: ${removeRes.orderEditSetQuantity.userErrors.map(u => u.message).join(', ')}`);
       }
     } else if (target.quantity !== existing.quantity) {
       changeCount++;
