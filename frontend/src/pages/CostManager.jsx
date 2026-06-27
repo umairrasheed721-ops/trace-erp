@@ -278,9 +278,17 @@ export default function CostManager() {
     setLoadingGhostOrders(true)
     try {
       const res = await fetch(`/api/finance/ghost-product-orders?store_id=${activeStoreId}&name=${encodeURIComponent(name)}`)
-      const data = await res.json()
-      setGhostOrders(data)
-    } catch (e) { addToast('Failed to load orders', 'error') }
+      if (res.ok) {
+        const data = await res.json()
+        setGhostOrders(Array.isArray(data) ? data : [])
+      } else {
+        setGhostOrders([])
+      }
+    } catch (e) {
+      console.error(e)
+      setGhostOrders([])
+      addToast('Failed to load orders', 'error')
+    }
     finally { setLoadingGhostOrders(false) }
   }
 

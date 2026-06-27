@@ -13,10 +13,16 @@ export default function TemplateManager() {
       const res = await fetch('/api/templates', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
-      const data = await res.json()
-      setTemplates(data)
+      if (res.ok) {
+        const data = await res.json()
+        setTemplates(Array.isArray(data) ? data : [])
+      } else {
+        setTemplates([])
+      }
       setLoading(false)
     } catch (err) {
+      console.error('Failed to load templates:', err)
+      setTemplates([])
       addToast('Failed to load templates', 'error')
     }
   }

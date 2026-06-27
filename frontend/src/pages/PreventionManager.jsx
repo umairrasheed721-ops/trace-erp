@@ -23,10 +23,27 @@ export default function PreventionManager() {
       const res = await fetch(`/api/finance/prevention-audit?store_id=${activeStoreId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const data = await res.json();
-      setAuditData(data);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditData({
+          missingInRegistry: Array.isArray(data?.missingInRegistry) ? data.missingInRegistry : [],
+          zeroCostInRegistry: Array.isArray(data?.zeroCostInRegistry) ? data.zeroCostInRegistry : [],
+          pendingOrdersWithMissingCost: Array.isArray(data?.pendingOrdersWithMissingCost) ? data.pendingOrdersWithMissingCost : []
+        });
+      } else {
+        setAuditData({
+          missingInRegistry: [],
+          zeroCostInRegistry: [],
+          pendingOrdersWithMissingCost: []
+        });
+      }
     } catch (e) {
       console.error('Failed to fetch prevention audit:', e);
+      setAuditData({
+        missingInRegistry: [],
+        zeroCostInRegistry: [],
+        pendingOrdersWithMissingCost: []
+      });
     } finally {
       setLoading(false);
     }

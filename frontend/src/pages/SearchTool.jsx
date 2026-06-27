@@ -32,7 +32,7 @@ function useDebounce(value, delay) {
 }
 
 export default function SearchTool() {
-  const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed } = useApp()
+  const { activeStoreId, addToast, user, isFocusMode, setSidebarCollapsed, token } = useApp()
   const [activeRowId, setActiveRowId] = useState(null)
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
@@ -207,7 +207,9 @@ export default function SearchTool() {
   const fetchBacklogDates = useCallback(async () => {
     if (!activeStoreId) return;
     try {
-      const res = await fetch(`/api/orders/backlog-dates?store_id=${activeStoreId}&t=${Date.now()}`);
+      const res = await fetch(`/api/orders/backlog-dates?store_id=${activeStoreId}&t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token || localStorage.getItem('trace_token') || ''}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setBacklogDates(data.dates || []);
@@ -215,7 +217,7 @@ export default function SearchTool() {
     } catch (e) {
       console.error('Failed to fetch backlog dates:', e);
     }
-  }, [activeStoreId]);
+  }, [activeStoreId, token]);
 
 
   // ─── Route Persistence ───────────────────────────────────────────
@@ -1091,13 +1093,22 @@ export default function SearchTool() {
   const fetchViews = async () => {
     if (!activeStoreId) return
     try {
-      const res = await fetch(`/api/stores/${activeStoreId}/views`)
-      const data = await res.json()
-      setSavedViews(data)
-    } catch (e) { console.error('Failed to fetch views', e) }
+      const res = await fetch(`/api/stores/${activeStoreId}/views`, {
+        headers: { 'Authorization': `Bearer ${token || localStorage.getItem('trace_token') || ''}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSavedViews(Array.isArray(data) ? data : [])
+      } else {
+        setSavedViews([])
+      }
+    } catch (e) {
+      console.error('Failed to fetch views', e)
+      setSavedViews([])
+    }
   }
 
-  useEffect(() => { fetchViews() }, [activeStoreId])
+  useEffect(() => { fetchViews() }, [activeStoreId, token])
 
   // KPIs (defined below via useMemo)
 
