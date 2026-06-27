@@ -170,27 +170,20 @@ export default function CostManager() {
     })
   }, [marginFiltered, sortBy])
 
+  const lists = useMemo(() => {
+    return {
+      pending: sorted.filter(p => !p.hasCost),
+      verified: sorted.filter(p => p.hasCost),
+      continue_selling: sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue')),
+      active: sorted.filter(p => (p.variants[0]?.status || 'active') === 'active'),
+      draft: sorted.filter(p => p.variants[0]?.status === 'draft'),
+      archived: sorted.filter(p => p.variants[0]?.status === 'archived')
+    }
+  }, [sorted])
+
   const currentList = useMemo(() => {
-    const pendingItems = sorted.filter(p => !p.hasCost)
-    const verifiedItems = sorted.filter(p => p.hasCost)
-    const continueSellingItems = sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue'))
-    const activeItems = sorted.filter(p => (p.variants[0]?.status || 'active') === 'active')
-    const draftItems = sorted.filter(p => p.variants[0]?.status === 'draft')
-    const archivedItems = sorted.filter(p => p.variants[0]?.status === 'archived')
-    return activeTab === 'pending'
-      ? pendingItems
-      : activeTab === 'verified'
-        ? verifiedItems
-        : activeTab === 'continue_selling'
-          ? continueSellingItems
-          : activeTab === 'active'
-            ? activeItems
-            : activeTab === 'draft'
-              ? draftItems
-              : activeTab === 'archived'
-                ? archivedItems
-                : []
-  }, [sorted, activeTab])
+    return lists[activeTab] || []
+  }, [lists, activeTab])
 
   // --- Handlers ---
   const handleSyncShopify = async () => {
@@ -590,12 +583,12 @@ export default function CostManager() {
       {/* ── Pill Tabs ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
         {[
-          { key: 'pending',  label: 'Pending',  count: pendingItems.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
-          { key: 'verified', label: 'Verified', count: verifiedItems.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
-          { key: 'continue_selling', label: 'Continue Selling', count: continueSellingItems.length, color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🔄' },
-          { key: 'active',   label: 'Active',   count: activeItems.length,   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',   icon: '🟢' },
-          { key: 'draft',    label: 'Draft',    count: draftItems.length,    color: '#fb923c', bg: 'rgba(251,146,60,0.12)',   icon: '📝' },
-          { key: 'archived', label: 'Archived', count: archivedItems.length, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)',  icon: '📦' },
+          { key: 'pending',  label: 'Pending',  count: lists.pending.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
+          { key: 'verified', label: 'Verified', count: lists.verified.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
+          { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🔄' },
+          { key: 'active',   label: 'Active',   count: lists.active.length,   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',   icon: '🟢' },
+          { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', bg: 'rgba(251,146,60,0.12)',   icon: '📝' },
+          { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)',  icon: '📦' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: 'var(--brand)', bg: 'var(--brand-glow)',  icon: '👻' },
         ].map(t => (
           <button
