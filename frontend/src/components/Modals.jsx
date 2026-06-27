@@ -140,7 +140,11 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, 
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {CATEGORIES.map(category => {
-              const categoryCols = DEFAULT_COLS.filter(c => category.ids.includes(c.id));
+              let categoryCols = DEFAULT_COLS.filter(c => category.ids.includes(c.id));
+              if (!isAdmin) {
+                const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount'];
+                categoryCols = categoryCols.filter(c => !restricted.includes(c.id));
+              }
               if (categoryCols.length === 0) return null;
 
               return (

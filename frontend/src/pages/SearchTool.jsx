@@ -1002,7 +1002,8 @@ export default function SearchTool() {
     baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
     baseCols = baseCols.map(c => c.id === 'tracking_number' ? { ...c, label: 'Tracking # / Courier' } : c)
     if (user && user.role !== 'admin') {
-      baseCols = baseCols.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
+      const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount']
+      baseCols = baseCols.filter(c => !restricted.includes(c.id))
     }
     return baseCols
   })
@@ -1013,7 +1014,8 @@ export default function SearchTool() {
     // Always filter out 'courier' since it has been merged
     let filtered = cols.filter(c => c.id !== 'courier')
     if (user.role !== 'admin') {
-      filtered = filtered.filter(c => c.id !== 'cost' && c.id !== 'profit' && c.id !== 'courier_fee')
+      const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount']
+      filtered = filtered.filter(c => !restricted.includes(c.id))
     }
     if (filtered.length !== cols.length) {
       setCols(filtered)
