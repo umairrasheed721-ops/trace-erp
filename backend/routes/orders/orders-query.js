@@ -293,17 +293,20 @@ router.get('/:id/details', async (req, res) => {
     const variantIds = shopifyOrder.line_items.map(li => li.variant_id);
     const imageMap = await fetchVariantImagesGraphQL(order.shop_domain, order.access_token, variantIds);
 
-    const lineItems = shopifyOrder.line_items.map(item => ({
-      id: item.id,
-      variant_id: item.variant_id,
-      product_id: item.product_id,
-      title: item.title,
-      sku: item.sku,
-      quantity: item.quantity,
-      price: item.price,
-      variant_title: item.variant_title,
-      image_url: imageMap[String(item.variant_id)] || null
-    }));
+    const lineItems = shopifyOrder.line_items.map(item => {
+      const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
+      return {
+        id: item.id,
+        variant_id: item.variant_id,
+        product_id: item.product_id,
+        title: item.title,
+        sku: item.sku,
+        quantity: qty,
+        price: item.price,
+        variant_title: item.variant_title,
+        image_url: imageMap[String(item.variant_id)] || null
+      };
+    }).filter(item => item.quantity > 0);
 
     // 💾 SMART PERSISTENCE: Save to local DB so next time is INSTANT
     db.prepare("UPDATE orders SET line_items = ? WHERE id = ?").run(JSON.stringify(lineItems), order.id);

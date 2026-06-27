@@ -612,16 +612,19 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
     const vIds = order.line_items.map(li => li.variant_id);
     const imageMap = await fetchVariantImagesGraphQL(shop_domain, access_token, vIds);
-    const lineItemsJson = JSON.stringify(order.line_items.map(li => ({
-      id: li.id,
-      variant_id: li.variant_id,
-      title: li.title,
-      variant_title: li.variant_title,
-      sku: li.sku,
-      quantity: li.quantity,
-      price: li.price,
-      image_url: imageMap[String(li.variant_id)] || null
-    })));
+    const lineItemsJson = JSON.stringify(order.line_items.map(li => {
+      const qty = li.current_quantity !== undefined ? li.current_quantity : li.quantity;
+      return {
+        id: li.id,
+        variant_id: li.variant_id,
+        title: li.title,
+        variant_title: li.variant_title,
+        sku: li.sku,
+        quantity: qty,
+        price: li.price,
+        image_url: imageMap[String(li.variant_id)] || null
+      };
+    }).filter(item => item.quantity > 0));
 
     if (existing) {
       const oldTracking = existing.tracking_number || '';
