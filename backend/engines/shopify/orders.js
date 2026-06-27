@@ -935,6 +935,7 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
   }
 
   // B. Determine new items to add
+  let lastAddedLineItemId = null;
   for (const target of targetItems) {
     const exists = existingItems.some(e => e.variantId === target.variantId);
     if (!exists && target.quantity > 0) {
@@ -944,6 +945,9 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       const addMutation = `
         mutation orderEditAddVariant($id: ID!, $variantId: ID!, $quantity: Int!) {
           orderEditAddVariant(id: $id, variantId: $variantId, quantity: $quantity) {
+            calculatedLineItem {
+              id
+            }
             userErrors { message }
           }
         }
@@ -952,32 +956,52 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       if (addRes.orderEditAddVariant?.userErrors?.length) {
         throw new Error(`orderEditAddVariant error: ${addRes.orderEditAddVariant.userErrors.map(u => u.message).join(', ')}`);
       }
+      if (addRes.orderEditAddVariant?.calculatedLineItem?.id) {
+        lastAddedLineItemId = addRes.orderEditAddVariant.calculatedLineItem.id;
+      }
     }
   }
 
   // 3. Set Custom Discount
   if (discountAmount > 0) {
-    changeCount++;
-    console.log(`[OrderEdit] Applying custom discount: Rs ${discountAmount}`);
-    const discountMutation = `
-      mutation orderEditAddCustomDiscount($id: ID!, $discount: OrderEditAppliedDiscountInput!) {
-        orderEditAddCustomDiscount(id: $id, discount: $discount) {
-          userErrors { message }
-        }
-      }
-    `;
-    const discountRes = await runQuery(discountMutation, {
-      id: calculatedOrderId,
-      discount: {
-        fixedAmount: {
-          amount: Number(discountAmount).toFixed(2),
-          currencyCode: "PKR"
-        },
-        title: "CS Discount"
-      }
+    let targetLineItemId = null;
+    const activeExisting = existingItems.find(e => {
+      const target = targetItems.find(t => t.variantId === e.variantId);
+      return !target || target.quantity > 0;
     });
-    if (discountRes.orderEditAddCustomDiscount?.userErrors?.length) {
-      console.warn(`[OrderEdit] Discount mutation warning:`, discountRes.orderEditAddCustomDiscount.userErrors.map(u => u.message).join(', '));
+
+    if (activeExisting) {
+      targetLineItemId = activeExisting.calculatedLineItemId;
+    } else if (lastAddedLineItemId) {
+      targetLineItemId = lastAddedLineItemId;
+    }
+
+    if (targetLineItemId) {
+      changeCount++;
+      console.log(`[OrderEdit] Applying discount of Rs ${discountAmount} to line item ${targetLineItemId}`);
+      const discountMutation = `
+        mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedLineItemDiscountInput!) {
+          orderEditAddLineItemDiscount(id: $id, lineItemId: $lineItemId, discount: $discount) {
+            userErrors { message }
+          }
+        }
+      `;
+      const discountRes = await runQuery(discountMutation, {
+        id: calculatedOrderId,
+        lineItemId: targetLineItemId,
+        discount: {
+          fixedAmount: {
+            amount: Number(discountAmount).toFixed(2),
+            currencyCode: "PKR"
+          },
+          title: "CS Discount"
+        }
+      });
+      if (discountRes.orderEditAddLineItemDiscount?.userErrors?.length) {
+        console.warn(`[OrderEdit] Discount mutation warning:`, discountRes.orderEditAddLineItemDiscount.userErrors.map(u => u.message).join(', '));
+      }
+    } else {
+      console.warn(`[OrderEdit] Could not find any active line item to apply the discount of Rs ${discountAmount} to.`);
     }
   }
 
