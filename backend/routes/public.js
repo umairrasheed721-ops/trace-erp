@@ -141,29 +141,30 @@ router.get('/poll-diag', (req, res) => {
 // --- 🧪 TEMP DIAGNOSTIC FOR BARCODE RETURN ERROR (remove after debugging) ---
 router.get('/temp-test-return-verification', async (req, res) => {
   try {
-    const store = db.prepare('SELECT * FROM stores WHERE id = 14').get();
-    if (!store) return res.status(404).json({ error: 'Store 14 not found' });
-
     const allStores = db.prepare('SELECT * FROM stores').all();
-    const maskedStores = allStores.map(s => {
-      const copy = { ...s };
-      if (copy.access_token) copy.access_token = `len: ${copy.access_token.length}, prefix: ${copy.access_token.substring(0, 10)}...`;
-      if (copy.postex_token) copy.postex_token = 'present';
-      if (copy.leopards_token) copy.leopards_token = 'present';
-      if (copy.tcs_token) copy.tcs_token = 'present';
-      return copy;
-    });
+    const store = allStores.find(s => s.id === 14);
 
-    const order = db.prepare('SELECT * FROM orders WHERE id = 202122').get();
+    let shopTest = {};
+    if (store) {
+      try {
+        const { shopifyFetch } = require('../engines/shopify_finance');
+        const shopRes = await shopifyFetch(store, 'shop.json');
+        const text = await shopRes.text();
+        shopTest = {
+          ok: shopRes.ok,
+          status: shopRes.status,
+          response: text.substring(0, 300)
+        };
+      } catch (e) {
+        shopTest = { error: e.message };
+      }
+    }
 
     res.json({
       success: true,
+      shopTest,
       storeFound: !!store,
-      storeDomain: store.shop_domain,
-      orderFound: !!order,
-      orderTracking: order?.tracking_number,
-      orderStatus: order?.delivery_status,
-      stores: maskedStores
+      storeDomain: store?.shop_domain,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
