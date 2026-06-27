@@ -61,7 +61,7 @@ export function SaveViewModal({ show, onClose, viewName, setViewName, isViewLock
   )
 }
 
-export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }) {
+export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, user }) {
   if (!show) return null
 
   const handleReset = () => {
@@ -70,6 +70,8 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }
       setCols(DEFAULT_COLS);
     }
   };
+
+  const isAdmin = user?.role === 'admin';
 
   const CATEGORIES = [
     {
@@ -133,7 +135,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }
             border: '1px solid var(--border-bright)', display: 'flex', alignItems: 'center', gap: 6
           }}>
             <span>🔒</span>
-            <span>Locked columns (Status, Action) cannot be removed — they power profit reports and core operations.</span>
+            <span>{isAdmin ? 'Locked columns (Status, Action) cannot be removed.' : 'Only superadmins can enable new columns. Locked columns and unchecked columns are disabled.'}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -152,7 +154,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                     {categoryCols.map(c => {
                       const isVisible = cols.some(col => col.id === c.id)
-                      const isLocked = LOCKED_COLS.includes(c.id)
+                      const isLocked = LOCKED_COLS.includes(c.id) || (!isAdmin && !isVisible)
 
                       return (
                         <label 
@@ -169,7 +171,8 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }
                                 ? '1px solid var(--brand)' 
                                 : '1px solid var(--border-bright)',
                             transition: 'all 0.2s ease',
-                            userSelect: 'none'
+                            userSelect: 'none',
+                            opacity: isLocked && !isVisible ? 0.5 : 1
                           }}
                         >
                           <input 
@@ -187,7 +190,7 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS }
                             }} 
                           />
                           <span style={{ 
-                            fontWeight: isVisible || isLocked ? 600 : 400,
+                            fontWeight: isVisible || (isLocked && isVisible) ? 600 : 400,
                             color: isLocked ? 'var(--text-muted)' : 'var(--text-primary)',
                             display: 'flex', alignItems: 'center', gap: 4
                           }}>

@@ -1636,6 +1636,7 @@ export default function SearchTool() {
         cols={cols}
         setCols={setCols}
         DEFAULT_COLS={DEFAULT_COLS}
+        user={user}
       />
 
       <AgingConfigModal
