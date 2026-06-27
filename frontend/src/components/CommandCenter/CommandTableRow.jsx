@@ -518,7 +518,7 @@ const CommandTableRow = React.memo(({
                   </div>
 
                   {/* Bottom Row: Icons row aligned under the phone number */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '36px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '36px', marginTop: '2px' }}>
                     {/* 1. SIM Call Icon */}
                     <a 
                       href={"tel:" + phone} 
@@ -528,17 +528,16 @@ const CommandTableRow = React.memo(({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: '28px',
-                        height: '28px',
-                        minWidth: '28px',
-                        borderRadius: '6px',
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--border-bright)',
+                        width: '20px',
+                        height: '20px',
+                        minWidth: '20px',
                         textDecoration: 'none',
                         flexShrink: 0,
                         padding: 0,
                         cursor: 'pointer',
-                        color: 'var(--text-secondary)'
+                        color: 'var(--text-secondary)',
+                        background: 'transparent',
+                        border: 'none'
                       }}
                       title="Call via SIM"
                     >
@@ -556,17 +555,16 @@ const CommandTableRow = React.memo(({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: '28px',
-                        height: '28px',
-                        minWidth: '28px',
-                        borderRadius: '6px',
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--border-bright)',
+                        width: '20px',
+                        height: '20px',
+                        minWidth: '20px',
                         textDecoration: 'none',
                         flexShrink: 0,
                         padding: 0,
                         cursor: 'pointer',
-                        color: '#16a34a'
+                        color: '#16a34a',
+                        background: 'transparent',
+                        border: 'none'
                       }}
                       title="Chat via WhatsApp"
                     >
@@ -588,22 +586,21 @@ const CommandTableRow = React.memo(({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            width: '28px',
-                            height: '28px',
-                            minWidth: '28px',
-                            borderRadius: '6px',
-                            background: 'var(--bg-elevated)',
-                            border: '1px solid var(--border-bright)',
+                            width: '20px',
+                            height: '20px',
+                            minWidth: '20px',
                             cursor: 'pointer',
                             padding: 0,
                             flexShrink: 0,
                             color: 'var(--blue)',
-                            position: 'relative'
+                            position: 'relative',
+                            background: 'transparent',
+                            border: 'none'
                           }}
                           title="Open ERP Chat Portal"
                         >
                           <svg style={{ width: '14px', height: '14px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                          {isUnread && <span className="absolute rounded-full" style={{ width: '10px', height: '10px', backgroundColor: '#ef4444', border: '2px solid var(--bg-elevated)', top: '-2px', right: '-2px', display: 'block' }}></span>}
+                          {isUnread && <span className="absolute rounded-full" style={{ width: '6px', height: '6px', backgroundColor: '#ef4444', border: '1.5px solid var(--bg-elevated)', top: '-2px', right: '-2px', display: 'block' }}></span>}
                         </button>
                       );
                     })()}
