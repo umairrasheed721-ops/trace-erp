@@ -898,6 +898,8 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
     };
   }).filter(item => item.variantId);
 
+  const activeLineItems = [];
+
   // A. Determine items to update or remove
   for (const existing of existingItems) {
     const target = targetItems.find(t => t.variantId === existing.variantId);
@@ -931,11 +933,13 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
       if (qtyRes.orderEditSetQuantity?.userErrors?.length) {
         throw new Error(`orderEditSetQuantity error: ${qtyRes.orderEditSetQuantity.userErrors.map(u => u.message).join(', ')}`);
       }
+      activeLineItems.push({ calculatedLineItemId: existing.calculatedLineItemId });
+    } else {
+      activeLineItems.push({ calculatedLineItemId: existing.calculatedLineItemId });
     }
   }
 
   // B. Determine new items to add
-  let lastAddedLineItemId = null;
   for (const target of targetItems) {
     const exists = existingItems.some(e => e.variantId === target.variantId);
     if (!exists && target.quantity > 0) {
@@ -957,52 +961,52 @@ async function editShopifyOrderGraphQL(store, shopifyOrderId, newLineItems, disc
         throw new Error(`orderEditAddVariant error: ${addRes.orderEditAddVariant.userErrors.map(u => u.message).join(', ')}`);
       }
       if (addRes.orderEditAddVariant?.calculatedLineItem?.id) {
-        lastAddedLineItemId = addRes.orderEditAddVariant.calculatedLineItem.id;
+        activeLineItems.push({ calculatedLineItemId: addRes.orderEditAddVariant.calculatedLineItem.id });
       }
     }
   }
 
   // 3. Set Custom Discount
-  if (discountAmount > 0) {
-    let targetLineItemId = null;
-    const activeExisting = existingItems.find(e => {
-      const target = targetItems.find(t => t.variantId === e.variantId);
-      return !target || target.quantity > 0;
-    });
+  if (discountAmount > 0 && activeLineItems.length > 0) {
+    const N = activeLineItems.length;
+    const discountPerLine = Math.floor(discountAmount / N);
 
-    if (activeExisting) {
-      targetLineItemId = activeExisting.calculatedLineItemId;
-    } else if (lastAddedLineItemId) {
-      targetLineItemId = lastAddedLineItemId;
-    }
-
-    if (targetLineItemId) {
-      changeCount++;
-      console.log(`[OrderEdit] Applying discount of Rs ${discountAmount} to line item ${targetLineItemId}`);
-      const discountMutation = `
-        mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedDiscountInput!) {
-          orderEditAddLineItemDiscount(id: $id, lineItemId: $lineItemId, discount: $discount) {
-            userErrors { message }
-          }
-        }
-      `;
-      const discountRes = await runQuery(discountMutation, {
-        id: calculatedOrderId,
-        lineItemId: targetLineItemId,
-        discount: {
-          fixedAmount: {
-            amount: Number(discountAmount).toFixed(2),
-            currencyCode: "PKR"
-          },
-          title: "CS Discount"
-        }
-      });
-      if (discountRes.orderEditAddLineItemDiscount?.userErrors?.length) {
-        console.warn(`[OrderEdit] Discount mutation warning:`, discountRes.orderEditAddLineItemDiscount.userErrors.map(u => u.message).join(', '));
+    for (let i = 0; i < N; i++) {
+      const lineItem = activeLineItems[i];
+      let lineDiscount = discountPerLine;
+      if (i === N - 1) {
+        // Last item gets the remainder
+        lineDiscount = discountAmount - (discountPerLine * (N - 1));
       }
-    } else {
-      console.warn(`[OrderEdit] Could not find any active line item to apply the discount of Rs ${discountAmount} to.`);
+
+      if (lineDiscount > 0) {
+        changeCount++;
+        console.log(`[OrderEdit] Applying discount of Rs ${lineDiscount} to line item ${lineItem.calculatedLineItemId}`);
+        const discountMutation = `
+          mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedDiscountInput!) {
+            orderEditAddLineItemDiscount(id: $id, lineItemId: $lineItemId, discount: $discount) {
+              userErrors { message }
+            }
+          }
+        `;
+        const discountRes = await runQuery(discountMutation, {
+          id: calculatedOrderId,
+          lineItemId: lineItem.calculatedLineItemId,
+          discount: {
+            fixedValue: {
+              amount: Number(lineDiscount).toFixed(2),
+              currencyCode: "PKR"
+            },
+            description: "CS Discount"
+          }
+        });
+        if (discountRes.orderEditAddLineItemDiscount?.userErrors?.length) {
+          console.warn(`[OrderEdit] Discount mutation warning for line ${lineItem.calculatedLineItemId}:`, discountRes.orderEditAddLineItemDiscount.userErrors.map(u => u.message).join(', '));
+        }
+      }
     }
+  } else if (discountAmount > 0) {
+    console.warn(`[OrderEdit] Could not find any active line item to apply the discount of Rs ${discountAmount} to.`);
   }
 
   // Shipping edits are not supported in standard Shopify GraphQL Order Edit APIs without Plus, so we skip it to prevent crashes. The new total is logged in Shopify timeline notes.
