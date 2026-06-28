@@ -195,7 +195,7 @@ router.post('/cancel', async (req, res) => {
           console.warn(`⚠️ Bulk cancel failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
         }
 
-        db.prepare("UPDATE orders SET tracking_number = NULL, courier = NULL, delivery_status = 'Cancelled' WHERE id = ?").run(id);
+        db.prepare("UPDATE orders SET tracking_number = NULL, courier = NULL, delivery_status = 'Confirmed' WHERE id = ?").run(id);
         success++;
       } else {
         failed++;
