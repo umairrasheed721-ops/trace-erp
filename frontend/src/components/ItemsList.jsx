@@ -136,6 +136,22 @@ const ItemsList = React.memo(({
   setProductSearchQuery,
   filteredGroups
 }) => {
+  // Close the Smart Product Selector when Escape key is pressed
+  useEffect(() => {
+    if (!showProductSearch) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowProductSearch(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showProductSearch, setShowProductSearch]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 20, overflow: 'hidden' }}>

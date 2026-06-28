@@ -323,6 +323,38 @@ export default function EditOrderModal({
     }
   }, [editingOrder]);
 
+  // Close modal or sub-panels on Escape key press
+  useEffect(() => {
+    if (!editingOrder) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showProductSearch) return;
+        if (showQuickReplyPanel) {
+          setShowQuickReplyPanel(false);
+          return;
+        }
+        if (showTemplateCreator) {
+          setShowTemplateCreator(false);
+          return;
+        }
+        if (showPillsManager) {
+          setShowPillsManager(false);
+          return;
+        }
+        setEditingOrder(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    editingOrder, showProductSearch, showQuickReplyPanel, showTemplateCreator, showPillsManager,
+    setEditingOrder, setShowQuickReplyPanel, setShowTemplateCreator, setShowPillsManager
+  ]);
+
   if (!editingOrder) return null;
 
   const handleAutoCODConfirm = async () => {
