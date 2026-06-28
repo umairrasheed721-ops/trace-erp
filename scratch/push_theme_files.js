@@ -57,7 +57,19 @@ async function main() {
   // 2. Upload layout/theme.liquid
   await uploadAsset('layout/theme.liquid', path.join(themeDir, 'layout/theme.liquid'));
 
-  // 3. Upload Montserrat font assets if they exist locally
+  // 3. Upload snippets/product-thumbnail.liquid
+  await uploadAsset('snippets/product-thumbnail.liquid', path.join(themeDir, 'snippets/product-thumbnail.liquid'));
+
+  // 4. Upload sections/custom-hero-slider.liquid
+  await uploadAsset('sections/custom-hero-slider.liquid', path.join(themeDir, 'sections/custom-hero-slider.liquid'));
+
+  // 5. Upload sections/header.liquid
+  await uploadAsset('sections/header.liquid', path.join(themeDir, 'sections/header.liquid'));
+
+  // 6. Upload sections/footer.liquid
+  await uploadAsset('sections/footer.liquid', path.join(themeDir, 'sections/footer.liquid'));
+
+  // 5. Upload Montserrat font assets if they exist locally
   const fonts = [
     'montserrat-400-normal.woff2',
     'montserrat-500-normal.woff2',
@@ -72,6 +84,9 @@ async function main() {
   // 4. Upload config/settings_schema.json and settings_data.json
   await uploadAsset('config/settings_schema.json', path.join(themeDir, 'config/settings_schema.json'));
   await uploadAsset('config/settings_data.json', path.join(themeDir, 'config/settings_data.json'));
+
+  // 5. Upload templates/index.json
+  await uploadAsset('templates/index.json', path.join(themeDir, 'templates/index.json'));
 
   console.log('All theme uploads completed!');
 }
