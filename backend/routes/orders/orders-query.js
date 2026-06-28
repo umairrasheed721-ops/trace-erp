@@ -341,7 +341,9 @@ router.get('/:id/details', async (req, res) => {
     const phone = sa.phone || order.phone;
     const address = `${sa.address1 || ''} ${sa.address2 || ''}`.trim() || order.address;
     const city = sa.city || order.city;
-    const price = parseFloat(shopifyOrder.total_price) || order.price;
+    const price = order.is_cs_edited === 1 
+      ? order.price 
+      : (parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price) || order.price);
     const ref_number = shopifyOrder.name || order.ref_number;
     const notes = shopifyOrder.note || order.notes;
 
