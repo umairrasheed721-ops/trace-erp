@@ -135,7 +135,31 @@ router.get('/', (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Dynamic Sorting
-    const allowedSortCols = ['order_date', 'created_timestamp', 'price', 'delivery_status', 'customer_name', 'cost', 'courier_fee', 'profit'];
+    const allowedSortCols = [
+      'order_date', 
+      'created_timestamp', 
+      'price', 
+      'delivery_status', 
+      'customer_name', 
+      'cost', 
+      'courier_fee', 
+      'profit',
+      'ref_number',
+      'phone',
+      'address',
+      'city',
+      'tracking_number',
+      'courier',
+      'courier_status',
+      'payment_status',
+      'paid_amount',
+      'order_source',
+      'status_date',
+      'payment_ref',
+      'payment_date',
+      'postex_weight',
+      'notes'
+    ];
     const { sort: sortCol = 'created_timestamp', sort_dir = 'DESC' } = req.query;
     const safeSort = allowedSortCols.includes(sortCol) ? sortCol : 'created_timestamp';
     const safeDir = sort_dir.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';

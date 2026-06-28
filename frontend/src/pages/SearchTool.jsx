@@ -89,16 +89,32 @@ export default function SearchTool() {
     if (sortMode === 'deep') return allOrders;
     return [...allOrders].sort((a, b) => {
       let valA = a[sortKey], valB = b[sortKey];
-      if (sortKey === 'price' || sortKey === 'cost' || sortKey === 'courier_fee') {
-        valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0;
+      
+      if (['price', 'cost', 'courier_fee', 'paid_amount', 'postex_weight'].includes(sortKey)) {
+        valA = parseFloat(valA) || 0;
+        valB = parseFloat(valB) || 0;
       } else if (sortKey === 'profit') {
         valA = (parseFloat(a.price) || 0) - (parseFloat(a.cost) || 0) - (parseFloat(a.courier_fee) || 0);
         valB = (parseFloat(b.price) || 0) - (parseFloat(b.cost) || 0) - (parseFloat(b.courier_fee) || 0);
+      } else if (['order_date', 'status_date', 'payment_date', 'created_timestamp'].includes(sortKey)) {
+        valA = valA ? new Date(valA).getTime() : 0;
+        valB = valB ? new Date(valB).getTime() : 0;
+      } else if (sortKey === 'ref_number') {
+        valA = parseInt(String(valA || '').replace(/\D/g, ''), 10) || 0;
+        valB = parseInt(String(valB || '').replace(/\D/g, ''), 10) || 0;
+      } else {
+        valA = valA ? String(valA).trim().toLowerCase() : '';
+        valB = valB ? String(valB).trim().toLowerCase() : '';
       }
+
       if (valA < valB) return sortDir === 'asc' ? -1 : 1;
       if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+      
+      // Fallback tie-breaker to order_date descending
       if (sortKey !== 'order_date') {
-        return new Date(b.order_date) - new Date(a.order_date);
+        const timeA = a.order_date ? new Date(a.order_date).getTime() : 0;
+        const timeB = b.order_date ? new Date(b.order_date).getTime() : 0;
+        return timeB - timeA;
       }
       return 0;
     });
@@ -145,13 +161,29 @@ export default function SearchTool() {
       .join('');
 
     const backendSortMap = {
+      'ref_number': 'ref_number',
       'order_date': 'order_date',
-      'cost': 'cost',
-      'price': 'price',
-      'courier_fee': 'courier_fee',
       'customer_name': 'customer_name',
+      'phone': 'phone',
+      'address': 'address',
+      'city': 'city',
+      'tracking_number': 'tracking_number',
+      'courier': 'courier',
+      'courier_status': 'courier_status',
       'delivery_status': 'delivery_status',
-      'profit': 'profit'
+      'payment_status': 'payment_status',
+      'paid_amount': 'paid_amount',
+      'price': 'price',
+      'cost': 'cost',
+      'courier_fee': 'courier_fee',
+      'profit': 'profit',
+      'order_source': 'order_source',
+      'status_date': 'status_date',
+      'payment_ref': 'payment_ref',
+      'payment_date': 'payment_date',
+      'postex_weight': 'postex_weight',
+      'notes': 'notes',
+      'created_timestamp': 'created_timestamp'
     };
     const sCol = backendSortMap[sortKey] || 'created_timestamp';
 
