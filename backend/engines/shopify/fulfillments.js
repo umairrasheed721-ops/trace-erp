@@ -110,8 +110,65 @@ async function updateShopifyAddress(store, shopifyOrderId, newAddress) {
   return true;
 }
 
+async function cancelShopifyFulfillment(store, shopifyOrderId) {
+  const { shop_domain, access_token } = store;
+  if (!access_token || access_token === 'PENDING') throw new Error('No valid token');
+
+  try {
+    // 1. Get all fulfillments for this order
+    const fUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}/fulfillments.json`;
+    const res = await fetch(fUrl, {
+      headers: { 'X-Shopify-Access-Token': access_token },
+      timeout: API_TIMEOUT
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`⚠️ [ShopifyFulfillmentCancel] Failed to get fulfillments for order ${shopifyOrderId}: ${errText}`);
+      return false;
+    }
+
+    const data = await res.json();
+    const fulfillments = data.fulfillments || [];
+
+    // Filter out already cancelled fulfillments
+    const activeFulfillments = fulfillments.filter(f => f.status !== 'cancelled');
+    if (activeFulfillments.length === 0) {
+      console.log(`ℹ️ [ShopifyFulfillmentCancel] No active fulfillments to cancel for order ${shopifyOrderId}`);
+      return true;
+    }
+
+    // 2. Cancel each active fulfillment
+    for (const f of activeFulfillments) {
+      const cancelUrl = `https://${shop_domain}/admin/api/2024-10/fulfillments/${f.id}/cancel.json`;
+      console.log(`📦 [ShopifyFulfillmentCancel] Cancelling fulfillment ${f.id} for order ${shopifyOrderId}`);
+      const cancelRes = await fetch(cancelUrl, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': access_token,
+          'Content-Type': 'application/json'
+        },
+        timeout: API_TIMEOUT
+      });
+
+      if (!cancelRes.ok) {
+        const errText = await cancelRes.text();
+        console.error(`⚠️ [ShopifyFulfillmentCancel] Failed to cancel fulfillment ${f.id} on Shopify: ${errText}`);
+        throw new Error(`Shopify rejected cancel for fulfillment ${f.id}: ${errText}`);
+      } else {
+        console.log(`✅ [ShopifyFulfillmentCancel] Successfully cancelled fulfillment ${f.id} on Shopify`);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error(`❌ [ShopifyFulfillmentCancel] Error:`, err.message);
+    throw err;
+  }
+}
+
 module.exports = {
   registerShopifyWebhooks,
   fulfillShopifyOrder,
-  updateShopifyAddress
+  updateShopifyAddress,
+  cancelShopifyFulfillment
 };

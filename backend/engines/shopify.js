@@ -10,7 +10,8 @@ const {
 const {
   fulfillShopifyOrder,
   updateShopifyAddress,
-  registerShopifyWebhooks
+  registerShopifyWebhooks,
+  cancelShopifyFulfillment
 } = require('./shopify/fulfillments');
 
 const {
@@ -29,6 +30,7 @@ module.exports = {
   registerShopifyWebhooks,
   fulfillShopifyOrder,
   updateShopifyAddress,
+  cancelShopifyFulfillment,
   syncSpecificOrders,
   fetchVariantImagesGraphQL,
   mapShopifyStatus,

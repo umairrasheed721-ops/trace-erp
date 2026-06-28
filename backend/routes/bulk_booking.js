@@ -176,19 +176,26 @@ router.post('/cancel', async (req, res) => {
 
       if (courier.includes('postex')) {
         const { cancelPostExOrder } = require('../engines/postex');
-        await cancelPostExOrder(order.tracking_number, order);
-        cancelOk = true;
+        cancelOk = await cancelPostExOrder(order, order.tracking_number);
       } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
         const { cancelInstaworldOrder } = require('../engines/instaworld');
-        await cancelInstaworldOrder(order, order.tracking_number);
-        cancelOk = true;
+        cancelOk = await cancelInstaworldOrder(order, order.tracking_number);
       } else {
         cancelOk = true; // No courier API to hit
       }
 
       if (cancelOk) {
+        // Cancel Shopify fulfillment (non-blocking)
+        try {
+          if (order.shopify_order_id) {
+            const { cancelShopifyFulfillment } = require('../engines/shopify');
+            await cancelShopifyFulfillment(order, order.shopify_order_id);
+          }
+        } catch (shopifyErr) {
+          console.warn(`⚠️ Bulk cancel failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
+        }
+
         db.prepare("UPDATE orders SET tracking_number = NULL, courier = NULL, delivery_status = 'Cancelled' WHERE id = ?").run(id);
-        // Note: We intentionally DO NOT update Shopify here for cancel to avoid accidental refunds.
         success++;
       } else {
         failed++;

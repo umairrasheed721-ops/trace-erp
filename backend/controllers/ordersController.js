@@ -565,6 +565,16 @@ exports.cancelBooking = async (req, res) => {
     }
 
     if (success) {
+      // Cancel Shopify fulfillment (non-blocking)
+      try {
+        if (order.shopify_order_id) {
+          const { cancelShopifyFulfillment } = require('../engines/shopify');
+          await cancelShopifyFulfillment(order, order.shopify_order_id);
+        }
+      } catch (shopifyErr) {
+        console.warn(`⚠️ Failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
+      }
+
       db.prepare('UPDATE orders SET tracking_number = NULL, delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
         .run(req.params.id);
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
