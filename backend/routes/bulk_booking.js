@@ -168,7 +168,7 @@ router.post('/cancel', async (req, res) => {
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
     try {
-      const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
+      const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(id);
       if (!order) continue;
 
       const courier = (order.courier || '').toLowerCase();

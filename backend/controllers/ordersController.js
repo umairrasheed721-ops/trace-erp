@@ -549,7 +549,7 @@ exports.cancelBooking = async (req, res) => {
   const { cancelInstaworldOrder } = require('../engines/instaworld');
   
   try {
-    const order = db.prepare('SELECT o.*, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
+    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order || !order.tracking_number) return res.status(404).json({ error: 'Order has no booking to cancel' });
 
     const courier = (order.courier || '').toLowerCase();
