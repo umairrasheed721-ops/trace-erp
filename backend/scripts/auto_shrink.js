@@ -123,71 +123,10 @@ try {
     } else {
       console.log("✅ Database size is normal or logs are already clean. Skipping shrink.");
     }
+  } else {
+    console.log("✅ Database size is normal. Skipping shrink.");
   }
 } catch (err) {
   console.error("❌ Auto-shrink check failed:", err.message);
 }
-
-async function runStartupFix(dbPath) {
-  try {
-    const fixDb = new DatabaseSync(dbPath);
-    const order = fixDb.prepare(`
-      SELECT o.id, o.shopify_order_id, o.tracking_number, s.shop_domain, s.access_token 
-      FROM orders o 
-      JOIN stores s ON o.store_id = s.id 
-      WHERE o.ref_number = 'TR32684'
-    `).get();
-
-    if (order && order.shopify_order_id && order.access_token && order.access_token !== 'PENDING') {
-      const { shop_domain, access_token, shopify_order_id } = order;
-      console.log(`🔧 [Startup Fix] Found TR32684, shopify_order_id: ${shopify_order_id}, tracking: ${order.tracking_number}`);
-      
-      // 1. Fetch fulfillments from Shopify
-      const fUrl = `https://${shop_domain}/admin/api/2024-10/orders/${shopify_order_id}/fulfillments.json`;
-      const res = await globalThis.fetch(fUrl, {
-        headers: { 'X-Shopify-Access-Token': access_token }
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const fulfillments = data.fulfillments || [];
-        const active = fulfillments.filter(f => f.status !== 'cancelled');
-        
-        console.log(`🔧 [Startup Fix] Found ${active.length} active fulfillments for TR32684 on Shopify.`);
-        
-        for (const f of active) {
-          console.log(`🔧 [Startup Fix] Cancelling fulfillment ${f.id} on Shopify...`);
-          const cancelRes = await globalThis.fetch(`https://${shop_domain}/admin/api/2024-10/fulfillments/${f.id}/cancel.json`, {
-            method: 'POST',
-            headers: {
-              'X-Shopify-Access-Token': access_token,
-              'Content-Type': 'application/json'
-            }
-          });
-          if (cancelRes.ok) {
-            console.log(`🔧 [Startup Fix] Successfully cancelled fulfillment ${f.id} on Shopify.`);
-          } else {
-            console.error(`🔧 [Startup Fix] Failed to cancel fulfillment ${f.id}:`, await cancelRes.text());
-          }
-        }
-      } else {
-        console.error(`🔧 [Startup Fix] Failed to get fulfillments for TR32684:`, await res.text());
-      }
-
-      // 2. Clear tracking in DB and set status to Confirmed (Ready to Book)
-      fixDb.prepare(`
-        UPDATE orders 
-        SET tracking_number = NULL, courier = NULL, delivery_status = 'Confirmed', status_date = datetime('now') 
-        WHERE id = ?
-      `).run(order.id);
-      console.log(`🔧 [Startup Fix] Successfully updated order TR32684 to Confirmed & cleared tracking in database.`);
-    }
-    fixDb.close();
-  } catch (err) {
-    console.error("🔧 [Startup Fix] Failed to run TR32684 fix:", err.message);
-  }
-}
-
-runStartupFix(dbPath).finally(() => {
-  process.exit(0);
-});
+process.exit(0);
