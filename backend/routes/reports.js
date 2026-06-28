@@ -148,6 +148,9 @@ router.get('/daily', (req, res) => {
       
       const finalPnl = grossProfit - totalMarketing - hybridCourierFee - actualExp;
       
+      const actualGrossProfit = paymentPaid - pureCgs - sunkPackaging;
+      const actualPnl = actualGrossProfit - totalMarketing - hybridCourierFee - actualExp;
+      
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
       const cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
@@ -178,6 +181,7 @@ router.get('/daily', (req, res) => {
         hybridCourier: hybridCourierFee,
         actualExp,
         pnl: finalPnl,
+        actualPnl,
         delPercent,
         roasMeta,
         cpaAvg,
@@ -232,6 +236,7 @@ router.get('/daily', (req, res) => {
             date: dStr, aov: 0, deliveredSale: 0, cgs: 0, pureCgs: 0, sunkPackaging: 0, cgsPercent: 0, netSales: 0, taxPaid: 0, grossProfit: 0,
             marPercent: 0, marketingSpend, tiktokMarketing, estCourier: 0, actualCourier: 0, courierDiff: 0,
             hybridCourier: 0, actualExp: m.actual_exp || 0, pnl: -(totalMarketing + (m.actual_exp || 0)),
+            actualPnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,

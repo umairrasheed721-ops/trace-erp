@@ -130,6 +130,7 @@ export default function Reports() {
     { id: 'courierDiff', label: 'Diff Correction', group: 'expense' },
     { id: 'actualExp', label: 'Manual Exp', group: 'expense' },
     { id: 'pnl', label: 'FINAL PNL', group: 'profit' },
+    { id: 'actualPnl', label: 'ACTUAL PNL (CASH)', group: 'profit' },
     { id: 'delPercent', label: 'Del%', group: 'kpi' },
     { id: 'roasMeta', label: 'ROAS', group: 'kpi' },
     { id: 'cpaAvg', label: 'CPA AVG', group: 'kpi' },

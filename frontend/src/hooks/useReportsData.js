@@ -113,6 +113,10 @@ export default function useReportsData(activeStoreId, toast) {
         const updated = { ...row, [field]: numValue };
         const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
         updated.pnl = updated.grossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+        
+        const actualGrossProfit = (updated.paymentPaid || 0) - (updated.cgs || 0);
+        updated.actualPnl = actualGrossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+
         updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
         const landedOrders = updated.landedOrders || 0;
         updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
@@ -167,6 +171,10 @@ export default function useReportsData(activeStoreId, toast) {
         const updated = { ...row, [field]: numValue };
         const totalMarketing = (updated.marketingSpend || 0) + (updated.tiktokMarketing || 0);
         updated.pnl = updated.grossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+        
+        const actualGrossProfit = (updated.paymentPaid || 0) - (updated.cgs || 0);
+        updated.actualPnl = actualGrossProfit - totalMarketing - updated.hybridCourier - (updated.actualExp || 0);
+
         updated.marPercent = updated.deliveredSale > 0 ? (totalMarketing / updated.deliveredSale) * 100 : 0;
         const landedOrders = updated.landedOrders || 0;
         updated.cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
@@ -312,6 +320,10 @@ export default function useReportsData(activeStoreId, toast) {
       const taxPaid = m.deliveredSale * 0.04;
       const grossProfit = m.deliveredSale - m.cgs;
       const pnl = grossProfit - totalMarketing - m.hybridCourier - m.actualExp;
+      
+      const actualGrossProfit = m.paymentPaid - m.cgs;
+      const actualPnl = actualGrossProfit - totalMarketing - m.hybridCourier - m.actualExp;
+
       const landedOrders = m.landedOrders || 0;
       const netOrders = landedOrders - m.cancelations;
       return { 
@@ -321,6 +333,7 @@ export default function useReportsData(activeStoreId, toast) {
         taxPaid, grossProfit, 
         marPercent: m.deliveredSale > 0 ? (totalMarketing / m.deliveredSale) * 100 : 0,
         pnl, 
+        actualPnl,
         canPercent: landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0,
         delPercent: m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
