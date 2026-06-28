@@ -23,6 +23,7 @@ Below is the clean and optimized file list of the workspace (excluding deleted t
 ├── .cursorrules                  - Active AI instructions & code guidelines.
 ├── .gitignore                    - Configured to ignore .env, database WAL/SHM, and log files.
 ├── Dockerfile                    - Multi-stage Docker config for Node.js production.
+├── backend_check.js              - Pre-flight syntax check script running syntax verification on all backend files.
 ├── build_script.js               - Compiles frontend and copies production assets to backend/public/.
 ├── package.json                  - Root workspace package.json (concurrency scripts).
 ├── railway.json                  - Deployment instructions for Railway.

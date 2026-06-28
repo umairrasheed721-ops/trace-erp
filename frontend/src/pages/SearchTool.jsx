@@ -43,6 +43,7 @@ export default function SearchTool() {
   const lastSearchRef = useRef('')
   const isProgrammaticRef = useRef(false)
   const isCustomerSearchRef = useRef(false)
+  const isBacklogSearchRef = useRef(false)
   const searchInputRef = useRef(null)
   const lastFetchedUrlRef = useRef('')
   const lastRefreshRef = useRef(0)
@@ -828,6 +829,47 @@ export default function SearchTool() {
   })
   const [syncProgress, setSyncProgress] = useState(null) // { current, total, message }
   const [activeAgingBucket, setActiveAgingBucket] = useState(null)
+
+  const handleSelectAgingBucket = useCallback((bucketLabel) => {
+    if (bucketLabel) {
+      isBacklogSearchRef.current = true;
+      const emptyColFilters = {
+        ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+      };
+
+      // Set React states
+      setStatus('Pending');
+      setKeyword('');
+      setPreset('All Time');
+      setCustomStart('');
+      setCustomEnd('');
+      setColFilters(emptyColFilters);
+      setActiveAgingBucket(bucketLabel);
+      setPage(1);
+
+      // Trigger immediate fetch bypassing debounced state updates delay
+      fetchOrders({
+        preset: 'All Time',
+        status: 'Pending',
+        customStart: '',
+        customEnd: '',
+        keyword: '',
+        colFilters: emptyColFilters,
+        isRefresh: true,
+        wasProgrammatic: true,
+        clearKeyword: true,
+        clearColFilters: true
+      });
+
+      setTimeout(() => {
+        isBacklogSearchRef.current = false;
+        console.log('📡 [SearchTool] Resetting isBacklogSearchRef after stabilization');
+      }, 600);
+    } else {
+      setActiveAgingBucket(null);
+    }
+  }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, fetchOrders]);
+
   const [useLocalHelper, setUseLocalHelper] = useState(() => {
     return localStorage.getItem('trace_use_local_helper') === 'true';
   })
@@ -1191,6 +1233,12 @@ export default function SearchTool() {
       return;
     }
 
+    // Skip trigger if programmatic backlog search is in progress
+    if (isBacklogSearchRef.current) {
+      console.log('📡 [SearchTool] useEffect skipped: programmatic backlog search is in progress');
+      return;
+    }
+
     // Prevent Redundant Fetch during active clear operation
     const isClearingFetch = isClearingStageRef.current === 'fetch';
     if (isClearingRef.current && !isClearingFetch) {
@@ -1483,7 +1531,7 @@ export default function SearchTool() {
             savedViews={savedViews}
             runSearch={runSearch}
             setColFilters={setColFilters}
-            setActiveAgingBucket={setActiveAgingBucket}
+            setActiveAgingBucket={handleSelectAgingBucket}
             addToast={addToast}
             compactMode={compactMode}
             toggleCompact={toggleCompact}
