@@ -85,10 +85,14 @@ async function cancelPostExOrder(store, trackingNumber) {
     if (!postex_token) throw new Error('PostEx Token missing');
 
     const url = 'https://api.postex.pk/services/integration/api/order/v1/cancel-order';
-    const response = await fetch(`${url}?trackingNumber=${trackingNumber}`, {
-      method: 'POST',
-      headers: { 'token': postex_token },
-      timeout: API_TIMEOUT
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: { 
+        'token': postex_token,
+        'Content-Type': 'application/json'
+      },
+      timeout: API_TIMEOUT,
+      body: JSON.stringify({ trackingNumber })
     });
 
     const data = await response.json();
