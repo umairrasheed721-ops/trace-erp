@@ -60,6 +60,12 @@ async function main() {
   // 3. Upload snippets/product-thumbnail.liquid
   await uploadAsset('snippets/product-thumbnail.liquid', path.join(themeDir, 'snippets/product-thumbnail.liquid'));
 
+  // 3a. Upload snippets/price.liquid
+  await uploadAsset('snippets/price.liquid', path.join(themeDir, 'snippets/price.liquid'));
+
+  // 3b. Upload snippets/card-product.liquid
+  await uploadAsset('snippets/card-product.liquid', path.join(themeDir, 'snippets/card-product.liquid'));
+
   // 4. Upload sections/custom-hero-slider.liquid
   await uploadAsset('sections/custom-hero-slider.liquid', path.join(themeDir, 'sections/custom-hero-slider.liquid'));
 
