@@ -638,7 +638,14 @@ export default function ReturnsManager() {
                         </div>
                       </td>
                       <td>
-                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)' }}>{row.delivery_status}</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                          <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.1)', color: 'var(--red)', display: 'inline-block' }}>{row.delivery_status}</span>
+                          {row.courier_status && row.courier_status.toLowerCase() !== row.delivery_status.toLowerCase() && (
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              ({row.courier_status})
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <button 

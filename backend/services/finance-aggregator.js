@@ -93,11 +93,12 @@ class FinanceAggregator {
 
   static async getReturnsPending(storeId) {
     return db.prepare(`
-      SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, status_date, price, notes, line_items, product_titles
+      SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, status_date, price, notes, line_items, product_titles, courier_status
       FROM orders 
       WHERE store_id = ? 
       AND LOWER(delivery_status) IN ('returned', 'rto', 'return initiated', 'return in progress')
       AND LOWER(delivery_status) NOT IN ('return received', 'delivered', 'cancelled', 'paid')
+      AND NOT (LOWER(courier) = 'instaworld' AND LOWER(courier_status) = 'return received at insta hub')
       ORDER BY order_date DESC
       LIMIT 1000
     `).all(Number(storeId));
