@@ -62,10 +62,43 @@ router.post('/bulk-update', (req, res) => {
 // GET /api/cost-manager/breakdown/:orderId - Fetch itemized cost breakdown for an order
 router.get('/breakdown/:orderId', (req, res) => {
   try {
-    const order = db.prepare('SELECT line_items, store_id FROM orders WHERE id = ?').get(req.params.orderId);
-    if (!order || !order.line_items) return res.json([]);
+    const order = db.prepare('SELECT line_items, product_titles, store_id FROM orders WHERE id = ?').get(req.params.orderId);
+    if (!order) return res.json([]);
 
-    const items = JSON.parse(order.line_items);
+    let items = [];
+    if (order.line_items) {
+      try {
+        items = JSON.parse(order.line_items);
+      } catch (_) {}
+    }
+
+    // Fallback to parsing product_titles if no line items parsed
+    if ((!items || items.length === 0) && order.product_titles) {
+      const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+      let match;
+      while ((match = regex.exec(order.product_titles)) !== null) {
+        const fullName = match[1].trim();
+        const qty = parseInt(match[2]) || 1;
+        
+        const parts = fullName.split(' - ');
+        const pName = parts[0].trim();
+        const vName = parts.length > 1 ? parts[1].trim() : '';
+        
+        items.push({
+          title: pName,
+          variant_title: vName,
+          quantity: qty,
+          price: 0,
+          sku: '',
+          variant_id: ''
+        });
+      }
+    }
+
+    if (!items || items.length === 0) {
+      return res.json([]);
+    }
+
     const results = [];
 
     for (const item of items) {
@@ -77,6 +110,8 @@ router.get('/breakdown/:orderId', (req, res) => {
       const queryVariantId1 = numericVariantId || '__NONE__';
       const queryVariantId2 = gidVariantId || '__NONE__';
       const querySku = sku || '__NONE__';
+      const pName = item.title ? String(item.title).trim() : '';
+      const vName = item.variant_title ? String(item.variant_title).trim() : '';
 
       let cost = db.prepare(`
         SELECT * FROM product_master_costs 
@@ -85,17 +120,31 @@ router.get('/breakdown/:orderId', (req, res) => {
           shopify_variant_id = ? 
           OR shopify_variant_id = ? 
           OR (sku = ? AND sku != '')
+          OR (LOWER(parent_title) = ?)
         )
         ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC,
-                 (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+                 (CASE WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 0 
+                       WHEN LOWER(parent_title) = ? THEN 1
+                       ELSE 2 END) ASC
         LIMIT 1
-      `).get(order.store_id, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+      `).get(
+        order.store_id, 
+        queryVariantId1, 
+        queryVariantId2, 
+        querySku, 
+        pName.toLowerCase(), 
+        queryVariantId1, 
+        queryVariantId2, 
+        pName.toLowerCase(), 
+        vName.toLowerCase(),
+        pName.toLowerCase()
+      );
 
       results.push({
-        title: item.title,
-        variant: item.variant_title,
+        title: pName,
+        variant: vName,
         quantity: item.quantity,
-        price: item.price,
+        price: item.price || 0,
         unit_cost: cost ? cost.unit_cost : 0,
         landed_cost: cost ? cost.landed_cost : 0,
         packaging_cost: cost ? cost.packaging_cost : 0
