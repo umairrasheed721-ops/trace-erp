@@ -62,7 +62,7 @@ router.post('/bulk-update', (req, res) => {
 // GET /api/cost-manager/breakdown/:orderId - Fetch itemized cost breakdown for an order
 router.get('/breakdown/:orderId', (req, res) => {
   try {
-    const order = db.prepare('SELECT line_items, product_titles, store_id FROM orders WHERE id = ?').get(req.params.orderId);
+    const order = db.prepare('SELECT line_items, product_titles, store_id, cost FROM orders WHERE id = ?').get(req.params.orderId);
     if (!order) return res.json([]);
 
     let items = [];
@@ -100,6 +100,7 @@ router.get('/breakdown/:orderId', (req, res) => {
     }
 
     const results = [];
+    let totalMatchedCost = 0;
 
     for (const item of items) {
       const variantId = item.variant_id ? String(item.variant_id) : '';
@@ -140,15 +141,34 @@ router.get('/breakdown/:orderId', (req, res) => {
         pName.toLowerCase()
       );
 
+      const landed = cost ? cost.landed_cost : 0;
+      const unit = cost ? cost.unit_cost : 0;
+      const pkg = cost ? cost.packaging_cost : 0;
+
+      totalMatchedCost += landed * item.quantity;
+
       results.push({
         title: pName,
         variant: vName,
         quantity: item.quantity,
         price: item.price || 0,
-        unit_cost: cost ? cost.unit_cost : 0,
-        landed_cost: cost ? cost.landed_cost : 0,
-        packaging_cost: cost ? cost.packaging_cost : 0
+        unit_cost: unit,
+        landed_cost: landed,
+        packaging_cost: pkg
       });
+    }
+
+    // Fallback: If no costs matched from catalog but order has a direct cost, distribute it
+    if (totalMatchedCost === 0 && order.cost > 0) {
+      const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+      if (totalQty > 0) {
+        const distributedLandedCost = order.cost / totalQty;
+        for (const res of results) {
+          res.landed_cost = distributedLandedCost;
+          res.unit_cost = distributedLandedCost;
+          res.packaging_cost = 0;
+        }
+      }
     }
 
     res.json(results);
