@@ -57,7 +57,7 @@ function getOrderFilters(req) {
     const isBulkIDSearch = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{4,}$/.test(t) && /\d/.test(t));
 
     if (isBulkIDSearch) {
-      const orClauses = spaceTokens.map(() => '(o.tracking_number = ? OR o.ref_number = ? OR o.shopify_order_id = ?)').join(' OR ');
+      const orClauses = spaceTokens.map(() => '(LOWER(o.tracking_number) = ? OR LOWER(o.ref_number) = ? OR LOWER(o.shopify_order_id) = ?)').join(' OR ');
       whereClauses.push(`(${orClauses})`);
       spaceTokens.forEach(t => queryParams.push(t, t, t));
     } else {
