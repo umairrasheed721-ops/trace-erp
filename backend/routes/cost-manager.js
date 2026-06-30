@@ -149,6 +149,22 @@ router.get('/breakdown/:orderId', (req, res) => {
 
       totalMatchedCost += landed * item.quantity;
 
+      let matchType = 'none';
+      if (cost) {
+        if (numericVariantId && cost.shopify_variant_id && (String(cost.shopify_variant_id).includes(numericVariantId) || String(numericVariantId).includes(String(cost.shopify_variant_id)))) {
+          matchType = 'variant_id';
+        } else if (sku && cost.sku && String(cost.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()) {
+          matchType = 'sku';
+        } else if (pName && cost.parent_title && cost.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+                   vName && cost.variant_title && cost.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()) {
+          matchType = 'ghost';
+        } else if (pName && cost.parent_title && cost.parent_title.toLowerCase().trim() === pName.toLowerCase().trim()) {
+          matchType = 'name_only';
+        } else {
+          matchType = 'catalog_other';
+        }
+      }
+
       results.push({
         title: pName,
         variant: vName,
@@ -156,7 +172,9 @@ router.get('/breakdown/:orderId', (req, res) => {
         price: item.price || 0,
         unit_cost: unit,
         landed_cost: landed,
-        packaging_cost: pkg
+        packaging_cost: pkg,
+        sku: cost && cost.sku ? cost.sku : sku,
+        match_type: matchType
       });
     }
 
@@ -169,6 +187,7 @@ router.get('/breakdown/:orderId', (req, res) => {
           res.landed_cost = distributedLandedCost;
           res.unit_cost = distributedLandedCost;
           res.packaging_cost = 0;
+          res.match_type = 'fallback';
         }
       }
     }

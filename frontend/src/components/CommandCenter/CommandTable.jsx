@@ -39,6 +39,41 @@ const COLUMN_WIDTHS = {
   wa_erp_status: 140
 }
 
+// Cost breakdown helper components
+const getMatchBadgeStyle = (type) => {
+  switch (type) {
+    case 'variant_id':
+      return { background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }; // Blue
+    case 'sku':
+      return { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }; // Green
+    case 'ghost':
+      return { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }; // Orange / Amber
+    case 'name_only':
+      return { background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa' }; // Purple
+    case 'fallback':
+      return { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }; // Red
+    default:
+      return { background: 'rgba(156, 163, 175, 0.15)', color: '#cbd5e1' }; // Gray
+  }
+}
+
+const getMatchLabel = (type) => {
+  switch (type) {
+    case 'variant_id':
+      return '🔗 Variant ID';
+    case 'sku':
+      return '🆔 SKU Match';
+    case 'ghost':
+      return '👻 Ghost Match';
+    case 'name_only':
+      return '📝 Name Match';
+    case 'fallback':
+      return '💸 Split Cost';
+    default:
+      return '❓ Unknown';
+  }
+}
+
 // Cost breakdown helper component moved to file level
 const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
   if (loadingBreakdown) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⌛ Loading items...</div>
@@ -60,11 +95,33 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
       </div>
       <div style={{ maxHeight: 250, overflowY: 'auto', padding: '8px 0' }}>
         {breakdown.map((item, i) => (
-          <div key={i} style={{ padding: '6px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>{item.title}</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#9ca3af' }}>
+          <div key={i} style={{ padding: '8px 12px', borderBottom: i === breakdown.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>
+              {item.title} {item.variant ? `(${item.variant})` : ''}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#9ca3af', marginBottom: 4 }}>
               <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
               <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.6rem', color: '#6b7280', paddingTop: '2px' }}>
+              <span>
+                {item.sku ? `SKU: ${item.sku}` : <span style={{ fontStyle: 'italic', opacity: 0.5 }}>No SKU</span>}
+              </span>
+              {item.match_type && (
+                <span 
+                  style={{
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    fontSize: '0.55rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.3px',
+                    ...getMatchBadgeStyle(item.match_type)
+                  }}
+                >
+                  {getMatchLabel(item.match_type)}
+                </span>
+              )}
             </div>
           </div>
         ))}
