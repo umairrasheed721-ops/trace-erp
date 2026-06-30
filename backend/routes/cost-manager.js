@@ -123,10 +123,11 @@ router.get('/breakdown/:orderId', (req, res) => {
           OR (sku = ? AND sku != '')
           OR (LOWER(parent_title) = ?)
         )
-        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC,
-                 (CASE WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 0 
-                       WHEN LOWER(parent_title) = ? THEN 1
-                       ELSE 2 END) ASC
+        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
+                       WHEN sku = ? AND sku != '' THEN 1
+                       WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
+                       WHEN LOWER(parent_title) = ? THEN 3
+                       ELSE 4 END) ASC
         LIMIT 1
       `).get(
         order.store_id, 
@@ -136,6 +137,7 @@ router.get('/breakdown/:orderId', (req, res) => {
         pName.toLowerCase(), 
         queryVariantId1, 
         queryVariantId2, 
+        querySku,
         pName.toLowerCase(), 
         vName.toLowerCase(),
         pName.toLowerCase()
