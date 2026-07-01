@@ -718,6 +718,11 @@ tbody tr:last-child td {
 .wa-template-select:focus {
   box-shadow: none !important;
 }
+.wa-template-select option,
+.wa-template-select optgroup {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-elevated) !important;
+}
 
 /* ─── Status Badges ─── */
 .badge {
