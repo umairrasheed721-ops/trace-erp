@@ -48,6 +48,13 @@ router.get('/tracking/:slug', (req, res) => {
         { status: 'Out for Delivery', label: 'Rider Dispatched', date: '2026-05-17 09:15 AM', done: true },
         { status: 'Attempted', label: 'Delivery Attempt Failed (Address Issue)', date: '2026-05-17 02:45 PM', done: true, isError: true },
         { status: 'Delivered', label: 'Package Delivered', date: 'Pending Rescue', done: false }
+      ],
+      history: [
+        { dateTime: '2026-05-16 10:00:00', transactionStatus: 'Order Booked (PEX-88992211)' },
+        { dateTime: '2026-05-16 14:15:22', transactionStatus: 'Picked Up from Warehouse' },
+        { dateTime: '2026-05-16 20:30:11', transactionStatus: 'Arrived at Islamabad Transit Hub' },
+        { dateTime: '2026-05-17 09:15:00', transactionStatus: 'Out for Delivery (Assigned to Kamran Ali)' },
+        { dateTime: '2026-05-17 14:45:00', transactionStatus: 'Delivery Failed - Consignee Address Not Found' }
       ]
     });
   }
@@ -72,13 +79,24 @@ router.get('/tracking/:slug', (req, res) => {
       }
     ];
 
+    let history = [];
+    if (order.tracking_history) {
+      try {
+        history = JSON.parse(order.tracking_history);
+      } catch (e) {
+        console.error('Failed to parse order tracking_history:', e.message);
+      }
+    }
+    if (!Array.isArray(history)) history = [];
+
     res.json({
       order,
       rider: {
         name: order.courier ? `${order.courier} Delivery Partner` : 'Assigned Rider',
         phone: order.courier === 'PostEx' ? '0333-1234567' : '0300-9876543'
       },
-      milestones
+      milestones,
+      history
     });
   } catch (err) {
     console.error('Tracking fetch error:', err);

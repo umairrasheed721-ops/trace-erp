@@ -114,7 +114,7 @@ export default function TrackingPortal() {
     );
   }
 
-  const { order, rider, milestones } = data;
+  const { order, rider, milestones, history } = data;
   const isAttempted = order.delivery_status === 'Attempted';
 
   return (
@@ -240,7 +240,7 @@ export default function TrackingPortal() {
               </form>
             ) : (
               <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-                <div style={{ fontSize: '3rem', marginBottom: 12 }}>✅</div>
+                <div style={{ fontSize: '3rem', marginBottom: 12 }}></div>
                 <h4 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff', margin: '0 0 8px' }}>Rescue Instructions Received!</h4>
                 <p style={{ fontSize: '0.85rem', color: '#a7f3d0', margin: '0 0 16px', lineHeight: 1.5 }}>
                   We have successfully updated the courier API. The rider has received your exact GPS pin and landmark instructions for the re-attempt.
@@ -309,24 +309,50 @@ export default function TrackingPortal() {
           </div>
         </div>
 
-        {/* Assigned Rider & Support Card */}
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 16, background: 'rgba(79,70,229,0.1)', border: '1px solid rgba(79,70,229,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>
-              📞
+        {/* Detailed Shipment Journey Logs */}
+        {history && history.length > 0 && (
+          <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 24, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>📋</span>
+                <span>Detailed Shipment Journey Logs</span>
+              </h3>
             </div>
-            <div>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', margin: '0 0 2px' }}>{rider.name}</h4>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>Assigned Courier Representative</p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', paddingLeft: 16, borderLeft: '2px solid rgba(99,102,241,0.2)', marginLeft: 8 }}>
+              {[...history].reverse().map((item, idx) => {
+                const dateStr = item.dateTime || item.date || item.timestamp || 'Updated';
+                const statusText = item.transactionStatus || item.status || item.activity || 'Status Update';
+                
+                return (
+                  <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {/* Timeline bullet */}
+                    <div style={{
+                      position: 'absolute',
+                      left: -23,
+                      top: 4,
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: idx === 0 ? '#10b981' : '#334155',
+                      border: `2px solid ${idx === 0 ? '#34d399' : '#0f172a'}`,
+                      boxShadow: idx === 0 ? '0 0 8px #34d399' : 'none'
+                    }} />
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: idx === 0 ? '#34d399' : '#e2e8f0' }}>
+                        {statusText}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', marginTop: 2 }}>
+                        {dateStr}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <a 
-            href={`tel:${rider.phone}`} 
-            style={{ padding: '10px 16px', background: '#4f46e5', color: '#fff', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(79, 70, 229, 0.3)' }}
-          >
-            <span>📞 Call Rider</span>
-          </a>
-        </div>
+        )}
 
         {/* Order Details & Items Summary */}
         <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 24, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)', display: 'flex', flexDirection: 'column', gap: 16 }}>
