@@ -721,14 +721,9 @@ export default function SearchTool() {
           .replace(/\[RefNumber\]/g, o.ref_number || 'N/A')
           .replace(/\[ItemsCount\]/g, o.items_count || '0');
         
-        // Auto-Link if confirmation token exists
-        if (o.confirmation_token) {
-          const appUrl = window.location.origin;
-          const link = `${appUrl}/api/public/confirm-order/${o.confirmation_token}`;
-          msg = msg.replace(/\[Link\]/g, link);
-        } else {
-          msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
-        }
+        const trackingSlug = o.tracking_slug || 'tr_mock_slug';
+        const trackingLink = `${window.location.origin}/track/${trackingSlug}`;
+        msg = msg.replace(/\[Link\]/g, trackingLink);
       }
 
       let imageUrls = [];

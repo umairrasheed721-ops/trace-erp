@@ -422,13 +422,9 @@ export default function EditOrderModal({
          .replace(/\[RefNumber\]/g, editingOrder.ref_number || 'N/A')
          .replace(/\[ItemsCount\]/g, editingOrder.items_count || '0');
 
-      if (editingOrder.confirmation_token) {
-        const appUrl = window.location.origin;
-        const link = `${appUrl}/api/public/confirm-order/${editingOrder.confirmation_token}`;
-        msg = msg.replace(/\[Link\]/g, link);
-      } else {
-        msg = msg.replace(/\[Link\]/g, '(Confirm on call)');
-      }
+      const trackingSlug = editingOrder.tracking_slug || 'tr_mock_slug';
+      const trackingLink = `${window.location.origin}/track/${trackingSlug}`;
+      msg = msg.replace(/\[Link\]/g, trackingLink);
 
       let imageUrls = [];
       try {

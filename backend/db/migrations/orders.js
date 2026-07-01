@@ -403,5 +403,38 @@ module.exports = [
     } catch (e) {
       console.error('Failed to update PostEx orders in migration:', e.message);
     }
+  },
+
+  // 18. Ensure tracking_slug inserts trigger and retroactive healing
+  (db) => {
+    try {
+      console.log('🩹 Running database migration to ensure all orders have tracking_slug and setup INSERT trigger...');
+      
+      // 1. Create insert trigger for automatic generation on new records
+      db.prepare(`
+        CREATE TRIGGER IF NOT EXISTS generate_order_tracking_slug
+        AFTER INSERT ON orders
+        FOR EACH ROW
+        WHEN NEW.tracking_slug IS NULL OR NEW.tracking_slug = ''
+        BEGIN
+          UPDATE orders 
+          SET tracking_slug = 'tr_' || LOWER(HEX(RANDOMBLOB(4)))
+          WHERE id = NEW.id;
+        END;
+      `).run();
+      
+      // 2. Heal existing null/empty slugs
+      const result = db.prepare(`
+        UPDATE orders 
+        SET tracking_slug = 'tr_' || LOWER(HEX(RANDOMBLOB(4))) 
+        WHERE tracking_slug IS NULL OR tracking_slug = ''
+      `).run();
+      
+      if (result.changes > 0) {
+        console.log(`✅ [Migration] Generated tracking_slug for ${result.changes} existing orders.`);
+      }
+    } catch (e) {
+      console.error('Failed to execute tracking_slug DB migration:', e.message);
+    }
   }
 ];
