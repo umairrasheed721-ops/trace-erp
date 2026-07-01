@@ -137,11 +137,22 @@ function formatTemplate(templateStr, orderInfo) {
   const price = orderInfo?.price || 'N/A';
   const courier = orderInfo?.courier || 'Courier';
   const tracking = orderInfo?.tracking_number || 'N/A';
-  const link = tracking 
-    ? (courier === 'PostEx' 
-        ? `https://api.postex.pk/services/integration/api/order/v1/track-order/${tracking}` 
-        : `https://one-be.instaworld.pk/logistics/v1/trackShipment?tracking=${tracking}`) 
-    : 'N/A';
+  
+  const APP_URL = process.env.APP_URL || 'https://trace-erp.up.railway.app';
+  const slug = orderInfo?.tracking_slug || 'tr_mock_slug';
+  const traceLink = `${APP_URL}/track/${slug}`;
+
+  // Direct Courier Tracking URL
+  let courierLink = 'N/A';
+  if (tracking && tracking !== 'N/A') {
+    const courierLower = (courier || '').toLowerCase();
+    if (courierLower.includes('postex')) {
+      courierLink = `https://postex.pk/tracking?cn=${tracking}`;
+    } else {
+      courierLink = `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
+    }
+  }
+
   const address = orderInfo?.address || 'N/A';
   const city = orderInfo?.city || 'N/A';
   const phone = orderInfo?.phone || 'N/A';
@@ -155,7 +166,9 @@ function formatTemplate(templateStr, orderInfo) {
     .replace(/\[Price\]/g, price)
     .replace(/\[Courier\]/g, courier)
     .replace(/\[Tracking\]/g, tracking)
-    .replace(/\[Link\]/g, link)
+    .replace(/\[Link\]/g, traceLink)
+    .replace(/\[TraceLink\]/g, traceLink)
+    .replace(/\[CourierLink\]/g, courierLink)
     .replace(/\[Address\]/g, address)
     .replace(/\[City\]/g, city)
     .replace(/\[Phone\]/g, phone)

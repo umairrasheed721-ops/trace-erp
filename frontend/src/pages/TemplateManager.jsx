@@ -8,7 +8,7 @@ const TYPE_META = {
   custom:       { icon: '✨', label: 'Custom',           color: '#a855f7', bg: 'rgba(168,85,247,0.12)', border: 'rgba(168,85,247,0.25)' },
 }
 
-const TAGS = ['[Name]','[OrderID]','[Price]','[Link]','[Courier]','[Tracking]','[Address]','[City]','[Phone]','[Products]','[RefNumber]','[ItemsCount]']
+const TAGS = ['[Name]','[OrderID]','[Price]','[Link]','[TraceLink]','[CourierLink]','[Courier]','[Tracking]','[Address]','[City]','[Phone]','[Products]','[RefNumber]','[ItemsCount]']
 
 export default function TemplateManager() {
   const { addToast } = useApp()

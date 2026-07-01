@@ -435,7 +435,21 @@ const CommandTableRow = React.memo(({
 
                           const trackingSlug = o.tracking_slug || 'tr_mock_slug';
                           const trackingLink = `${window.location.origin}/track/${trackingSlug}`;
-                          msg = msg.replace(/\[Link\]/g, trackingLink);
+
+                          let courierLink = 'N/A';
+                          if (tracking && tracking !== 'N/A') {
+                            const courierLower = (courier || '').toLowerCase();
+                            if (courierLower.includes('postex')) {
+                              courierLink = `https://postex.pk/tracking?cn=${tracking}`;
+                            } else {
+                              courierLink = `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
+                            }
+                          }
+
+                          msg = msg
+                            .replace(/\[Link\]/g, trackingLink)
+                            .replace(/\[TraceLink\]/g, trackingLink)
+                            .replace(/\[CourierLink\]/g, courierLink);
 
                           let imageUrls = [];
                           try {
