@@ -82,7 +82,11 @@ router.get('/tracking/:slug', (req, res) => {
     let history = [];
     if (order.tracking_history) {
       try {
-        history = JSON.parse(order.tracking_history);
+        let parsed = JSON.parse(order.tracking_history);
+        if (typeof parsed === 'string') {
+          parsed = JSON.parse(parsed);
+        }
+        history = parsed;
       } catch (e) {
         console.error('Failed to parse order tracking_history:', e.message);
       }

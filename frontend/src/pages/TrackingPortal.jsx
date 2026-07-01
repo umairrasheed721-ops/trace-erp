@@ -337,8 +337,8 @@ export default function TrackingPortal() {
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', paddingLeft: 16, borderLeft: '2px solid rgba(99,102,241,0.2)', marginLeft: 8 }}>
                 {displayLogs.map((item, idx) => {
-                  const dateStr = item.dateTime || item.date || item.timestamp || 'Updated';
-                  const statusText = item.transactionStatus || item.status || item.activity || 'Status Update';
+                  const dateStr = item.dateTime || item.date || item.timestamp || item.dateTimeString || item.status_date || item.status_datetime || item.time || item.created_at || 'Updated';
+                  const statusText = item.transactionStatus || item.status || item.activity || item.remarks || item.description || item.statusDescription || 'Status Update';
                   
                   return (
                     <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>

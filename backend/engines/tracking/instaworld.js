@@ -153,7 +153,34 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         }
       }
 
-      return { status: 200, order, newStatus, rawStatus, courierName, statusDate: formattedStatusDate };
+      let historyArray = [];
+      if (Array.isArray(data)) {
+        historyArray = data;
+      } else if (data?.data && Array.isArray(data.data)) {
+        historyArray = data.data;
+      }
+
+      const mappedHistory = historyArray.map(item => ({
+        dateTime: item.dateTime || item.dateTimeString || item.status_date || item.status_datetime || item.time || item.timestamp || item.created_at || null,
+        transactionStatus: item.status || item.statusDescription || item.activity || item.remarks || item.description || ''
+      })).filter(item => item.transactionStatus);
+
+      if (mappedHistory.length === 0 && rawStatus) {
+        mappedHistory.push({
+          dateTime: formattedStatusDate || new Date().toISOString(),
+          transactionStatus: rawStatus
+        });
+      }
+
+      return { 
+        status: 200, 
+        order, 
+        newStatus, 
+        rawStatus, 
+        courierName, 
+        statusDate: formattedStatusDate,
+        trackingHistoryJson: JSON.stringify(mappedHistory)
+      };
     } catch (err) {
       return { status: 0, order, newStatus: null };
     }
@@ -190,7 +217,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
           erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
           courier: r.courierName || 'Instaworld',
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
-          status_date: r.statusDate
+          status_date: r.statusDate,
+          tracking_history: r.trackingHistoryJson
         });
       }
     }
@@ -210,7 +238,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         courier = COALESCE(?, courier),
         delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
         status_date = CASE WHEN ? IS NOT NULL THEN COALESCE(?, datetime('now')) ELSE status_date END,
-        failed_attempts = failed_attempts + ?
+        failed_attempts = failed_attempts + ?,
+        tracking_history = COALESCE(?, tracking_history)
     WHERE id = ?
   `);
 
@@ -218,7 +247,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const lookupStmt2 = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
-      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.id);
+      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.tracking_history||null, u.id);
     }
   });
   updateMany(updatesToApply);
