@@ -66,7 +66,8 @@ module.exports = [
     const alters = [
       "ALTER TABLE recon_sessions ADD COLUMN filename TEXT",
       "ALTER TABLE recon_sessions ADD COLUMN row_count INTEGER",
-      "ALTER TABLE recon_sessions ADD COLUMN sync_to_shopify INTEGER DEFAULT 1"
+      "ALTER TABLE recon_sessions ADD COLUMN sync_to_shopify INTEGER DEFAULT 1",
+      "ALTER TABLE recon_logs ADD COLUMN cpr_reference TEXT"
     ];
 
     alters.forEach(sql => {

@@ -220,6 +220,28 @@ export default function FinanceManager() {
                           {session.row_count} rows
                         </span>
                       </div>
+
+                      {session.cpr_references && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                          {session.cpr_references.split(',').map(cpr => (
+                            <span 
+                              key={cpr} 
+                              style={{ 
+                                fontSize: '0.68rem', 
+                                padding: '2px 8px', 
+                                borderRadius: '4px', 
+                                background: 'rgba(168, 85, 247, 0.1)', 
+                                color: 'var(--brand)',
+                                border: '1px solid rgba(168, 85, 247, 0.25)',
+                                fontWeight: 600,
+                                fontFamily: 'monospace'
+                              }}
+                            >
+                              📄 {cpr}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.75rem', color: session.sync_to_shopify ? 'var(--green)' : 'var(--text-muted)' }}>

@@ -199,8 +199,8 @@ router.post('/bulk-update', async (req, res) => {
             results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
             processedCount++;
 
-            db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date) VALUES (?,?,?,?,?,?,?,?)`)
-              .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date);
+            db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date, cpr_reference) VALUES (?,?,?,?,?,?,?,?,?)`)
+              .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date, ref || null);
             
           } catch (e) {
             results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
@@ -225,8 +225,8 @@ router.post('/bulk-update', async (req, res) => {
             results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
             processedCount++;
 
-            db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date) VALUES (?,?,?,?,?,?,?,?)`)
-              .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date);
+            db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date, cpr_reference) VALUES (?,?,?,?,?,?,?,?,?)`)
+              .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date, ref || null);
           } catch (e) {
             results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
           }
@@ -258,7 +258,16 @@ router.post('/bulk-update', async (req, res) => {
 router.get('/reconciliation-history', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  const history = db.prepare('SELECT * FROM recon_sessions WHERE store_id = ? ORDER BY created_at DESC LIMIT 50').all(store_id);
+  const history = db.prepare(`
+    SELECT rs.*, 
+      (SELECT GROUP_CONCAT(DISTINCT cpr_reference) 
+       FROM recon_logs 
+       WHERE session_id = rs.id AND cpr_reference IS NOT NULL AND cpr_reference != '') as cpr_references
+    FROM recon_sessions rs
+    WHERE rs.store_id = ? 
+    ORDER BY rs.created_at DESC 
+    LIMIT 50
+  `).all(Number(store_id));
   res.json(history);
 });
 
