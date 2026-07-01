@@ -310,49 +310,66 @@ export default function TrackingPortal() {
         </div>
 
         {/* Detailed Shipment Journey Logs */}
-        {history && history.length > 0 && (
-          <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 24, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>📋</span>
-                <span>Detailed Shipment Journey Logs</span>
-              </h3>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', paddingLeft: 16, borderLeft: '2px solid rgba(99,102,241,0.2)', marginLeft: 8 }}>
-              {[...history].reverse().map((item, idx) => {
-                const dateStr = item.dateTime || item.date || item.timestamp || 'Updated';
-                const statusText = item.transactionStatus || item.status || item.activity || 'Status Update';
-                
-                return (
-                  <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {/* Timeline bullet */}
-                    <div style={{
-                      position: 'absolute',
-                      left: -23,
-                      top: 4,
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      background: idx === 0 ? '#10b981' : '#334155',
-                      border: `2px solid ${idx === 0 ? '#34d399' : '#0f172a'}`,
-                      boxShadow: idx === 0 ? '0 0 8px #34d399' : 'none'
-                    }} />
-                    
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: idx === 0 ? '#34d399' : '#e2e8f0' }}>
-                        {statusText}
-                      </span>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', marginTop: 2 }}>
-                        {dateStr}
-                      </span>
+        {(() => {
+          let displayLogs = [];
+          if (history && history.length > 0) {
+            displayLogs = [...history].reverse();
+          } else if (milestones && milestones.length > 0) {
+            displayLogs = milestones
+              .filter(m => m.done && m.date && m.date !== 'Pending')
+              .map(m => ({
+                dateTime: m.date,
+                transactionStatus: m.label
+              }))
+              .reverse();
+          }
+
+          if (displayLogs.length === 0) return null;
+
+          return (
+            <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 24, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: 16, marginBottom: 20 }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>📋</span>
+                  <span>Detailed Shipment Journey Logs</span>
+                </h3>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'relative', paddingLeft: 16, borderLeft: '2px solid rgba(99,102,241,0.2)', marginLeft: 8 }}>
+                {displayLogs.map((item, idx) => {
+                  const dateStr = item.dateTime || item.date || item.timestamp || 'Updated';
+                  const statusText = item.transactionStatus || item.status || item.activity || 'Status Update';
+                  
+                  return (
+                    <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {/* Timeline bullet */}
+                      <div style={{
+                        position: 'absolute',
+                        left: -23,
+                        top: 4,
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        background: idx === 0 ? '#10b981' : '#334155',
+                        border: `2px solid ${idx === 0 ? '#34d399' : '#0f172a'}`,
+                        boxShadow: idx === 0 ? '0 0 8px #34d399' : 'none'
+                      }} />
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: idx === 0 ? '#34d399' : '#e2e8f0' }}>
+                          {statusText}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap', marginTop: 2 }}>
+                          {dateStr}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Order Details & Items Summary */}
         <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 24, padding: 24, boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)', display: 'flex', flexDirection: 'column', gap: 16 }}>
