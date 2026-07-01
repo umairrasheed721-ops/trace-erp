@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 
 export default function Connect() {
@@ -40,7 +40,6 @@ export default function Connect() {
     setLoading(false)
   }
 
-  // Poll while any store is syncing
   useEffect(() => {
     const anySyncing = stores.some(s => s.sync_status === 'syncing')
     if (anySyncing) {
@@ -140,84 +139,171 @@ export default function Connect() {
   }
 
   return (
-    <div style={{ maxWidth: 760 }}>
-      <div className="page-header">
+    <div style={{ maxWidth: 820 }}>
+      {/* ─── Page Header ─── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
-          <h2>🔌 Connect Store</h2>
-          <p>Add a new Shopify store to TRACE ERP</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 14,
+              background: 'linear-gradient(135deg, rgba(168,85,247,0.25) 0%, rgba(99,102,241,0.25) 100%)',
+              border: '1px solid rgba(168,85,247,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.4rem', flexShrink: 0
+            }}>🔌</div>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)' }}>Connect Store</h2>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Link your Shopify store and configure courier integrations</p>
+            </div>
+          </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => refreshStores()}>🔄 Refresh Stores</button>
+        <button
+          onClick={() => refreshStores()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 16px', borderRadius: 10,
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--brand)'; e.currentTarget.style.color = 'var(--brand)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+        >
+          🔄 Refresh Stores
+        </button>
       </div>
 
-      <div className="card mb-4">
-        <div className="card-title">Add New Shopify Store</div>
-        <form onSubmit={handleConnect}>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Store Name (Label)</label>
+      {/* ─── Add New Store Form ─── */}
+      <div style={{
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: 18,
+        overflow: 'hidden',
+        marginBottom: 24,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.15)'
+      }}>
+        {/* Card Header */}
+        <div style={{
+          padding: '18px 24px',
+          background: 'linear-gradient(90deg, rgba(99,102,241,0.08) 0%, transparent 100%)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 10
+        }}>
+          <span style={{ fontSize: '1rem' }}>🏪</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Add New Shopify Store</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1 }}>Enter your store credentials to generate an OAuth link</div>
+          </div>
+        </div>
+
+        <form onSubmit={handleConnect} style={{ padding: 24 }}>
+          {/* Section: Store Identity */}
+          <SectionLabel icon="🏷️" label="Store Identity" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <FieldGroup label="Store Name (Label)" hint="A friendly name for your reference">
               <input className="form-input" placeholder="e.g. My Fashion Store" value={form.store_name} onChange={set('store_name')} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Shop Domain *</label>
+            </FieldGroup>
+            <FieldGroup label="Shop Domain *" hint="Your Shopify myshopify.com URL">
               <input className="form-input" placeholder="your-store.myshopify.com" value={form.shop_domain} onChange={set('shop_domain')} required />
-            </div>
+            </FieldGroup>
           </div>
 
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Shopify Client ID *</label>
-              <input className="form-input font-mono" placeholder="From Shopify Partner Dashboard" value={form.client_id} onChange={set('client_id')} required />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Shopify Client Secret *</label>
-              <input className="form-input font-mono" type="password" placeholder="From Shopify Partner Dashboard" value={form.client_secret} onChange={set('client_secret')} required />
-            </div>
+          {/* Section: OAuth Credentials */}
+          <SectionLabel icon="🔑" label="OAuth Credentials" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <FieldGroup label="Shopify Client ID *" hint="From Shopify Partner Dashboard">
+              <input className="form-input font-mono" placeholder="shpca_xxxxxxxxxxxxxxxx" value={form.client_id} onChange={set('client_id')} required />
+            </FieldGroup>
+            <FieldGroup label="Shopify Client Secret *" hint="Keep this confidential">
+              <input className="form-input font-mono" type="password" placeholder="••••••••••••••••" value={form.client_secret} onChange={set('client_secret')} required />
+            </FieldGroup>
           </div>
 
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label className="form-label" style={{ margin: 0 }}>Initial Sync Start Date (Authority)</label>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => set('sync_start_date')({ target: { value: '2010-01-01' } })} style={{ padding: '2px 8px', fontSize: '0.65rem' }}>📅 All Time</button>
+          {/* Section: Sync Settings */}
+          <SectionLabel icon="📅" label="Sync Settings" />
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Initial Sync Start Date
+              </label>
+              <button
+                type="button"
+                onClick={() => set('sync_start_date')({ target: { value: '2010-01-01' } })}
+                style={{
+                  padding: '3px 10px', fontSize: '0.65rem', fontWeight: 700,
+                  borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'var(--bg-elevated)', color: 'var(--text-muted)', cursor: 'pointer'
+                }}
+              >
+                📅 All Time
+              </button>
             </div>
             <input className="form-input" type="date" value={form.sync_start_date} onChange={set('sync_start_date')} />
-            <small style={{ color: 'var(--text-muted)' }}>Orders before this date will never be pulled.</small>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>Orders before this date will never be pulled.</div>
           </div>
 
-          <div className="divider" />
-          <div className="card-title">Courier API Keys (Optional)</div>
-
-          <div className="form-group">
-            <label className="form-label">PostEx Token</label>
-            <input className="form-input font-mono" placeholder="PostEx API token for this store" value={form.postex_token} onChange={set('postex_token')} />
-          </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Instaworld Primary Key</label>
-              <input className="form-input font-mono" placeholder="Primary API key" value={form.instaworld_key} onChange={set('instaworld_key')} />
+          {/* Section: Courier API Keys */}
+          <div style={{
+            borderTop: '1px solid var(--border)',
+            paddingTop: 20, marginTop: 4, marginBottom: 20
+          }}>
+            <SectionLabel icon="🚚" label="Courier API Keys" badge="Optional" />
+            <div style={{ marginBottom: 16 }}>
+              <FieldGroup label="PostEx Token" hint="PostEx API token for this store">
+                <input className="form-input font-mono" placeholder="Your PostEx API token" value={form.postex_token} onChange={set('postex_token')} />
+              </FieldGroup>
             </div>
-            <div className="form-group">
-              <label className="form-label">Instaworld Backup Key</label>
-              <input className="form-input font-mono" placeholder="Backup/fallback key" value={form.instaworld_key_backup} onChange={set('instaworld_key_backup')} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 12 }}>
+              <FieldGroup label="Instaworld Primary Key">
+                <input className="form-input font-mono" placeholder="Primary API key" value={form.instaworld_key} onChange={set('instaworld_key')} />
+              </FieldGroup>
+              <FieldGroup label="Instaworld Backup Key">
+                <input className="form-input font-mono" placeholder="Backup / fallback key" value={form.instaworld_key_backup} onChange={set('instaworld_key_backup')} />
+              </FieldGroup>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <FieldGroup label="Instaworld Key 3" badge="Optional">
+                <input className="form-input font-mono" placeholder="3rd API key" value={form.instaworld_key_3} onChange={set('instaworld_key_3')} />
+              </FieldGroup>
+              <FieldGroup label="Google Maps API Key" badge="Optional">
+                <input className="form-input font-mono" placeholder="GCP key for address verification" value={form.google_maps_key} onChange={set('google_maps_key')} />
+              </FieldGroup>
             </div>
           </div>
-          <div className="form-group" style={{ marginTop: 8 }}>
-            <label className="form-label">Instaworld Key 3 (Optional)</label>
-            <input className="form-input font-mono" placeholder="3rd API Key" value={form.instaworld_key_3} onChange={set('instaworld_key_3')} />
-          </div>
-          <div className="form-group" style={{ marginTop: 8 }}>
-            <label className="form-label">Google Maps API Key (Optional)</label>
-            <input className="form-input font-mono" placeholder="GCP API Key for Address Verification" value={form.google_maps_key} onChange={set('google_maps_key')} />
-          </div>
 
-          <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ marginTop: 8 }}>
-            {loading ? <><span className="loading-spinner"></span> Connecting...</> : '🚀 Generate Auth Link & Connect'}
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%', padding: '13px 24px', borderRadius: 12, border: 'none',
+              background: loading ? 'var(--bg-elevated)' : 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+              color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              boxShadow: loading ? 'none' : '0 4px 16px rgba(99,102,241,0.35)',
+              transition: 'all 0.2s'
+            }}
+          >
+            {loading ? (
+              <><span className="loading-spinner" /> Connecting...</>
+            ) : (
+              <>🚀 Generate Auth Link &amp; Connect</>
+            )}
           </button>
         </form>
       </div>
 
+      {/* ─── Connected Stores ─── */}
       {stores.length > 0 && (
-        <div className="card">
-          <div className="card-title">Connected Stores ({stores.length})</div>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-secondary)' }}>CONNECTED STORES</div>
+            <div style={{
+              background: 'rgba(16,185,129,0.15)', color: '#34d399',
+              padding: '2px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
+              border: '1px solid rgba(16,185,129,0.2)'
+            }}>{stores.length} Active</div>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {stores.map(store => (
               <StoreCard
@@ -236,6 +322,39 @@ export default function Connect() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function SectionLabel({ icon, label, badge }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <span style={{ fontSize: '0.9rem' }}>{icon}</span>
+      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</span>
+      {badge && (
+        <span style={{
+          fontSize: '0.6rem', fontWeight: 700, padding: '1px 7px', borderRadius: 20,
+          background: 'rgba(156,163,175,0.12)', color: 'var(--text-muted)', border: '1px solid var(--border)'
+        }}>{badge}</span>
+      )}
+    </div>
+  )
+}
+
+function FieldGroup({ label, hint, badge, children }) {
+  return (
+    <div className="form-group">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>{label}</label>
+        {badge && (
+          <span style={{
+            fontSize: '0.58rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20,
+            background: 'rgba(156,163,175,0.1)', color: 'var(--text-muted)', border: '1px solid var(--border)'
+          }}>{badge}</span>
+        )}
+      </div>
+      {children}
+      {hint && <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>{hint}</div>}
     </div>
   )
 }
@@ -263,111 +382,313 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
   }
 
   return (
-    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 16 }}>
-      
-      <div className="flex items-center gap-2" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <span style={{ fontSize: '1.2rem' }}>🏪</span>
-        <div style={{ flex: 1, minWidth: 120 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{store.store_name || store.shop_domain}</div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{store.shop_domain}</div>
+    <div style={{
+      background: 'var(--bg-card)',
+      border: isSyncing ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--border)',
+      borderRadius: 16,
+      overflow: 'hidden',
+      boxShadow: isSyncing ? '0 0 24px rgba(99,102,241,0.12)' : '0 2px 12px rgba(0,0,0,0.1)',
+      transition: 'all 0.3s'
+    }}>
+
+      {/* ─── Store Header ─── */}
+      <div style={{
+        padding: '16px 20px',
+        background: isSyncing
+          ? 'linear-gradient(90deg, rgba(99,102,241,0.1) 0%, transparent 100%)'
+          : 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, transparent 100%)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap'
+      }}>
+        {/* Store Avatar */}
+        <div style={{
+          width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+          background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(99,102,241,0.2))',
+          border: '1px solid rgba(168,85,247,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem'
+        }}>🏪</div>
+
+        {/* Store Info */}
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+            {store.store_name || store.shop_domain}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{store.shop_domain}</div>
         </div>
 
+        {/* Status Badge */}
         {isSyncing ? (
-          <span className="badge badge-pending">⏳ Syncing...</span>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 20,
+            background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)',
+            color: '#818cf8', fontSize: '0.75rem', fontWeight: 700
+          }}>
+            <span className="loading-spinner" style={{ width: 10, height: 10 }} />
+            Syncing...
+          </div>
         ) : (
-          <span className="badge badge-delivered">● Connected</span>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px', borderRadius: 20,
+            background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)',
+            color: '#34d399', fontSize: '0.75rem', fontWeight: 700
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', display: 'inline-block' }} />
+            Connected
+          </div>
         )}
 
-        <button className="btn btn-primary btn-sm" onClick={onEnableRealTime}>⚡ Real-Time Sync</button>
-        <button className="btn btn-secondary btn-sm" onClick={editing ? onCancel : onEdit}>
-          {editing ? 'Cancel' : '✏️ Edit Keys'}
-        </button>
-        <button className="btn btn-danger btn-sm" onClick={onDisconnect}>Disconnect</button>
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ActionButton
+            onClick={onEnableRealTime}
+            icon="⚡"
+            label="Real-Time Sync"
+            variant="brand"
+          />
+          <ActionButton
+            onClick={editing ? onCancel : onEdit}
+            icon={editing ? '✕' : '✏️'}
+            label={editing ? 'Cancel' : 'Edit Keys'}
+            variant="secondary"
+          />
+          <ActionButton
+            onClick={onDisconnect}
+            icon="⚡"
+            label="Disconnect"
+            variant="danger"
+          />
+        </div>
       </div>
 
-      {isSyncing ? (
-        <div style={{ marginTop: 14, background: 'rgba(99,102,241,0.05)', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)', marginBottom: 8 }}>Historical Sync In Progress</div>
-          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 10 }}>{store.sync_progress || 'Processing...'}</div>
+      {/* ─── Sync Progress (when syncing) ─── */}
+      {isSyncing && (
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.04)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#818cf8' }}>📡 Historical Sync In Progress</div>
+            {progressPct !== null && (
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6366f1' }}>{progressPct}%</div>
+            )}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginBottom: 10, opacity: 0.9 }}>
+            {store.sync_progress || 'Processing...'}
+          </div>
           {progressPct !== null && (
-            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', height: 6 }}>
-              <div style={{ height: '100%', background: 'var(--brand)', width: `${progressPct}%` }} />
+            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 100, overflow: 'hidden', height: 5 }}>
+              <div style={{
+                height: '100%',
+                background: 'linear-gradient(90deg, #6366f1, #a855f7)',
+                width: `${progressPct}%`,
+                transition: 'width 0.5s ease',
+                borderRadius: 100
+              }} />
             </div>
           )}
         </div>
-      ) : (
-        <div style={{ marginTop: 12 }}>
+      )}
+
+      {/* ─── Actions Panel ─── */}
+      {!isSyncing && (
+        <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+          {/* Historical Sync */}
           {!showSyncPanel ? (
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowSyncPanel(true)} style={{ width: '100%', border: '1px dashed var(--border)' }}>
+            <button
+              onClick={() => setShowSyncPanel(true)}
+              style={{
+                width: '100%', padding: '9px 16px', borderRadius: 10,
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem',
+                fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--brand)'; e.currentTarget.style.color = 'var(--brand)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
               🗄️ Sync All Historical Orders
             </button>
           ) : (
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 12 }}>🗄️ Historical Sync Options</div>
-              
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>📅 Sync From Date</label>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSyncStartDate('2010-01-01')} style={{ padding: '2px 6px', fontSize: '0.6rem' }}>All Time</button>
+            <div style={{
+              background: 'rgba(99,102,241,0.05)',
+              border: '1px solid rgba(99,102,241,0.2)',
+              borderRadius: 12, padding: 16
+            }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--brand)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                🗄️ Historical Sync Options
+              </div>
+
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>📅 Sync From Date</label>
+                  <button
+                    type="button"
+                    onClick={() => setSyncStartDate('2010-01-01')}
+                    style={{
+                      padding: '2px 8px', fontSize: '0.62rem', fontWeight: 700,
+                      borderRadius: 6, border: '1px solid var(--border)',
+                      background: 'var(--bg-elevated)', color: 'var(--text-muted)', cursor: 'pointer'
+                    }}
+                  >All Time</button>
                 </div>
                 <input type="date" className="form-input" value={syncStartDate} onChange={e => setSyncStartDate(e.target.value)} style={{ height: 36 }} />
               </div>
 
-              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={syncStatus} onChange={e => setSyncStatus(e.target.checked)} /> Status (Fast)
-                 </label>
-                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={syncCosts} onChange={e => setSyncCosts(e.target.checked)} /> Costs (Slow)
-                 </label>
+              <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                  <input type="checkbox" checked={syncStatus} onChange={e => setSyncStatus(e.target.checked)} /> Status (Fast)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                  <input type="checkbox" checked={syncCosts} onChange={e => setSyncCosts(e.target.checked)} /> Costs (Slow)
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={handleStartSync} style={{ flex: 1 }}>🚀 Start Sync</button>
-                <button className="btn btn-secondary" onClick={() => setShowSyncPanel(false)}>Cancel</button>
+                <button
+                  onClick={handleStartSync}
+                  style={{
+                    flex: 1, padding: '9px 16px', borderRadius: 10, border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                    color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
+                    boxShadow: '0 3px 12px rgba(99,102,241,0.3)'
+                  }}
+                >🚀 Start Sync</button>
+                <button
+                  onClick={() => setShowSyncPanel(false)}
+                  style={{
+                    padding: '9px 16px', borderRadius: 10,
+                    background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                    color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer'
+                  }}
+                >Cancel</button>
               </div>
             </div>
           )}
+
+          {/* Sniper Tool */}
+          <div style={{
+            background: 'rgba(245,158,11,0.05)',
+            border: '1px solid rgba(245,158,11,0.15)',
+            borderRadius: 10, padding: '12px 14px',
+            display: 'flex', alignItems: 'center', gap: 10
+          }}>
+            <span style={{ fontSize: '1rem', flexShrink: 0 }}>🎯</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                Sniper Tool — Sync Specific Order
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="form-input"
+                  placeholder="Order # (e.g. #16374)"
+                  value={singleOrderNum}
+                  onChange={e => setSingleOrderNum(e.target.value)}
+                  style={{ height: 32, fontSize: '0.8rem', flex: 1 }}
+                />
+                <button
+                  onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum('') }}
+                  style={{
+                    padding: '0 14px', height: 32, borderRadius: 8,
+                    background: 'rgba(245,158,11,0.2)', color: '#f59e0b',
+                    fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer',
+                    border: '1px solid rgba(245,158,11,0.3)', flexShrink: 0
+                  }}
+                >Sync Now</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 8 }}>
-        <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>🎯 Sniper Tool: Sync Specific Order</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input className="form-input" placeholder="Order # (e.g. #16374)" value={singleOrderNum} onChange={e => setSingleOrderNum(e.target.value)} style={{ height: 32, fontSize: '0.8rem', flex: 1 }} />
-          <button className="btn btn-primary btn-sm" onClick={() => { onSyncSingleOrder(store.id, singleOrderNum); setSingleOrderNum(''); }}>Sync Now</button>
-        </div>
-      </div>
-
+      {/* ─── Edit Keys Panel ─── */}
       {editing && (
-        <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-          <div className="form-grid-2">
-            <div className="form-group"><label className="form-label">Store Name</label><input className="form-input" value={local.store_name} onChange={setL('store_name')} /></div>
-            <div className="form-group"><label className="form-label">Start Date</label><input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} /></div>
-          </div>
-          <div className="form-group"><label className="form-label">PostEx Token</label><input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} /></div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Instaworld Primary Key</label>
-              <input className="form-input font-mono" placeholder="Primary API key" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
+        <div style={{ padding: '0 20px 20px', borderTop: '1px solid var(--border)', marginTop: -1 }}>
+          <div style={{
+            background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)',
+            borderRadius: 12, padding: 20, marginTop: 16
+          }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--brand)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              ✏️ Edit Store Configuration
             </div>
-            <div className="form-group">
-              <label className="form-label">Instaworld Backup Key</label>
-              <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <FieldGroup label="Store Name">
+                <input className="form-input" value={local.store_name} onChange={setL('store_name')} />
+              </FieldGroup>
+              <FieldGroup label="Start Date">
+                <input className="form-input" type="date" value={local.sync_start_date || ''} onChange={setL('sync_start_date')} />
+              </FieldGroup>
             </div>
+
+            <FieldGroup label="PostEx Token">
+              <input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} style={{ marginBottom: 14 }} />
+            </FieldGroup>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <FieldGroup label="Instaworld Primary Key">
+                <input className="form-input font-mono" placeholder="Primary API key" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
+              </FieldGroup>
+              <FieldGroup label="Instaworld Backup Key">
+                <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
+              </FieldGroup>
+            </div>
+
+            <FieldGroup label="Google Maps API Key">
+              <input className="form-input font-mono" placeholder="API Key for Geocoding / Address verification" value={local.google_maps_key || ''} onChange={setL('google_maps_key')} style={{ marginBottom: 14 }} />
+            </FieldGroup>
+
+            <FieldGroup label="Instaworld Proxy (Google Apps Script URL)">
+              <input className="form-input font-mono" placeholder="Optional — or set INSTAWORLD_PROXY_URL on server" value={local.gas_proxy_url || ''} onChange={setL('gas_proxy_url')} />
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                Use when Instaworld blocks your hosting IP (e.g. Railway). Per-store overrides server env.
+              </div>
+            </FieldGroup>
+
+            <button
+              onClick={() => onSave(local)}
+              style={{
+                marginTop: 16, padding: '9px 20px', borderRadius: 10, border: 'none',
+                background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
+                boxShadow: '0 3px 12px rgba(99,102,241,0.3)'
+              }}
+            >💾 Save Changes</button>
           </div>
-          <div className="form-group" style={{ marginTop: 8 }}>
-            <label className="form-label">Google Maps API Key (Billing Enabled)</label>
-            <input className="form-input font-mono" placeholder="API Key for Geocoding / Address verification" value={local.google_maps_key || ''} onChange={setL('google_maps_key')} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Instaworld proxy (Google Apps Script URL)</label>
-            <input className="form-input font-mono" placeholder="Optional — or set INSTAWORLD_PROXY_URL on the server" value={local.gas_proxy_url || ''} onChange={setL('gas_proxy_url')} />
-            <small style={{ color: 'var(--text-muted)' }}>Use when Instaworld blocks your hosting IP (e.g. Railway). Per-store overrides server env.</small>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={() => onSave(local)}>💾 Save Changes</button>
         </div>
       )}
     </div>
+  )
+}
+
+function ActionButton({ onClick, icon, label, variant }) {
+  const styles = {
+    brand: {
+      background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))',
+      border: '1px solid rgba(99,102,241,0.3)',
+      color: '#818cf8'
+    },
+    secondary: {
+      background: 'var(--bg-elevated)',
+      border: '1px solid var(--border)',
+      color: 'var(--text-secondary)'
+    },
+    danger: {
+      background: 'rgba(239,68,68,0.08)',
+      border: '1px solid rgba(239,68,68,0.25)',
+      color: '#f87171'
+    }
+  }
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 13px', borderRadius: 8, cursor: 'pointer',
+        fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+        transition: 'all 0.15s', ...styles[variant]
+      }}
+    >
+      {variant !== 'danger' && <span>{icon}</span>}
+      {label}
+    </button>
   )
 }
