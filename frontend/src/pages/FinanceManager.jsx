@@ -109,7 +109,6 @@ export default function FinanceManager() {
       }}>
         <TabButton id="reconcile" label="Reconciliation" icon="⚡" />
         <TabButton id="history" label="Upload History" icon="📜" />
-        <TabButton id="ghosts" label="Ghost Recovery" icon="💰" />
         <TabButton id="repair" label="Legacy Repair" icon="🛠️" />
       </div>
 
@@ -248,76 +247,6 @@ export default function FinanceManager() {
                </div>
             </div>
           )}
-
-          {/* TAB: GHOST RECOVERY */}
-          {activeTab === 'ghosts' && (
-            <div className="stat-card" style={{ border: '1px solid var(--green)', background: 'var(--green-dim)' }}>
-              <h2 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 8 }}>💰 Missing Costs Recovery</h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 20px 0' }}>Assign unit costs to historical "Ghost Products" (deleted from Shopify) to fix P&L.</p>
-
-              {ghostProducts.length === 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '40px 0' }}>
-                  <div style={{ fontSize: 48 }}>👻</div>
-                  <button 
-                    className="btn" 
-                    onClick={fetchMissingProducts} 
-                    disabled={isScanning || isProcessing}
-                    style={{ padding: '12px 24px', background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', borderRadius: 8, fontWeight: 600 }}
-                  >
-                    {isScanning ? '🔍 Scanning Historical Orders...' : 'Scan Database for Ghosts'}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ maxHeight: 400, overflowY: 'auto', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                      <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', zIndex: 2 }}>
-                        <tr>
-                          <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)' }}>Product Title</th>
-                          <th style={{ padding: '12px', textAlign: 'center', width: 60, fontWeight: 600, color: 'var(--text-secondary)' }}>Qty</th>
-                          <th style={{ padding: '12px', textAlign: 'right', width: 100, fontWeight: 600, color: 'var(--text-secondary)' }}>Unit Cost (Rs)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ghostProducts.map(p => (
-                          <tr key={p.name} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '10px 12px', color: 'var(--text-primary)' }}>{p.name}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{p.count}</td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <input 
-                                type="number" 
-                                placeholder="0"
-                                value={productCosts[p.name] ?? ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setProductCosts(prev => ({ ...prev, [p.name]: val === '' ? '' : parseFloat(val) }));
-                                }}
-                                style={{ width: '100%', padding: '6px 8px', background: 'var(--bg-active)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, textAlign: 'right', outline: 'none' }}
-                                onFocus={e => e.target.style.border = '1px solid var(--green)'}
-                                onBlur={e => e.target.style.border = '1px solid var(--border)'}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={() => setGhostProducts([])} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid var(--border-bright)', color: 'var(--text-primary)', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
-                    <button 
-                      onClick={applyBulkCosts} 
-                      disabled={isHealing || Object.keys(productCosts).length === 0}
-                      style={{ flex: 2, padding: '12px', background: 'var(--green)', border: 'none', color: '#fff', borderRadius: 8, fontWeight: 700, cursor: isHealing || Object.keys(productCosts).length === 0 ? 'not-allowed' : 'pointer', opacity: Object.keys(productCosts).length === 0 ? 0.5 : 1 }}
-                    >
-                      {isHealing ? '⌛ Applying Costs...' : `🚀 Fix P&L for ${ghostProducts.length} items`}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* TAB: LEGACY REPAIR */}
           {activeTab === 'repair' && (
             <div className="stat-card" style={{ border: '1px solid var(--blue)', background: 'var(--blue-dim)' }}>
