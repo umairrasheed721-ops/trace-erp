@@ -368,9 +368,9 @@ router.get('/sniper/queue', async (req, res) => {
       FROM orders o
       LEFT JOIN sniper_alerts s
         ON s.order_id = o.id AND s.alert_type = 'stuck_parcel'
-        AND s.sent_at > datetime('now', '+5 hours', '-48 hours')
+        AND s.sent_at > datetime('now', '-48 hours')
       WHERE o.delivery_status IN (${STUCK_STATUSES.map(() => '?').join(',')})
-        AND (o.status_date IS NULL OR datetime(o.status_date) < datetime('now', '+5 hours', '-' || ? || ' hours'))
+        AND datetime(COALESCE(o.status_date, o.order_date)) < datetime('now', '-' || ? || ' hours')
         AND o.phone IS NOT NULL AND o.phone != ''
         AND s.id IS NULL
         AND o.tenant_id = ?
@@ -391,7 +391,7 @@ router.post('/sniper/fire', async (req, res) => {
     const { runSniperScan } = require('../../engines/sniper');
     const order = db.prepare('SELECT id, phone, customer_name, ref_number, tracking_number, courier, delivery_status FROM orders WHERE id = ? AND tenant_id = ?').get(order_id, tenantId);
     if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
-    db.prepare(`DELETE FROM sniper_alerts WHERE order_id = ? AND sent_at > datetime('now', '+5 hours', '-48 hours')`).run(order_id);
+    db.prepare(`DELETE FROM sniper_alerts WHERE order_id = ? AND sent_at > datetime('now', '-48 hours')`).run(order_id);
     await runSniperScan();
     res.json({ success: true, message: `Sniper alert queued for order ${order.ref_number || order.id}` });
   } catch (e) {

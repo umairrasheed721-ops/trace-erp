@@ -167,8 +167,8 @@ async function sendReviewEmails() {
       WHERE delivery_status IN ('Delivered', 'delivered')
         AND (review_email_sent IS NULL OR review_email_sent = 0)
         AND status_date IS NOT NULL
-        AND status_date <= datetime('now', '+5 hours', '-24 hours')
-        AND status_date >= datetime('now', '+5 hours', '-72 hours')
+        AND datetime(status_date) <= datetime('now', '-24 hours')
+        AND datetime(status_date) >= datetime('now', '-72 hours')
         AND order_date >= '2026-06-15'
     `).all();
 

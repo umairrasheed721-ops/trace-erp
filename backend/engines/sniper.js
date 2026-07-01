@@ -32,13 +32,10 @@ async function runSniperScan() {
       LEFT JOIN sniper_alerts s 
         ON s.order_id = o.id 
         AND s.alert_type = 'stuck_parcel'
-        AND s.sent_at > datetime('now', '+5 hours', '-48 hours')
+        AND s.sent_at > datetime('now', '-48 hours')
       WHERE
         o.delivery_status IN (${STUCK_STATUSES.map(() => '?').join(',')})
-        AND (
-          o.status_date IS NULL
-          OR datetime(o.status_date) < datetime('now', '+5 hours', '-' || ? || ' hours')
-        )
+        AND datetime(COALESCE(o.status_date, o.order_date)) < datetime('now', '-' || ? || ' hours')
         AND o.phone IS NOT NULL
         AND o.phone != ''
         AND s.id IS NULL

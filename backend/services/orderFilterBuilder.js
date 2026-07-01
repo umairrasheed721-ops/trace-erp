@@ -15,7 +15,7 @@ function getOrderFilters(req) {
       whereClauses.push(`
         o.tracking_number IS NOT NULL AND o.tracking_number != ''
         AND LOWER(o.delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
-        AND o.status_date < datetime('now', '+5 hours', '-48 hours')
+        AND datetime(COALESCE(o.status_date, o.order_date)) < datetime('now', '-48 hours')
         AND o.tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = o.store_id)
       `);
     } else if (s.includes('[PAID]')) {
@@ -29,7 +29,7 @@ function getOrderFilters(req) {
     } else if (s.includes('MISSING COST')) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
     } else if (s.includes('OVERDUE PAYOUT')) {
-      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.payment_status != 'Paid' AND o.payment_status != 'Payment Posted' OR o.payment_status IS NULL) AND (julianday('now', '+5 hours') - julianday(COALESCE(o.status_date, o.order_date))) > 10");
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.payment_status != 'Paid' AND o.payment_status != 'Payment Posted' OR o.payment_status IS NULL) AND (julianday('now') - julianday(datetime(COALESCE(o.status_date, o.order_date)))) > 10");
     } else if (s.includes('MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else {

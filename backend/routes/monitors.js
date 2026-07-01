@@ -22,7 +22,7 @@ router.get('/stuck', (req, res) => {
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
     AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
-    AND status_date < datetime('now', '+5 hours', '-48 hours')
+    AND datetime(COALESCE(status_date, order_date)) < datetime('now', '-48 hours')
     AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
   `).all(store_id, store_id);
 
