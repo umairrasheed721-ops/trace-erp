@@ -205,13 +205,37 @@ function copyImagesToClipboardAndSend(filePaths) {
       
       Start-Sleep -Milliseconds 500
       $wshell = New-Object -ComObject Wscript.Shell
-      $activated = $wshell.AppActivate("WhatsApp")
-      if ($activated) {
-        Start-Sleep -Milliseconds 800
-        $wshell.SendKeys("^v")
-      } else {
-        Write-Host "WhatsApp window not found."
+      
+      $activated = $false
+      # Try finding process by MainWindowTitle containing WhatsApp
+      $proc = Get-Process | Where-Object { $_.MainWindowTitle -like "*WhatsApp*" } | Select-Object -First 1
+      if ($proc) {
+        try {
+          $activated = $wshell.AppActivate($proc.Id)
+        } catch {}
       }
+      
+      # Fallback to Process Name
+      if (-not $activated) {
+        $proc = Get-Process | Where-Object { $_.ProcessName -eq "WhatsApp" } | Select-Object -First 1
+        if ($proc) {
+          try {
+            $activated = $wshell.AppActivate($proc.Id)
+          } catch {}
+        }
+      }
+      
+      # Fallback to direct title activation
+      if (-not $activated) {
+        try {
+          $activated = $wshell.AppActivate("WhatsApp")
+        } catch {}
+      }
+      
+      # Sleep and send Ctrl+V
+      Start-Sleep -Milliseconds 800
+      $wshell.SendKeys("^v")
+      Write-Host "Pasted to WhatsApp successfully."
     `;
     
     const scriptPath = path.join(__dirname, 'macro.ps1');
@@ -388,6 +412,12 @@ app.post('/pre-fetch-images', (req, res) => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`🔌 Trace WhatsApp Local Helper Daemon running on http://127.0.0.1:${PORT}`);
+  // Ensure cache directory exists on startup
+  const cacheDir = path.join(__dirname, 'cache');
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+    console.log('📁 Created missing cache directory on startup.');
+  }
   // Run cache cleaner on startup
   autoCleanCache();
   // Run cache cleaner every 24 hours
