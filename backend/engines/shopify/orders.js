@@ -635,9 +635,9 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       newDeliveryStatus = 'Booked';
     }
 
-    const vIds = order.line_items.map(li => li.variant_id);
+    const vIds = activeItems.map(li => li.variant_id);
     const imageMap = await fetchVariantImagesGraphQL(shop_domain, access_token, vIds);
-    const lineItemsJson = JSON.stringify(order.line_items.map(li => {
+    const lineItemsJson = JSON.stringify(activeItems.map(li => {
       const qty = li.current_quantity !== undefined ? li.current_quantity : li.quantity;
       return {
         id: li.id,
@@ -685,7 +685,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           status_date = datetime('now')
         WHERE id = ?
       `).run(
-        finalPrice, activeCount, order.note || '', productTitles,
+        finalPrice, activeCount, order.note || '', productTitles.join(', '),
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
         tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount, existing.id
@@ -716,7 +716,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         addr.phone || customer.phone || '',
         `${addr.address1 || ''} ${cleanCity}`.trim(),
         cleanCity,
-        finalPrice, tracking, activeCount, order.note || '', productTitles,
+        finalPrice, tracking, activeCount, order.note || '', productTitles.join(', '),
         lineItemsJson,
         newDeliveryStatus,
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
