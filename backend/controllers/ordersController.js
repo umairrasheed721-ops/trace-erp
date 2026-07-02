@@ -185,7 +185,8 @@ exports.updateOrder = async (req, res) => {
       const paidAmt = parseFloat(req.body.paid_amount) || 0;
       const order = db.prepare('SELECT price FROM orders WHERE id = ?').get(req.params.id);
       if (paidAmt > 0 && order) {
-        const newPaymentStatus = paidAmt >= (parseFloat(order.price) || 0) ? 'Paid' : 'Partial';
+        const price = parseFloat(order.price) || 0;
+        const newPaymentStatus = (price - paidAmt) <= 1.5 ? 'Paid' : 'Partial';
         if (!req.body.payment_status) {
           extraSets.push('payment_status = ?');
           extraValues.push(newPaymentStatus);
