@@ -267,7 +267,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     SET courier_status = COALESCE(?, courier_status),
         courier = COALESCE(?, courier),
         delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
-        status_date = CASE WHEN ? IS NOT NULL THEN COALESCE(?, datetime('now')) ELSE status_date END,
+        status_date = CASE WHEN ? IS NOT NULL AND ? != COALESCE(delivery_status, '') THEN COALESCE(?, datetime('now')) ELSE status_date END,
         failed_attempts = failed_attempts + ?,
         tracking_history = COALESCE(?, tracking_history)
     WHERE id = ?
@@ -282,7 +282,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const lookupStmt2 = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
-      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.tracking_history||null, u.id);
+      updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.tracking_history||null, u.id);
       if (u.watchdogResult) {
         const w = u.watchdogResult;
         insertWatchdogStmt.run(storeId, w.tracking_number, w.request_time, w.latest_status, w.verdict, w.duration, w.evidence);
