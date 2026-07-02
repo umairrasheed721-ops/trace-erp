@@ -108,6 +108,22 @@ try {
     console.log(`  - Column #${c.cid}: ${c.name} (${c.type}) | Default: ${c.dflt_value} | PK: ${c.pk}`);
   });
 
+  // Fix historical rounded paid_amount orders that were set to Partial
+  try {
+    const affected = db.prepare(`
+      UPDATE orders
+      SET payment_status = 'Paid'
+      WHERE payment_status = 'Partial'
+      AND paid_amount > 0
+      AND (price - paid_amount) <= 1.5
+    `).run();
+    if (affected.changes > 0) {
+      console.log(`✅ [Startup Migration] Corrected ${affected.changes} historical 'Partial' payments to 'Paid'.`);
+    }
+  } catch (err) {
+    console.error('⚠️ [Startup Migration] Failed to correct historical Partial payments:', err.message);
+  }
+
   console.log('✔ [Startup Migration] Schema verification completed.');
 } catch (err) {
   console.error('🛑 [Startup Migration] Database schema verification failed:', err.message);
