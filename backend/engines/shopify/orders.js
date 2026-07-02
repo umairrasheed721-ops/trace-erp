@@ -86,6 +86,29 @@ const registryLookupStmt = db.prepare(`
   LIMIT 1
 `);
 
+function getActiveLineItems(order) {
+  let items = order.line_items || [];
+  let activeCount = items.reduce((acc, item) => acc + (item.current_quantity !== undefined ? item.current_quantity : item.quantity), 0);
+
+  if (activeCount === 0 && order.fulfillments && order.fulfillments.length > 0) {
+    const fulfilledItems = [];
+    order.fulfillments.forEach(f => {
+      if (f.status !== 'cancelled' && f.line_items) {
+        f.line_items.forEach(li => {
+          fulfilledItems.push({
+            ...li,
+            current_quantity: li.quantity
+          });
+        });
+      }
+    });
+    if (fulfilledItems.length > 0) {
+      return fulfilledItems;
+    }
+  }
+  return items;
+}
+
 function calculateOrderCost(storeId, lineItems, costMap) {
   let totalCost = 0;
   let activeCount = 0;
@@ -166,7 +189,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         const customer = order.customer || {};
         const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
 
-        const { totalCost, productTitles, activeCount } = calculateOrderCost(storeId, order.line_items, costMap);
+        const activeItems = getActiveLineItems(order);
+        const { totalCost, productTitles, activeCount } = calculateOrderCost(storeId, activeItems, costMap);
 
         const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
         const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
@@ -449,7 +473,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
 
         if (!isCancelled && !isReturned) {
-          for (const item of fresh.line_items) {
+          const activeItems = getActiveLineItems(fresh);
+          for (const item of activeItems) {
             const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
             if (qty === 0) continue;
             
@@ -570,8 +595,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const order = data.order;
     if (!order) return null;
 
-    const variantIds = [];
-    order.line_items.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
+    const activeItems = getActiveLineItems(order);
+    activeItems.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
     const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
 
     const addr = order.shipping_address || {};
@@ -587,7 +612,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
 
     if (!isCancelled && !isReturned) {
-      const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, order.line_items, costMap);
+      const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, activeItems, costMap);
       totalCost = tc;
       productTitles = titles;
       activeCount = count;
