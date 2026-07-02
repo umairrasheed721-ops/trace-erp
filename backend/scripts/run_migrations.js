@@ -124,33 +124,6 @@ try {
     console.error('⚠️ [Startup Migration] Failed to correct historical Partial payments:', err.message);
   }
 
-  // One-off backend verification for TR32349
-  setTimeout(async () => {
-    try {
-      console.log('🔍 [Verification] Starting backend verification for TR32349...');
-      const order = db.prepare("SELECT id, store_id, shopify_order_id FROM orders WHERE ref_number = 'TR32349'").get();
-      if (order && order.shopify_order_id) {
-        const store = db.prepare("SELECT * FROM stores WHERE id = ?").get(order.store_id);
-        if (store) {
-          console.log(`🔍 [Verification] Found TR32349 (Shopify ID: ${order.shopify_order_id}). Triggering syncSingleShopifyOrder...`);
-          const { syncSingleShopifyOrder } = require('../engines/shopify/orders');
-          const success = await syncSingleShopifyOrder(store, order.shopify_order_id);
-          console.log(`🔍 [Verification] syncSingleShopifyOrder result for TR32349:`, success);
-          if (success) {
-            const updated = db.prepare("SELECT ref_number, product_titles, items_count, price FROM orders WHERE id = ?").get(order.id);
-            console.log(`🔍 [Verification] Updated fields for TR32349 in DB:`, JSON.stringify(updated));
-          }
-        } else {
-          console.log('🔍 [Verification] Store not found for TR32349.');
-        }
-      } else {
-        console.log('🔍 [Verification] Order TR32349 not found in database.');
-      }
-    } catch (err) {
-      console.error('🛑 [Verification] Failed during TR32349 sync verification:', err.message);
-    }
-  }, 5000);
-
   console.log('✔ [Startup Migration] Schema verification completed.');
 } catch (err) {
   console.error('🛑 [Startup Migration] Database schema verification failed:', err.message);
