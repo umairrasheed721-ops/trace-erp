@@ -18,6 +18,14 @@ function getOrderFilters(req) {
         AND datetime(COALESCE(o.status_date, o.order_date)) < datetime('now', '-48 hours')
         AND o.tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = o.store_id)
       `);
+    } else if (s.includes('[WATCHDOG FRAUD]')) {
+      whereClauses.push(`
+        o.tracking_number IN (
+          SELECT tracking_number 
+          FROM watchdog_results 
+          WHERE store_id = o.store_id AND verdict LIKE '%FAKE%'
+        )
+      `);
     } else if (s.includes('[PAID]')) {
       whereClauses.push("o.payment_status = 'Paid'");
     } else if (s.includes('READY TO BOOK')) {
