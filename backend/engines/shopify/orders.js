@@ -604,7 +604,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const customer = order.customer || {};
     const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
 
-    let totalCost = 0, productTitles = [], activeCount = 0;
+    let totalCost = 0, productTitles = '', activeCount = 0;
     const isCancelled = order.cancelled_at !== null;
     
     const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked, tracking_number FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
@@ -686,7 +686,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           status_date = datetime('now')
         WHERE id = ?
       `).run(
-        finalPrice, activeCount, order.note || '', productTitles.join(', '),
+        finalPrice, activeCount, order.note || '', productTitles,
         order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
         tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount, existing.id
@@ -717,7 +717,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         addr.phone || customer.phone || '',
         `${addr.address1 || ''} ${cleanCity}`.trim(),
         cleanCity,
-        finalPrice, tracking, activeCount, order.note || '', productTitles.join(', '),
+        finalPrice, tracking, activeCount, order.note || '', productTitles,
         lineItemsJson,
         newDeliveryStatus,
         order.financial_status === 'paid' ? 'Paid' : 'Pending',
