@@ -7,7 +7,7 @@ function formatTime(dateObj) {
   return dateObj.toTimeString().slice(0, 5);
 }
 
-// 🐕 WATCHDOG: Only runs on PostEx orders (as confirmed by user)
+// 🐕 WATCHDOG: Runs on PostEx, Instaworld, Leopards, and TCS orders
 async function runWatchdog(store) {
   const { id: storeId } = store;
 
@@ -19,7 +19,7 @@ async function runWatchdog(store) {
     SELECT id, tracking_number, status_date, order_date, delivery_status, courier_status, tracking_history 
     FROM orders
     WHERE store_id = ?
-      AND LOWER(courier) = 'postex'
+      AND LOWER(courier) IN ('postex', 'post ex', 'instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs')
       AND status_date > datetime('now', '-14 days')
       AND status_date < ?
       AND tracking_history IS NOT NULL AND tracking_history != '' AND tracking_history != '[]'

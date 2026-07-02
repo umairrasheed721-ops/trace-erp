@@ -172,6 +172,34 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         });
       }
 
+      let watchdogResult = null;
+      const ADVICE_KEYWORDS = [
+        'attempt', 'failed', 'refused', 'undelivered', 'reattempt', 
+        'shipper advice', 'return', 'delivery under review', 
+        'incomplete address', 'consignee not available', 'review'
+      ];
+      const needsWatchdog = ADVICE_KEYWORDS.some(kw => lowerRaw.includes(kw));
+      if (needsWatchdog && mappedHistory.length > 0) {
+        try {
+          const { auditPostExOrder } = require('../watchdog');
+          const requestTime = new Date(order.status_date || order.order_date || Date.now());
+          const auditRes = auditPostExOrder({
+            trackingHistory: mappedHistory,
+            transactionStatus: rawStatus
+          }, requestTime);
+          watchdogResult = {
+            tracking_number: order.tracking_number,
+            request_time: requestTime.toISOString(),
+            latest_status: auditRes.latestStatus,
+            verdict: auditRes.verdict,
+            duration: auditRes.duration,
+            evidence: auditRes.evidence
+          };
+        } catch (e) {
+          console.error(`[Watchdog Instaworld Sync Audit Error] Exception for ${order.tracking_number}:`, e.message);
+        }
+      }
+
       return { 
         status: 200, 
         order, 
@@ -179,7 +207,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         rawStatus, 
         courierName, 
         statusDate: formattedStatusDate,
-        trackingHistoryJson: JSON.stringify(mappedHistory)
+        trackingHistoryJson: JSON.stringify(mappedHistory),
+        watchdogResult
       };
     } catch (err) {
       return { status: 0, order, newStatus: null };
@@ -218,7 +247,8 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
           courier: r.courierName || 'Instaworld',
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
           status_date: r.statusDate,
-          tracking_history: r.trackingHistoryJson
+          tracking_history: r.trackingHistoryJson,
+          watchdogResult: r.watchdogResult
         });
       }
     }
@@ -243,11 +273,20 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     WHERE id = ?
   `);
 
+  const insertWatchdogStmt = db.prepare(`
+    INSERT OR REPLACE INTO watchdog_results (store_id, tracking_number, request_time, latest_status, verdict, duration, evidence)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
   const { broadcast } = require('../../sse');
   const lookupStmt2 = db.prepare('SELECT shopify_order_id, store_id FROM orders WHERE id = ?');
   const updateMany = db.transaction(items => {
     for (const u of items) {
       updateStmt.run(u.courier_status||null, u.courier||null, u.erp_status, u.erp_status, u.erp_status, u.status_date, u.failed_attempt_increment||0, u.tracking_history||null, u.id);
+      if (u.watchdogResult) {
+        const w = u.watchdogResult;
+        insertWatchdogStmt.run(storeId, w.tracking_number, w.request_time, w.latest_status, w.verdict, w.duration, w.evidence);
+      }
     }
   });
   updateMany(updatesToApply);
