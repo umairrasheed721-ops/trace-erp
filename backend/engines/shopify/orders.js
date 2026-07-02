@@ -596,6 +596,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     if (!order) return null;
 
     const activeItems = getActiveLineItems(order);
+    const variantIds = [];
     activeItems.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
     const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
 
