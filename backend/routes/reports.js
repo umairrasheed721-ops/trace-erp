@@ -42,6 +42,7 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Return Received' THEN 1 ELSE 0 END) as restock,
         SUM(CASE WHEN delivery_status = 'Returned' THEN 1 ELSE 0 END) as missing_parcel,
         SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN 1 ELSE 0 END) as intransit,
+        SUM(CASE WHEN delivery_status IN ('Shipped', 'Out for Delivery', 'In Transit') THEN price ELSE 0 END) as cash_in_transit,
         SUM(CASE WHEN (tracking_number IS NULL OR tracking_number = '') AND delivery_status != 'Cancelled' THEN 1 ELSE 0 END) as without_tracking_id,
         SUM(CASE WHEN LOWER(delivery_status) LIKE '%delivered%' AND (paid_amount IS NULL OR paid_amount < 1) THEN 1 ELSE 0 END) as delivered_payment_pending,
         SUM(CASE WHEN delivery_status = 'Delivered' AND (cost IS NULL OR cost = 0) AND items_count > 0 THEN 1 ELSE 0 END) as cost_gaps,
@@ -197,6 +198,7 @@ router.get('/daily', (req, res) => {
         restock: day.restock || 0,
         missingParcel: day.missing_parcel || 0,
         intransit: day.intransit || 0,
+        cashInTransit: day.cash_in_transit || 0,
         fakeReturns: fakeRet,
         withoutTrackingId: day.without_tracking_id || 0,
         paymentPaid,
@@ -239,7 +241,7 @@ router.get('/daily', (req, res) => {
             actualPnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
-            intransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
+            intransit: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
             deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0
           });
         }

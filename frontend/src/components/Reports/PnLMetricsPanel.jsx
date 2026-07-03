@@ -95,14 +95,14 @@ export default function PnLMetricsPanel({
                 let content = row[col.id];
                 let style = {};
                 if (col.id === 'date') return <td key={col.id} className="sticky-col">{row.date || row.month}</td>;
-                if (['aov', 'deliveredSale', 'cgs', 'taxPaid', 'grossProfit', 'estCourier', 'actualCourier', 'courierDiff', 'actualExp', 'pnl', 'actualPnl', 'paymentPaid', 'marketingSpend', 'tiktokMarketing', 'cpaAvg', 'netCpaAvg', 'unpaidAmount', 'diffCorrection'].includes(col.id)) content = formatCurrency(row[col.id]);
+                if (['aov', 'deliveredSale', 'cgs', 'taxPaid', 'grossProfit', 'estCourier', 'actualCourier', 'courierDiff', 'actualExp', 'pnl', 'actualPnl', 'paymentPaid', 'marketingSpend', 'tiktokMarketing', 'cpaAvg', 'netCpaAvg', 'unpaidAmount', 'diffCorrection', 'cashInTransit'].includes(col.id)) content = formatCurrency(row[col.id]);
                 if (['cgsPercent', 'marPercent', 'delPercent', 'canPercent'].includes(col.id)) content = formatPercent(row[col.id]);
                 if (['roasMeta'].includes(col.id)) content = formatNumber(row[col.id]);
                 if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
                 
                 if (col.id === 'pnl') style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
                 if (col.id === 'actualPnl') style = { color: row.actualPnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
-                const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount', 'zeroExpenseCount'].includes(col.id);
+                const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'cashInTransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount', 'zeroExpenseCount'].includes(col.id);
 
                 return (
                   <td 

@@ -104,6 +104,7 @@ export default function Reports() {
     else if (colId === 'restock') filters.status = 'Return Received';
     else if (colId === 'missingParcel') filters.status = 'Returned';
     else if (colId === 'intransit') filters.status = 'In Transit';
+    else if (colId === 'cashInTransit') filters.status = 'In Transit,Out for Delivery,Shipped';
     else if (colId === 'fakeReturns') filters.status = '[WATCHDOG FRAUD]';
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
@@ -145,6 +146,7 @@ export default function Reports() {
     { id: 'restock', label: 'Restock', group: 'kpi' },
     { id: 'missingParcel', label: 'Missing Parcel', group: 'kpi' },
     { id: 'intransit', label: 'Transit', group: 'kpi' },
+    { id: 'cashInTransit', label: 'Cash In Transit', group: 'kpi' },
     { id: 'fakeReturns', label: 'Fake Attempt', group: 'kpi' },
     { id: 'withoutTrackingId', label: 'No Tracking', group: 'kpi' },
     { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },

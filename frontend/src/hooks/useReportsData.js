@@ -280,7 +280,7 @@ export default function useReportsData(activeStoreId, toast) {
           month, deliveredSale: 0, cgs: 0, marketingSpend: 0, tiktokMarketing: 0,
           estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
-          intransit: 0, fakeReturns: 0, withoutTrackingId: 0,
+          intransit: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
           zeroExpenseCount: 0
         };
@@ -303,6 +303,7 @@ export default function useReportsData(activeStoreId, toast) {
       m.restock += row.restock || 0;
       m.missingParcel += row.missingParcel || 0;
       m.intransit += row.intransit || 0;
+      m.cashInTransit += row.cashInTransit || 0;
       m.fakeReturns += row.fakeReturns || 0;
       m.withoutTrackingId += row.withoutTrackingId || 0;
       m.paymentPaid += row.paymentPaid || 0;
