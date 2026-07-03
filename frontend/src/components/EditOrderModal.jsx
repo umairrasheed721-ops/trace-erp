@@ -167,10 +167,22 @@ export default function EditOrderModal({
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [selectedCatalogVariants, setSelectedCatalogVariants] = useState(new Set());
   const [includeContinueSelling, setIncludeContinueSelling] = useState(true);
+  const [batchIndex, setBatchIndex] = useState(0);
+
+  // Auto-select the active batch whenever catalog or page changes
+  useEffect(() => {
+    if (catalogVariants.length === 0) return;
+    const startIndex = batchIndex * 30;
+    const endIndex = startIndex + 30;
+    const currentBatch = catalogVariants.slice(startIndex, endIndex);
+    const initialSelected = new Set(currentBatch.map(v => v.shopify_variant_id));
+    setSelectedCatalogVariants(initialSelected);
+  }, [batchIndex, catalogVariants]);
 
   const fetchCatalogVariants = async (size, includeContinue) => {
     if (!editingOrder || !size) return;
     setLoadingCatalog(true);
+    setBatchIndex(0); // Reset page index on reload
     try {
       const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
       const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}&include_continue_selling=${includeContinue ? 'true' : 'false'}`, {
@@ -181,9 +193,6 @@ export default function EditOrderModal({
       if (res.ok && data.success) {
         const list = data.variants || [];
         setCatalogVariants(list);
-        // Auto-select first 30 variants
-        const initialSelected = new Set(list.slice(0, 30).map(v => v.shopify_variant_id));
-        setSelectedCatalogVariants(initialSelected);
 
         if (list.length > 0) {
           const imageUrls = list.map(v => v.image_url).filter(Boolean);
@@ -198,12 +207,10 @@ export default function EditOrderModal({
         }
       } else {
         setCatalogVariants([]);
-        setSelectedCatalogVariants(new Set());
       }
     } catch (err) {
       console.error('Error fetching catalog variants:', err);
       setCatalogVariants([]);
-      setSelectedCatalogVariants(new Set());
     } finally {
       setLoadingCatalog(false);
     }
@@ -233,19 +240,20 @@ export default function EditOrderModal({
     const totalVariants = catalogVariants.length;
     if (totalVariants === 0) return;
     
-    // Target cap is either total count or 30
-    const targetCap = Math.min(totalVariants, 30);
-    const isAllSelected = selectedCatalogVariants.size >= targetCap;
-    
-    if (isAllSelected) {
-      setSelectedCatalogVariants(new Set());
+    const startIndex = batchIndex * 30;
+    const endIndex = startIndex + 30;
+    const currentBatch = catalogVariants.slice(startIndex, endIndex);
+    if (currentBatch.length === 0) return;
+
+    const allSelected = currentBatch.every(v => selectedCatalogVariants.has(v.shopify_variant_id));
+    const next = new Set(selectedCatalogVariants);
+
+    if (allSelected) {
+      currentBatch.forEach(v => next.delete(v.shopify_variant_id));
     } else {
-      const next = new Set(catalogVariants.slice(0, 30).map(v => v.shopify_variant_id));
-      setSelectedCatalogVariants(next);
-      if (totalVariants > 30) {
-        addToast('ℹ️ Selected first 30 items to respect WhatsApp limit.', 'info');
-      }
+      currentBatch.forEach(v => next.add(v.shopify_variant_id));
     }
+    setSelectedCatalogVariants(next);
   };
 
   const handleSendCatalogImages = async () => {
@@ -858,20 +866,62 @@ export default function EditOrderModal({
                     </div>
                   ) : catalogVariants.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px', fontSize: '0.75rem', color: '#94a3b8' }}>
-                        <input
-                          type="checkbox"
-                          checked={catalogVariants.length > 0 && selectedCatalogVariants.size >= Math.min(catalogVariants.length, 30)}
-                          onChange={handleSelectAllToggle}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span onClick={handleSelectAllToggle} style={{ cursor: 'pointer', fontWeight: 600, color: '#fff' }}>
-                          Select All ({selectedCatalogVariants.size} / {Math.min(catalogVariants.length, 30)} selected)
-                        </span>
-                        {catalogVariants.length > 30 && (
-                          <span style={{ color: '#fb923c', marginLeft: 'auto' }}>
-                            ⚠️ Max 30 limit
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontSize: '0.75rem', color: '#94a3b8' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={catalogVariants.length > 0 && catalogVariants.slice(batchIndex * 30, (batchIndex + 1) * 30).every(v => selectedCatalogVariants.has(v.shopify_variant_id))}
+                            onChange={handleSelectAllToggle}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <span onClick={handleSelectAllToggle} style={{ cursor: 'pointer', fontWeight: 600, color: '#fff' }}>
+                            Select All ({selectedCatalogVariants.size} selected)
                           </span>
+                        </div>
+                        {catalogVariants.length > 30 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ color: '#94a3b8' }}>
+                              Batch {batchIndex + 1} ({batchIndex * 30 + 1}-{Math.min((batchIndex + 1) * 30, catalogVariants.length)} of {catalogVariants.length})
+                            </span>
+                            <button
+                              type="button"
+                              disabled={batchIndex === 0}
+                              onClick={() => setBatchIndex(prev => prev - 1)}
+                              style={{ 
+                                background: '#334155', 
+                                color: '#fff', 
+                                border: 'none', 
+                                borderRadius: 6, 
+                                padding: '4px 10px', 
+                                cursor: 'pointer', 
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold',
+                                opacity: batchIndex === 0 ? 0.4 : 1,
+                                transition: 'opacity 0.2s'
+                              }}
+                            >
+                              &lt;
+                            </button>
+                            <button
+                              type="button"
+                              disabled={(batchIndex + 1) * 30 >= catalogVariants.length}
+                              onClick={() => setBatchIndex(prev => prev + 1)}
+                              style={{ 
+                                background: '#334155', 
+                                color: '#fff', 
+                                border: 'none', 
+                                borderRadius: 6, 
+                                padding: '4px 10px', 
+                                cursor: 'pointer', 
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold',
+                                opacity: (batchIndex + 1) * 30 >= catalogVariants.length ? 0.4 : 1,
+                                transition: 'opacity 0.2s'
+                              }}
+                            >
+                              &gt;
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -886,7 +936,7 @@ export default function EditOrderModal({
                         flexDirection: 'column',
                         gap: 8
                       }}>
-                        {catalogVariants.map((v) => {
+                        {catalogVariants.slice(batchIndex * 30, (batchIndex + 1) * 30).map((v) => {
                           const isSelected = selectedCatalogVariants.has(v.shopify_variant_id);
                           return (
                             <div 
@@ -905,10 +955,10 @@ export default function EditOrderModal({
                               }}
                             >
                               <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => { e.stopPropagation(); toggleVariantSelection(v.shopify_variant_id); }}
-                                style={{ cursor: 'pointer' }}
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => { e.stopPropagation(); toggleVariantSelection(v.shopify_variant_id); }}
+                                    style={{ cursor: 'pointer' }}
                               />
                               <img 
                                 src={v.image_url} 
