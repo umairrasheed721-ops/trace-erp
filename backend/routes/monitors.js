@@ -19,7 +19,7 @@ router.get('/stuck', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, ref_number, tracking_number, customer_name, phone, delivery_status, status_date, notes, price, product_titles
+    SELECT id, ref_number, tracking_number, customer_name, phone, delivery_status, status_date, notes, price, product_titles, courier
     FROM orders
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
@@ -124,7 +124,7 @@ router.get('/blacklist', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   const list = db.prepare(`
-    SELECT b.tracking_number, o.ref_number, o.customer_name, o.delivery_status
+    SELECT b.tracking_number, o.ref_number, o.customer_name, o.delivery_status, o.courier
     FROM blacklist b
     LEFT JOIN orders o ON b.tracking_number = o.tracking_number AND b.store_id = o.store_id
     WHERE b.store_id = ?

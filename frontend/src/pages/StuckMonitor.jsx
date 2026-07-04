@@ -75,6 +75,26 @@ export default function StuckMonitor() {
     }
   }
 
+  const getCourierTrackingLink = (trackingNumber, courier) => {
+    if (!trackingNumber) return '#'
+    const tn = String(trackingNumber).toUpperCase()
+    const courierLower = String(courier || '').toLowerCase()
+
+    if (tn.startsWith('LE') || tn.startsWith('LCS') || courierLower.includes('leopard') || courierLower.includes('lcs')) {
+      return `https://www.leopardscourier.com/leopards-tracking?track-number=${trackingNumber}`
+    }
+    if (/^[0-9]{11,12}$/.test(trackingNumber) || courierLower.includes('tcs')) {
+      return `https://www.tcsexpress.com/tracking?tracking-number=${trackingNumber}`
+    }
+    if (courierLower.includes('postex') || courierLower.includes('post ex')) {
+      return `https://postex.pk/tracking?cn=${trackingNumber}`
+    }
+    if (courierLower.includes('trax')) {
+      return `https://trax.pk/tracking/?cn=${trackingNumber}`
+    }
+    return `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${trackingNumber}`
+  }
+
   const getRowClass = (days) => {
     if (days >= 4) return 'stuck-critical'
     if (days >= 2) return 'stuck-warning'
@@ -211,7 +231,16 @@ export default function StuckMonitor() {
                       {o.ref_number || '—'}
                     </button>
                   </td>
-                  <td className="font-mono" style={{ color: 'var(--brand)', fontSize: '0.75rem' }}>{o.tracking_number}</td>
+                  <td className="font-mono" style={{ fontSize: '0.75rem' }}>
+                    <a
+                      href={getCourierTrackingLink(o.tracking_number, o.courier)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--brand)', textDecoration: 'underline', fontWeight: 600 }}
+                    >
+                      {o.tracking_number}
+                    </a>
+                  </td>
                   <td>{o.customer_name}</td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -324,7 +353,16 @@ export default function StuckMonitor() {
                       <tr key={item.tracking_number} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: 12, fontWeight: 700 }}>{item.ref_number || '—'}</td>
                         <td style={{ padding: 12 }}>{item.customer_name || '—'}</td>
-                        <td style={{ padding: 12, fontFamily: 'monospace', fontSize: '0.8rem' }}>{item.tracking_number}</td>
+                        <td style={{ padding: 12, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                          <a
+                            href={getCourierTrackingLink(item.tracking_number, item.courier)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: 'var(--brand)', textDecoration: 'underline', fontWeight: 600 }}
+                          >
+                            {item.tracking_number}
+                          </a>
+                        </td>
                         <td style={{ padding: 12 }}><span className="badge badge-stuck">{item.delivery_status || '—'}</span></td>
                         <td style={{ padding: 12, textAlign: 'right' }}>
                           <button
