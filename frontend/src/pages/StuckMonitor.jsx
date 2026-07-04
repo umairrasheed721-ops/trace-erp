@@ -278,7 +278,7 @@ export default function StuckMonitor() {
                       )}
                     </div>
                   </td>
-                  <td><span className="badge badge-stuck">{o.delivery_status}</span></td>
+                  <td><span className="badge badge-stuck">{o.courier_status || o.delivery_status}</span></td>
                   <td style={{ fontWeight: 700, color: o.days_stuck >= 4 ? 'var(--red)' : o.days_stuck >= 2 ? 'var(--yellow)' : 'var(--text-primary)' }}>
                     {o.days_stuck}d {o.hours_stuck % 24}h
                   </td>
