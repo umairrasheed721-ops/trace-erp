@@ -12,19 +12,21 @@ router.get('/stuck', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
+  const thresholdHours = parseInt(req.query.threshold_hours) || 48;
+
   const blacklistSet = new Set(
     db.prepare('SELECT tracking_number FROM blacklist WHERE store_id = ?').all(store_id).map(r => r.tracking_number)
   );
 
   const orders = db.prepare(`
-    SELECT id, ref_number, tracking_number, customer_name, delivery_status, status_date, notes, price, product_titles
+    SELECT id, ref_number, tracking_number, customer_name, phone, delivery_status, status_date, notes, price, product_titles
     FROM orders
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
     AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
-    AND datetime(COALESCE(status_date, order_date)) < datetime('now', '-48 hours')
+    AND datetime(COALESCE(status_date, order_date)) < datetime('now', '-' || ? || ' hours')
     AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
-  `).all(store_id, store_id);
+  `).all(store_id, thresholdHours, store_id);
 
   const stuckOrders = orders.map(o => {
     const statusDateStr = o.status_date ? o.status_date.replace(' ', 'T') + '+05:00' : null;
@@ -115,6 +117,19 @@ router.get('/advice', (req, res) => {
   });
 
   res.json(adviceOrders);
+});
+
+// GET /api/monitors/blacklist - Get blacklisted tracking numbers with metadata
+router.get('/blacklist', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+  const list = db.prepare(`
+    SELECT b.tracking_number, o.ref_number, o.customer_name, o.delivery_status
+    FROM blacklist b
+    LEFT JOIN orders o ON b.tracking_number = o.tracking_number AND b.store_id = o.store_id
+    WHERE b.store_id = ?
+  `).all(store_id);
+  res.json(list);
 });
 
 // POST /api/monitors/blacklist - Add to blacklist
