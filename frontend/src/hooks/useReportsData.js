@@ -282,7 +282,7 @@ export default function useReportsData(activeStoreId, toast) {
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
-          zeroExpenseCount: 0
+          zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0
         };
       }
       const m = acc[month];
@@ -313,6 +313,8 @@ export default function useReportsData(activeStoreId, toast) {
       m.unpaidAmount += row.unpaidAmount || 0;
       m.overduePayoutCount += row.overduePayoutCount || 0;
       m.zeroExpenseCount += row.zeroExpenseCount || 0;
+      m.ordersWithFailedAttempts += row.ordersWithFailedAttempts || 0;
+      m.failedButDelivered += row.failedButDelivered || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
       m.totalSale += (row.roasMeta * totalMarketing);
       return acc;
@@ -338,6 +340,8 @@ export default function useReportsData(activeStoreId, toast) {
         canPercent: landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0,
         delPercent: m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
+        deliveredRoas: totalMarketing > 0 ? (m.deliveredSale / totalMarketing) : 0,
+        ndrRecoveryRate: m.ordersWithFailedAttempts > 0 ? (m.failedButDelivered / m.ordersWithFailedAttempts) * 100 : 0,
         cpaAvg: landedOrders > 0 ? (totalMarketing / landedOrders) : 0,
         netCpaAvg: netOrders > 0 ? (totalMarketing / netOrders) : 0,
         courierDiff: m.actualCourier - m.estCourier

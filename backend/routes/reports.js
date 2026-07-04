@@ -50,7 +50,9 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN delivery_status = 'Delivered' AND (payment_status != 'Paid' AND payment_status != 'Payment Posted' OR payment_status IS NULL) AND (julianday('now') - julianday(datetime(COALESCE(status_date, order_date)))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
         SUM(CASE WHEN (courier_fee IS NULL OR courier_fee < 1) AND LOWER(delivery_status) NOT IN ('pending', 'cancelled') AND (tracking_number IS NOT NULL AND tracking_number != '') THEN 1 ELSE 0 END) as zero_expense_count,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
-        COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count
+        COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (delivery_status IN ('Returned', 'Return Received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count,
+        SUM(CASE WHEN COALESCE(failed_attempts, 0) > 0 THEN 1 ELSE 0 END) as orders_with_failed_attempts,
+        SUM(CASE WHEN delivery_status = 'Delivered' AND COALESCE(failed_attempts, 0) > 0 THEN 1 ELSE 0 END) as failed_but_delivered
       FROM orders
       WHERE ${whereString}
       GROUP BY substr(order_date, 1, 10)
@@ -154,6 +156,12 @@ router.get('/daily', (req, res) => {
       
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
+      const deliveredRoas = totalMarketing > 0 ? (deliveredSale / totalMarketing) : 0;
+      
+      const ordersWithFailedAttempts = day.orders_with_failed_attempts || 0;
+      const failedButDelivered = day.failed_but_delivered || 0;
+      const ndrRecoveryRate = ordersWithFailedAttempts > 0 ? (failedButDelivered / ordersWithFailedAttempts) * 100 : 0;
+
       const cpaAvg = landedOrders > 0 ? (totalMarketing / landedOrders) : 0;
       
       const netOrders = landedOrders - cancelations;
@@ -185,6 +193,8 @@ router.get('/daily', (req, res) => {
         actualPnl,
         delPercent,
         roasMeta,
+        deliveredRoas,
+        ndrRecoveryRate,
         cpaAvg,
         netCpaAvg,
         landedOrders,
@@ -207,7 +217,9 @@ router.get('/daily', (req, res) => {
         costGaps: day.cost_gaps || 0,
         unpaidAmount: day.unpaid_amount || 0,
         overduePayoutCount: day.overdue_payout_count || 0,
-        zeroExpenseCount: day.zero_expense_count || 0
+        zeroExpenseCount: day.zero_expense_count || 0,
+        ordersWithFailedAttempts: day.orders_with_failed_attempts || 0,
+        failedButDelivered: day.failed_but_delivered || 0
       };
     });
 
