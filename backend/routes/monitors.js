@@ -109,12 +109,15 @@ router.get('/advice', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier
+    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status
     FROM orders WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
   `).all(store_id);
 
   const adviceOrders = orders.filter(o => {
+    const deliveryStatusLower = (o.delivery_status || '').toLowerCase();
+    if (IGNORE_STATUSES.includes(deliveryStatusLower)) return false;
+
     const st = (o.courier_status || o.delivery_status || '').toLowerCase();
     if (blacklistSet.has(o.tracking_number)) return false;
     return ADVICE_KEYWORDS.some(k => st.includes(k));
