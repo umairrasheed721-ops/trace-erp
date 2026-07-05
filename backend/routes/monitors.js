@@ -5,7 +5,11 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : requir
 const { cancelInstaworldOrder } = require('../engines/instaworld');
 
 const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
-const ADVICE_KEYWORDS = ['shipper advice', 'delivery under review', 'reattempt', 'undelivered', 'refused', 'incomplete address', 'consignee not available'];
+const ADVICE_KEYWORDS = [
+  'shipper advice', 'delivery under review', 'reattempt', 'undelivered', 
+  'refused', 'incomplete address', 'consignee not available', 'attempt', 
+  'failed', 'return', 'review', 'rfd', 'unsuccessful', 'refuse'
+];
 
 // GET /api/monitors/stuck?store_id=1
 router.get('/stuck', (req, res) => {
@@ -73,7 +77,7 @@ router.get('/stuck', (req, res) => {
 
     // Dynamic insight classification
     let insight_type = 'STUCK_TRANSIT';
-    const statusLower = (o.delivery_status || '').toLowerCase();
+    const statusLower = (o.courier_status || o.delivery_status || '').toLowerCase();
     
     if (isManual) {
       insight_type = 'MANUAL_ID';
@@ -111,7 +115,7 @@ router.get('/advice', (req, res) => {
   `).all(store_id);
 
   const adviceOrders = orders.filter(o => {
-    const st = (o.delivery_status || '').toLowerCase();
+    const st = (o.courier_status || o.delivery_status || '').toLowerCase();
     if (blacklistSet.has(o.tracking_number)) return false;
     return ADVICE_KEYWORDS.some(k => st.includes(k));
   });
