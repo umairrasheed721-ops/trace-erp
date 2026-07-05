@@ -77,15 +77,8 @@ export default function StuckMonitor() {
 
   const getCourierTrackingLink = (trackingNumber, courier) => {
     if (!trackingNumber) return '#'
-    const tn = String(trackingNumber).toUpperCase()
     const courierLower = String(courier || '').toLowerCase()
 
-    if (tn.startsWith('LE') || tn.startsWith('LCS') || courierLower.includes('leopard') || courierLower.includes('lcs')) {
-      return `https://www.leopardscourier.com/leopards-tracking?track-number=${trackingNumber}`
-    }
-    if (/^[0-9]{11,12}$/.test(trackingNumber) || courierLower.includes('tcs')) {
-      return `https://www.tcsexpress.com/tracking?tracking-number=${trackingNumber}`
-    }
     if (courierLower.includes('postex') || courierLower.includes('post ex')) {
       return `https://postex.pk/tracking?cn=${trackingNumber}`
     }
