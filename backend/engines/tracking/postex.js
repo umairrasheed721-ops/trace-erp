@@ -97,12 +97,34 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             const data = await res.json();
             const distData = data?.dist || data;
   
-            let rawStatus = distData?.transactionStatus
+            let statusDate = null;
+            let latestHistoryStatus = null;
+            const history = data?.dist?.transactionStatusHistory 
+              || data?.transactionStatusHistory 
+              || data?.data?.transactionStatusHistory 
+              || data?.dist?.trackingHistory 
+              || data?.trackingHistory 
+              || data?.data?.trackingHistory 
+              || [];
+
+            if (Array.isArray(history) && history.length > 0) {
+              const sorted = [...history].sort((a, b) => {
+                const dateA = new Date(a.dateTime || a.date || a.timestamp || a.updatedAt);
+                const dateB = new Date(b.dateTime || b.date || b.timestamp || b.updatedAt);
+                return dateA - dateB;
+              });
+              const latest = sorted[sorted.length - 1];
+              statusDate = latest?.dateTime || latest?.date || latest?.timestamp || latest?.updatedAt || null;
+              latestHistoryStatus = latest?.transactionStatusMessage || latest?.statusMessage || latest?.message || latest?.status || null;
+            }
+
+            let rawStatus = latestHistoryStatus
+              || distData?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
               || data?.statusDescription
               || null;
-  
+   
             if (!rawStatus) {
               auditLogs.push({ id: order.tracking_number, status: 'FAILED', message: 'Status Missing in Response', details: JSON.stringify(data).substring(0, 200) });
               return null;
@@ -110,14 +132,6 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
             
             const mappedStatus = applyMap(statusMap, 'PostEx', rawStatus);
             
-            // Extract status date from PostEx response
-            let statusDate = null;
-            const history = data?.dist?.trackingHistory || data?.trackingHistory || data?.data?.trackingHistory || [];
-            if (Array.isArray(history) && history.length > 0) {
-              const sorted = [...history].sort((a, b) => new Date(a.dateTime || a.date || a.timestamp) - new Date(b.dateTime || b.date || b.timestamp));
-              const latest = sorted[sorted.length - 1];
-              statusDate = latest?.dateTime || latest?.date || latest?.timestamp || null;
-            }
             if (!statusDate) {
               statusDate = data?.dist?.statusDateTime 
                 || data?.statusDateTime 
@@ -135,6 +149,7 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
                 formattedStatusDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
               }
             }
+
 
             // Watchdog Rider Fraud Audit (PostEx candidate status match)
             let watchdogResult = null;

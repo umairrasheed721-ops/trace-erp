@@ -29,6 +29,17 @@ function applyMap(statusMap, courier, rawStatus) {
     if (raw.startsWith('en-route to') && raw.endsWith('warehouse')) {
       return 'In Transit';
     }
+    if (
+      raw.startsWith('arrived at') ||
+      raw.startsWith('departed to') ||
+      raw.startsWith('received at') ||
+      raw.startsWith('at ') ||
+      raw.includes('transit hub') ||
+      raw.includes('warehouse') ||
+      raw === 'waiting for delivery'
+    ) {
+      return 'In Transit';
+    }
   }
   // Pattern matching for return in-transit statuses across couriers
   if (raw.includes('return in-transit') || raw.startsWith('return in-transit')) {
