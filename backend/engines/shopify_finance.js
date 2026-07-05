@@ -5,22 +5,30 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // ==========================================
 
 async function shopifyFetch(store, endpoint, options = {}) {
-  const url = `https://${store.shop_domain}/admin/api/2024-10/${endpoint}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'X-Shopify-Access-Token': store.access_token,
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const url = `https://${store.shop_domain}/admin/api/2024-10/${endpoint}`;
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      }
+    });
+    
+    if (res.status === 429) {
+      await sleep(2000);
+      return shopifyFetch(store, endpoint, options);
     }
-  });
-  
-  if (res.status === 429) {
-    await sleep(2000);
-    return shopifyFetch(store, endpoint, options);
+    
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  return res;
 }
 
 async function getPrimaryLocationId(store) {
