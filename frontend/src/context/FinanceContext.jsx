@@ -20,23 +20,15 @@ export function FinanceProvider({ children }) {
   const [syncTotal, setSyncTotal] = useState(0)
   const [syncProcessed, setSyncProcessed] = useState(0)
 
-  // Load initial values from localStorage on mount
+  // Clear sync state from localStorage on mount/refresh because the frontend-driven
+  // loop is terminated when the page is reloaded.
   useEffect(() => {
-    const storedTaskId = localStorage.getItem('ActiveSyncTaskID')
-    if (storedTaskId) {
-      setCurrentTaskId(storedTaskId)
-      setIsProcessing(localStorage.getItem('sync_is_processing') === 'true')
-      setSyncProcessed(parseInt(localStorage.getItem('sync_processed') || '0', 10))
-      setSyncTotal(parseInt(localStorage.getItem('sync_total') || '0', 10))
-      try {
-        const storedResults = localStorage.getItem('sync_results')
-        if (storedResults) setResults(JSON.parse(storedResults))
-        const storedSummary = localStorage.getItem('sync_summary')
-        if (storedSummary) setSummary(JSON.parse(storedSummary))
-      } catch (e) {
-        console.error('Failed to parse sync state from localStorage:', e)
-      }
-    }
+    localStorage.removeItem('ActiveSyncTaskID')
+    localStorage.removeItem('sync_is_processing')
+    localStorage.removeItem('sync_processed')
+    localStorage.removeItem('sync_total')
+    localStorage.removeItem('sync_results')
+    localStorage.removeItem('sync_summary')
   }, [])
 
   // Persist sync state to localStorage when active
