@@ -11,6 +11,23 @@ const ADVICE_KEYWORDS = [
   'failed', 'return', 'review', 'rfd', 'unsuccessful', 'refuse'
 ];
 
+function isExcludedFromAdvice(courierStatus) {
+  if (!courierStatus) return false;
+  const statusLower = courierStatus.toLowerCase();
+  if (
+    statusLower.includes('waiting for return') ||
+    statusLower.includes('return to ') ||
+    statusLower.includes('returned to ') ||
+    statusLower.includes('out for return') ||
+    statusLower.includes('return received') ||
+    statusLower.includes('returned') ||
+    statusLower.includes('request for re-attempt')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 // GET /api/monitors/stuck?store_id=1
 router.get('/stuck', (req, res) => {
   const { store_id } = req.query;
@@ -83,7 +100,7 @@ router.get('/stuck', (req, res) => {
       insight_type = 'MANUAL_ID';
     } else if (statusLower === 'booked' || statusLower === 'confirmed') {
       insight_type = 'PICKUP_PENDING';
-    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k))) {
+    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {
       insight_type = 'ADVICE_REQUIRED';
     }
 
@@ -117,6 +134,8 @@ router.get('/advice', (req, res) => {
   const adviceOrders = orders.filter(o => {
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase();
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return false;
+
+    if (isExcludedFromAdvice(o.courier_status)) return false;
 
     const st = (o.courier_status || o.delivery_status || '').toLowerCase();
     if (blacklistSet.has(o.tracking_number)) return false;
