@@ -444,15 +444,25 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
       LIMIT 100
     `;
 
+    // Use strict patterns to avoid matching XL when L is requested, etc.
+    // Pattern: sku ends with "-L" (exact), or title contains "/ L)" or "(L /" or "( L)" 
     const rows = db.prepare(queryStr).all(
       store.id,
-      `%-${normSize}`,
-      `%(${normSize})%`,
-      `%/ ${normSize})%`,
-      `%(${normSize} /%`
-    );
+      `%-${normSize}`,          // SKU ends with -L
+      `%/ ${normSize})%`,       // title like "/ L)" — e.g. (M / L)
+      `%(${normSize} /%`,       // title like "(L /" — e.g. (L / Black)
+      `%(${normSize})%`         // title like "(L)" — exact size in parens
+    ).filter(row => {
+      // Post-filter: ensure exact size match using regex to avoid XL matching when L is selected
+      const title = (row.title || '').toUpperCase();
+      const sku = (row.sku || '').toUpperCase();
+      // Size must appear as whole word bounded by space, slash, parens, dash, or end of string
+      const sizeRegex = new RegExp(`(^|[-/ (])${normSize}($|[-/ )])`);
+      return sizeRegex.test(title) || sizeRegex.test(sku);
+    });
 
     res.json({ success: true, size: normSize, variants: rows });
+
   } catch (err) {
     console.error('WhatsApp /in-stock-images error:', err.message);
     res.status(500).json({ error: err.message });
