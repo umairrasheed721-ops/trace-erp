@@ -553,6 +553,78 @@ router.post('/lock-cpr', (req, res) => {
   }
 });
 
+// GET /api/finance/track-lookup?store_id=1&tracking_number=20120050024566
+router.get('/track-lookup', async (req, res) => {
+  const { store_id, tracking_number } = req.query;
+  if (!store_id || !tracking_number) return res.status(400).json({ error: 'store_id and tracking_number required' });
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    if (!store.postex_token || store.postex_token.includes('****')) {
+      return res.status(403).json({ error: 'PostEx API token not configured for this store.' });
+    }
+
+    const fetch = require('node-fetch');
+    const apiUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/' + encodeURIComponent(tracking_number.trim());
+    const response = await fetch(apiUrl, {
+      headers: { 'token': store.postex_token },
+      timeout: 10000
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `PostEx API returned ${response.status}` });
+    }
+
+    const data = await response.json();
+    const dist = data?.dist || {};
+
+    // Extract settlement date from reservePaymentDate or upfrontPaymentDate
+    const settlementDateRaw = dist.reservePaymentDate || dist.upfrontPaymentDate || null;
+    let settlementDate = null;
+    if (settlementDateRaw) {
+      const d = new Date(settlementDateRaw);
+      if (!isNaN(d.getTime())) {
+        settlementDate = d.toISOString().split('T')[0];
+      }
+    }
+
+    const result = {
+      trackingNumber: dist.trackingNumber || tracking_number,
+      orderRef: dist.orderRefNumber || null,
+      status: dist.transactionStatus || null,
+      customerName: dist.customerName || null,
+      cityName: dist.cityName || null,
+      invoicePayment: dist.invoicePayment || 0,
+      reservePayment: dist.reservePayment || 0,
+      transactionFee: dist.transactionFee || 0,
+      transactionTax: dist.transactionTax || 0,
+      orderDeliveryDate: dist.orderDeliveryDate || null,
+      settlementDate,
+      reservePaymentDate: settlementDateRaw,
+    };
+
+    // Cross-check ledger: find if this settlement date matches a locked CPR
+    let matchedCpr = null;
+    if (settlementDate) {
+      const ledgerRows = db.prepare(`
+        SELECT cpr_reference, courier, settlement_date, net_payout, actual_bank_deposit, audit_status 
+        FROM cpr_settlements 
+        WHERE store_id = ? AND settlement_date = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(Number(store_id), settlementDate);
+      if (ledgerRows) matchedCpr = ledgerRows;
+    }
+
+    res.json({ success: true, order: result, matchedCpr });
+  } catch (err) {
+    console.error('[track-lookup error]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/finance/cpr-ledger
 router.get('/cpr-ledger', (req, res) => {
   const { store_id } = req.query;

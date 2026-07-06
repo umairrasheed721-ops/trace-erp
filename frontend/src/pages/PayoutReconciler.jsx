@@ -87,7 +87,33 @@ export default function PayoutReconciler() {
   const navigate = useNavigate()
   
   // Navigation & Modes
-  const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'api'
+  const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'api' | 'lookup'
+
+  // Track & Lookup State
+  const [lookupTracking, setLookupTracking] = useState('')
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupResult, setLookupResult] = useState(null)
+  const [lookupError, setLookupError] = useState('')
+
+  const handleTrackLookup = async () => {
+    if (!lookupTracking.trim()) return
+    setLookupLoading(true)
+    setLookupResult(null)
+    setLookupError('')
+    try {
+      const res = await fetch(`/api/finance/track-lookup?store_id=${activeStoreId}&tracking_number=${encodeURIComponent(lookupTracking.trim())}`)
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setLookupError(data.error || 'Something went wrong')
+      } else {
+        setLookupResult(data)
+      }
+    } catch (e) {
+      setLookupError('Network error: ' + e.message)
+    } finally {
+      setLookupLoading(false)
+    }
+  }
 
   // Common Form State
   const [cprReference, setCprReference] = useState('')
@@ -528,12 +554,127 @@ export default function PayoutReconciler() {
         >
           📄 Manual Upload Mode (Fallback)
         </button>
+        <button 
+          className={`btn ${activeTab === 'lookup' ? 'btn-brand' : ''}`} 
+          style={{ padding: '10px 20px', borderRadius: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, background: activeTab === 'lookup' ? 'var(--brand)' : 'transparent', color: activeTab === 'lookup' ? '#fff' : 'var(--text)' }}
+          onClick={() => setActiveTab('lookup')}
+        >
+          🔍 Track & Lookup
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: 30 }}>
+      {/* === TAB: TRACK & LOOKUP === */}
+      {activeTab === 'lookup' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Search Box */}
+          <div className="card" style={{ padding: 28 }}>
+            <h3 style={{ margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>🔍 Track & Lookup</h3>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, margin: '0 0 22px 0' }}>Enter a PostEx tracking number to find its CPR settlement details.</p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 20120050024566"
+                value={lookupTracking}
+                onChange={e => setLookupTracking(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleTrackLookup()}
+                style={{ flex: 1, fontSize: '1rem', fontWeight: 600 }}
+              />
+              <button
+                className="btn btn-brand"
+                style={{ padding: '10px 28px', fontWeight: 700, fontSize: '1rem' }}
+                onClick={handleTrackLookup}
+                disabled={lookupLoading}
+              >
+                {lookupLoading ? '⏳ Searching...' : '🔍 Lookup'}
+              </button>
+            </div>
+            {lookupError && (
+              <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, color: 'var(--red)', fontWeight: 600 }}>
+                ❌ {lookupError}
+              </div>
+            )}
+          </div>
+
+          {/* Result Card */}
+          {lookupResult && (() => {
+            const { order, matchedCpr } = lookupResult
+            const isDelivered = (order.status || '').toLowerCase().includes('deliver')
+            const netAmount = (order.reservePayment || order.invoicePayment || 0) - (order.transactionFee || 0) - (order.transactionTax || 0)
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                {/* Order Details */}
+                <div className="card" style={{ padding: 24, border: '2px solid var(--border)' }}>
+                  <h4 style={{ margin: '0 0 18px 0', color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    📦 Order Details
+                    <span className="badge" style={{ background: isDelivered ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: isDelivered ? 'var(--green)' : 'var(--red)' }}>{order.status}</span>
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {[
+                        ['Tracking #', order.trackingNumber],
+                        ['Order Ref', order.orderRef || '—'],
+                        ['Customer', order.customerName || '—'],
+                        ['City', order.cityName || '—'],
+                        ['Delivery Date', order.orderDeliveryDate ? new Date(order.orderDeliveryDate).toLocaleDateString('en-PK') : '—'],
+                        ['COD / Invoice', `Rs. ${parseFloat(order.invoicePayment || 0).toLocaleString()}`],
+                        ['Reserve Amount', `Rs. ${parseFloat(order.reservePayment || 0).toLocaleString()}`],
+                        ['Courier Fee', `Rs. ${parseFloat(order.transactionFee || 0).toLocaleString()}`],
+                        ['GST (Tax)', `Rs. ${parseFloat(order.transactionTax || 0).toLocaleString()}`],
+                        ['Net Payout (Est.)', `Rs. ${netAmount.toLocaleString('en-PK', { maximumFractionDigits: 2 })}`],
+                      ].map(([label, val]) => (
+                        <tr key={label} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '8px 0', opacity: 0.6, width: '45%' }}>{label}</td>
+                          <td style={{ padding: '8px 0', fontWeight: 600 }}>{val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* CPR / Settlement Details */}
+                <div className="card" style={{ padding: 24, border: matchedCpr ? '2px solid rgba(34,197,94,0.4)' : '2px dashed var(--border)' }}>
+                  <h4 style={{ margin: '0 0 18px 0', color: matchedCpr ? 'var(--green)' : 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    💸 Settlement / CPR Info
+                    {matchedCpr
+                      ? <span className="badge" style={{ background: 'rgba(34,197,94,0.1)', color: 'var(--green)' }}>✅ Matched in Ledger</span>
+                      : <span className="badge" style={{ background: 'rgba(250,204,21,0.1)', color: '#ca8a04' }}>⚠️ Not Locked Yet</span>
+                    }
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {[
+                        ['Settlement Date', order.settlementDate ? order.settlementDate : '—'],
+                        ['Reserve Payment Date', order.reservePaymentDate ? new Date(order.reservePaymentDate).toLocaleString('en-PK') : '—'],
+                        matchedCpr && ['CPR Reference', matchedCpr.cpr_reference],
+                        matchedCpr && ['Courier', matchedCpr.courier],
+                        matchedCpr && ['Locked Net Payout', `Rs. ${parseFloat(matchedCpr.net_payout || 0).toLocaleString()}`],
+                        matchedCpr && ['Actual Deposit', `Rs. ${parseFloat(matchedCpr.actual_bank_deposit || 0).toLocaleString()}`],
+                        matchedCpr && ['Audit Status', matchedCpr.audit_status],
+                      ].filter(Boolean).map(([label, val]) => (
+                        <tr key={label} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '8px 0', opacity: 0.6, width: '45%' }}>{label}</td>
+                          <td style={{ padding: '8px 0', fontWeight: 600 }}>{val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!matchedCpr && order.settlementDate && (
+                    <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(250,204,21,0.06)', border: '1px solid rgba(250,204,21,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#92400e' }}>
+                      💡 Payment settled on <b>{order.settlementDate}</b> but this CPR has not been locked in the ledger yet. Use <b>Live API Mode</b> to reconcile it.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      <div style={{ display: activeTab === 'lookup' ? 'none' : 'grid', gridTemplateColumns: '1fr 350px', gap: 30 }}>
         
         {/* --- LEFT: MAIN WORKSPACE --- */}
-        <div className="card" style={{ padding: 25 }}>
+        <div className="card" style={{ padding: 25, display: activeTab === 'lookup' ? 'none' : undefined }}>
           
           {/* COMMON CONFIG */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 30 }}>
