@@ -67,14 +67,22 @@ exports.csUpdate = async (req, res) => {
     
     // Calculate new total cost based on new line items
     let totalCost = 0;
+    let hasMissingCostItem = false;
     const items = line_items || [];
     for (const item of items) {
       if (item.sku) {
         const costRow = db.db.prepare('SELECT unit_cost FROM product_master_costs WHERE store_id = ? AND sku = ?').get(oldOrder.store_id, item.sku);
-        if (costRow) {
+        if (costRow && costRow.unit_cost > 0) {
           totalCost += (costRow.unit_cost * item.quantity);
+        } else {
+          hasMissingCostItem = true;
         }
+      } else {
+        hasMissingCostItem = true;
       }
+    }
+    if (hasMissingCostItem) {
+      totalCost = 0;
     }
 
     const newItemsCount = items.reduce((acc, item) => acc + parseInt(item.quantity || 0), 0);

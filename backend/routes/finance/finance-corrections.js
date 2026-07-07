@@ -304,7 +304,7 @@ router.get('/master-costs', (req, res) => {
 // Helper to propagate cost changes from product_master_costs to orders matching by SKU/ID or Name (with appended variant handling)
 function healCostsForStore(storeId) {
   const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost, packaging_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
-  const orders = db.prepare('SELECT id, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(storeId));
+  const orders = db.prepare('SELECT id, cost, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(storeId));
   let healedCount = 0;
 
   const updateStmt = db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN (\'Delivered\', \'Return Received\') THEN 1 ELSE 0 END) WHERE id = ?');
@@ -313,7 +313,7 @@ function healCostsForStore(storeId) {
     for (const order of orders) {
       let totalLanded = 0;
       let totalPackaging = 0;
-      let matched = false;
+      let hasMissingCostItem = false;
 
       let parsedItems = [];
       try {
@@ -355,16 +355,19 @@ function healCostsForStore(storeId) {
             }
           }
 
-          if (matchRow) {
-            totalLanded += matchRow.landed_cost * qty;
+          if (matchRow && (matchRow.landed_cost > 0 || matchRow.shopify_cost > 0)) {
+            totalLanded += (matchRow.landed_cost || matchRow.shopify_cost || 0) * qty;
             totalPackaging += (matchRow.packaging_cost || 0) * qty;
-            matched = true;
+          } else {
+            hasMissingCostItem = true;
           }
         }
       } else if (order.product_titles) {
         const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
         let match;
+        let titlesCount = 0;
         while ((match = regex.exec(order.product_titles)) !== null) {
+          titlesCount++;
           const fullName = match[1].trim();
           const qty = parseInt(match[2]) || 0;
           
@@ -375,16 +378,26 @@ function healCostsForStore(storeId) {
           let matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
           if (!matchRow) matchRow = catalog.find(c => c.parent_title === pName);
           
-          if (matchRow) {
-            totalLanded += matchRow.landed_cost * qty;
+          if (matchRow && (matchRow.landed_cost > 0 || matchRow.shopify_cost > 0)) {
+            totalLanded += (matchRow.landed_cost || matchRow.shopify_cost || 0) * qty;
             totalPackaging += (matchRow.packaging_cost || 0) * qty;
-            matched = true;
+          } else {
+            hasMissingCostItem = true;
           }
         }
+        if (titlesCount === 0) {
+          hasMissingCostItem = true;
+        }
+      } else {
+        hasMissingCostItem = true;
       }
 
-      if (matched) {
-        updateStmt.run(totalLanded, totalPackaging, order.id);
+      const currentCost = order.cost || 0;
+      const finalCost = hasMissingCostItem ? 0 : totalLanded;
+      const finalPackaging = hasMissingCostItem ? 0 : totalPackaging;
+
+      if (finalCost !== currentCost || (finalCost === 0 && currentCost > 0)) {
+        updateStmt.run(finalCost, finalPackaging, order.id);
         healedCount++;
       }
     }

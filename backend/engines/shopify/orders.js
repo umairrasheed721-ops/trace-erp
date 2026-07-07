@@ -113,6 +113,7 @@ function calculateOrderCost(storeId, lineItems, costMap) {
   let totalCost = 0;
   let activeCount = 0;
   let productTitles = [];
+  let hasMissingCostItem = false;
 
   for (const item of lineItems) {
     const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
@@ -142,9 +143,17 @@ function calculateOrderCost(storeId, lineItems, costMap) {
       unitCost = shopifyCost;
     }
 
-    totalCost += unitCost * qty;
+    if (unitCost > 0) {
+      totalCost += unitCost * qty;
+    } else {
+      hasMissingCostItem = true;
+    }
     productTitles.push(`${item.name} (x${qty})`);
     activeCount++;
+  }
+
+  if (hasMissingCostItem) {
+    totalCost = 0;
   }
 
   return { totalCost, productTitles: productTitles.join(', '), activeCount };
