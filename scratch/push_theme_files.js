@@ -94,6 +94,10 @@ async function main() {
   // 5. Upload templates/index.json
   await uploadAsset('templates/index.json', path.join(themeDir, 'templates/index.json'));
 
+  // 6. Upload trace-reviews section and snippet
+  await uploadAsset('sections/trace-reviews.liquid', path.join(themeDir, 'sections/trace-reviews.liquid'));
+  await uploadAsset('snippets/trace-reviews.liquid', path.join(themeDir, 'snippets/trace-reviews.liquid'));
+
   console.log('All theme uploads completed!');
 }
 
