@@ -385,6 +385,50 @@ router.post('/submit-review', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// PUBLIC: POST /api/public/write-review
+// Customer directly submits their review from the product page
+// ─────────────────────────────────────────────────────────────────
+router.post('/write-review', (req, res) => {
+  try {
+    const { handle, rating, name, email, title, body } = req.body;
+
+    if (!handle || !rating || !name || !email || !body) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const ratingNum = parseInt(rating);
+    if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+      return res.status(400).json({ success: false, error: 'Invalid rating' });
+    }
+
+    if (body.trim().length < 5) {
+      return res.status(400).json({ success: false, error: 'Review is too short' });
+    }
+
+    // Check for duplicate to prevent spamming
+    const existing = db.prepare('SELECT id FROM product_reviews WHERE reviewer_email = ? AND product_handle = ? LIMIT 1')
+      .get(email.trim().toLowerCase(), handle.trim());
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'You have already submitted a review for this product' });
+    }
+
+    // Insert as pending (manual moderation by admin)
+    db.prepare(`
+      INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date)
+      VALUES (?, ?, ?, ?, ?, ?, 'public_direct', 'pending', datetime('now'))
+    `).run(handle.trim(), name.trim().substring(0, 80), email.trim().toLowerCase(), ratingNum,
+           title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000));
+
+    console.log(`⭐ [Reviews] Direct pending review from ${email} for ${handle} (${ratingNum}★)`);
+
+    res.json({ success: true, message: 'Review submitted and pending approval' });
+  } catch (err) {
+    console.error('[Write Direct Review] Error:', err.message);
+    res.status(500).json({ success: false, error: 'Server error. Please try again.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // PROTECTED: GET /api/reviews  — Admin list all reviews
 // ─────────────────────────────────────────────────────────────────
 router.get('/', (req, res) => {
