@@ -782,6 +782,26 @@ router.post('/bulk-delete-master-variants', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/finance/bulk-sync-variants-costs
+router.post('/bulk-sync-variants-costs', (req, res) => {
+  const { store_id, ids, unit_cost, packaging_cost } = req.body;
+  if (!store_id || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'store_id and ids array required' });
+
+  try {
+    const landed = Number(unit_cost || 0) + Number(packaging_cost || 0);
+    const placeholders = ids.map(() => '?').join(',');
+    const result = db.prepare(`
+      UPDATE product_master_costs 
+      SET unit_cost = ?,
+          packaging_cost = ?,
+          landed_cost = ?,
+          updated_at = datetime('now')
+      WHERE store_id = ? AND id IN (${placeholders})
+    `).run(Number(unit_cost || 0), Number(packaging_cost || 0), landed, Number(store_id), ...ids);
+    res.json({ success: true, count: result.changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/finance/prevention-audit
 router.get('/prevention-audit', asyncHandler(async (req, res) => {
   const { store_id } = req.query;

@@ -56,6 +56,8 @@ export default function CostManager() {
   const [inlineEdits, setInlineEdits] = useState({})  // { variantId: { unit_cost, packaging_cost } }
   const [savingInline, setSavingInline] = useState(null)
   const [skuSubTab, setSkuSubTab] = useState('duplicates')
+  const [groupVariantsBy, setGroupVariantsBy] = useState('none') // 'none' | 'opt1' | 'opt2'
+  const [expandedGroups, setExpandedGroups] = useState(new Set())
 
   useEffect(() => {
     if (activeStoreId) {
@@ -469,17 +471,23 @@ export default function CostManager() {
   const handleBulkSync = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch('/api/finance/bulk-sync-parent-costs', {
+      const isCustomGroup = bulkItem.ids && bulkItem.ids.length > 0;
+      const url = isCustomGroup ? '/api/finance/bulk-sync-variants-costs' : '/api/finance/bulk-sync-parent-costs';
+      const body = isCustomGroup 
+        ? { store_id: activeStoreId, ids: bulkItem.ids, ...bulkForm }
+        : { store_id: activeStoreId, parent_title: bulkItem.name, ...bulkForm };
+
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: activeStoreId, parent_title: bulkItem.name, ...bulkForm })
+        body: JSON.stringify(body)
       })
       if (res.ok) {
-        addToast('Applied to all variants', 'success')
+        addToast(isCustomGroup ? 'Applied to selected variation group' : 'Applied to all variants', 'success')
         setShowBulkModal(false)
         fetchCosts()
       }
-    } catch (e) { addToast('Bulk error', 'error') }
+    } catch (e) { addToast('Bulk error: ' + e.message, 'error') }
   }
 
   const handleAcceptShopifyCost = async (v) => {
@@ -960,6 +968,16 @@ export default function CostManager() {
               <option value="mid">Margin: Mid (20–40%)</option>
               <option value="low">Margin: Low (&lt;20%) ⚠️</option>
             </select>
+            <select
+              className="form-input"
+              value={groupVariantsBy}
+              onChange={e => setGroupVariantsBy(e.target.value)}
+              style={{ width: 'auto', cursor: 'pointer' }}
+            >
+              <option value="none">Group: Flat List</option>
+              <option value="opt1">Group by Size (Option 1)</option>
+              <option value="opt2">Group by Color (Option 2)</option>
+            </select>
             {(search || filterMargin !== 'all') && (
               <button
                 className="btn btn-secondary"
@@ -1204,153 +1222,313 @@ export default function CostManager() {
                         <button className="btn btn-icon" title="Delete Product" onClick={(e) => { e.stopPropagation(); handleDeleteParent(p.name); }}>🗑️</button>
                       </td>
                     </tr>
-                    {expandedParents.has(p.name) && p.variants.map((v, i) => (
-                      <tr key={v.id || i} style={{ 
-                        borderBottom: '1px solid var(--border)',
-                        backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
-                      }}>
-                        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <input 
-                            type="checkbox" 
-                            checked={selectedVariants.has(v.id)}
-                            onChange={() => {
-                              const next = new Set(selectedVariants);
-                              if (next.has(v.id)) {
-                                next.delete(v.id);
-                              } else {
-                                next.add(v.id);
-                              }
-                              setSelectedVariants(next);
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '10px 15px 10px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            {/* Variant Specific Image */}
-                            {v.variant_image_url ? (
-                              <img 
-                                src={v.variant_image_url} 
-                                alt={v.variant_title || 'Default'} 
-                                style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', border: '1px solid var(--border)' }} 
+                    {expandedParents.has(p.name) && (() => {
+                      if (groupVariantsBy === 'none') {
+                        // Render flat variants
+                        return p.variants.map((v, i) => (
+                          <tr key={v.id || i} style={{ 
+                            borderBottom: '1px solid var(--border)',
+                            backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
+                          }}>
+                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedVariants.has(v.id)}
+                                onChange={() => {
+                                  const next = new Set(selectedVariants);
+                                  if (next.has(v.id)) next.delete(v.id);
+                                  else next.add(v.id);
+                                  setSelectedVariants(next);
+                                }}
                               />
-                            ) : (
-                              <div style={{ width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '0.8rem' }}>
-                                📷
-                              </div>
-                            )}
-                            
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                {v.variant_title || 'Default'}
-                                {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
-                                {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                                  <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
+                            </td>
+                            <td style={{ padding: '10px 15px 10px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                {v.variant_image_url ? (
+                                  <img src={v.variant_image_url} alt={v.variant_title || 'Default'} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', border: '1px solid var(--border)' }} />
+                                ) : (
+                                  <div style={{ width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '0.8rem' }}>📷</div>
                                 )}
-                                {v.inventory_policy === 'continue' && (
-                                  <span style={{ fontSize: '0.6rem', color: '#a855f7', background: 'rgba(168,85,247,0.1)', border: '1px solid #a855f7', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>CONTINUE SELLING</span>
-                                )}
-                              </div>
-                              {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
-                        {/* Inline Edit Cells */}
-                        <td style={{ textAlign: 'right', padding: '8px' }}>
-                          {(() => {
-                            const key = v.id || `${v.parent_title}@@@${v.variant_title}`
-                            const edit = inlineEdits[key]
-                            const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
-                            return edit ? (
-                              <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
-                                <input
-                                  type="number"
-                                  className="form-input"
-                                  placeholder="Unit"
-                                  value={edit.unit_cost}
-                                  onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, unit_cost: e.target.value } })}
-                                  style={{ width: 72, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }}
-                                  onClick={e => e.stopPropagation()}
-                                />
-                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+</span>
-                                <input
-                                  type="number"
-                                  className="form-input"
-                                  placeholder="Pkg"
-                                  value={edit.packaging_cost}
-                                  onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, packaging_cost: e.target.value } })}
-                                  style={{ width: 56, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }}
-                                  onClick={e => e.stopPropagation()}
-                                />
-                              </div>
-                            ) : (
-                              <span style={{ fontWeight: 700, color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
-                                {landed > 0 ? `Rs ${landed.toLocaleString()}` : '—'}
-                              </span>
-                            )
-                          })()}
-                        </td>
-                        {/* Margin Bar for variant */}
-                        <td style={{ padding: '8px 16px' }}>
-                          {(() => {
-                            const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
-                            const selling = v.selling_price || 0
-                            if (landed > 0 && selling > 0) {
-                              const m = Math.round(((selling - landed) / selling) * 100)
-                              return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <div style={{ width: 50, height: 4, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${Math.min(m, 100)}%`, background: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: 2 }} />
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {v.variant_title || 'Default'}
+                                    {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
+                                    {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                      <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
+                                    )}
+                                    {v.inventory_policy === 'continue' && (
+                                      <span style={{ fontSize: '0.6rem', color: '#a855f7', background: 'rgba(168,85,247,0.1)', border: '1px solid #a855f7', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>CONTINUE SELLING</span>
+                                    )}
                                   </div>
-                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444' }}>{m}%</span>
+                                  {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 2 }}>SKU: {v.sku}</div>}
                                 </div>
-                              )
-                            }
-                            return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
-                          })()}
-                        </td>
-                        <td style={{ textAlign: 'right', color: 'var(--text-primary)', padding: '0 8px' }}>{v.inventory_qty}</td>
-                        <td style={{ textAlign: 'right', padding: '8px 15px' }} onClick={e => e.stopPropagation()}>
-                          {(() => {
-                            const key = v.id || `${v.parent_title}@@@${v.variant_title}`
-                            const edit = inlineEdits[key]
-                            const isSaving = savingInline === key
-                            return edit ? (
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button
-                                  className="btn btn-primary btn-sm"
-                                  style={{ padding: '3px 10px', fontSize: '0.75rem', height: 30 }}
-                                  onClick={() => handleInlineSave(v)}
-                                  disabled={isSaving}
-                                >{isSaving ? '⌛' : '✓ Save'}</button>
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  style={{ padding: '3px 8px', fontSize: '0.75rem', height: 30 }}
-                                  onClick={() => { const n={...inlineEdits}; delete n[key]; setInlineEdits(n) }}
-                                >✕</button>
                               </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
-                                  <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
-                                )}
-                                <button
-                                  className="btn btn-icon"
-                                  title="Edit inline"
-                                  onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })}
-                                >✏️</button>
-                                <button
-                                  className="btn btn-icon"
-                                  title="Delete variant from registry"
-                                  style={{ color: '#ef4444' }}
-                                  onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)}
-                                >🗑️</button>
-                              </div>
-                            )
-                          })()}
-                        </td>
-                      </tr>
-                    ))}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                            <td style={{ textAlign: 'right', padding: '8px' }}>
+                              {(() => {
+                                const key = v.id || `${v.parent_title}@@@${v.variant_title}`
+                                const edit = inlineEdits[key]
+                                const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
+                                return edit ? (
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                                    <input type="number" className="form-input" placeholder="Unit" value={edit.unit_cost} onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, unit_cost: e.target.value } })} style={{ width: 72, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }} onClick={e => e.stopPropagation()} />
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+</span>
+                                    <input type="number" className="form-input" placeholder="Pkg" value={edit.packaging_cost} onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, packaging_cost: e.target.value } })} style={{ width: 56, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }} onClick={e => e.stopPropagation()} />
+                                  </div>
+                                ) : (
+                                  <span style={{ fontWeight: 700, color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>{landed > 0 ? `Rs ${landed.toLocaleString()}` : '—'}</span>
+                                )
+                              })()}
+                            </td>
+                            <td style={{ padding: '8px 16px' }}>
+                              {(() => {
+                                const landed = (v.unit_cost || 0) + (v.packaging_cost || 0)
+                                const selling = v.selling_price || 0
+                                if (landed > 0 && selling > 0) {
+                                  const m = Math.round(((selling - landed) / selling) * 100)
+                                  return (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <div style={{ width: 50, height: 4, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${Math.min(m, 100)}%`, background: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: 2 }} />
+                                      </div>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444' }}>{m}%</span>
+                                    </div>
+                                  )
+                                }
+                                return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                              })()}
+                            </td>
+                            <td style={{ textAlign: 'right', color: 'var(--text-primary)', padding: '0 8px' }}>{v.inventory_qty}</td>
+                            <td style={{ textAlign: 'right', padding: '8px 15px' }} onClick={e => e.stopPropagation()}>
+                              {(() => {
+                                const key = v.id || `${v.parent_title}@@@${v.variant_title}`
+                                const edit = inlineEdits[key]
+                                const isSaving = savingInline === key
+                                return edit ? (
+                                  <div style={{ display: 'flex', gap: 4 }}>
+                                    <button className="btn btn-primary btn-sm" style={{ padding: '3px 10px', fontSize: '0.75rem', height: 30 }} onClick={() => handleInlineSave(v)} disabled={isSaving}>{isSaving ? '⌛' : '✓ Save'}</button>
+                                    <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: '0.75rem', height: 30 }} onClick={() => { const n={...inlineEdits}; delete n[key]; setInlineEdits(n) }}>✕</button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', gap: 4 }}>
+                                    {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                      <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
+                                    )}
+                                    <button className="btn btn-icon" title="Edit inline" onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })} >✏️</button>
+                                    <button className="btn btn-icon" title="Delete variant from registry" style={{ color: '#ef4444' }} onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)} >🗑️</button>
+                                  </div>
+                                )
+                              })()}
+                            </td>
+                          </tr>
+                        ));
+                      }
+
+                      // Grouped variations rendering
+                      const groups = {};
+                      p.variants.forEach(v => {
+                        const parts = (v.variant_title || '').split('/').map(s => s.trim());
+                        const opt1 = parts[0] || 'Default';
+                        const opt2 = parts[1] || '';
+                        const groupKey = groupVariantsBy === 'opt1' ? opt1 : (opt2 || 'Default');
+                        if (!groups[groupKey]) groups[groupKey] = [];
+                        groups[groupKey].push(v);
+                      });
+
+                      return Object.entries(groups).map(([groupName, groupVariants]) => {
+                        const groupPathKey = `${p.name}@@@${groupName}`;
+                        const isGroupExpanded = expandedGroups.has(groupPathKey);
+                        const groupIds = groupVariants.map(v => v.id);
+                        const isAllSelected = groupIds.every(id => selectedVariants.has(id));
+                        
+                        // Calculate group values
+                        const totalStock = groupVariants.reduce((acc, v) => acc + (v.inventory_qty || 0), 0);
+                        const shopifyCosts = groupVariants.map(v => v.shopify_cost || 0).filter(Boolean);
+                        const shopifyMin = shopifyCosts.length ? Math.min(...shopifyCosts) : 0;
+                        const shopifyMax = shopifyCosts.length ? Math.max(...shopifyCosts) : 0;
+                        
+                        const landedCosts = groupVariants.map(v => (v.unit_cost || 0) + (v.packaging_cost || 0));
+                        const landedMin = Math.min(...landedCosts);
+                        const landedMax = Math.max(...landedCosts);
+
+                        const validMargins = groupVariants.map(v => {
+                          const landed = (v.unit_cost || 0) + (v.packaging_cost || 0);
+                          const selling = v.selling_price || 0;
+                          return landed > 0 && selling > 0 ? Math.round(((selling - landed) / selling) * 100) : null;
+                        }).filter(m => m !== null);
+                        const avgMargin = validMargins.length ? Math.round(validMargins.reduce((acc, m) => acc + m, 0) / validMargins.length) : null;
+
+                        return (
+                          <React.Fragment key={groupName}>
+                            {/* Group Header Row */}
+                            <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+                              <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox"
+                                  checked={isAllSelected && groupVariants.length > 0}
+                                  onChange={() => {
+                                    const next = new Set(selectedVariants);
+                                    if (isAllSelected) {
+                                      groupIds.forEach(id => next.delete(id));
+                                    } else {
+                                      groupIds.forEach(id => next.add(id));
+                                    }
+                                    setSelectedVariants(next);
+                                  }}
+                                />
+                              </td>
+                              <td style={{ padding: '10px 15px 10px 40px', fontWeight: 'bold', color: 'var(--text-primary)' }} onClick={() => {
+                                const next = new Set(expandedGroups);
+                                if (next.has(groupPathKey)) next.delete(groupPathKey);
+                                else next.add(groupPathKey);
+                                setExpandedGroups(next);
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{isGroupExpanded ? '▼' : '▶'}</span>
+                                  {groupVariants[0]?.variant_image_url ? (
+                                    <img src={groupVariants[0].variant_image_url} alt={groupName} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📷</div>
+                                  )}
+                                  <div>
+                                    <span>{groupName}</span>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: 8 }}>({groupVariants.length} variants)</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '0 8px', color: 'var(--text-secondary)' }}>
+                                {shopifyMin > 0 ? (shopifyMin === shopifyMax ? `Rs ${shopifyMin.toLocaleString()}` : `Rs ${shopifyMin.toLocaleString()} - ${shopifyMax.toLocaleString()}`) : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '0 8px', fontWeight: 'bold', color: landedMax > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                                {landedMax > 0 ? (landedMin === landedMax ? `Rs ${landedMin.toLocaleString()}` : `Rs ${landedMin.toLocaleString()} - ${landedMax.toLocaleString()}`) : '—'}
+                              </td>
+                              <td style={{ padding: '0 16px' }}>
+                                {avgMargin !== null ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <div style={{ width: 50, height: 4, background: 'var(--bg-surface)', borderRadius: 2, overflow: 'hidden' }}>
+                                      <div style={{ height: '100%', width: `${Math.min(avgMargin, 100)}%`, background: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: 2 }} />
+                                    </div>
+                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444' }}>{avgMargin}%</span>
+                                  </div>
+                                ) : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '0 8px', color: 'var(--text-primary)' }}>{totalStock}</td>
+                              <td style={{ textAlign: 'right', padding: '10px 15px' }} onClick={e => e.stopPropagation()}>
+                                <button className="btn btn-icon" title="Bulk Set Group Cost" onClick={() => {
+                                  setBulkItem({ name: `${p.name} - Group: ${groupName}`, ids: groupIds });
+                                  setBulkForm({ unit_cost: 0, packaging_cost: 0 });
+                                  setShowBulkModal(true);
+                                }}>⚡</button>
+                                <button className="btn btn-icon" title="Bulk Delete Group Variants" style={{ color: '#ef4444' }} onClick={async () => {
+                                  if (!window.confirm(`Are you sure you want to delete all ${groupVariants.length} variants in group "${groupName}"?`)) return;
+                                  try {
+                                    const res = await fetch('/api/finance/bulk-delete-master-variants', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ store_id: activeStoreId, ids: groupIds })
+                                    });
+                                    if (res.ok) {
+                                      addToast(`Deleted group "${groupName}" successfully`, 'success');
+                                      fetchCosts();
+                                    }
+                                  } catch (e) { addToast('Group delete failed', 'error'); }
+                                }}>🗑️</button>
+                              </td>
+                            </tr>
+
+                            {/* Group Variants Rows */}
+                            {isGroupExpanded && groupVariants.map((v, i) => {
+                              const landed = (v.unit_cost || 0) + (v.packaging_cost || 0);
+                              return (
+                                <tr key={v.id || i} style={{ borderBottom: '1px solid var(--border)', backgroundColor: landed > 0 ? 'var(--green-dim)' : 'transparent' }}>
+                                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={selectedVariants.has(v.id)}
+                                      onChange={() => {
+                                        const next = new Set(selectedVariants);
+                                        if (next.has(v.id)) next.delete(v.id);
+                                        else next.add(v.id);
+                                        setSelectedVariants(next);
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '10px 15px 10px 60px', color: 'var(--text-secondary)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                      {v.variant_image_url ? (
+                                        <img src={v.variant_image_url} alt={v.variant_title || 'Default'} style={{ width: 24, height: 24, borderRadius: 4, objectFit: 'cover' }} />
+                                      ) : (
+                                        <div style={{ width: 24, height: 24, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📷</div>
+                                      )}
+                                      <div>
+                                        <div style={{ fontWeight: 600 }}>{v.variant_title || 'Default'}</div>
+                                        {v.sku && <div style={{ fontSize: '0.65rem', opacity: 0.5 }}>SKU: {v.sku}</div>}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '8px' }}>
+                                    {(() => {
+                                      const key = v.id || `${v.parent_title}@@@${v.variant_title}`;
+                                      const edit = inlineEdits[key];
+                                      return edit ? (
+                                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                                          <input type="number" className="form-input" placeholder="Unit" value={edit.unit_cost} onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, unit_cost: e.target.value } })} style={{ width: 72, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }} onClick={e => e.stopPropagation()} />
+                                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>+</span>
+                                          <input type="number" className="form-input" placeholder="Pkg" value={edit.packaging_cost} onChange={e => setInlineEdits({ ...inlineEdits, [key]: { ...edit, packaging_cost: e.target.value } })} style={{ width: 56, height: 30, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px' }} onClick={e => e.stopPropagation()} />
+                                        </div>
+                                      ) : (
+                                        <span style={{ fontWeight: 700, color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>{landed > 0 ? `Rs ${landed.toLocaleString()}` : '—'}</span>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td style={{ padding: '8px 16px' }}>
+                                    {(() => {
+                                      const selling = v.selling_price || 0;
+                                      if (landed > 0 && selling > 0) {
+                                        const m = Math.round(((selling - landed) / selling) * 100);
+                                        return (
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <div style={{ width: 50, height: 4, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
+                                              <div style={{ height: '100%', width: `${Math.min(m, 100)}%`, background: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: 2 }} />
+                                            </div>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: m >= 40 ? 'var(--green)' : m >= 20 ? 'var(--yellow)' : '#ef4444' }}>{m}%</span>
+                                          </div>
+                                        );
+                                      }
+                                      return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
+                                    })()}
+                                  </td>
+                                  <td style={{ textAlign: 'right', padding: '0 8px' }}>{v.inventory_qty}</td>
+                                  <td style={{ textAlign: 'right', padding: '8px 15px' }} onClick={e => e.stopPropagation()}>
+                                    {(() => {
+                                      const key = v.id || `${v.parent_title}@@@${v.variant_title}`;
+                                      const edit = inlineEdits[key];
+                                      const isSaving = savingInline === key;
+                                      return edit ? (
+                                        <div style={{ display: 'flex', gap: 4 }}>
+                                          <button className="btn btn-primary btn-sm" style={{ padding: '3px 10px', fontSize: '0.75rem', height: 30 }} onClick={() => handleInlineSave(v)} disabled={isSaving}>{isSaving ? '⌛' : '✓ Save'}</button>
+                                          <button className="btn btn-secondary btn-sm" style={{ padding: '3px 8px', fontSize: '0.75rem', height: 30 }} onClick={() => { const n={...inlineEdits}; delete n[key]; setInlineEdits(n) }}>✕</button>
+                                        </div>
+                                      ) : (
+                                        <div style={{ display: 'flex', gap: 4 }}>
+                                          {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                            <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
+                                          )}
+                                          <button className="btn btn-icon" title="Edit inline" onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })} >✏️</button>
+                                          <button className="btn btn-icon" title="Delete variant from registry" style={{ color: '#ef4444' }} onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)} >🗑️</button>
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
                   </React.Fragment>
                 ))}
               </tbody>
