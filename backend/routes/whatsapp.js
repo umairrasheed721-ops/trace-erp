@@ -429,7 +429,7 @@ router.get('/in-stock-images', authenticateToken, (req, res) => {
     `;
 
     if (includeContinue) {
-      queryStr += ` AND (inventory_qty > 0 OR inventory_policy = 'continue')`;
+      queryStr += ` AND (inventory_qty > 0 OR LOWER(inventory_policy) = 'continue')`;
     } else {
       queryStr += ` AND inventory_qty > 0`;
     }
