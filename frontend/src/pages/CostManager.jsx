@@ -17,6 +17,7 @@ export default function CostManager() {
   const [diagnoseReport, setDiagnoseReport] = useState(null)
   const [activeTab, setActiveTab] = useState('watchdog')
   const [selectedParents, setSelectedParents] = useState(new Set())
+  const [selectedVariants, setSelectedVariants] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
   const [lastSelectedParentIndex, setLastSelectedParentIndex] = useState(null)
@@ -93,6 +94,7 @@ export default function CostManager() {
       if (!res.ok) throw new Error(`Server error ${res.status}`)
       const data = await res.json()
       setCosts(Array.isArray(data) ? data : [])
+      setSelectedVariants(new Set())
       fetchAudit()
     } catch (e) {
       setLoadError(e.message || 'Unknown error')
@@ -430,6 +432,31 @@ export default function CostManager() {
     setSelectedParents(next)
   }
 
+  const handleBulkDeleteVariants = async () => {
+    if (selectedVariants.size === 0) return
+    if (!window.confirm(`Are you sure you want to delete the ${selectedVariants.size} selected variations from the Cost Registry?`)) return
+    setBulkProcessing(true)
+    try {
+      const res = await fetch('/api/finance/bulk-delete-master-variants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, ids: Array.from(selectedVariants) })
+      })
+      const data = await res.json()
+      if (data.success) {
+        addToast(`Successfully deleted ${data.count} variations!`, 'success')
+        setSelectedVariants(new Set())
+        fetchCosts()
+      } else {
+        throw new Error(data.error || 'Bulk delete failed')
+      }
+    } catch (e) {
+      addToast('Bulk delete failed: ' + e.message, 'error')
+    } finally {
+      setBulkProcessing(false)
+    }
+  }
+
   const toggleSelectAll = (isAll) => {
     if (isAll) {
       setSelectedParents(new Set())
@@ -689,6 +716,32 @@ export default function CostManager() {
             disabled={bulkProcessing}
           >
             {bulkProcessing ? '⌛ Processing...' : `✅ Accept All Selected Costs`}
+          </button>
+        </div>
+      )}
+
+      {selectedVariants.size > 0 && (
+        <div style={{ 
+          background: 'rgba(239,68,68,0.1)', 
+          border: '1px solid rgba(239,68,68,0.4)', 
+          padding: '15px 25px', 
+          borderRadius: 12, 
+          marginBottom: 20,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          animation: 'slideDown 0.3s ease'
+        }}>
+          <div style={{ color: '#ef4444', fontWeight: 'bold' }}>
+            ⚡ {selectedVariants.size} Variations Selected
+          </div>
+          <button 
+            className="btn btn-secondary" 
+            style={{ background: '#ef4444', color: '#fff', border: 'none' }}
+            onClick={handleBulkDeleteVariants}
+            disabled={bulkProcessing}
+          >
+            {bulkProcessing ? '⌛ Deleting...' : `🗑️ Delete Selected Variants`}
           </button>
         </div>
       )}
@@ -1152,11 +1205,25 @@ export default function CostManager() {
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
-                      <tr key={i} style={{ 
+                      <tr key={v.id || i} style={{ 
                         borderBottom: '1px solid var(--border)',
                         backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
                       }}>
-                        <td></td>
+                        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            checked={selectedVariants.has(v.id)}
+                            onChange={() => {
+                              const next = new Set(selectedVariants);
+                              if (next.has(v.id)) {
+                                next.delete(v.id);
+                              } else {
+                                next.add(v.id);
+                              }
+                              setSelectedVariants(next);
+                            }}
+                          />
+                        </td>
                         <td style={{ padding: '10px 15px 10px 40px', color: 'var(--text-secondary)', fontWeight: 500 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             {/* Variant Specific Image */}

@@ -769,6 +769,19 @@ router.post('/delete-master-variant', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/finance/bulk-delete-master-variants
+router.post('/bulk-delete-master-variants', (req, res) => {
+  const { store_id, ids } = req.body;
+  if (!store_id || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'store_id and ids array required' });
+
+  try {
+    const placeholders = ids.map(() => '?').join(',');
+    const result = db.prepare(`DELETE FROM product_master_costs WHERE store_id = ? AND id IN (${placeholders})`)
+      .run(Number(store_id), ...ids);
+    res.json({ success: true, count: result.changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/finance/prevention-audit
 router.get('/prevention-audit', asyncHandler(async (req, res) => {
   const { store_id } = req.query;
