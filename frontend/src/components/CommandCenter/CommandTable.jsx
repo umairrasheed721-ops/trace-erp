@@ -129,8 +129,9 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     const title = item.title ? item.title.trim() : '';
-                    const hasCost = item.landed_cost > 0;
-                    navigate(`/costing?search=${encodeURIComponent(title)}&tab=${hasCost ? 'verified' : 'pending'}`);
+                    const isGhost = item.match_type === 'Unknown' || !item.match_type || item.match_type === 'fallback';
+                    const tab = isGhost ? 'ghosts' : (item.landed_cost > 0 ? 'verified' : 'pending');
+                    navigate(`/costing?search=${encodeURIComponent(title)}&tab=${tab}`);
                   }}
                   style={{
                     background: 'rgba(255,255,255,0.1)',

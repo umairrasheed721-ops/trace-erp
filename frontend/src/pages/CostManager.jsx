@@ -73,7 +73,14 @@ export default function CostManager() {
     const searchParam = params.get('search')
     const tabParam = params.get('tab')
     if (searchParam) {
-      setSearch(searchParam)
+      if (tabParam === 'ghosts') {
+        setGhostSearch(searchParam)
+        setSearch('')
+      } else {
+        setSearch(searchParam)
+        setGhostSearch('')
+      }
+      
       if (tabParam) {
         setActiveTab(tabParam)
       } else {
