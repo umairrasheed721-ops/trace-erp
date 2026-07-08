@@ -1272,6 +1272,12 @@ export default function CostManager() {
                                   title="Edit inline"
                                   onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })}
                                 >✏️</button>
+                                <button
+                                  className="btn btn-icon"
+                                  title="Delete variant from registry"
+                                  style={{ color: '#ef4444' }}
+                                  onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)}
+                                >🗑️</button>
                               </div>
                             )
                           })()}
