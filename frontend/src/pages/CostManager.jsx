@@ -474,28 +474,85 @@ export default function CostManager() {
   
   return (
     <div className="page-container cost-manager" style={{ padding: 30 }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 }}>
-        <div>
-          <h1 style={{ margin: 0, color: 'var(--brand)' }}>🛡️ Costing & Watchdog Dashboard</h1>
-          <p style={{ margin: '5px 0 0', opacity: 0.6, color: 'var(--text-secondary)' }}>Manage product costing registry, scan live orders, and stop margin leaks.</p>
+      {/* ── Premium Header ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 50%, rgba(79,70,229,0.05) 100%)',
+        border: '1px solid rgba(99,102,241,0.2)',
+        borderRadius: 20,
+        padding: '28px 32px',
+        marginBottom: 28,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        {/* Decorative background orb */}
+        <div style={{
+          position: 'absolute', top: -40, right: -40,
+          width: 180, height: 180,
+          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
+          borderRadius: '50%',
+          pointerEvents: 'none'
+        }} />
+        <div style={{ position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
+            <div style={{
+              width: 44, height: 44,
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              borderRadius: 12,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 20,
+              boxShadow: '0 4px 16px rgba(99,102,241,0.35)'
+            }}>🛡️</div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Costing & Watchdog</h1>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>Monitor product costs · detect leaks · maintain margin health</p>
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 10, position: 'relative' }}>
           <button
-            className="btn btn-secondary"
             onClick={handleDiagnose}
             disabled={isDiagnosing || isSyncing}
-            style={{ borderColor: 'rgba(251,146,60,0.5)', color: 'var(--yellow)' }}
+            style={{
+              padding: '9px 18px', borderRadius: 10, border: '1px solid rgba(251,146,60,0.35)',
+              background: 'rgba(251,146,60,0.08)', color: '#fb923c',
+              fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'all 0.2s ease', opacity: isDiagnosing || isSyncing ? 0.6 : 1
+            }}
           >
             {isDiagnosing ? '⏳ Diagnosing...' : '🔬 Diagnose'}
           </button>
-          <button className="btn btn-secondary" onClick={handleSyncShopify} disabled={isSyncing}>
-            {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify'}
+          <button
+            onClick={handleSyncShopify}
+            disabled={isSyncing}
+            style={{
+              padding: '9px 18px', borderRadius: 10, border: '1px solid rgba(99,102,241,0.35)',
+              background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+              fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'all 0.2s ease', opacity: isSyncing ? 0.6 : 1
+            }}
+          >
+            {isSyncing ? '⌛ Syncing...' : '🔄 Sync Shopify'}
           </button>
-          <button className="btn btn-primary" onClick={() => { setEditingItem(null); setForm({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 }); setShowModal(true); }}>
+          <button
+            onClick={() => { setEditingItem(null); setForm({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 }); setShowModal(true); }}
+            style={{
+              padding: '9px 20px', borderRadius: 10, border: 'none',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff', fontWeight: 700, fontSize: '0.83rem', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 6,
+              boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+              transition: 'all 0.2s ease'
+            }}
+          >
             + Add Manual
           </button>
         </div>
-      </header>
+      </div>
 
       {/* ── Sync Progress Banner ── */}
       {isSyncing && (
@@ -589,177 +646,184 @@ export default function CostManager() {
       )}
 
       {activeTab === 'watchdog' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 200px', gap: 16, marginBottom: 30 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 220px', gap: 14, marginBottom: 28 }}>
           {/* Not in Registry */}
-          <div
-            className="stat-card"
-            onClick={() => setAuditFilter('missing')}
-            style={{
-              cursor: 'pointer',
-              border: auditFilter === 'missing' ? '1px solid var(--red)' : '1px solid var(--border)',
-              background: auditFilter === 'missing' ? 'var(--red-dim)' : 'var(--bg-surface)',
-              transition: 'all 0.2s ease',
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-          >
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'var(--red)', borderRadius: '4px 4px 0 0' }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--red)', lineHeight: 1 }}>
-                {auditData.missingInRegistry.length}
+          {[{
+            key: 'missing',
+            label: 'Not in Registry',
+            sub: 'Variants never mapped',
+            count: auditData.missingInRegistry.length,
+            icon: '📦',
+            color: '#ef4444',
+            glow: 'rgba(239,68,68,0.15)',
+            grad: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))'
+          },{
+            key: 'zero',
+            label: 'Zero Cost Entry',
+            sub: 'Mapped but cost is Rs. 0',
+            count: auditData.zeroCostInRegistry.length,
+            icon: '⚠️',
+            color: '#f97316',
+            glow: 'rgba(249,115,22,0.15)',
+            grad: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(249,115,22,0.05))'
+          },{
+            key: 'orders',
+            label: 'At-Risk Orders',
+            sub: 'Active orders with Rs. 0 cost',
+            count: auditData.pendingOrdersWithMissingCost.length,
+            icon: '🔥',
+            color: '#3b82f6',
+            glow: 'rgba(59,130,246,0.15)',
+            grad: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.05))'
+          }].map(card => (
+            <div
+              key={card.key}
+              onClick={() => setAuditFilter(card.key)}
+              style={{
+                cursor: 'pointer',
+                borderRadius: 16,
+                border: auditFilter === card.key ? `1.5px solid ${card.color}` : '1px solid var(--border)',
+                background: auditFilter === card.key ? card.grad : 'var(--bg-surface)',
+                padding: '20px 22px',
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.25s ease',
+                boxShadow: auditFilter === card.key ? `0 4px 20px ${card.glow}` : 'none'
+              }}
+            >
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: card.color, opacity: auditFilter === card.key ? 1 : 0.3, transition: 'opacity 0.25s' }} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 36, fontWeight: 900, color: card.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {card.count}
+                </div>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 10,
+                  background: `${card.color}22`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18
+                }}>{card.icon}</div>
               </div>
-              <div style={{ fontSize: 24, opacity: 0.4 }}>📦</div>
+              <div style={{ marginTop: 12, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{card.label}</div>
+              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: 3 }}>{card.sub}</div>
             </div>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 4 }}>Not in Registry</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Variants never mapped</div>
-          </div>
+          ))}
 
-          {/* Zero Cost */}
-          <div
-            className="stat-card"
-            onClick={() => setAuditFilter('zero')}
-            style={{
-              cursor: 'pointer',
-              border: auditFilter === 'zero' ? '1px solid var(--orange)' : '1px solid var(--border)',
-              background: auditFilter === 'zero' ? 'var(--orange-dim)' : 'var(--bg-surface)',
-              transition: 'all 0.2s ease',
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-          >
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'var(--orange)', borderRadius: '4px 4px 0 0' }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--orange)', lineHeight: 1 }}>
-                {auditData.zeroCostInRegistry.length}
-              </div>
-              <div style={{ fontSize: 24, opacity: 0.4 }}>⚠️</div>
-            </div>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 4 }}>Zero Cost Entry</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mapped but cost is Rs. 0</div>
-          </div>
-
-          {/* At-Risk Orders */}
-          <div
-            className="stat-card"
-            onClick={() => setAuditFilter('orders')}
-            style={{
-              cursor: 'pointer',
-              border: auditFilter === 'orders' ? '1px solid var(--blue)' : '1px solid var(--border)',
-              background: auditFilter === 'orders' ? 'var(--blue-dim)' : 'var(--bg-surface)',
-              transition: 'all 0.2s ease',
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-          >
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'var(--blue)', borderRadius: '4px 4px 0 0' }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--blue)', lineHeight: 1 }}>
-                {auditData.pendingOrdersWithMissingCost.length}
-              </div>
-              <div style={{ fontSize: 24, opacity: 0.4 }}>🔥</div>
-            </div>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 4 }}>At-Risk Orders</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Active orders with Rs. 0 cost</div>
-          </div>
-
-          {/* Health Score Card */}
+          {/* Health Score Ring */}
           {(() => {
             const totalIssues = auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length;
             const healthScore = totalIssues === 0 ? 100 : Math.max(0, 100 - (totalIssues * 5));
-            const healthColor = healthScore === 100 ? 'var(--green)' : healthScore >= 70 ? 'var(--yellow)' : 'var(--red)';
-            const healthBg = healthScore === 100 ? 'var(--green-dim)' : healthScore >= 70 ? 'var(--yellow-dim)' : 'var(--red-dim)';
+            const healthColor = healthScore === 100 ? '#22c55e' : healthScore >= 70 ? '#f59e0b' : '#ef4444';
+            const r = 38; const circ = 2 * Math.PI * r;
+            const dash = (healthScore / 100) * circ;
             return (
-              <div
-                className="stat-card"
-                style={{
-                  background: healthBg,
-                  border: `1px solid ${healthColor}`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-              >
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: healthColor }} />
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: healthColor, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                  Health Score
+              <div style={{
+                borderRadius: 16,
+                border: `1.5px solid ${healthColor}44`,
+                background: `${healthColor}0d`,
+                padding: '20px 22px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                textAlign: 'center', position: 'relative', overflow: 'hidden'
+              }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: healthColor }} />
+                <svg width={92} height={92} viewBox="0 0 92 92" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx={46} cy={46} r={r} fill="none" stroke="var(--border)" strokeWidth={7} />
+                  <circle cx={46} cy={46} r={r} fill="none" stroke={healthColor} strokeWidth={7}
+                    strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+                    style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+                </svg>
+                <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: healthColor, lineHeight: 1 }}>{healthScore}</div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>/ 100</div>
                 </div>
-                <div style={{ fontSize: 40, fontWeight: 900, color: healthColor, lineHeight: 1 }}>
-                  {healthScore}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                  {healthScore === 100 ? 'All Clear' : `${totalIssues} issue${totalIssues !== 1 ? 's' : ''}`}
-                </div>
-                <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 4, marginTop: 10, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${healthScore}%`, background: healthColor, borderRadius: 4, transition: 'width 0.5s ease' }} />
+                <div style={{ marginTop: 10, fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)' }}>Health Score</div>
+                <div style={{ fontSize: '0.7rem', color: healthColor, fontWeight: 600, marginTop: 2 }}>
+                  {healthScore === 100 ? '✅ All Clear' : `${totalIssues} issue${totalIssues !== 1 ? 's' : ''}`}
                 </div>
               </div>
             )
           })()}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 30 }}>
-          <div style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', padding: '20px 24px', borderRadius: '16px', boxShadow: '0 10px 20px rgba(79,70,229,0.2)' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.75, letterSpacing: 1 }}>💰 Inventory Value</div>
-            <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6 }}>Rs {totals.acceptedValue.toLocaleString()}</div>
-            <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.8 }}>{totals.acceptedQty} units accepted</div>
-          </div>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px 24px', borderRadius: '16px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>📈 Avg Profit Margin</div>
-            <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444' }}>{avgMargin}%</div>
-            <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Across verified products</div>
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'var(--border)', borderRadius: '0 0 16px 16px' }}>
-              <div style={{ height: '100%', width: `${Math.min(avgMargin, 100)}%`, background: avgMargin >= 40 ? 'var(--green)' : avgMargin >= 20 ? 'var(--yellow)' : '#ef4444', borderRadius: '0 0 0 16px', transition: 'width 0.6s ease' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+          {[{
+            label: '💰 Inventory Value', value: `Rs ${totals.acceptedValue.toLocaleString()}`, sub: `${totals.acceptedQty} units accepted`,
+            grad: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', shadow: '0 8px 24px rgba(79,70,229,0.25)', dark: true
+          },{
+            label: '📈 Avg Margin', value: `${avgMargin}%`, sub: 'Across verified products',
+            vColor: avgMargin >= 40 ? '#22c55e' : avgMargin >= 20 ? '#f59e0b' : '#ef4444',
+            bar: { width: Math.min(avgMargin, 100), color: avgMargin >= 40 ? '#22c55e' : avgMargin >= 20 ? '#f59e0b' : '#ef4444' }
+          },{
+            label: '⚠️ At-Risk SKUs', value: totals.atRiskCount, sub: 'Margin < 20%',
+            vColor: totals.atRiskCount > 0 ? '#ef4444' : '#22c55e',
+            border: totals.atRiskCount > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)'
+          },{
+            label: '⏳ Pending Value', value: `Rs ${totals.pendingValue.toLocaleString()}`, sub: 'Awaiting acceptance',
+            vColor: '#f59e0b'
+          }].map((c, i) => (
+            <div key={i} style={{
+              background: c.grad || 'var(--bg-surface)',
+              border: `1px solid ${c.border || 'var(--border)'}`,
+              padding: '20px 22px', borderRadius: 16,
+              boxShadow: c.shadow || 'none',
+              position: 'relative', overflow: 'hidden',
+              color: c.dark ? '#fff' : 'var(--text-primary)'
+            }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, opacity: c.dark ? 0.8 : 0.55, marginBottom: 10 }}>{c.label}</div>
+              <div style={{ fontSize: '1.85rem', fontWeight: 900, lineHeight: 1, color: c.dark ? '#fff' : (c.vColor || 'var(--text-primary)') }}>{c.value}</div>
+              <div style={{ fontSize: '0.72rem', marginTop: 6, opacity: c.dark ? 0.75 : 0.55 }}>{c.sub}</div>
+              {c.bar && (
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'var(--border)' }}>
+                  <div style={{ height: '100%', width: `${c.bar.width}%`, background: c.bar.color, transition: 'width 0.6s ease' }} />
+                </div>
+              )}
             </div>
-          </div>
-          <div style={{ background: 'var(--bg-surface)', border: `1px solid ${totals.atRiskCount > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`, padding: '20px 24px', borderRadius: '16px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>⚠️ At Risk SKUs</div>
-            <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: totals.atRiskCount > 0 ? '#ef4444' : 'var(--green)' }}>{totals.atRiskCount}</div>
-            <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Products with margin &lt; 20%</div>
-          </div>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: '20px 24px', borderRadius: '16px' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.5, color: 'var(--text-secondary)', letterSpacing: 1 }}>⏳ Pending Value</div>
-            <div style={{ fontSize: '2rem', fontWeight: 900, marginTop: 6, color: 'var(--yellow)' }}>Rs {totals.pendingValue.toLocaleString()}</div>
-            <div style={{ fontSize: '0.72rem', marginTop: 4, opacity: 0.5, color: 'var(--text-muted)' }}>Awaiting cost acceptance</div>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* ── Pill Tabs ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 28, flexWrap: 'wrap' }}>
+      {/* ── Segmented Tab Bar ── */}
+      <div style={{
+        display: 'flex', gap: 4, marginBottom: 24,
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 14, padding: 5,
+        flexWrap: 'wrap'
+      }}>
         {[
-          { key: 'watchdog', label: 'Cost Watchdog', count: auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length, color: 'var(--red)', bg: 'var(--red-dim)', icon: '🛡️' },
-          { key: 'pending',  label: 'Pending',  count: lists.pending.length,  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: '⏳' },
-          { key: 'verified', label: 'Verified', count: lists.verified.length, color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: '✅' },
-          { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', bg: 'rgba(168,85,247,0.12)', icon: '🔄' },
-          { key: 'active',   label: 'Active',   count: lists.active.length,   color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',   icon: '🟢' },
-          { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', bg: 'rgba(251,146,60,0.12)',   icon: '📝' },
-          { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', bg: 'rgba(148,163,184,0.12)',  icon: '📦' },
-          { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: 'var(--brand)', bg: 'var(--brand-glow)',  icon: '👻' },
+          { key: 'watchdog', label: 'Watchdog', count: auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length, color: '#ef4444', icon: '🛡️' },
+          { key: 'pending',  label: 'Pending',  count: lists.pending.length,  color: '#f59e0b', icon: '⏳' },
+          { key: 'verified', label: 'Verified', count: lists.verified.length, color: '#22c55e', icon: '✅' },
+          { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', icon: '🔄' },
+          { key: 'active',   label: 'Active',   count: lists.active.length,   color: '#3b82f6', icon: '🟢' },
+          { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', icon: '📝' },
+          { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', icon: '📦' },
+          { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: '#8b5cf6', icon: '👻' },
         ].map(t => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 18px', borderRadius: 50, border: 'none', cursor: 'pointer',
-              background: activeTab === t.key ? t.bg : 'var(--bg-surface)',
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '7px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+              background: activeTab === t.key ? 'var(--bg-surface)' : 'transparent',
               color: activeTab === t.key ? t.color : 'var(--text-muted)',
               fontWeight: activeTab === t.key ? 700 : 500,
-              fontSize: '0.88rem',
-              boxShadow: activeTab === t.key ? `0 0 0 1.5px ${t.color}` : '0 0 0 1px var(--border)',
-              transition: 'all 0.2s ease'
+              fontSize: '0.84rem',
+              boxShadow: activeTab === t.key ? '0 1px 6px rgba(0,0,0,0.15)' : 'none',
+              transition: 'all 0.18s ease',
+              whiteSpace: 'nowrap'
             }}
           >
-            {t.icon} {t.label}
-            <span style={{
-              background: activeTab === t.key ? t.color : 'var(--bg-elevated)',
-              color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
-              borderRadius: 50, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700, minWidth: 22, textAlign: 'center'
-            }}>{t.count}</span>
+            <span style={{ fontSize: '0.9rem' }}>{t.icon}</span>
+            {t.label}
+            {t.count > 0 && (
+              <span style={{
+                background: activeTab === t.key ? t.color : 'var(--border)',
+                color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
+                borderRadius: 20, padding: '1px 7px', fontSize: '0.68rem', fontWeight: 700, minWidth: 20, textAlign: 'center',
+                transition: 'all 0.18s ease'
+              }}>{t.count}</span>
+            )}
           </button>
         ))}
       </div>
