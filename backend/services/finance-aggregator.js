@@ -84,8 +84,77 @@ class FinanceAggregator {
       ORDER BY order_date DESC
     `).all(Number(storeId));
 
+    // 3. Extract unmapped line items from active orders in the last 60 days
+    const activeOrders = db.prepare(`
+      SELECT line_items FROM orders 
+      WHERE store_id = ? 
+      AND delivery_status NOT IN ('Cancelled', 'Returned', 'RTO')
+      AND order_date >= date('now', '-60 days')
+      AND line_items IS NOT NULL
+    `).all(Number(storeId));
+
+    const catalog = db.prepare(`
+      SELECT parent_title, variant_title, shopify_variant_id, sku 
+      FROM product_master_costs 
+      WHERE store_id = ?
+    `).all(Number(storeId));
+
+    const missingMap = new Map();
+
+    for (const order of activeOrders) {
+      let items = [];
+      try {
+        items = JSON.parse(order.line_items || '[]');
+      } catch (e) {}
+
+      for (const item of items) {
+        if (!item.title) continue;
+
+        const vId = item.variant_id ? String(item.variant_id) : '';
+        const sku = item.sku ? String(item.sku).trim() : '';
+        const pName = item.title.trim();
+        const vName = item.variant_title ? item.variant_title.trim() : '';
+
+        let matched = false;
+        if (vId || sku) {
+          matched = catalog.some(c => 
+            (vId && c.shopify_variant_id === vId) || 
+            (sku && c.sku === sku)
+          );
+        }
+        if (!matched) {
+          matched = catalog.some(c => c.parent_title === pName && c.variant_title === vName);
+        }
+        if (!matched) {
+          matched = catalog.some(c => c.parent_title === pName);
+        }
+        if (!matched && vName) {
+          const fullSearchTitle1 = `${pName} - ${vName}`;
+          const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`;
+          matched = catalog.some(c => 
+            c.parent_title.trim() === fullSearchTitle1 || 
+            c.parent_title.trim() === fullSearchTitle2
+          );
+        }
+
+        if (!matched) {
+          const key = `${pName}::${vName}`;
+          if (!missingMap.has(key)) {
+            missingMap.set(key, {
+              parent_title: pName,
+              variant_title: vName,
+              inventory_qty: 0,
+              landed_cost: 0
+            });
+          }
+        }
+      }
+    }
+
+    const missingInRegistry = Array.from(missingMap.values());
+
     return {
-      missingInRegistry: [],
+      missingInRegistry,
       zeroCostInRegistry,
       pendingOrdersWithMissingCost
     };
