@@ -53,7 +53,6 @@ const Login = lazyWithRetry(() => import('./pages/Login'), 'Login')
 const Users = lazyWithRetry(() => import('./pages/Users'), 'Users')
 const Profile = lazyWithRetry(() => import('./pages/Profile'), 'Profile')
 const CostManager = lazyWithRetry(() => import('./pages/CostManager'), 'CostManager')
-const PreventionManager = lazyWithRetry(() => import('./pages/PreventionManager'), 'PreventionManager')
 const MarketingIntelligence = lazyWithRetry(() => import('./pages/MarketingIntelligence'), 'MarketingIntelligence')
 const WhatsAppBot = lazyWithRetry(() => import('./pages/WhatsAppBot'), 'WhatsAppBot')
 const TemplateManager = lazyWithRetry(() => import('./pages/TemplateManager'), 'TemplateManager')
@@ -158,7 +157,7 @@ function AppContent() {
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/costing" element={<CostManager />} />
-                  <Route path="/prevention" element={<PreventionManager />} />
+                  <Route path="/prevention" element={<CostManager />} />
                   <Route path="/marketing" element={<MarketingIntelligence />} />
                   <Route path="/diagnostics" element={<DiagnosticCenter />} />
                   <Route path="/system-status" element={<SystemStatus />} />
