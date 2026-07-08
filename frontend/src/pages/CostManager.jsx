@@ -67,6 +67,39 @@ export default function CostManager() {
     }
   }, [activeStoreId])
 
+  // Parse query parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const searchParam = params.get('search')
+    const tabParam = params.get('tab')
+    if (searchParam) {
+      setSearch(searchParam)
+      if (tabParam) {
+        setActiveTab(tabParam)
+      } else {
+        setActiveTab('pending')
+      }
+    }
+  }, [])
+
+  // Auto-expand matching parent products when search is active
+  useEffect(() => {
+    if (search.trim() && costs.length > 0) {
+      const groupedNames = new Set()
+      costs.forEach(c => {
+        if (c.parent_title) {
+          groupedNames.add(c.parent_title)
+        }
+      })
+      const matchingNames = Array.from(groupedNames).filter(name => 
+        name.toLowerCase().includes(search.toLowerCase())
+      )
+      if (matchingNames.length > 0) {
+        setExpandedParents(new Set(matchingNames))
+      }
+    }
+  }, [search, costs])
+
   const fetchAudit = async () => {
     setLoadingAudit(true)
     try {

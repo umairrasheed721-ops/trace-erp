@@ -76,6 +76,8 @@ const getMatchLabel = (type) => {
 
 // Cost breakdown helper component moved to file level
 const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
+  const navigate = useNavigate();
+
   if (loadingBreakdown) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⌛ Loading items...</div>
   if (!breakdown || breakdown.length === 0) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⚠️ No item data found</div>
 
@@ -107,21 +109,46 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
               <span>
                 {item.sku ? `SKU: ${item.sku}` : <span style={{ fontStyle: 'italic', opacity: 0.5 }}>No SKU</span>}
               </span>
-              {item.match_type && (
-                <span 
-                  style={{
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                    fontSize: '0.55rem',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.3px',
-                    ...getMatchBadgeStyle(item.match_type)
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {item.match_type && (
+                  <span 
+                    style={{
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      fontSize: '0.55rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.3px',
+                      ...getMatchBadgeStyle(item.match_type)
+                    }}
+                  >
+                    {getMatchLabel(item.match_type)}
+                  </span>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const title = item.title ? item.title.trim() : '';
+                    const hasCost = item.landed_cost > 0;
+                    navigate(`/costing?search=${encodeURIComponent(title)}&tab=${hasCost ? 'verified' : 'pending'}`);
                   }}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#fff',
+                    padding: '2px 6px',
+                    fontSize: '0.6rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  title="Edit Master Cost"
                 >
-                  {getMatchLabel(item.match_type)}
-                </span>
-              )}
+                  ✏️ Edit
+                </button>
+              </div>
             </div>
           </div>
         ))}
