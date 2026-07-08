@@ -810,6 +810,100 @@ router.get('/prevention-audit', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// POST /api/finance/heal-order-cost
+router.post('/heal-order-cost', (req, res) => {
+  const { store_id, shopify_order_id } = req.body;
+  if (!store_id || !shopify_order_id) {
+    return res.status(400).json({ error: 'store_id and shopify_order_id required' });
+  }
+
+  try {
+    const order = db.prepare('SELECT id, line_items, delivery_status FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(Number(store_id), String(shopify_order_id));
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    // Fetch catalog registry for matching
+    const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost, packaging_cost FROM product_master_costs WHERE store_id = ?').all(Number(store_id));
+
+    let parsedItems = [];
+    try {
+      if (order.line_items) parsedItems = JSON.parse(order.line_items);
+    } catch (e) {}
+
+    let totalLanded = 0;
+    let totalPackaging = 0;
+    let hasMissingCostItem = false;
+
+    if (parsedItems.length > 0) {
+      for (const item of parsedItems) {
+        const qty = item.quantity || 0;
+        if (qty === 0) continue;
+
+        let matchRow = null;
+        const vId = item.variant_id ? String(item.variant_id) : '';
+        const numericVariantId = vId.includes('/') ? vId.split('/').pop() : vId;
+        const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+        const sku = item.sku ? String(item.sku).trim() : '';
+        const pName = item.title ? String(item.title).trim() : '';
+        const vName = item.variant_title ? String(item.variant_title).trim() : '';
+
+        // 1. Variant ID match (prioritized)
+        if (numericVariantId) {
+          matchRow = catalog.find(c => 
+            c.shopify_variant_id && 
+            (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
+          );
+        }
+
+        // 2. SKU match
+        if (!matchRow && sku) {
+          const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+          if (skuMatches.length > 0) {
+            skuMatches.sort((a, b) => {
+              const aCost = a.landed_cost || a.shopify_cost || 0;
+              const bCost = b.landed_cost || b.shopify_cost || 0;
+              if (aCost > 0 && bCost === 0) return -1;
+              if (bCost > 0 && aCost === 0) return 1;
+              const aStatus = a.status || 'active';
+              const bStatus = b.status || 'active';
+              if (aStatus === 'active' && bStatus !== 'active') return -1;
+              if (bStatus === 'active' && aStatus !== 'active') return 1;
+              return 0;
+            });
+            matchRow = skuMatches[0];
+          }
+        }
+
+        // 3. Parent + Variant Name match
+        if (!matchRow && pName) {
+          matchRow = catalog.find(c => 
+            c.parent_title && c.parent_title.toLowerCase() === pName.toLowerCase() && 
+            (vName ? (c.variant_title && c.variant_title.toLowerCase() === vName.toLowerCase()) : true)
+          );
+        }
+
+        if (matchRow) {
+          const landed = matchRow.landed_cost || 0;
+          const pkg = matchRow.packaging_cost || 0;
+          totalLanded += (landed * qty);
+          totalPackaging += (pkg * qty);
+        } else {
+          hasMissingCostItem = true;
+        }
+      }
+    }
+
+    if (hasMissingCostItem) {
+      return res.status(400).json({ error: 'Cannot heal order cost because some line items do not have matching costing registry entries.' });
+    }
+
+    // Forcefully update the order cost and set cost_locked to 1
+    db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = 1 WHERE id = ?')
+      .run(totalLanded, totalPackaging, order.id);
+
+    res.json({ success: true, landed_cost: totalLanded, packaging_cost: totalPackaging });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/finance/marketing-metrics
 router.get('/marketing-metrics', (req, res) => {
   const { store_id, days = 30 } = req.query;

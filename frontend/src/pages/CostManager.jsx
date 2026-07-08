@@ -459,6 +459,25 @@ export default function CostManager() {
     }
   }
 
+  const handleHealOrderCost = async (shopifyOrderId) => {
+    try {
+      const res = await fetch('/api/finance/heal-order-cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, shopify_order_id: shopifyOrderId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast(`Successfully healed order cost to Rs ${data.landed_cost.toLocaleString()}!`, 'success');
+        fetchAudit();
+      } else {
+        throw new Error(data.error || 'Failed to heal cost');
+      }
+    } catch (e) {
+      addToast('Healing failed: ' + e.message, 'error');
+    }
+  }
+
   const toggleSelectAll = (isAll) => {
     if (isAll) {
       setSelectedParents(new Set())
@@ -1750,9 +1769,7 @@ export default function CostManager() {
                         <td style={{ padding: '14px 16px' }}>
                           {isOrder ? (
                             <button
-                              onClick={() => {
-                                navigate(`/search?order=${row.shopify_order_id}`);
-                              }}
+                              onClick={() => handleHealOrderCost(row.shopify_order_id)}
                               style={{
                                 padding: '6px 14px', borderRadius: 6, border: 'none',
                                 background: 'var(--red)', color: '#fff',
