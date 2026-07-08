@@ -383,6 +383,22 @@ export default function CostManager() {
     } catch (e) { addToast('Delete failed', 'error') }
   }
 
+  const handleDeleteVariant = async (parentTitle, variantTitle) => {
+    const displayName = variantTitle ? `${parentTitle} (${variantTitle})` : parentTitle;
+    if (!window.confirm(`Are you sure you want to delete "${displayName}" from the Cost Registry?`)) return
+    try {
+      const res = await fetch('/api/finance/delete-master-variant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, parent_title: parentTitle, variant_title: variantTitle || '' })
+      })
+      if (res.ok) {
+        addToast('Variant deleted from registry successfully', 'success')
+        fetchCosts()
+      }
+    } catch (e) { addToast('Delete variant failed', 'error') }
+  }
+
   const handleBulkAcceptSelected = async () => {
     if (selectedParents.size === 0) return
     setBulkProcessing(true)
@@ -1863,7 +1879,7 @@ export default function CostManager() {
                                   padding: '2px 6px', borderRadius: 4
                                 }}>{v.status || 'active'}</span>
                               </td>
-                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                                 <button 
                                   className="btn btn-secondary btn-sm"
                                   onClick={() => {
@@ -1872,6 +1888,11 @@ export default function CostManager() {
                                     setShowModal(true);
                                   }}
                                 >✏️ Edit Cost</button>
+                                <button 
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                                  onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)}
+                                >🗑️ Delete</button>
                               </td>
                             </tr>
                           );
@@ -1933,10 +1954,15 @@ export default function CostManager() {
                               padding: '2px 6px', borderRadius: 4
                             }}>{v.status || 'active'}</span>
                           </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              Please set SKU in Shopify and Sync.
+                              Set SKU in Shopify & Sync.
                             </span>
+                            <button 
+                              className="btn btn-secondary btn-sm"
+                              style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                              onClick={() => handleDeleteVariant(v.parent_title, v.variant_title)}
+                            >🗑️ Delete</button>
                           </td>
                         </tr>
                       );

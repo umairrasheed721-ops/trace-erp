@@ -757,6 +757,18 @@ router.post('/delete-master-cost', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/finance/delete-master-variant
+router.post('/delete-master-variant', (req, res) => {
+  const { store_id, parent_title, variant_title } = req.body;
+  if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
+
+  try {
+    const result = db.prepare('DELETE FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?')
+      .run(Number(store_id), parent_title, variant_title || '');
+    res.json({ success: true, count: result.changes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/finance/prevention-audit
 router.get('/prevention-audit', asyncHandler(async (req, res) => {
   const { store_id } = req.query;
