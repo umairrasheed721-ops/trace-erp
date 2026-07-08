@@ -25,18 +25,27 @@ async function main() {
     return;
   }
 
-  const id = '173013411583';
-  console.log(`🔐 Authenticated. Fetching full details for order ${id}...`);
-  const res = await fetch(`${API_BASE}/api/diagnostics/order-full-details/${id}`, {
+  console.log(`🔐 Authenticated. Fetching stores list...`);
+  const storesRes = await fetch(`${API_BASE}/api/stores`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  
-  if (res.ok) {
-    const data = await res.json();
-    console.log("Response payload:");
-    console.log(JSON.stringify(data, null, 2));
-  } else {
-    console.error(`❌ Failed: ${res.status}`);
+  const stores = await storesRes.json();
+  console.log("Stores:", stores);
+
+  for (const store of stores) {
+    const storeId = store.id;
+    console.log(`Searching for TR32826 in Store ${storeId} (${store.name})...`);
+    // Search orders
+    const searchUrl = `${API_BASE}/api/orders?store_id=${storeId}&search=TR32826&limit=10&page=1&status=`;
+    const res = await fetch(searchUrl, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.orders && data.orders.length > 0) {
+        console.log(`FOUND!`, JSON.stringify(data.orders, null, 2));
+      }
+    }
   }
 }
 

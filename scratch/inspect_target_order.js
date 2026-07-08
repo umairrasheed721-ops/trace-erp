@@ -1,10 +1,7 @@
 const db = require('../backend/db');
 
-const rows = db.prepare(`
-  SELECT courier_status, COUNT(*) as count 
-  FROM orders 
-  GROUP BY courier_status 
-  ORDER BY count DESC
-`).all();
+const count = db.prepare("SELECT COUNT(*) as cnt FROM orders").get();
+console.log("Total orders in database:", count.cnt);
 
-console.log(JSON.stringify(rows, null, 2));
+const sample = db.prepare("SELECT * FROM orders LIMIT 10").all();
+console.log("Sample orders:", JSON.stringify(sample, null, 2));

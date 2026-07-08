@@ -193,9 +193,9 @@ const COLUMN_INFO = {
     example: "Orders marked delivered but courier hasn't paid you yet. This is money owed to you. If this number is high and old, chase your courier for overdue COD remittances."
   },
   costGaps: {
-    description: "Delivered shipments missing product cost registry mapping.",
-    formula: "COUNT(id) WHERE status = 'Delivered' AND cost = 0",
-    example: "Delivered orders where product cost = Rs 0 in the system. This means PNL for these orders is overstated. Go to Cost Manager and fill in the missing costs."
+    description: "Active/dispatched orders missing product cost registry mapping.",
+    formula: "COUNT(id) WHERE status NOT IN ('Cancelled', 'Returned', 'Return Received', 'RTO') AND cost = 0",
+    example: "Orders where product cost = Rs 0 in the system. This means PNL/margin cannot be calculated accurately. Go to Cost Manager to fix these missing costs."
   },
   zeroExpenseCount: {
     description: "Dispatched shipments showing zero courier fees.",
