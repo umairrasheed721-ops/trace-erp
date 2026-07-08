@@ -58,11 +58,15 @@ export default function SearchTool() {
   const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const hasState = !!(location.state && Object.keys(location.state).length > 0);
-  const [preset, setPreset] = usePersistentState('command_center_filters_v1_preset', location.state?.preset || 'This Month', { override: hasState })
-  const [customStart, setCustomStart] = usePersistentState('command_center_filters_v1_custom_start', location.state?.customStart || '', { override: hasState })
-  const [customEnd, setCustomEnd] = usePersistentState('command_center_filters_v1_custom_end', location.state?.customEnd || '', { override: hasState })
-  const [status, setStatus] = usePersistentState('command_center_filters_v1_status', location.state?.status || 'Pending', { override: hasState })
-  const [keyword, setKeyword] = usePersistentState('command_center_filters_v1_keyword', location.state?.keyword || '', { override: hasState })
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const orderQuery = searchParams.get('order') || searchParams.get('search');
+  const hasQueryOrState = hasState || !!orderQuery;
+
+  const [preset, setPreset] = usePersistentState('command_center_filters_v1_preset', orderQuery ? 'All Time' : (location.state?.preset || 'This Month'), { override: hasQueryOrState })
+  const [customStart, setCustomStart] = usePersistentState('command_center_filters_v1_custom_start', location.state?.customStart || '', { override: hasQueryOrState })
+  const [customEnd, setCustomEnd] = usePersistentState('command_center_filters_v1_custom_end', location.state?.customEnd || '', { override: hasQueryOrState })
+  const [status, setStatus] = usePersistentState('command_center_filters_v1_status', orderQuery ? 'All Statuses' : (location.state?.status || 'Pending'), { override: hasQueryOrState })
+  const [keyword, setKeyword] = usePersistentState('command_center_filters_v1_keyword', orderQuery || location.state?.keyword || '', { override: hasQueryOrState })
   const debouncedKeyword = useDebounce(keyword, 400)
   const [sort, setSort] = useState('Default')
   const [sortKey, setSortKey] = useState(() => localStorage.getItem('sort_key') || 'order_date')
@@ -282,8 +286,10 @@ export default function SearchTool() {
   }, [persistModuleState, preset, customStart, customEnd, status, keyword, colFilters, page, sort, sortKey, sortDir, sortMode, activeRowId])
 
   const restoreState = useCallback(() => {
-    // If location.state is present, we are performing a drill-down. Skip restoring CommandCenter's cached state.
-    if (location.state && Object.keys(location.state).length > 0) {
+    // If location.state is present or URL search parameters exist, skip restoring CommandCenter's cached state.
+    const queryParams = new URLSearchParams(location.search)
+    const hasQueryParams = queryParams.has('order') || queryParams.has('search')
+    if ((location.state && Object.keys(location.state).length > 0) || hasQueryParams) {
       ignoreFilterChangesRef.current = false
       return
     }
@@ -307,13 +313,24 @@ export default function SearchTool() {
         scrollLeft: state.scrollLeft || 0
       }
     }
-  }, [getModuleState, location.state])
+  }, [getModuleState, location.state, location.search])
 
   // Register callbacks on mount/state updates
   useEffect(() => {
     registerModule('CommandCenter', { saveState, restoreState })
     return () => unregisterModule('CommandCenter')
   }, [registerModule, unregisterModule, saveState, restoreState])
+
+  // Handle order/search query parameter updates dynamically
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const orderParam = params.get('order') || params.get('search');
+    if (orderParam) {
+      setKeyword(orderParam);
+      setStatus('All Statuses');
+      setPreset('All Time');
+    }
+  }, [location.search, setKeyword, setStatus, setPreset]);
 
   // Hydrate state from cache exactly once on initial mount
   useEffect(() => {
