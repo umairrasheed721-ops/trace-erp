@@ -327,31 +327,49 @@ function healCostsForStore(storeId) {
 
           let matchRow = null;
           const vId = item.variant_id ? String(item.variant_id) : '';
+          const numericVariantId = vId.includes('/') ? vId.split('/').pop() : vId;
+          const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
           const sku = item.sku ? String(item.sku).trim() : '';
-          
-          if (vId || sku) {
+          const pName = item.title ? String(item.title).trim() : '';
+          const vName = item.variant_title ? String(item.variant_title).trim() : '';
+
+          // 1. Variant ID match (prioritized)
+          if (numericVariantId) {
             matchRow = catalog.find(c => 
-              (vId && c.shopify_variant_id === vId) || 
-              (sku && c.sku === sku)
+              c.shopify_variant_id && 
+              (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
             );
           }
 
-          if (!matchRow && item.title) {
-            const pName = item.title.trim();
-            const vName = item.variant_title ? item.variant_title.trim() : '';
-            
-            matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
+          // 2. SKU match
+          if (!matchRow && sku) {
+            const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+            if (skuMatches.length > 0) {
+              skuMatches.sort((a, b) => {
+                const aCost = a.landed_cost || a.shopify_cost || 0;
+                const bCost = b.landed_cost || b.shopify_cost || 0;
+                return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
+              });
+              matchRow = skuMatches[0];
+            }
+          }
+
+          // 3. Name/Ghost match
+          if (!matchRow && pName) {
+            matchRow = catalog.find(c => 
+              c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+              c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()
+            );
             if (!matchRow) {
-              matchRow = catalog.find(c => c.parent_title === pName);
+              matchRow = catalog.find(c => c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim());
             }
             if (!matchRow && vName) {
-              // Match when variant properties are appended to the product title in Shopify (ghost setups)
-              const fullSearchTitle1 = `${pName} - ${vName}`;
-              const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`;
-              matchRow = catalog.find(c => 
-                c.parent_title.trim() === fullSearchTitle1 || 
-                c.parent_title.trim() === fullSearchTitle2
-              );
+              const fullSearchTitle1 = `${pName} - ${vName}`.toLowerCase();
+              const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`.toLowerCase();
+              matchRow = catalog.find(c => {
+                const cpt = c.parent_title ? c.parent_title.toLowerCase().trim() : '';
+                return cpt === fullSearchTitle1 || cpt === fullSearchTitle2;
+              });
             }
           }
 

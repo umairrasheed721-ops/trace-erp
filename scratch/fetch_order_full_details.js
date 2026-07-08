@@ -25,27 +25,16 @@ async function main() {
     return;
   }
 
-  console.log(`🔐 Authenticated. Fetching stores list...`);
-  const storesRes = await fetch(`${API_BASE}/api/stores`, {
+  const res = await fetch(`${API_BASE}/api/finance/master-costs?store_id=12`, {
     headers: { 'Authorization': `Bearer ${token}` }
   });
-  const stores = await storesRes.json();
-  console.log("Stores:", stores);
-
-  for (const store of stores) {
-    const storeId = store.id;
-    console.log(`Searching for TR32826 in Store ${storeId} (${store.name})...`);
-    // Search orders
-    const searchUrl = `${API_BASE}/api/orders?store_id=${storeId}&search=TR32826&limit=10&page=1&status=`;
-    const res = await fetch(searchUrl, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.orders && data.orders.length > 0) {
-        console.log(`FOUND!`, JSON.stringify(data.orders, null, 2));
-      }
-    }
+  if (res.ok) {
+    const list = await res.json();
+    const match1 = list.filter(item => 
+      item.sku === 'AR-000171' ||
+      item.shopify_variant_id === '44765194158339'
+    );
+    console.log("Matches for SKU AR-000171 / Variant 44765194158339:", JSON.stringify(match1, null, 2));
   }
 }
 

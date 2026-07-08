@@ -1,93 +1,95 @@
-// Simulation of healCostsForStore logic for order 201919
+// Simulation of improved healCostsForStore logic with duplicate SKUs
 const catalog = [
   {
-    "shopify_variant_id": "gid://shopify/ProductVariant/44368693002430",
-    "sku": "AR-000595",
-    "parent_title": "ZR T-shirt for men",
-    "variant_title": "Navy blue / large",
-    "landed_cost": 450,
-    "packaging_cost": 0
+    "shopify_variant_id": "gid://shopify/ProductVariant/46216401191171",
+    "sku": "AR-001186",
+    "parent_title": "Imported Nik- mesh",
+    "variant_title": "L / Charcoal Grey",
+    "landed_cost": 0,
+    "shopify_cost": 0,
+    "status": "draft"
   },
   {
-    "shopify_variant_id": "gid://shopify/ProductVariant/44283174092990",
-    "sku": "AR-000579",
-    "parent_title": "ZR T-shirt for men",
-    "variant_title": "Red / large",
-    "landed_cost": 450,
-    "packaging_cost": 0
+    "shopify_variant_id": "gid://shopify/ProductVariant/47844924817667",
+    "sku": "AR-001186",
+    "parent_title": "F-PERRY Embroidery LOGO",
+    "variant_title": "XL / Pista",
+    "landed_cost": 550,
+    "shopify_cost": 550,
+    "status": "active"
   }
 ];
 
-const order = {
-  "id": 201919,
-  "line_items": JSON.stringify([
-    {"id":17063098941630,"variant_id":44368693002430,"title":"ZR T-shirt for men","variant_title":"Navy blue / large","sku":"AR-000595","quantity":1,"price":"1190.00","image_url":"https://cdn.shopify.com/s/files/1/0660/3338/5662/files/7j.png?v=1722691954"},
-    {"id":17063098974398,"variant_id":44283174092990,"title":"ZR T-shirt for men","variant_title":"Red / large","sku":"AR-000579","quantity":1,"price":"1190.00","image_url":"https://cdn.shopify.com/s/files/1/0660/3338/5662/files/6j.png?v=1722691560"}
-  ]),
-  "product_titles": "ZR T-shirt for men - Navy blue / large (x1), ZR T-shirt for men - Red / large (x1)"
+const orderItem = {
+  "variant_id": 47844924817667,
+  "sku": "AR-001186",
+  "title": "F-PERRY Embroidery LOGO",
+  "variant_title": "XL / Pista",
+  "quantity": 1
 };
 
-console.log('--- RUNNING SIMULATION ON LINE_ITEMS ---');
-let totalLanded = 0;
-let totalPackaging = 0;
-let matched = false;
+// Logic we put in finance-corrections.js:
+function findMatch(item) {
+  let matchRow = null;
+  const vId = item.variant_id ? String(item.variant_id) : '';
+  const numericVariantId = vId.includes('/') ? vId.split('/').pop() : vId;
+  const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+  const sku = item.sku ? String(item.sku).trim() : '';
+  const pName = item.title ? String(item.title).trim() : '';
+  const vName = item.variant_title ? String(item.variant_title).trim() : '';
 
-let parsedItems = [];
-try {
-  if (order.line_items) parsedItems = JSON.parse(order.line_items);
-} catch (e) {}
+  // 1. Variant ID match (prioritized)
+  if (numericVariantId) {
+    matchRow = catalog.find(c => 
+      c.shopify_variant_id && 
+      (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
+    );
+    if (matchRow) return { matchRow, method: 'variant_id' };
+  }
 
-if (parsedItems.length > 0) {
-  for (const item of parsedItems) {
-    const qty = item.quantity || 0;
-    console.log(`Processing item: "${item.title}" | "${item.variant_title}" | Qty: ${qty}`);
-    if (qty === 0) continue;
-
-    let matchRow = null;
-    const vId = item.variant_id ? String(item.variant_id) : '';
-    const sku = item.sku ? String(item.sku).trim() : '';
-    
-    if (vId || sku) {
-      matchRow = catalog.find(c => 
-        (vId && c.shopify_variant_id === vId) || 
-        (sku && c.sku === sku)
-      );
-      if (matchRow) console.log('Matched by Variant ID or SKU:', matchRow.parent_title, '| variant_title:', matchRow.variant_title);
-    }
-
-    if (!matchRow && item.title) {
-      const pName = item.title.trim();
-      const vName = item.variant_title ? item.variant_title.trim() : '';
-      
-      console.log(`Trying name match: pName="${pName}", vName="${vName}"`);
-      matchRow = catalog.find(c => c.parent_title === pName && c.variant_title === vName);
-      if (matchRow) console.log('Matched by direct parent + variant title');
-      
-      if (!matchRow) {
-        matchRow = catalog.find(c => c.parent_title === pName);
-        if (matchRow) console.log('Matched by parent title only');
-      }
-      
-      if (!matchRow && vName) {
-        // Match when variant properties are appended to the product title in Shopify (ghost setups)
-        const fullSearchTitle1 = `${pName} - ${vName}`;
-        const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`;
-        console.log(`Trying ghost match: search1="${fullSearchTitle1}", search2="${fullSearchTitle2}"`);
-        
-        matchRow = catalog.find(c => 
-          c.parent_title.trim() === fullSearchTitle1 || 
-          c.parent_title.trim() === fullSearchTitle2
-        );
-        if (matchRow) console.log('Matched by ghost title combination:', matchRow.parent_title);
-      }
-    }
-
-    if (matchRow) {
-      totalLanded += matchRow.landed_cost * qty;
-      totalPackaging += (matchRow.packaging_cost || 0) * qty;
-      matched = true;
+  // 2. SKU match
+  if (!matchRow && sku) {
+    const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+    if (skuMatches.length > 0) {
+      skuMatches.sort((a, b) => {
+        const aCost = a.landed_cost || a.shopify_cost || 0;
+        const bCost = b.landed_cost || b.shopify_cost || 0;
+        return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
+      });
+      matchRow = skuMatches[0];
+      if (matchRow) return { matchRow, method: 'sku' };
     }
   }
+
+  // 3. Name/Ghost match
+  if (!matchRow && pName) {
+    matchRow = catalog.find(c => 
+      c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+      c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()
+    );
+    if (matchRow) return { matchRow, method: 'ghost_exact' };
+    
+    if (!matchRow) {
+      matchRow = catalog.find(c => c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim());
+      if (matchRow) return { matchRow, method: 'parent_title_only' };
+    }
+  }
+
+  return { matchRow: null, method: 'none' };
 }
 
-console.log('Result:', { matched, totalLanded, totalPackaging });
+console.log("Simulating match for order item:");
+console.log(orderItem);
+const result = findMatch(orderItem);
+console.log("\nMatch result:", JSON.stringify(result, null, 2));
+
+// Test with SKU matching only (e.g. if variant ID is not provided or mismatching)
+const itemNoVariantId = {
+  "sku": "AR-001186",
+  "title": "F-PERRY Embroidery LOGO",
+  "variant_title": "XL / Pista",
+  "quantity": 1
+};
+console.log("\nSimulating match for item without variant_id:");
+const resultNoVariant = findMatch(itemNoVariantId);
+console.log("Match result (no variant id):", JSON.stringify(resultNoVariant, null, 2));

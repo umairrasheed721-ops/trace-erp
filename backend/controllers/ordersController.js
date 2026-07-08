@@ -65,18 +65,57 @@ exports.csUpdate = async (req, res) => {
 
     const newItemsStr = JSON.stringify(line_items || []);
     
-    // Calculate new total cost based on new line items
+    // Calculate new total cost based on new line items using robust multi-layer matching (matching breakdown logic)
     let totalCost = 0;
     let hasMissingCostItem = false;
     const items = line_items || [];
     for (const item of items) {
-      if (item.sku) {
-        const costRow = db.db.prepare('SELECT unit_cost FROM product_master_costs WHERE store_id = ? AND sku = ?').get(oldOrder.store_id, item.sku);
-        if (costRow && costRow.unit_cost > 0) {
-          totalCost += (costRow.unit_cost * item.quantity);
-        } else {
-          hasMissingCostItem = true;
-        }
+      const variantId = item.variant_id ? String(item.variant_id) : '';
+      const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+      const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+      const sku = item.sku ? String(item.sku).trim() : '';
+
+      const queryVariantId1 = numericVariantId || '__NONE__';
+      const queryVariantId2 = gidVariantId || '__NONE__';
+      const querySku = sku || '__NONE__';
+      const pName = item.title ? String(item.title).trim() : '';
+      const vName = item.variant_title ? String(item.variant_title).trim() : '';
+
+      const costRow = db.db.prepare(`
+        SELECT landed_cost, unit_cost FROM product_master_costs 
+        WHERE store_id = ? 
+        AND (
+          shopify_variant_id = ? 
+          OR shopify_variant_id = ? 
+          OR (sku = ? AND sku != '')
+          OR (LOWER(parent_title) = ?)
+        )
+        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
+                       WHEN sku = ? AND sku != '' THEN 1
+                       WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
+                       WHEN LOWER(parent_title) = ? THEN 3
+                       ELSE 4 END) ASC
+        LIMIT 1
+      `).get(
+        oldOrder.store_id,
+        queryVariantId1,
+        queryVariantId2,
+        querySku,
+        pName.toLowerCase(),
+        queryVariantId1,
+        queryVariantId2,
+        querySku,
+        pName.toLowerCase(),
+        vName.toLowerCase(),
+        pName.toLowerCase()
+      );
+
+      const landed = costRow ? costRow.landed_cost : 0;
+      const unit = costRow ? costRow.unit_cost : 0;
+      const resolvedUnitCost = landed || unit || 0;
+
+      if (resolvedUnitCost > 0) {
+        totalCost += (resolvedUnitCost * item.quantity);
       } else {
         hasMissingCostItem = true;
       }

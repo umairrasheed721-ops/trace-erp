@@ -80,9 +80,14 @@ const registryLookupStmt = db.prepare(`
     shopify_variant_id = ? 
     OR shopify_variant_id = ? 
     OR (sku = ? AND sku != '')
+    OR LOWER(parent_title) = ?
   )
-  ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
-           (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+  ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
+                 WHEN sku = ? AND sku != '' THEN 1
+                 WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
+                 WHEN LOWER(parent_title) = ? THEN 3
+                 ELSE 4 END) ASC,
+           (CASE WHEN landed_cost > 0 OR shopify_cost > 0 THEN 0 ELSE 1 END) ASC
   LIMIT 1
 `);
 
@@ -131,7 +136,22 @@ function calculateOrderCost(storeId, lineItems, costMap) {
     let unitCost = 0;
     const shopifyCost = costMap[variantId] || 0;
 
-    const registry = registryLookupStmt.get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+    const pName = item.title ? String(item.title).trim() : (item.name ? String(item.name).split(' - ')[0].trim() : '');
+    const vName = item.variant_title ? String(item.variant_title).trim() : (item.name && item.name.includes(' - ') ? String(item.name).split(' - ').slice(1).join(' - ').trim() : '');
+
+    const registry = registryLookupStmt.get(
+      storeId,
+      queryVariantId1,
+      queryVariantId2,
+      querySku,
+      pName.toLowerCase(),
+      queryVariantId1,
+      queryVariantId2,
+      querySku,
+      pName.toLowerCase(),
+      vName.toLowerCase(),
+      pName.toLowerCase()
+    );
     
     if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
       unitCost = registry.landed_cost || registry.shopify_cost || 0;
