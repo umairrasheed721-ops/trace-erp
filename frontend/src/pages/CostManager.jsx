@@ -54,6 +54,7 @@ export default function CostManager() {
   const [filterMargin, setFilterMargin] = useState('all') // 'all' | 'low' | 'mid' | 'high'
   const [inlineEdits, setInlineEdits] = useState({})  // { variantId: { unit_cost, packaging_cost } }
   const [savingInline, setSavingInline] = useState(null)
+  const [skuSubTab, setSkuSubTab] = useState('duplicates')
 
   useEffect(() => {
     if (activeStoreId) {
@@ -218,6 +219,37 @@ export default function CostManager() {
   const currentList = useMemo(() => {
     return lists[activeTab] || []
   }, [lists, activeTab])
+
+  const skuCheckerData = useMemo(() => {
+    const skuGroups = {}
+    const missingSkus = []
+    
+    costs.forEach(c => {
+      const sku = c.sku ? c.sku.trim() : '';
+      if (!sku) {
+        missingSkus.push(c);
+      } else {
+        if (!skuGroups[sku]) skuGroups[sku] = [];
+        skuGroups[sku].push(c);
+      }
+    });
+
+    const duplicates = [];
+    Object.entries(skuGroups).forEach(([sku, variants]) => {
+      if (variants.length > 1) {
+        duplicates.push({
+          sku,
+          variants,
+          hasCostMismatches: new Set(variants.map(v => (v.unit_cost || 0) + (v.packaging_cost || 0))).size > 1
+        });
+      }
+    });
+
+    return {
+      duplicates,
+      missingSkus
+    };
+  }, [costs]);
 
   // --- Handlers ---
   const handleSyncShopify = async () => {
@@ -798,6 +830,7 @@ export default function CostManager() {
           { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', icon: '📝' },
           { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', icon: '📦' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: '#8b5cf6', icon: '👻' },
+          { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#f43f5e', icon: '🆔' },
         ].map(t => (
           <button
             key={t.key}
@@ -1715,6 +1748,204 @@ export default function CostManager() {
           <div style={{ textAlign: 'right', marginTop: 20 }}>
             <button className="btn btn-success btn-lg" onClick={handleApplyGhostCosts}>🚀 Save & Apply All Ghost Costs</button>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'sku_checker' && (
+        <div style={{ animation: 'slideDown 0.3s ease' }}>
+          {/* SKU Checker Header Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+            <div 
+              onClick={() => setSkuSubTab('duplicates')}
+              style={{
+                cursor: 'pointer', borderRadius: 16, padding: '20px 22px',
+                border: skuSubTab === 'duplicates' ? '1.5px solid #f43f5e' : '1px solid var(--border)',
+                background: skuSubTab === 'duplicates' ? 'rgba(244,63,94,0.08)' : 'var(--bg-surface)',
+                boxShadow: skuSubTab === 'duplicates' ? '0 4px 20px rgba(244,63,94,0.12)' : 'none',
+                transition: 'all 0.2s ease', position: 'relative'
+              }}
+            >
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#f43f5e', opacity: skuSubTab === 'duplicates' ? 1 : 0.3 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#f43f5e' }}>{skuCheckerData.duplicates.length}</div>
+                <div style={{ fontSize: '1.4rem' }}>⚠️</div>
+              </div>
+              <div style={{ marginTop: 8, fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Duplicate SKU Mappings</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>SKUs assigned to multiple variants</div>
+            </div>
+
+            <div 
+              onClick={() => setSkuSubTab('missing')}
+              style={{
+                cursor: 'pointer', borderRadius: 16, padding: '20px 22px',
+                border: skuSubTab === 'missing' ? '1.5px solid #f59e0b' : '1px solid var(--border)',
+                background: skuSubTab === 'missing' ? 'rgba(245,158,11,0.08)' : 'var(--bg-surface)',
+                boxShadow: skuSubTab === 'missing' ? '0 4px 20px rgba(245,158,11,0.12)' : 'none',
+                transition: 'all 0.2s ease', position: 'relative'
+              }}
+            >
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: '#f59e0b', opacity: skuSubTab === 'missing' ? 1 : 0.3 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#f59e0b' }}>{skuCheckerData.missingSkus.length}</div>
+                <div style={{ fontSize: '1.4rem' }}>❓</div>
+              </div>
+              <div style={{ marginTop: 8, fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>Missing SKU Codes</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3 }}>Variants without SKU in registry</div>
+            </div>
+          </div>
+
+          {/* Tab Content */}
+          {skuSubTab === 'duplicates' ? (
+            <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
+              {skuCheckerData.duplicates.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--green)' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>✅</div>
+                  <h4 style={{ margin: 0 }}>No Duplicate SKUs!</h4>
+                  <p style={{ margin: '5px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Each SKU in the registry maps to a single variant.</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '12px 16px' }}>SKU Code</th>
+                      <th style={{ padding: '12px 16px' }}>Shared By Products / Variants</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Landed Cost</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Stock</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center' }}>Status</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {skuCheckerData.duplicates.map((dup) => (
+                      <React.Fragment key={dup.sku}>
+                        {/* Group Header Row */}
+                        <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                          <td colSpan={6} style={{ padding: '10px 16px', fontWeight: 'bold', color: '#f43f5e' }}>
+                            <span style={{ marginRight: 10 }}>🆔 SKU: {dup.sku}</span>
+                            {dup.hasCostMismatches && (
+                              <span style={{
+                                background: 'rgba(239,68,68,0.15)', color: '#ef4444',
+                                fontSize: '0.68rem', padding: '2px 8px', borderRadius: 4, fontWeight: 700
+                              }}>⚠️ COST MISMATCH DISCOVERED</span>
+                            )}
+                          </td>
+                        </tr>
+                        {/* Variants Rows */}
+                        {dup.variants.map((v) => {
+                          const landed = (v.unit_cost || 0) + (v.packaging_cost || 0);
+                          return (
+                            <tr key={v.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}>
+                              <td style={{ padding: '12px 16px' }} />
+                              <td style={{ padding: '12px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  {v.variant_image_url ? (
+                                    <img src={v.variant_image_url} alt={v.parent_title} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📷</div>
+                                  )}
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.parent_title}</div>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{v.variant_title || 'Default Title'}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                                Rs {landed.toLocaleString()}
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                                {v.inventory_qty || 0} units
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                <span style={{
+                                  fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase',
+                                  color: v.status === 'active' ? 'var(--green)' : v.status === 'draft' ? '#fb923c' : '#94a3b8',
+                                  background: v.status === 'active' ? 'var(--green-dim)' : v.status === 'draft' ? 'rgba(251,146,60,0.1)' : 'rgba(148,163,184,0.1)',
+                                  padding: '2px 6px', borderRadius: 4
+                                }}>{v.status || 'active'}</span>
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <button 
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setEditingItem(v);
+                                    setForm({ parent_title: v.parent_title, variant_title: v.variant_title, unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 });
+                                    setShowModal(true);
+                                  }}
+                                >✏️ Edit Cost</button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : (
+            <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
+              {skuCheckerData.missingSkus.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--green)' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>✅</div>
+                  <h4 style={{ margin: 0 }}>All SKUs Present!</h4>
+                  <p style={{ margin: '5px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Every variant in the registry has a mapped SKU code.</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', opacity: 0.5, fontSize: '0.8rem', color: 'var(--text-muted)', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '12px 16px' }}>Product / Variant</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Landed Cost</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Stock</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center' }}>Status</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Shopify Link</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {skuCheckerData.missingSkus.map((v) => {
+                      const landed = (v.unit_cost || 0) + (v.packaging_cost || 0);
+                      return (
+                        <tr key={v.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {v.variant_image_url ? (
+                                <img src={v.variant_image_url} alt={v.parent_title} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+                              ) : (
+                                <div style={{ width: 28, height: 28, borderRadius: 4, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📷</div>
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{v.parent_title}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{v.variant_title || 'Default Title'}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 'bold', color: landed > 0 ? 'var(--green)' : 'var(--text-muted)' }}>
+                            Rs {landed.toLocaleString()}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                            {v.inventory_qty || 0} units
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                            <span style={{
+                              fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase',
+                              color: v.status === 'active' ? 'var(--green)' : v.status === 'draft' ? '#fb923c' : '#94a3b8',
+                              background: v.status === 'active' ? 'var(--green-dim)' : v.status === 'draft' ? 'rgba(251,146,60,0.1)' : 'rgba(148,163,184,0.1)',
+                              padding: '2px 6px', borderRadius: 4
+                            }}>{v.status || 'active'}</span>
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              Please set SKU in Shopify and Sync.
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
       )}
 
