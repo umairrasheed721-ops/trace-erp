@@ -45,7 +45,13 @@ router.post('/bulk-update-status', (req, res) => {
     const updatePL = db.prepare("UPDATE orders SET payment_date = ? WHERE id = ?");
 
     for (const id of ids) {
-      const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(id);
+      const order = db.prepare('SELECT store_id, shopify_order_id, cost FROM orders WHERE id = ?').get(id);
+      if (!order) continue;
+
+      if ((targetStatus === 'confirmed' || targetStatus === 'booked') && (!order.cost || order.cost <= 0)) {
+        continue; // Skip orders with missing costs during bulk updates to prevent leaks
+      }
+
       stmt.run(status, id);
       
       const s = status.toLowerCase();
@@ -55,9 +61,7 @@ router.post('/bulk-update-status', (req, res) => {
         updatePL.run(null, id);
       }
 
-      if (order) {
-        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-      }
+      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
     }
     res.json({ success: true, count: ids.length });
   } catch (err) {

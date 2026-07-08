@@ -421,8 +421,13 @@ exports.patchErpStatus = (req, res) => {
   const orderId = parseInt(req.params.id);
 
   try {
-    const order = db.prepare('SELECT store_id, shopify_order_id, delivery_status FROM orders WHERE id = ?').get(orderId);
+    const order = db.prepare('SELECT store_id, shopify_order_id, delivery_status, cost FROM orders WHERE id = ?').get(orderId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const targetLower = erp_status.toLowerCase();
+    if ((targetLower === 'confirmed' || targetLower === 'booked') && (!order.cost || order.cost <= 0)) {
+      return res.status(400).json({ error: `Zero Cost Block: Cannot set status to "${erp_status}" when cost is not assigned` });
+    }
 
     const currentStatus = (order.delivery_status || '').toLowerCase();
     if (PROTECTED.includes(currentStatus) && !force && req.user?.role !== 'admin') {
@@ -450,7 +455,11 @@ exports.patchErpStatus = (req, res) => {
 exports.confirmOrder = (req, res) => {
   try {
     const orderId = parseInt(req.params.id);
-    const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(orderId);
+    const order = db.prepare('SELECT store_id, shopify_order_id, cost FROM orders WHERE id = ?').get(orderId);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.cost || order.cost <= 0) {
+      return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before confirming' });
+    }
     const result = db.prepare("UPDATE orders SET delivery_status = 'Confirmed', status_date = datetime('now') WHERE id = ?")
       .run(orderId);
       
@@ -475,6 +484,9 @@ exports.bookPostex = async (req, res) => {
   try {
     const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.cost || order.cost <= 0) {
+      return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before booking' });
+    }
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
@@ -515,6 +527,9 @@ exports.bookInstaworld = async (req, res) => {
   try {
     const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.store_name, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.cost || order.cost <= 0) {
+      return res.status(400).json({ error: 'Zero Cost Block: Please heal cost before booking' });
+    }
     if (order.tracking_number && order.tracking_number.trim() !== '') {
       return res.status(400).json({ error: 'Order already has a tracking number' });
     }
