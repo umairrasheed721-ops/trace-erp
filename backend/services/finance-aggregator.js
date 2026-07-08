@@ -2,10 +2,18 @@ const db = require('../db');
 
 class FinanceAggregator {
   static async getMissingProductList(storeId) {
-    const orders = db.prepare('SELECT line_items, product_titles FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL) AND items_count > 0').all(Number(storeId));
+    const orders = db.prepare(`
+      SELECT line_items, product_titles, cost 
+      FROM orders 
+      WHERE store_id = ? 
+      AND order_date >= date('now', '-90 days') 
+      AND items_count > 0
+    `).all(Number(storeId));
+
+    const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
     const productCounts = {};
 
-    console.log(`🔍 Scanning missing costs for Store ${storeId}. Orders found: ${orders.length}`);
+    console.log(`🔍 Scanning missing costs for Store ${storeId}. Orders found in last 90 days: ${orders.length}`);
     
     orders.forEach(o => {
       let parsedItems = [];
@@ -18,6 +26,32 @@ class FinanceAggregator {
           const parentName = (item.title || '').trim();
           const variantName = (item.variant_title || '').trim();
           if (!parentName) continue;
+
+          // Check if this item is missing cost (either not in catalog, or has landed_cost = 0)
+          let matchRow = null;
+          const vId = item.variant_id ? String(item.variant_id) : '';
+          const numericVariantId = vId.includes('/') ? vId.split('/').pop() : vId;
+          const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+          const sku = item.sku ? String(item.sku).trim() : '';
+
+          if (numericVariantId) {
+            matchRow = catalog.find(c => 
+              c.shopify_variant_id && 
+              (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
+            );
+          }
+          if (!matchRow && sku) {
+            matchRow = catalog.find(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+          }
+          if (!matchRow) {
+            matchRow = catalog.find(c => 
+              c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
+              (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
+            );
+          }
+
+          const hasLandedCost = matchRow && (matchRow.landed_cost || 0) > 0;
+          if (hasLandedCost) continue; // If cost is resolved and verified, skip!
 
           if (!productCounts[parentName]) {
             productCounts[parentName] = { name: parentName, count: 0, variants: {} };
@@ -40,6 +74,15 @@ class FinanceAggregator {
           const parentName = parts[0].trim();
           const variantName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
 
+          // Check if this item is missing cost
+          const matchRow = catalog.find(c => 
+            c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
+            (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
+          );
+
+          const hasLandedCost = matchRow && (matchRow.landed_cost || 0) > 0;
+          if (hasLandedCost) continue;
+
           if (!productCounts[parentName]) {
             productCounts[parentName] = { name: parentName, count: 0, variants: {} };
           }
@@ -60,7 +103,7 @@ class FinanceAggregator {
       }))
       .sort((a, b) => b.count - a.count);
 
-    console.log(`✅ Scan finished. Unique products: ${list.length}`);
+    console.log(`✅ Scan finished. Unique missing products: ${list.length}`);
     return list;
   }
 
