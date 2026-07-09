@@ -8,6 +8,14 @@ const { smokeTestShopify, getLiveShopifyCosts, fetchVariantImagesGraphQL } = req
 const API_TIMEOUT = 15000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function mapShopifyFinancialStatus(financialStatus) {
+  if (financialStatus === 'paid') return 'Paid';
+  if (financialStatus === 'voided') return 'Voided';
+  if (financialStatus === 'refunded') return 'Refunded';
+  if (financialStatus === 'partially_refunded') return 'Partially Refunded';
+  return 'Pending';
+}
+
 function saveRawPayload(type, payload) {
   try {
     const filename = `${type}-${Date.now()}.json`;
@@ -476,7 +484,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         items_count = ?,
         notes = ?,
         product_titles = ?,
-        payment_status = ?,
+        payment_status = CASE WHEN payment_status IN ('Paid', 'Payment Posted') THEN payment_status ELSE ? END,
         cost = ?,
         tracking_number = ?,
         courier = ?,
@@ -565,7 +573,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         updateStmt.run(
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
-          fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
+          mapShopifyFinancialStatus(fresh.financial_status),
           row.cost_locked ? row.cost : (totalCost > 0 ? totalCost : (row.cost || 0)),
           tracking, 
           row.courier_fee_locked ? row.courier_fee : courier, 
@@ -704,7 +712,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           items_count = ?,
           notes = ?,
           product_titles = ?,
-          payment_status = ?,
+          payment_status = CASE WHEN payment_status IN ('Paid', 'Payment Posted') THEN payment_status ELSE ? END,
           cost = ?,
           tracking_number = ?,
           courier = ?,
@@ -716,7 +724,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         WHERE id = ?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles,
-        order.financial_status === 'paid' ? 'Paid' : (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
+        mapShopifyFinancialStatus(order.financial_status),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
         tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount, existing.id
       );
@@ -749,7 +757,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         finalPrice, tracking, activeCount, order.note || '', productTitles,
         lineItemsJson,
         newDeliveryStatus,
-        order.financial_status === 'paid' ? 'Paid' : 'Pending',
+        mapShopifyFinancialStatus(order.financial_status),
         0.5, courier, totalCost, source, token,
         require('../../tenant-context').getStore() || 'default',
         shopifyShipping,
@@ -825,7 +833,7 @@ async function syncSpecificOrders(store, shopifyIds) {
         items_count = ?,
         notes = ?,
         product_titles = ?,
-        payment_status = ?,
+        payment_status = CASE WHEN payment_status IN ('Paid', 'Payment Posted') THEN payment_status ELSE ? END,
         tracking_number = ?,
         courier = ?,
         delivery_status = ?,
@@ -855,7 +863,7 @@ async function syncSpecificOrders(store, shopifyIds) {
       updateStmt.run(
         finalPrice, fresh.line_items.length, fresh.note || '',
         productTitles.join(', '),
-        fresh.financial_status === 'paid' ? 'Paid' : (fresh.financial_status === 'voided' ? 'Voided' : 'Pending'),
+        mapShopifyFinancialStatus(fresh.financial_status),
         tracking, courier, newStatus,
         shopifyShipping, shopifyDiscount,
         String(fresh.id), store.id

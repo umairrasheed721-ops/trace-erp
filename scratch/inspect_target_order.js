@@ -4,11 +4,8 @@ const path = require('path');
 const dbPath = path.resolve(__dirname, '../backend/trace_erp.db');
 const db = new DatabaseSync(dbPath);
 
-try {
-  const order = db.prepare("SELECT * FROM orders WHERE ref_number LIKE '%33604%' OR shopify_order_id LIKE '%33604%'").get();
-  console.log('Order Details:', JSON.stringify(order, null, 2));
-} catch (err) {
-  console.error('Error:', err);
-} finally {
-  db.close();
-}
+const partialRef = db.prepare('SELECT id, ref_number, shopify_order_id, financial_status, delivery_status FROM orders WHERE ref_number LIKE ? OR shopify_order_id LIKE ?').all('%29159%', '%29159%');
+console.log('Partial ref matches:', partialRef);
+
+const sample = db.prepare('SELECT id, ref_number, shopify_order_id, financial_status, delivery_status FROM orders LIMIT 5').all();
+console.log('Sample orders:', sample);
