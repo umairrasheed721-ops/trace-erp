@@ -5,8 +5,8 @@ const dbPath = path.resolve(__dirname, '../backend/trace_erp.db');
 const db = new DatabaseSync(dbPath);
 
 try {
-  const order = db.prepare("SELECT * FROM orders WHERE ref_number LIKE '%33604%' OR shopify_order_id LIKE '%33604%'").get();
-  console.log('Order Details:', JSON.stringify(order, null, 2));
+  const stores = db.prepare("SELECT * FROM stores").all();
+  console.log('Stores:', stores);
 } catch (err) {
   console.error('Error:', err);
 } finally {

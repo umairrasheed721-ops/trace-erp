@@ -56,6 +56,7 @@ export default function SearchTool() {
   const [limit, setLimit] = useState(() => parseInt(localStorage.getItem('trace_search_limit')) || 50)
   const [totalCount, setTotalCount] = useState(0)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [globalSearch, setGlobalSearch] = useState(false)
 
   const hasState = !!(location.state && Object.keys(location.state).length > 0);
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -140,6 +141,14 @@ export default function SearchTool() {
 
     const wasProgrammatic = options.wasProgrammatic || false;
     const isRefresh = options.isRefresh || false;
+
+    const isGlobal = options.hasOwnProperty('globalSearch')
+      ? options.globalSearch
+      : (wasProgrammatic ? globalSearch : false);
+
+    if (!wasProgrammatic && !options.hasOwnProperty('globalSearch')) {
+      setGlobalSearch(false);
+    }
     
     // Choose source of values (accept override parameters for immediate/clear runs)
     const presetVal = options.hasOwnProperty('preset') ? options.preset : preset;
@@ -192,7 +201,8 @@ export default function SearchTool() {
     };
     const sCol = backendSortMap[sortKey] || 'created_timestamp';
 
-    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}`;
+    const globalSearchParam = isGlobal ? '&global_search=true' : '';
+    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}`;
 
     if (!isRefresh && !wasProgrammatic && urlWithoutTimestamp === lastFetchedUrlRef.current) {
       console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
@@ -202,7 +212,7 @@ export default function SearchTool() {
     lastFetchedUrlRef.current = urlWithoutTimestamp;
     setLoading(true);
 
-    const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}&t=${Date.now()}`;
+    const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}&t=${Date.now()}`;
 
     console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
     
@@ -945,6 +955,7 @@ export default function SearchTool() {
       ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
     });
     setActiveAgingBucket(null);
+    setGlobalSearch(false);
   }, []);
 
   /**
@@ -966,6 +977,7 @@ export default function SearchTool() {
     setActiveAgingBucket(null);
     setKeyword('');
     setPage(1);
+    setGlobalSearch(false);
 
     addToast('Filters cleared', 'info');
 
@@ -980,7 +992,8 @@ export default function SearchTool() {
       isRefresh: true,
       wasProgrammatic: true,
       clearKeyword: true,
-      clearColFilters: true
+      clearColFilters: true,
+      globalSearch: false
     });
   }, [fetchOrders, addToast]);
 
@@ -1018,6 +1031,7 @@ export default function SearchTool() {
     };
     
     setPage(1);
+    setGlobalSearch(true);
     fetchOrders({
       preset: 'All Time',
       status: 'All Statuses',
@@ -1028,7 +1042,8 @@ export default function SearchTool() {
       isRefresh: true,
       wasProgrammatic: true,
       clearKeyword: false,
-      clearColFilters: true
+      clearColFilters: true,
+      globalSearch: true
     });
 
     setTimeout(() => {

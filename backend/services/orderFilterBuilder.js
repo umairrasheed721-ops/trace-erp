@@ -1,7 +1,14 @@
 function getOrderFilters(req) {
-  const { store_id, status, search, courier, start_date, end_date } = req.query;
-  let queryParams = [Number(store_id)];
-  let whereClauses = ['o.store_id = ?'];
+  const { store_id, status, search, courier, start_date, end_date, global_search } = req.query;
+  let queryParams = [];
+  let whereClauses = [];
+
+  if (global_search === 'true') {
+    // Cross-store lookup enabled: do not restrict to o.store_id = ?
+  } else {
+    queryParams.push(Number(store_id));
+    whereClauses.push('o.store_id = ?');
+  }
 
   if (status && status !== 'All Statuses' && status !== '') {
     const s = status.toUpperCase().trim();
