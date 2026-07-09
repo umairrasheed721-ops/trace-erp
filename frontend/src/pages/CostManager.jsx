@@ -1100,7 +1100,9 @@ export default function CostManager() {
                 {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify Now'}
               </button>
             </div>
-{/* ── Current Tab Empty State ── */}
+          )}
+
+          {/* ── Current Tab Empty State ── */}
           {!loading && !loadError && costs.length > 0 && currentList.length === 0 && (
             <div style={{
               background: 'var(--bg-surface)', border: '1px solid var(--border)',
