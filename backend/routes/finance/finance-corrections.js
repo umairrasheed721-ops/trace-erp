@@ -508,14 +508,15 @@ router.post('/sync-shopify-costs', async (req, res) => {
               inventory_qty = ?,
               variant_image_url = ?,
               inventory_policy = ?,
+              status = ?,
               updated_at = datetime('now')
             WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', existing.id);
+          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active', existing.id);
         } else {
           db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, variant_image_url, inventory_policy)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(Number(store_id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny');
+            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, variant_image_url, inventory_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(Number(store_id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active');
         }
       }
     })();

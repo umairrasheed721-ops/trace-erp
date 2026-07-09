@@ -256,6 +256,7 @@ export default function CostManager() {
       continue_selling: sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue')),
       active: sorted.filter(p => (p.variants[0]?.status || 'active') === 'active'),
       draft: sorted.filter(p => p.variants[0]?.status === 'draft'),
+      unlisted: sorted.filter(p => p.variants[0]?.status === 'unlisted'),
       archived: sorted.filter(p => p.variants[0]?.status === 'archived')
     }
   }, [sorted])
@@ -964,6 +965,7 @@ export default function CostManager() {
           { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', icon: '🔄' },
           { key: 'active',   label: 'Active',   count: lists.active.length,   color: '#3b82f6', icon: '🟢' },
           { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', icon: '📝' },
+          { key: 'unlisted', label: 'Unlisted', count: lists.unlisted?.length || 0, color: '#db2777', icon: '🚫' },
           { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', icon: '📦' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: '#8b5cf6', icon: '👻' },
           { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#f43f5e', icon: '🆔' },
@@ -1098,16 +1100,14 @@ export default function CostManager() {
                 {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify Now'}
               </button>
             </div>
-          )}
-
-          {/* ── Current Tab Empty State ── */}
+{/* ── Current Tab Empty State ── */}
           {!loading && !loadError && costs.length > 0 && currentList.length === 0 && (
             <div style={{
               background: 'var(--bg-surface)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '40px', textAlign: 'center'
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
-                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'archived' ? '📦' : '⏳'}
+                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'unlisted' ? '🚫' : activeTab === 'archived' ? '📦' : '⏳'}
               </div>
               <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
                 {activeTab === 'pending'
@@ -1118,9 +1118,11 @@ export default function CostManager() {
                       ? 'No active products'
                       : activeTab === 'draft'
                         ? 'No draft products'
-                        : activeTab === 'archived'
-                          ? 'No archived products'
-                          : 'No verified products yet'}
+                        : activeTab === 'unlisted'
+                          ? 'No unlisted products'
+                          : activeTab === 'archived'
+                            ? 'No archived products'
+                            : 'No verified products yet'}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {activeTab === 'pending'
@@ -1131,9 +1133,11 @@ export default function CostManager() {
                       ? 'No products are currently active on your Shopify store.'
                       : activeTab === 'draft'
                         ? 'No products are in draft status.'
-                        : activeTab === 'archived'
-                          ? 'No products are archived.'
-                          : 'Accept costs for your products to see them here.'}
+                        : activeTab === 'unlisted'
+                          ? 'No products are in unlisted status on Shopify.'
+                          : activeTab === 'archived'
+                            ? 'No products are archived.'
+                            : 'Accept costs for your products to see them here.'}
               </div>
             </div>
           )}
@@ -1225,9 +1229,9 @@ export default function CostManager() {
                                    fontSize: '0.65rem', 
                                    fontWeight: 700,
                                    textTransform: 'uppercase',
-                                   color: status === 'draft' ? '#fb923c' : '#94a3b8', 
-                                   background: status === 'draft' ? 'rgba(251,146,60,0.1)' : 'rgba(148,163,184,0.1)', 
-                                   border: `1px solid ${status === 'draft' ? '#fb923c' : '#94a3b8'}`,
+                                   color: status === 'draft' ? '#fb923c' : (status === 'unlisted' ? '#db2777' : '#94a3b8'), 
+                                   background: status === 'draft' ? 'rgba(251,146,60,0.1)' : (status === 'unlisted' ? 'rgba(219,39,119,0.1)' : 'rgba(148,163,184,0.1)'), 
+                                   border: `1px solid ${status === 'draft' ? '#fb923c' : (status === 'unlisted' ? '#db2777' : '#94a3b8')}`,
                                    padding: '2px 6px', 
                                    borderRadius: 4,
                                    marginLeft: 6
