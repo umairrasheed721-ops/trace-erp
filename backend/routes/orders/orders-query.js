@@ -43,7 +43,7 @@ router.get('/history-search', (req, res) => {
     }
 
     const orders = db.prepare(`
-      SELECT o.*, s.shop_domain 
+      SELECT o.*, s.shop_domain, s.store_name 
       FROM orders o 
       JOIN stores s ON o.store_id = s.id 
       WHERE ${whereClauses.join(' AND ')}

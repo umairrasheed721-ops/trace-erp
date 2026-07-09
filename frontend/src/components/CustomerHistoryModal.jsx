@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { getStatusColor } from '../utils/orderUtils'
 
+const getStoreDisplayName = (o) => {
+  if (o.store_name && o.store_name !== 'My Store' && o.store_name !== 'Store') {
+    return o.store_name;
+  }
+  if (o.shop_domain) {
+    return o.shop_domain.replace('.myshopify.com', '');
+  }
+  return '—';
+}
+
 export default function CustomerHistoryModal({ phone, email, name, onClose, onOpenAllOrders }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
@@ -158,7 +168,7 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <thead>
                 <tr style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-                  {['REF #', 'DATE', 'STATUS', 'COURIER', 'TRACKING', 'PRICE'].map(h => (
+                  {['REF #', 'STORE', 'DATE', 'STATUS', 'COURIER', 'TRACKING', 'PRICE'].map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: h === 'PRICE' ? 'right' : 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>{h}</th>
                   ))}
                 </tr>
@@ -169,6 +179,7 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
                   return (
                     <tr key={o.id} style={{ background: 'transparent' }}>
                       <td style={{ padding: '9px 14px', fontWeight: 700, color: 'var(--brand)', borderBottom: '1px solid var(--border)' }}>{o.ref_number || o.shopify_order_id || '—'}</td>
+                      <td style={{ padding: '9px 14px', fontSize: '0.72rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{getStoreDisplayName(o)}</td>
                       <td style={{ padding: '9px 14px', fontSize: '0.72rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>{o.order_date ? new Date(o.order_date).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '9px 14px', borderBottom: '1px solid var(--border)' }}>
                         <span style={{ background: bg, color, fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
