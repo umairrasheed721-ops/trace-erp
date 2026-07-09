@@ -129,10 +129,26 @@ const CommandTableRow = React.memo(({
                 fontSize: '0.72rem', 
                 color: dateAged ? 'var(--orange)' : 'var(--text-muted)', 
                 fontWeight: dateAged ? 700 : 400,
-                paddingLeft: '32px'
+                paddingLeft: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
               }}>
-                {o.order_date || '—'}
-                {dateAged && <span style={{ fontSize: '0.65rem', marginLeft: 4 }}>{daysOld}d</span>}
+                <span>{o.order_date || '—'}</span>
+                {dateAged && <span style={{ fontSize: '0.65rem', color: 'var(--orange)' }}>{daysOld}d</span>}
+                <span style={{ 
+                  fontSize: '0.62rem', 
+                  opacity: 0.8, 
+                  fontWeight: 'bold',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  color: 'var(--text-secondary)',
+                  textTransform: 'uppercase',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}>
+                  {o.store_name && o.store_name !== 'My Store' && o.store_name !== 'Store' ? o.store_name : (o.shop_domain ? o.shop_domain.replace('.myshopify.com', '') : '—')}
+                </span>
               </div>
             </div>
           </td>

@@ -187,7 +187,7 @@ router.get('/', (req, res) => {
     }
 
     const orders = db.prepare(`
-      SELECT o.*, s.shop_domain,
+      SELECT o.*, s.shop_domain, s.store_name,
              (
                SELECT COUNT(*) FROM (
                  SELECT id FROM orders 
