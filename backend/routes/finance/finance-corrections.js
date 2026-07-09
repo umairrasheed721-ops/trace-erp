@@ -554,7 +554,7 @@ router.get('/diagnose-shopify-sync', async (req, res) => {
     report.steps.push({ step: 'Access Token', status: '✅ OK', detail: `Token present (${store.access_token.substring(0, 6)}...)` });
 
     // Step 3: Test basic REST connectivity (shop.json)
-    const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/shop.json`, {
+    const shopRes = await fetch(`https://${store.shop_domain}/admin/api/2025-10/shop.json`, {
       headers: { 'X-Shopify-Access-Token': store.access_token }
     });
     if (!shopRes.ok) {
@@ -567,7 +567,7 @@ router.get('/diagnose-shopify-sync', async (req, res) => {
     report.steps.push({ step: 'REST Connectivity', status: '✅ OK', detail: `Shop: ${shopData.shop?.name} (${shopData.shop?.email})` });
 
     // Step 4: Test GraphQL with a tiny product query
-    const gqlRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/graphql.json`, {
+    const gqlRes = await fetch(`https://${store.shop_domain}/admin/api/2025-10/graphql.json`, {
       method: 'POST',
       headers: { 'X-Shopify-Access-Token': store.access_token, 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -53,7 +53,7 @@ class ShopifyRateLimiter {
 
 async function smokeTestShopify(shopDomain, accessToken) {
   try {
-    const url = `https://${shopDomain}/admin/api/2024-10/shop.json`;
+    const url = `https://${shopDomain}/admin/api/2025-10/shop.json`;
     const res = await fetch(url, {
       headers: { 'X-Shopify-Access-Token': accessToken },
       timeout: 5000
@@ -125,7 +125,7 @@ async function getLiveShopifyCosts(shopDomain, accessToken, variantIds, onProgre
     let attempts = 0;
     while (!success && attempts < 3) {
       try {
-        const res = await fetch(`https://${shopDomain}/admin/api/2024-10/graphql.json`, {
+        const res = await fetch(`https://${shopDomain}/admin/api/2025-10/graphql.json`, {
           method: 'POST',
           headers: {
             'X-Shopify-Access-Token': accessToken,
@@ -200,7 +200,7 @@ async function fetchVariantImagesGraphQL(shopDomain, accessToken, variantIds) {
     `;
 
     try {
-      const res = await fetch(`https://${shopDomain}/admin/api/2024-10/graphql.json`, {
+      const res = await fetch(`https://${shopDomain}/admin/api/2025-10/graphql.json`, {
         method: 'POST',
         headers: {
           'X-Shopify-Access-Token': accessToken,
@@ -281,7 +281,7 @@ async function syncFullProductCatalog(store) {
   console.log(`🔄 Starting full Shopify catalog sync for store ${store.shop_domain}...`);
   try {
     const fetchFn = fetch;
-    let url = `https://${store.shop_domain}/admin/api/2024-10/products.json?limit=250`;
+    let url = `https://${store.shop_domain}/admin/api/2025-10/products.json?limit=250`;
     let page = 1;
     
     while (url) {

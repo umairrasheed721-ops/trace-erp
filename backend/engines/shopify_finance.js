@@ -9,7 +9,7 @@ async function shopifyFetch(store, endpoint, options = {}) {
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const url = `https://${store.shop_domain}/admin/api/2024-10/${endpoint}`;
+    const url = `https://${store.shop_domain}/admin/api/2025-10/${endpoint}`;
     const res = await fetch(url, {
       ...options,
       signal: controller.signal,
