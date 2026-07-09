@@ -95,12 +95,12 @@ const CommandTableRow = React.memo(({
       {cols.map(col => {
         if (col.id === 'ref_number') return (
           <td key={col.id}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <div className="flex items-center gap-2" style={{ flexWrap: 'nowrap' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: '4px', flexShrink: 0, marginTop: '2px' }}>
                 <button 
                   onClick={() => { setActiveRowId(o.id); fetchOrderDetails(o.id); }}
                   className="btn btn-primary btn-sm"
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
                   title="Edit Full Order"
                 >
                   ✏️
@@ -109,46 +109,59 @@ const CommandTableRow = React.memo(({
                 <button 
                   onClick={(e) => { e.stopPropagation(); setActiveRowId(o.id); onViewHistory(o); }}
                   className="btn btn-secondary btn-sm"
-                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  style={{ padding: '2px 6px', fontSize: '0.65rem', whiteSpace: 'nowrap' }}
                   title="View History Timeline"
                 >
                   📜
                 </button>
+              </div>
 
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
                 <a 
                   href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
                   target="_blank" 
                   rel="noreferrer" 
                   onClick={() => setActiveRowId(o.id)}
-                  style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, flexShrink: 0 }}
+                  style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
                 >
                   {o.ref_number || o.shopify_order_id}
                 </a>
-              </div>
-              <div style={{ 
-                fontSize: '0.72rem', 
-                color: dateAged ? 'var(--orange)' : 'var(--text-muted)', 
-                fontWeight: dateAged ? 700 : 400,
-                paddingLeft: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <span>{o.order_date || '—'}</span>
-                {dateAged && <span style={{ fontSize: '0.65rem', color: 'var(--orange)' }}>{daysOld}d</span>}
+                
                 <span style={{ 
-                  fontSize: '0.62rem', 
-                  opacity: 0.8, 
+                  fontSize: '0.55rem', 
+                  opacity: 0.85, 
                   fontWeight: 'bold',
                   background: 'rgba(255, 255, 255, 0.08)',
-                  padding: '1px 5px',
-                  borderRadius: '4px',
+                  padding: '1px 4px',
+                  borderRadius: '3px',
                   color: 'var(--text-secondary)',
                   textTransform: 'uppercase',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  marginTop: '2px',
+                  letterSpacing: '0.02em',
+                  lineHeight: '1',
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
                 }}>
                   {o.store_name && o.store_name !== 'My Store' && o.store_name !== 'Store' ? o.store_name : (o.shop_domain ? o.shop_domain.replace('.myshopify.com', '') : '—')}
                 </span>
+
+                <div style={{ 
+                  fontSize: '0.70rem', 
+                  color: dateAged ? 'var(--orange)' : 'var(--text-muted)', 
+                  fontWeight: dateAged ? 700 : 400,
+                  marginTop: '3px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap'
+                }}>
+                  <span>{o.order_date || '—'}</span>
+                  {dateAged && <span style={{ fontSize: '0.62rem', color: 'var(--orange)' }}>{daysOld}d</span>}
+                </div>
               </div>
             </div>
           </td>
