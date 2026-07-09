@@ -999,7 +999,7 @@ export default function CostManager() {
         ))}
       </div>
 
-      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'archived') && (
+      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'unlisted' || activeTab === 'archived') && (
         <>
           {/* ── Smart Toolbar ── */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
