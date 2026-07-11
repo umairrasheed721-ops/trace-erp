@@ -44,7 +44,10 @@ export default function Dashboard() {
     if (!activeStoreId) { setLoading(false); return }
     setLoading(true)
     fetch(`/api/stores/${activeStoreId}/stats`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to load stats');
+        return r.json();
+      })
       .then(data => { setStats(data); setLoading(false) })
       .catch(() => { addToast('Failed to load stats', 'error'); setLoading(false) })
   }, [activeStoreId])
@@ -75,14 +78,14 @@ export default function Dashboard() {
     )
   }
 
-  const kpis = stats ? [
-    { label: 'Total Orders',   value: stats.total_orders.toLocaleString(), icon: '📦', sub: 'All time' },
-    { label: 'Delivered',      value: stats.delivered.toLocaleString(),    icon: '✅', sub: `${stats.delivery_rate}% rate` },
-    { label: 'Returned (RTO)', value: stats.returned.toLocaleString(),     icon: '↩️', sub: `${stats.rto_rate}% rate` },
-    { label: 'Unbooked',       value: stats.unbooked.toLocaleString(),     icon: '📝', sub: 'No tracking ID' },
-    { label: 'In Transit',     value: stats.pending.toLocaleString(),      icon: '🚚', sub: 'Active pipeline' },
-    { label: 'Stuck Orders',   value: stats.stuck.toLocaleString(),        icon: '⏳', sub: '> 48 hours' },
-    ...(user?.role === 'admin' ? [{ label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue).toLocaleString()}`, icon: '💰', sub: 'Confirmed only' }] : []),
+  const kpis = (stats && !stats.error) ? [
+    { label: 'Total Orders',   value: (stats.total_orders || 0).toLocaleString(), icon: '📦', sub: 'All time' },
+    { label: 'Delivered',      value: (stats.delivered || 0).toLocaleString(),    icon: '✅', sub: `${stats.delivery_rate || 0}% rate` },
+    { label: 'Returned (RTO)', value: (stats.returned || 0).toLocaleString(),     icon: '↩️', sub: `${stats.rto_rate || 0}% rate` },
+    { label: 'Unbooked',       value: (stats.unbooked || 0).toLocaleString(),     icon: '📝', sub: 'No tracking ID' },
+    { label: 'In Transit',     value: (stats.pending || 0).toLocaleString(),      icon: '🚚', sub: 'Active pipeline' },
+    { label: 'Stuck Orders',   value: (stats.stuck || 0).toLocaleString(),        icon: '⏳', sub: '> 48 hours' },
+    ...(user?.role === 'admin' ? [{ label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue || 0).toLocaleString()}`, icon: '💰', sub: 'Confirmed only' }] : []),
   ] : []
 
   const getGreeting = () => {
