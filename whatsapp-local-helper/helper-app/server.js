@@ -195,7 +195,8 @@ function copyImagesToClipboardAndSend(filePaths) {
 
   } else if (platform === 'win32') {
     // Windows PowerShell to copy multiple files to clipboard:
-    const fileAdditions = filePaths.map(fp => `$FileArray.Add("${path.resolve(fp).replace(/\\/g, '\\\\')}")`).join('\n');
+    // Using forward slashes for path resolves double-backslash interpolation issues in PowerShell double quotes.
+    const fileAdditions = filePaths.map(fp => `$FileArray.Add("${path.resolve(fp).replace(/\\/g, '/')}")`).join('\n');
     
     const psScript = `
       Add-Type -AssemblyName System.Windows.Forms
@@ -203,37 +204,27 @@ function copyImagesToClipboardAndSend(filePaths) {
       ${fileAdditions}
       [System.Windows.Forms.Clipboard]::SetFileDropList($FileArray)
       
-      Start-Sleep -Milliseconds 500
+      # Invoke the default whatsapp: protocol handler to reliably open/activate the native app
+      Start-Process "whatsapp:"
+      Start-Sleep -Milliseconds 1000
+      
       $wshell = New-Object -ComObject Wscript.Shell
       
+      # Fallback: Also try AppActivate in case the protocol invocation takes a moment or needs direct focus call
       $activated = $false
-      # Try finding process by MainWindowTitle containing WhatsApp
-      $proc = Get-Process | Where-Object { $_.MainWindowTitle -like "*WhatsApp*" } | Select-Object -First 1
+      $proc = Get-Process | Where-Object { $_.MainWindowTitle -like "*WhatsApp*" -or $_.ProcessName -eq "WhatsApp" } | Select-Object -First 1
       if ($proc) {
         try {
           $activated = $wshell.AppActivate($proc.Id)
         } catch {}
       }
-      
-      # Fallback to Process Name
-      if (-not $activated) {
-        $proc = Get-Process | Where-Object { $_.ProcessName -eq "WhatsApp" } | Select-Object -First 1
-        if ($proc) {
-          try {
-            $activated = $wshell.AppActivate($proc.Id)
-          } catch {}
-        }
-      }
-      
-      # Fallback to direct title activation
       if (-not $activated) {
         try {
-          $activated = $wshell.AppActivate("WhatsApp")
+          $wshell.AppActivate("WhatsApp")
         } catch {}
       }
       
-      # Sleep and send Ctrl+V
-      Start-Sleep -Milliseconds 800
+      Start-Sleep -Milliseconds 500
       $wshell.SendKeys("^v")
       Write-Host "Pasted to WhatsApp successfully."
     `;
