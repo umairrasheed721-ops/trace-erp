@@ -435,14 +435,62 @@ export default function FinanceManager() {
                           {r.recommendation}
                         </td>
 
-                        <td style={{ padding: '12px', textAlign: 'right' }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--green)' }}>Rs. {r.netPayout}</div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 4 }}>Fee: {r.finalCharges}</div>
-                          {(r.chargesTrick || r.taxAddOn) && (
-                            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                              {r.chargesTrick} {r.taxAddOn}
-                            </div>
-                          )}
+                        <td style={{ padding: '12px', textAlign: 'right', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--green)' }}>
+                            Rs. {r.netPayout ? Number(r.netPayout).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                          </div>
+                          
+                          <div style={{ 
+                            fontSize: '0.7rem', 
+                            color: 'var(--text-secondary)', 
+                            marginTop: 6,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: '3px'
+                          }}>
+                            {r.type === 'D' ? (
+                              <>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>Sheet Fee:</span> Rs. {r.charges || 0}
+                                </div>
+                                {r.chargesTrick > 0 && (
+                                  <div>
+                                    <span style={{ color: 'var(--text-muted)' }}>Est. ERP Fee:</span> Rs. {r.chargesTrick}
+                                  </div>
+                                )}
+                                {r.taxAddOn > 0 && (
+                                  <div>
+                                    <span style={{ color: 'var(--text-muted)' }}>WHT/Tax (4%):</span> Rs. {r.taxAddOn}
+                                  </div>
+                                )}
+                                <div style={{ 
+                                  borderTop: '1px solid var(--border)', 
+                                  marginTop: 3, 
+                                  paddingTop: 3, 
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)'
+                                }}>
+                                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Final ERP Fee:</span> Rs. {r.finalCharges}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>Return Fee:</span> Rs. {r.charges || 0}
+                                </div>
+                                <div style={{ 
+                                  borderTop: '1px solid var(--border)', 
+                                  marginTop: 3, 
+                                  paddingTop: 3, 
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)'
+                                }}>
+                                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Final ERP Fee:</span> Rs. {r.finalCharges}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
