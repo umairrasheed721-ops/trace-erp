@@ -139,6 +139,25 @@ try {
     console.error(`⚠️ [Startup Migration] Failed to correct 'Delivered to Customer' orders: ${err.message}`);
   }
 
+  // Fix historical PostEx/other orders with 'Returned at Merchant' or 'Returned to Merchant' courier status stuck in 'In Transit'
+  try {
+    const affected = db.prepare(`
+      UPDATE orders
+      SET delivery_status = 'Returned', status_date = datetime('now')
+      WHERE (
+        LOWER(courier_status) LIKE 'returned at merchant%'
+        OR LOWER(courier_status) LIKE 'returned to merchant%'
+        OR LOWER(courier_status) LIKE 'returned at merchant warehouse%'
+      )
+      AND delivery_status != 'Returned'
+    `).run();
+    if (affected.changes > 0) {
+      console.log(`✅ [Startup Migration] Corrected ${affected.changes} orders with 'Returned to Merchant' status to 'Returned'.`);
+    }
+  } catch (err) {
+    console.error(`⚠️ [Startup Migration] Failed to correct 'Returned to Merchant' orders: ${err.message}`);
+  }
+
   console.log('✔ [Startup Migration] Schema verification completed.');
 } catch (err) {
   console.error('🛑 [Startup Migration] Database schema verification failed:', err.message);

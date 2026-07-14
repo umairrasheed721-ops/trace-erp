@@ -46,6 +46,16 @@ function applyMap(statusMap, courier, rawStatus) {
     return 'Return Initiated';
   }
 
+  // Pattern matching for returned-to-merchant statuses across all couriers
+  if (
+    raw.includes('returned at merchant') ||
+    raw.includes('returned to merchant') ||
+    raw.includes('returned at merchant warehouse') ||
+    raw.includes('returned to shipper')
+  ) {
+    return 'Returned';
+  }
+
   const courierKey = `${(courier || 'all').toLowerCase()}:${raw}`;
   const allKey = `all:${raw}`;
   return statusMap[courierKey] || statusMap[allKey] || null;
