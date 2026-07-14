@@ -124,6 +124,21 @@ try {
     console.error('⚠️ [Startup Migration] Failed to correct historical Partial payments:', err.message);
   }
 
+  // Fix historical PostEx orders with 'Delivered to Customer' courier status stuck in 'In Transit'
+  try {
+    const affected = db.prepare(`
+      UPDATE orders
+      SET delivery_status = 'Delivered', status_date = datetime('now')
+      WHERE LOWER(courier_status) = 'delivered to customer'
+      AND delivery_status != 'Delivered'
+    `).run();
+    if (affected.changes > 0) {
+      console.log(`✅ [Startup Migration] Corrected ${affected.changes} orders with 'Delivered to Customer' status to 'Delivered'.`);
+    }
+  } catch (err) {
+    console.error(`⚠️ [Startup Migration] Failed to correct 'Delivered to Customer' orders: ${err.message}`);
+  }
+
   console.log('✔ [Startup Migration] Schema verification completed.');
 } catch (err) {
   console.error('🛑 [Startup Migration] Database schema verification failed:', err.message);
