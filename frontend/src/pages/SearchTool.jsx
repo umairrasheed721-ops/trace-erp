@@ -1708,8 +1708,6 @@ export default function SearchTool() {
         totalCount={totalCount}
         debugWhere={debugWhere}
         cols={cols}
-        setCols={setCols}
-        DEFAULT_COLS={DEFAULT_COLS}
         selectedIds={selectedIds}
         setSelectedIds={setSelectedIds}
         onDragStart={onDragStart}

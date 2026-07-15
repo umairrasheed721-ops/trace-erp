@@ -257,8 +257,6 @@ export default function CommandTable({
   totalCount,
   debugWhere,
   cols,
-  setCols,
-  DEFAULT_COLS,
   selectedIds,
   setSelectedIds,
   onDragStart,
@@ -310,45 +308,6 @@ export default function CommandTable({
       console.log('CommandCenter SQL:', debugWhere);
     }
   }, [debugWhere]);
-
-  const [showQuickColDropdown, setShowQuickColDropdown] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowQuickColDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const toggleColVisibility = (colId) => {
-    if (['delivery_status', 'edit'].includes(colId)) return;
-    setCols(prev => {
-      const exists = prev.some(c => c.id === colId);
-      let updated;
-      if (exists) {
-        updated = prev.filter(c => c.id !== colId);
-      } else {
-        const colToAdd = DEFAULT_COLS.find(c => c.id === colId);
-        if (colToAdd) {
-          const ordered = [];
-          DEFAULT_COLS.forEach(originalCol => {
-            if (prev.some(c => c.id === originalCol.id) || originalCol.id === colId) {
-              ordered.push(prev.find(c => c.id === originalCol.id) || colToAdd);
-            }
-          });
-          updated = ordered;
-        } else {
-          updated = prev;
-        }
-      }
-      localStorage.setItem('trace_search_cols', JSON.stringify(updated));
-      return updated;
-    });
-  };
 
   const tableRef = useRef(null)
   const [lastSelectedIndex, setLastSelectedIndex] = useState(null)
@@ -471,99 +430,15 @@ export default function CommandTable({
           <span>
             💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }} ref={dropdownRef}>
+          {(parentKeyword || parentStatus !== 'All Statuses') && (
             <button 
-              onClick={() => setShowQuickColDropdown(!showQuickColDropdown)}
-              className="btn btn-secondary btn-sm"
-              style={{ 
-                padding: '4px 10px', 
-                borderRadius: 4, 
-                fontWeight: 'bold', 
-                fontSize: '0.7rem', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '4px' 
-              }}
-              title="Quickly show/hide columns"
+              onClick={clearAllFilters || (() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); })}
+              className="btn btn-primary btn-sm"
+              style={{ padding: '2px 8px', borderRadius: 4, fontWeight: 'bold', fontSize: '0.7rem' }}
             >
-              👁️ Toggle Columns ▼
+              CLEAR ALL FILTERS
             </button>
-
-            {showQuickColDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: '6px',
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-bright)',
-                borderRadius: '8px',
-                boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-                padding: '8px',
-                zIndex: 100,
-                width: '180px',
-                maxHeight: '300px',
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px'
-              }}>
-                {DEFAULT_COLS && DEFAULT_COLS.filter(c => !['courier', 'customer_history', 'order_date'].includes(c.id)).map(col => {
-                  const isVisible = cols.some(c => c.id === col.id);
-                  const isLocked = ['delivery_status', 'edit'].includes(col.id);
-                  if (user?.role !== 'admin') {
-                    const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount'];
-                    if (restricted.includes(col.id)) return null;
-                  }
-                  
-                  return (
-                    <div 
-                      key={col.id}
-                      onClick={() => !isLocked && toggleColVisibility(col.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '6px 8px',
-                        borderRadius: '4px',
-                        cursor: isLocked ? 'not-allowed' : 'pointer',
-                        background: 'transparent',
-                        color: isVisible ? 'var(--text-primary)' : 'var(--text-muted)',
-                        fontSize: '0.75rem',
-                        transition: 'background 0.2s',
-                        userSelect: 'none'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isLocked) e.currentTarget.style.background = 'var(--bg-hover)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent';
-                      }}
-                    >
-                      <input 
-                        type="checkbox" 
-                        checked={isVisible} 
-                        disabled={isLocked}
-                        readOnly
-                        style={{ cursor: isLocked ? 'not-allowed' : 'pointer', width: '13px', height: '13px', accentColor: 'var(--blue)' }} 
-                      />
-                      <span style={{ fontWeight: isVisible ? 600 : 400 }}>{col.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {(parentKeyword || parentStatus !== 'All Statuses') && (
-              <button 
-                onClick={clearAllFilters || (() => { setKeyword(''); setColFilters({}); setStatus('All Statuses'); })}
-                className="btn btn-primary btn-sm"
-                style={{ padding: '4px 10px', borderRadius: 4, fontWeight: 'bold', fontSize: '0.7rem' }}
-              >
-                CLEAR ALL FILTERS
-              </button>
-            )}
-          </div>
+          )}
         </div>
         
         <table 
