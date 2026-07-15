@@ -56,14 +56,42 @@ export default function CommandCenterFilters({
           {/* Keyword Search */}
           <div className="w-80" style={{ width: '320px', minWidth: '320px' }}>
             <label className="form-label">🔑 Keyword</label>
-            <input
-              ref={searchInputRef}
-              className="form-input"
-              placeholder="Search Order, Name, Phone..."
-              value={keyword}
-              onChange={e => setKeyword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && runSearch()}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={searchInputRef}
+                className="form-input"
+                placeholder="Search Order, Name, Phone..."
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && runSearch()}
+                style={{ paddingRight: keyword ? '30px' : '12px' }}
+              />
+              {keyword && (
+                <span 
+                  onClick={() => setKeyword('')}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 'bold',
+                    fontSize: '1.2rem',
+                    userSelect: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '20px',
+                    width: '20px',
+                    borderRadius: '50%'
+                  }}
+                  title="Clear search"
+                >
+                  ×
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Date Preset */}

@@ -739,16 +739,45 @@ const CommandTableRow = React.memo(({
             <td key={col.id} style={{ fontSize: '0.75rem', lineHeight: '13px', verticalAlign: 'middle' }}>
               {o.tracking_number ? (
                 <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <a 
-                    href={isInstaPortal 
-                      ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
-                      : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 600, display: 'block', marginBottom: '1px' }}
-                  >
-                    🚚 {o.tracking_number}
-                  </a>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1px' }}>
+                    <a 
+                      href={isInstaPortal 
+                        ? `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${o.tracking_number}` 
+                        : `https://postex.pk/tracking?cn=${o.tracking_number}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      style={{ color: 'var(--blue)', textDecoration: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      title="Open courier tracking portal"
+                    >
+                      🚚 {o.tracking_number}
+                    </a>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        navigator.clipboard.writeText(o.tracking_number);
+                        addToast('Tracking number copied!', 'success');
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        padding: '2px',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        opacity: 0.6,
+                        transition: 'opacity 0.2s',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1
+                      }}
+                      onMouseEnter={(e) => e.target.style.opacity = '1'}
+                      onMouseLeave={(e) => e.target.style.opacity = '0.6'}
+                      title="Copy tracking number"
+                    >
+                      📋
+                    </button>
+                  </div>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', paddingLeft: '14px', display: 'block' }}>
                     {o.courier || '—'}
                   </span>
