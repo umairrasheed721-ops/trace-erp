@@ -210,13 +210,16 @@ export default function StatusMappingManager() {
 
   const handleTriggerSync = async (id) => {
     try {
-      addToast('Sync triggered...', 'info')
+      addToast('Triggering sync...', 'info')
       const res = await fetch(`/api/scheduler/trigger/${id}`, { method: 'POST' })
+      const data = await res.json()
       if (res.ok) {
-        addToast('Sync complete!', 'success')
+        addToast(data.message || 'Sync started in background', 'success')
         fetchSchedules()
+      } else {
+        addToast(data.error || 'Failed to trigger sync', 'error')
       }
-    } catch (e) { addToast('Sync failed', 'error') }
+    } catch (e) { addToast('Sync trigger failed', 'error') }
   }
 
   // Row filtering
