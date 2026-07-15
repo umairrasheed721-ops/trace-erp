@@ -114,5 +114,16 @@ module.exports = [
     } catch (e) {
       console.error('Failed to seed sync schedules:', e.message);
     }
+  },
+  // 5. Add matching_type column to status_mappings
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE status_mappings ADD COLUMN matching_type TEXT DEFAULT 'exact'`);
+      console.log('✅ Migration: Added matching_type column to status_mappings');
+    } catch (e) {
+      if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+        console.warn('Migration warning on status_mappings matching_type column:', e.message);
+      }
+    }
   }
 ];

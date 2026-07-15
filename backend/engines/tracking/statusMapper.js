@@ -6,26 +6,99 @@ const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'deli
 
 function loadStatusMaps() {
   try {
-    const rows = db.prepare(`SELECT courier, courier_status, erp_status FROM status_mappings WHERE is_active = 1`).all();
-    const map = {};
+    const rows = db.prepare(`SELECT id, courier, courier_status, erp_status, matching_type FROM status_mappings WHERE is_active = 1`).all();
+    const exact = {};
+    const wildcard = [];
+    const regex = [];
+
     rows.forEach(r => {
-      const key = `${r.courier.toLowerCase()}:${r.courier_status.toLowerCase()}`;
-      map[key] = r.erp_status;
-      map[`all:${r.courier_status.toLowerCase()}`] = r.erp_status;
+      const mode = (r.matching_type || 'exact').toLowerCase().trim();
+      const courier = r.courier.toLowerCase();
+      const pattern = r.courier_status.toLowerCase().trim();
+
+      if (mode === 'exact') {
+        const key = `${courier}:${pattern}`;
+        exact[key] = r.erp_status;
+        exact[`all:${pattern}`] = r.erp_status;
+      } else if (mode === 'wildcard') {
+        // Convert wildcard pattern (% -> .*, _ -> .) to regex
+        let regexStr = pattern
+          .replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Escape standard regex
+          .replace(/%/g, '.*')
+          .replace(/_/g, '.');
+        regexStr = `^${regexStr}$`;
+        try {
+          wildcard.push({
+            id: r.id,
+            courier,
+            rawPattern: r.courier_status,
+            regex: new RegExp(regexStr, 'i'),
+            erp_status: r.erp_status
+          });
+        } catch (err) {
+          console.error(`Invalid wildcard pattern "${pattern}":`, err.message);
+        }
+      } else if (mode === 'regex') {
+        try {
+          regex.push({
+            id: r.id,
+            courier,
+            rawPattern: r.courier_status,
+            regex: new RegExp(pattern, 'i'),
+            erp_status: r.erp_status
+          });
+        } catch (err) {
+          console.error(`Invalid RegExp pattern "${pattern}":`, err.message);
+        }
+      }
     });
-    return map;
+
+    return { exact, wildcard, regex, rawRows: rows };
   } catch (e) {
     console.error('⚠️ Failed to load status maps from DB, using empty map:', e.message);
-    return {};
+    return { exact: {}, wildcard: [], regex: [], rawRows: [] };
   }
 }
 
 function applyMap(statusMap, courier, rawStatus) {
   if (!rawStatus) return null;
   const raw = rawStatus.toLowerCase().trim();
+  const targetCourier = (courier || 'all').toLowerCase().trim();
 
-  // Pattern matching for dynamic PostEx en-route statuses
-  if (courier && courier.toLowerCase().includes('postex')) {
+  // Handle legacy flat object format fallback if passed
+  const isLegacy = !statusMap.exact;
+  if (isLegacy) {
+    const courierKey = `${targetCourier}:${raw}`;
+    const allKey = `all:${raw}`;
+    return statusMap[courierKey] || statusMap[allKey] || null;
+  }
+
+  // 1. Try EXACT match first (O(1) lookup)
+  const exactKey = `${targetCourier}:${raw}`;
+  const exactAllKey = `all:${raw}`;
+  if (statusMap.exact[exactKey]) return statusMap.exact[exactKey];
+  if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
+
+  // 2. Try WILDCARD matches
+  for (const w of statusMap.wildcard) {
+    if (w.courier === 'all' || w.courier === targetCourier) {
+      if (w.regex.test(raw)) {
+        return w.erp_status;
+      }
+    }
+  }
+
+  // 3. Try REGEX matches
+  for (const r of statusMap.regex) {
+    if (r.courier === 'all' || r.courier === targetCourier) {
+      if (r.regex.test(raw)) {
+        return r.erp_status;
+      }
+    }
+  }
+
+  // 4. Hardcoded pattern matches fallback
+  if (targetCourier.includes('postex')) {
     if (raw.startsWith('en-route to') && raw.endsWith('warehouse')) {
       return 'In Transit';
     }
@@ -41,12 +114,9 @@ function applyMap(statusMap, courier, rawStatus) {
       return 'In Transit';
     }
   }
-  // Pattern matching for return in-transit statuses across couriers
   if (raw.includes('return in-transit') || raw.startsWith('return in-transit')) {
     return 'Return Initiated';
   }
-
-  // Pattern matching for returned-to-merchant statuses across all couriers
   if (
     raw.includes('returned at merchant') ||
     raw.includes('returned to merchant') ||
@@ -56,9 +126,7 @@ function applyMap(statusMap, courier, rawStatus) {
     return 'Returned';
   }
 
-  const courierKey = `${(courier || 'all').toLowerCase()}:${raw}`;
-  const allKey = `all:${raw}`;
-  return statusMap[courierKey] || statusMap[allKey] || null;
+  return null;
 }
 
 module.exports = {

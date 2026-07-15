@@ -4,12 +4,19 @@ import { useApp } from '../context/AppContext'
 export default function StatusMappingManager() {
   const [mappings, setMappings] = useState([])
   const [erpStatuses, setErpStatuses] = useState([])
+  const [couriers, setCouriers] = useState(['All', 'PostEx', 'Instaworld'])
   const [loading, setLoading] = useState(true)
   const { addToast, user } = useApp()
   const [showAdd, setShowAdd] = useState(false)
-  const [newMapping, setNewMapping] = useState({ courier: 'All', courier_status: '', erp_status: 'Pending' })
+  const [newMapping, setNewMapping] = useState({ courier: 'All', courier_status: '', erp_status: 'Pending', matching_type: 'exact' })
   const [editingId, setEditingId] = useState(null)
   const [editData, setEditData] = useState({})
+
+  // Simulator states
+  const [testStatus, setTestStatus] = useState('')
+  const [testCourier, setTestCourier] = useState('All')
+  const [testResult, setTestResult] = useState(null)
+  const [testLoading, setTestLoading] = useState(false)
 
   const [schedules, setSchedules] = useState([])
   const [schedulerLoading, setSchedulerLoading] = useState(true)
@@ -21,6 +28,7 @@ export default function StatusMappingManager() {
       if (res.ok) {
         setMappings(data.mappings || [])
         setErpStatuses(data.erp_statuses || [])
+        setCouriers(data.couriers || ['All', 'PostEx', 'Instaworld'])
       } else {
         addToast(data.error || 'Failed to load mappings', 'error')
       }
@@ -59,13 +67,37 @@ export default function StatusMappingManager() {
       if (res.ok) {
         addToast('Mapping added successfully', 'success')
         setShowAdd(false)
-        setNewMapping({ courier: 'All', courier_status: '', erp_status: 'Pending' })
+        setNewMapping({ courier: 'All', courier_status: '', erp_status: 'Pending', matching_type: 'exact' })
         fetchMappings()
       } else {
         const d = await res.json()
         addToast(d.error || 'Failed to add mapping', 'error')
       }
     } catch (e) { addToast('Network error', 'error') }
+  }
+
+  const handleTestMapping = async (e) => {
+    if (e) e.preventDefault();
+    if (!testStatus) return;
+    setTestLoading(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/status-mappings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courier: testCourier, raw_status: testStatus })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTestResult(data);
+      } else {
+        addToast(data.error || 'Failed to simulate mapping', 'error');
+      }
+    } catch (e) {
+      addToast('Network error on mapping test', 'error');
+    } finally {
+      setTestLoading(false);
+    }
   }
 
   const handleToggle = async (id) => {
@@ -216,30 +248,42 @@ export default function StatusMappingManager() {
       {showAdd && (
         <div className="card" style={{ marginBottom: 24, padding: 20 }}>
           <h3 className="card-title">New Mapping</h3>
-          <form onSubmit={handleAdd} className="form-grid-3" style={{ alignItems: 'flex-end' }}>
-            <div className="form-group">
+          <form onSubmit={handleAdd} style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
               <label className="form-label">Courier</label>
               <select 
                 className="form-select" 
                 value={newMapping.courier}
                 onChange={e => setNewMapping({...newMapping, courier: e.target.value})}
               >
-                <option value="All">All Couriers (Generic)</option>
-                <option value="PostEx">PostEx</option>
-                <option value="Instaworld">Instaworld / TCS / LCS</option>
+                {couriers.map(c => (
+                  <option key={c} value={c}>{c === 'All' ? 'All Couriers (Generic)' : c}</option>
+                ))}
               </select>
             </div>
-            <div className="form-group">
-              <label className="form-label">Raw Courier Status (Exact String)</label>
+            <div className="form-group" style={{ flex: '1 1 220px', marginBottom: 0 }}>
+              <label className="form-label">Match Mode</label>
+              <select 
+                className="form-select"
+                value={newMapping.matching_type}
+                onChange={e => setNewMapping({...newMapping, matching_type: e.target.value})}
+              >
+                <option value="exact">Exact String</option>
+                <option value="wildcard">Wildcard Pattern (e.g. arrived at %)</option>
+                <option value="regex">Regular Expression (Regex)</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: '1 1 260px', marginBottom: 0 }}>
+              <label className="form-label">Raw Status Pattern / Text</label>
               <input 
                 className="form-input" 
-                placeholder="e.g. delivery unsuccessful"
+                placeholder={newMapping.matching_type === 'wildcard' ? 'e.g. arrived at %' : newMapping.matching_type === 'regex' ? 'e.g. ^en-route to .* warehouse$' : 'e.g. delivery unsuccessful'}
                 value={newMapping.courier_status}
                 onChange={e => setNewMapping({...newMapping, courier_status: e.target.value})}
                 required
               />
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
               <label className="form-label">Maps to ERP Status</label>
               <select 
                 className="form-select"
@@ -249,8 +293,8 @@ export default function StatusMappingManager() {
                 {erpStatuses.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div style={{ marginTop: 10 }}>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Save Mapping</button>
+            <div style={{ flex: '1 1 150px' }}>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', height: '36px' }}>Save Mapping</button>
             </div>
           </form>
         </div>
@@ -261,6 +305,7 @@ export default function StatusMappingManager() {
           <thead>
             <tr>
               <th>Courier</th>
+              <th>Match Mode</th>
               <th>Raw Status (From API)</th>
               <th></th>
               <th>Internal ERP Status</th>
@@ -270,9 +315,9 @@ export default function StatusMappingManager() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40 }}>Loading mappings...</td></tr>
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: 40 }}>Loading mappings...</td></tr>
             ) : mappings.length === 0 ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40 }}>No mappings found.</td></tr>
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: 40 }}>No mappings found.</td></tr>
             ) : mappings.map(m => (
               <tr key={m.id} style={{ opacity: m.is_active ? 1 : 0.5 }}>
                 <td>
@@ -282,12 +327,32 @@ export default function StatusMappingManager() {
                       value={editData.courier}
                       onChange={e => setEditData({...editData, courier: e.target.value})}
                     >
-                      <option value="All">All</option>
-                      <option value="PostEx">PostEx</option>
-                      <option value="Instaworld">Instaworld</option>
+                      {couriers.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   ) : (
                     <span className="badge badge-pending">{m.courier}</span>
+                  )}
+                </td>
+                <td>
+                  {editingId === m.id ? (
+                    <select 
+                      className="form-select btn-sm"
+                      value={editData.matching_type || 'exact'}
+                      onChange={e => setEditData({...editData, matching_type: e.target.value})}
+                    >
+                      <option value="exact">Exact</option>
+                      <option value="wildcard">Wildcard</option>
+                      <option value="regex">Regex</option>
+                    </select>
+                  ) : (
+                    <span className="badge" style={{ 
+                      fontSize: '0.65rem',
+                      background: m.matching_type === 'regex' ? 'rgba(239,68,68,0.1)' : m.matching_type === 'wildcard' ? 'rgba(249,115,22,0.1)' : 'rgba(59,130,246,0.1)',
+                      color: m.matching_type === 'regex' ? '#ef4444' : m.matching_type === 'wildcard' ? '#f97316' : '#3b82f6',
+                      border: `1px solid ${m.matching_type === 'regex' ? 'rgba(239,68,68,0.2)' : m.matching_type === 'wildcard' ? 'rgba(249,115,22,0.2)' : 'rgba(59,130,246,0.2)'}`
+                    }}>
+                      {(m.matching_type || 'exact').toUpperCase()}
+                    </span>
                   )}
                 </td>
                 <td>
@@ -341,6 +406,88 @@ export default function StatusMappingManager() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* 🔍 STATUS MAPPING SIMULATOR */}
+      <div className="card" style={{ marginTop: 24, padding: 20, border: '1px solid var(--border-light)' }}>
+        <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          🔍 Status Mapping Simulator
+          <span className="badge badge-delivered" style={{ fontSize: '0.65rem' }}>SANDBOX</span>
+        </h3>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 20 }}>
+          Test raw status strings directly against your active mapping rules and hardcoded patterns before committing changes.
+        </p>
+
+        <form onSubmit={handleTestMapping} style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ flex: '1 1 200px', marginBottom: 0 }}>
+            <label className="form-label">Test Courier</label>
+            <select 
+              className="form-select"
+              value={testCourier}
+              onChange={e => setTestCourier(e.target.value)}
+            >
+              {couriers.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: '1 1 350px', marginBottom: 0 }}>
+            <label className="form-label">Raw Courier Status Text to Test</label>
+            <input 
+              className="form-input" 
+              placeholder="e.g. arrived at destination warehouse or departed to rawalpindi"
+              value={testStatus}
+              onChange={e => setTestStatus(e.target.value)}
+              required
+            />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <button 
+              type="submit" 
+              className="btn btn-secondary" 
+              style={{ width: '100%', height: '36px', fontWeight: 'bold' }}
+              disabled={testLoading}
+            >
+              {testLoading ? 'Simulating...' : '⚡ Test Match'}
+            </button>
+          </div>
+        </form>
+
+        {testResult && (
+          <div style={{ 
+            marginTop: 20, 
+            padding: 16, 
+            background: 'rgba(255, 255, 255, 0.02)', 
+            border: '1px solid var(--border-light)', 
+            borderRadius: 8,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Resulting ERP Status</div>
+                <div style={{ marginTop: 4 }}>
+                  <span className="badge badge-delivered" style={{ fontSize: '0.9rem', fontWeight: 800 }}>
+                    {testResult.mapped_status}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Matched By Rule Type</div>
+                <div style={{ marginTop: 4, fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                  {testResult.matched_by}
+                </div>
+              </div>
+              {testResult.rule_id && (
+                <div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Rule ID</div>
+                  <div style={{ marginTop: 4, fontWeight: 600, fontSize: '0.85rem', color: 'var(--blue)' }}>
+                    #{testResult.rule_id}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 24, padding: 20, background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--brand)' }}>
