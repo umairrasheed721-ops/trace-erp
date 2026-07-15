@@ -57,7 +57,7 @@ export default function StatusMappingManager() {
   const [erpStatuses, setErpStatuses] = useState([])
   const [couriers, setCouriers] = useState(['All', 'PostEx', 'Instaworld'])
   const [loading, setLoading] = useState(true)
-  const { addToast, user } = useApp()
+  const { addToast, user, activeStoreId } = useApp()
   const [showAdd, setShowAdd] = useState(false)
   const [newMapping, setNewMapping] = useState({ courier: 'All', courier_status: '', erp_status: 'Pending', matching_type: 'exact' })
   const [editingId, setEditingId] = useState(null)
@@ -211,7 +211,7 @@ export default function StatusMappingManager() {
   const handleTriggerSync = async (id) => {
     try {
       addToast('Triggering sync...', 'info')
-      const res = await fetch(`/api/scheduler/trigger/${id}`, { method: 'POST' })
+      const res = await fetch(`/api/scheduler/trigger/${id}?store_id=${activeStoreId}`, { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
         addToast(data.message || 'Sync started in background', 'success')

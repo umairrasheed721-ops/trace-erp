@@ -29,10 +29,18 @@ router.post('/schedules/:id', (req, res) => {
 router.post('/trigger/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const reqStoreId = req.query.store_id || req.body.store_id || req.body.storeId;
+
         const schedule = db.prepare('SELECT * FROM sync_schedules WHERE id = ?').get(id);
         if (!schedule) return res.status(404).json({ error: 'Schedule not found' });
 
-        const store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        let store;
+        if (reqStoreId) {
+            store = db.prepare('SELECT * FROM stores WHERE id = ?').get(reqStoreId);
+        }
+        if (!store) {
+            store = db.prepare('SELECT * FROM stores LIMIT 1').get();
+        }
         if (!store) return res.status(404).json({ error: 'No store found' });
 
         const { syncPostEx, syncInstaworld } = require('../engines/tracking');
@@ -76,21 +84,24 @@ router.post('/trigger/:id', async (req, res) => {
 
         res.json({ message: `Sync started for ${schedule.courier} (${schedule.sync_type})` });
 
-        // Run sync asynchronously in background
+        // Run sync asynchronously in background wrapped in tenant context
         (async () => {
             try {
-                updateProgress('Initializing connection...', 0, 100);
-                if (schedule.courier === 'PostEx') {
-                    await syncPostEx(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
-                        updateProgress(stage, processed, total, currentOrder);
-                    });
-                } else {
-                    await syncInstaworld(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
-                        updateProgress(stage, processed, total, currentOrder);
-                    });
-                }
-                updateProgress('Sync Complete', 100, 100);
-                db.prepare("UPDATE sync_schedules SET last_run_at = datetime('now') WHERE id = ?").run(id);
+                const tenantContext = require('../tenant-context');
+                await tenantContext.run(tenantId, async () => {
+                    updateProgress('Initializing connection...', 0, 100);
+                    if (schedule.courier === 'PostEx') {
+                        await syncPostEx(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
+                            updateProgress(stage, processed, total, currentOrder);
+                        });
+                    } else {
+                        await syncInstaworld(store, schedule.sync_type, (stage, processed, total, currentOrder) => {
+                            updateProgress(stage, processed, total, currentOrder);
+                        });
+                    }
+                    updateProgress('Sync Complete', 100, 100);
+                    db.prepare("UPDATE sync_schedules SET last_run_at = datetime('now') WHERE id = ?").run(id);
+                });
             } catch (err) {
                 console.error(`Error during manual scheduler trigger for schedule #${id}:`, err.message);
                 updateProgress('Sync Failed: ' + err.message, 0, 100);
