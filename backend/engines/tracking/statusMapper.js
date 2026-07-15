@@ -97,35 +97,6 @@ function applyMap(statusMap, courier, rawStatus) {
     }
   }
 
-  // 4. Hardcoded pattern matches fallback
-  if (targetCourier.includes('postex')) {
-    if (raw.startsWith('en-route to') && raw.endsWith('warehouse')) {
-      return 'In Transit';
-    }
-    if (
-      raw.startsWith('arrived at') ||
-      raw.startsWith('departed to') ||
-      raw.startsWith('received at') ||
-      raw.startsWith('at ') ||
-      raw.includes('transit hub') ||
-      raw.includes('warehouse') ||
-      raw === 'waiting for delivery'
-    ) {
-      return 'In Transit';
-    }
-  }
-  if (raw.includes('return in-transit') || raw.startsWith('return in-transit')) {
-    return 'Return Initiated';
-  }
-  if (
-    raw.includes('returned at merchant') ||
-    raw.includes('returned to merchant') ||
-    raw.includes('returned at merchant warehouse') ||
-    raw.includes('returned to shipper')
-  ) {
-    return 'Returned';
-  }
-
   return null;
 }
 

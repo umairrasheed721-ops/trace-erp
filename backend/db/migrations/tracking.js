@@ -125,5 +125,38 @@ module.exports = [
         console.warn('Migration warning on status_mappings matching_type column:', e.message);
       }
     }
+  },
+  // 6. Migrate hardcoded fallback rules to database mapping table
+  (db) => {
+    const fallbackRules = [
+      // PostEx regex/wildcard rules
+      ['PostEx', '^en-route to .* warehouse$', 'In Transit', 'regex'],
+      ['PostEx', 'arrived at %', 'In Transit', 'wildcard'],
+      ['PostEx', 'departed to %', 'In Transit', 'wildcard'],
+      ['PostEx', 'received at %', 'In Transit', 'wildcard'],
+      ['PostEx', 'at %', 'In Transit', 'wildcard'],
+      ['PostEx', '%transit hub%', 'In Transit', 'wildcard'],
+      ['PostEx', '%warehouse%', 'In Transit', 'wildcard'],
+      ['PostEx', 'waiting for delivery', 'In Transit', 'exact'],
+      
+      // All couriers wildcard rules
+      ['All', '%return in-transit%', 'Return Initiated', 'wildcard'],
+      ['All', '%returned at merchant%', 'Returned', 'wildcard'],
+      ['All', '%returned to merchant%', 'Returned', 'wildcard'],
+      ['All', '%returned at merchant warehouse%', 'Returned', 'wildcard'],
+      ['All', '%returned to shipper%', 'Returned', 'wildcard']
+    ];
+
+    try {
+      const insertRule = db.prepare(
+        `INSERT OR IGNORE INTO status_mappings (courier, courier_status, erp_status, matching_type) VALUES (?, ?, ?, ?)`
+      );
+      for (const [courier, courier_status, erp_status, matching_type] of fallbackRules) {
+        insertRule.run(courier, courier_status.trim().toLowerCase(), erp_status, matching_type);
+      }
+      console.log('✅ Migration: Migrated hardcoded status patterns to database seed rules.');
+    } catch (e) {
+      console.error('Failed to migrate hardcoded status rules to database:', e.message);
+    }
   }
 ];
