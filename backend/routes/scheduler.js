@@ -38,6 +38,12 @@ router.post('/trigger/:id', async (req, res) => {
         const { syncPostEx, syncInstaworld } = require('../engines/tracking');
         const { broadcast } = require('../sse');
         const storeId = store.id;
+        const tenantId = req.tenantId || 'default';
+
+        // Toggle active sync flag so the top bar button immediately goes active
+        global.activeSyncs = global.activeSyncs || {};
+        global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+        global.activeSyncs[tenantId].courier = true;
 
         // Initialize progress state
         if (!global.syncProgress) global.syncProgress = {};
@@ -89,6 +95,9 @@ router.post('/trigger/:id', async (req, res) => {
                 console.error(`Error during manual scheduler trigger for schedule #${id}:`, err.message);
                 updateProgress('Sync Failed: ' + err.message, 0, 100);
             } finally {
+                if (global.activeSyncs && global.activeSyncs[tenantId]) {
+                    global.activeSyncs[tenantId].courier = false;
+                }
                 setTimeout(() => { delete global.syncProgress[storeId]; }, 5000);
             }
         })();
