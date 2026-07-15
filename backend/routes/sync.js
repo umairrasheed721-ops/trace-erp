@@ -20,6 +20,27 @@ router.get('/history', (req, res) => {
   }
 });
 
+// GET /api/sync/live-logs — get log entries of the latest sync session
+router.get('/live-logs', (req, res) => {
+  try {
+    const latest = db.prepare('SELECT type, log_data, created_at FROM sync_history ORDER BY created_at DESC LIMIT 1').get();
+    if (!latest) return res.json({ type: 'None', logs: [], created_at: null });
+    
+    let logs = [];
+    try {
+      logs = JSON.parse(latest.log_data || '[]');
+    } catch (e) {}
+
+    res.json({
+      type: latest.type,
+      logs: Array.isArray(logs) ? logs : [],
+      created_at: latest.created_at
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Download audit CSV
 router.get('/history/:id/download', (req, res) => {
   try {

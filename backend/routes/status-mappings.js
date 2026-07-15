@@ -19,13 +19,66 @@ function adminOnly(req, res, next) {
   next();
 }
 
+function findConflicts(mappings) {
+  const active = mappings.filter(m => m.is_active !== 0 && m.is_active !== '0');
+  const conflicts = [];
+
+  const compilePattern = (m) => {
+    try {
+      if (m.matching_type === 'regex') {
+        return new RegExp(m.courier_status, 'i');
+      } else if (m.matching_type === 'wildcard') {
+        const escaped = m.courier_status.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        const pattern = escaped.replace(/%/g, '.*');
+        return new RegExp(`^${pattern}$`, 'i');
+      } else {
+        const escaped = m.courier_status.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`^${escaped}$`, 'i');
+      }
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const compiled = active.map(m => ({ ...m, regex: compilePattern(m) })).filter(m => m.regex !== null);
+
+  for (let i = 0; i < compiled.length; i++) {
+    for (let j = i + 1; j < compiled.length; j++) {
+      const a = compiled[i];
+      const b = compiled[j];
+
+      // Only conflicts if targeting different erp statuses
+      if (a.erp_status === b.erp_status) continue;
+
+      // Only conflicts if couriers overlap
+      const couriersOverlap = a.courier === b.courier || a.courier === 'All' || b.courier === 'All';
+      if (!couriersOverlap) continue;
+
+      // Check if A's pattern matches B's raw pattern, or vice versa
+      const aMatchesB = a.regex.test(b.courier_status);
+      const bMatchesA = b.regex.test(a.courier_status);
+
+      if (aMatchesB || bMatchesA) {
+        conflicts.push({
+          ruleId1: a.id,
+          ruleId2: b.id,
+          message: `Overlap: "${a.courier_status}" (${a.matching_type || 'exact'}) clashing with "${b.courier_status}" (${b.matching_type || 'exact'})`
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
 // GET /api/status-mappings — list all
 router.get('/', adminOnly, (req, res) => {
   try {
     const rows = db.prepare(`SELECT * FROM status_mappings ORDER BY courier, courier_status`).all();
     const dbCouriers = db.prepare("SELECT DISTINCT courier FROM orders WHERE courier IS NOT NULL AND courier != '' ORDER BY courier").all().map(r => r.courier);
     const courierSet = new Set(['All', 'PostEx', 'Instaworld', 'Leopards', 'TCS', 'LCS', ...dbCouriers]);
-    res.json({ mappings: rows, erp_statuses: ERP_STATUSES, couriers: Array.from(courierSet) });
+    const conflicts = findConflicts(rows);
+    res.json({ mappings: rows, erp_statuses: ERP_STATUSES, couriers: Array.from(courierSet), conflicts });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -39,7 +92,18 @@ router.post('/', adminOnly, (req, res) => {
     const result = db.prepare(
       `INSERT INTO status_mappings (courier, courier_status, erp_status, matching_type) VALUES (?, ?, ?, ?)`
     ).run(courier || 'All', courier_status.trim().toLowerCase(), erp_status.trim(), matching_type || 'exact');
-    res.json({ success: true, id: result.lastInsertRowid });
+    
+    // Check conflicts immediately
+    const updatedRows = db.prepare(`SELECT * FROM status_mappings`).all();
+    const conflicts = findConflicts(updatedRows);
+    const newlyCreatedId = result.lastInsertRowid;
+    const ruleConflict = conflicts.find(c => c.ruleId1 === newlyCreatedId || c.ruleId2 === newlyCreatedId);
+
+    res.json({ 
+      success: true, 
+      id: newlyCreatedId,
+      conflictWarning: ruleConflict ? ruleConflict.message : null
+    });
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Mapping already exists for this courier + status' });
     res.status(500).json({ error: e.message });
@@ -60,7 +124,17 @@ router.put('/:id', adminOnly, (req, res) => {
       matching_type || 'exact',
       req.params.id
     );
-    res.json({ success: true });
+
+    // Check conflicts immediately
+    const updatedRows = db.prepare(`SELECT * FROM status_mappings`).all();
+    const conflicts = findConflicts(updatedRows);
+    const updatedId = Number(req.params.id);
+    const ruleConflict = conflicts.find(c => c.ruleId1 === updatedId || c.ruleId2 === updatedId);
+
+    res.json({ 
+      success: true,
+      conflictWarning: ruleConflict ? ruleConflict.message : null
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -62,6 +62,7 @@ export default function StatusMappingManager() {
   const [newMapping, setNewMapping] = useState({ courier: 'All', courier_status: '', erp_status: 'Pending', matching_type: 'exact' })
   const [editingId, setEditingId] = useState(null)
   const [editData, setEditData] = useState({})
+  const [conflicts, setConflicts] = useState([])
   
   // Filtering & Search
   const [filterCourier, setFilterCourier] = useState('All')
@@ -78,6 +79,32 @@ export default function StatusMappingManager() {
   const [schedules, setSchedules] = useState([])
   const [schedulerLoading, setSchedulerLoading] = useState(true)
 
+  // Live Logs Terminal Console
+  const [liveLogs, setLiveLogs] = useState({ type: 'None', logs: [], created_at: null })
+  const [showLogsConsole, setShowLogsConsole] = useState(false)
+  const [logsLoading, setLogsLoading] = useState(false)
+
+  const fetchLiveLogs = async () => {
+    setLogsLoading(true)
+    try {
+      const res = await fetch('/api/sync/live-logs')
+      const data = await res.json()
+      if (res.ok) {
+        setLiveLogs(data)
+      }
+    } catch (e) {
+      console.error('Failed to load live logs:', e)
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showLogsConsole) {
+      fetchLiveLogs()
+    }
+  }, [showLogsConsole])
+
   const fetchMappings = async () => {
     try {
       const res = await fetch('/api/status-mappings')
@@ -86,6 +113,7 @@ export default function StatusMappingManager() {
         setMappings(data.mappings || [])
         setErpStatuses(data.erp_statuses || [])
         setCouriers(data.couriers || ['All', 'PostEx', 'Instaworld'])
+        setConflicts(data.conflicts || [])
       } else {
         addToast(data.error || 'Failed to load mappings', 'error')
       }
@@ -121,14 +149,18 @@ export default function StatusMappingManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newMapping)
       })
+      const data = await res.json()
       if (res.ok) {
-        addToast('Mapping rule created', 'success')
+        if (data.conflictWarning) {
+          addToast(`⚠️ Warning: ${data.conflictWarning}`, 'warning', 6000)
+        } else {
+          addToast('Mapping rule created', 'success')
+        }
         setShowAdd(false)
         setNewMapping({ courier: 'All', courier_status: '', erp_status: 'Pending', matching_type: 'exact' })
         fetchMappings()
       } else {
-        const d = await res.json()
-        addToast(d.error || 'Failed to add mapping', 'error')
+        addToast(data.error || 'Failed to add mapping', 'error')
       }
     } catch (e) { addToast('Network error', 'error') }
   }
@@ -183,12 +215,16 @@ export default function StatusMappingManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editData)
       })
+      const d = await res.json()
       if (res.ok) {
-        addToast('Rule updated successfully', 'success')
+        if (d.conflictWarning) {
+          addToast(`⚠️ Warning: ${d.conflictWarning}`, 'warning', 6000)
+        } else {
+          addToast('Rule updated successfully', 'success')
+        }
         setEditingId(null)
         fetchMappings()
       } else {
-        const d = await res.json()
         addToast(d.error || 'Update failed', 'error')
       }
     } catch (e) { addToast('Network error', 'error') }
@@ -294,6 +330,32 @@ export default function StatusMappingManager() {
           </div>
         ))}
       </div>
+
+      {/* 🚨 Overlap / Rule Conflicts Alert Banner */}
+      {conflicts.length > 0 && (
+        <div style={{
+          background: 'rgba(239,68,68,0.06)',
+          border: '1px solid rgba(239,68,68,0.18)',
+          borderRadius: 12,
+          padding: '16px 20px',
+          marginBottom: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#f87171', fontWeight: 700, fontSize: '0.9rem' }}>
+            <span>🚨</span> Overlapping Rule Conflicts Detected ({conflicts.length})
+          </div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {conflicts.map((c, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#f87171', fontSize: '1rem' }}>•</span>
+                <span>{c.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Main Layout Column Split ─────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: 24, alignItems: 'start' }}>
@@ -456,7 +518,25 @@ export default function StatusMappingManager() {
                           <input className="form-input btn-sm" style={{ width: '100%', fontFamily: 'monospace' }}
                             value={editData.courier_status} onChange={e => setEditData({ ...editData, courier_status: e.target.value })} />
                         ) : (
-                          <span style={{ color: 'var(--text-bright)', opacity: 0.9 }}>{m.courier_status}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ color: 'var(--text-bright)', opacity: 0.9 }}>{m.courier_status}</span>
+                            {conflicts.some(c => c.ruleId1 === m.id || c.ruleId2 === m.id) && (
+                              <span 
+                                title="Overlapping Rule Conflict" 
+                                style={{ 
+                                  fontSize: '0.65rem', 
+                                  background: 'rgba(239,68,68,0.1)', 
+                                  color: '#f87171', 
+                                  border: '1px solid rgba(239,68,68,0.2)',
+                                  borderRadius: 4,
+                                  padding: '1px 5px',
+                                  fontWeight: 700
+                                }}
+                              >
+                                ⚠️ CLASH
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -676,6 +756,89 @@ export default function StatusMappingManager() {
 
         </div>
 
+      </div>
+
+      {/* 📟 Monospace Live Sync Logs Console */}
+      <div style={{
+        marginTop: 28,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        overflow: 'hidden'
+      }}>
+        <div 
+          onClick={() => setShowLogsConsole(!showLogsConsole)}
+          style={{
+            padding: '16px 20px',
+            background: 'rgba(255,255,255,0.02)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            borderBottom: showLogsConsole ? '1px solid var(--border)' : 'none'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--text-bright)', fontSize: '0.9rem' }}>
+            <span>📟</span> Live Sync Logs Terminal
+            {liveLogs.created_at && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                (Last run: {new Date(liveLogs.created_at).toLocaleString()})
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {showLogsConsole && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); fetchLiveLogs(); }} 
+                disabled={logsLoading}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '2px 8px', fontSize: '0.7rem', height: 24 }}
+              >
+                🔄 Refresh Logs
+              </button>
+            )}
+            <span style={{ transform: showLogsConsole ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', fontSize: '0.8rem' }}>▶</span>
+          </div>
+        </div>
+
+        {showLogsConsole && (
+          <div style={{
+            background: '#090d16',
+            padding: '16px 20px',
+            maxHeight: 300,
+            overflowY: 'auto',
+            fontFamily: 'monospace',
+            fontSize: '0.8rem',
+            lineHeight: 1.5,
+            color: '#34d399'
+          }}>
+            {logsLoading ? (
+              <div style={{ color: 'var(--text-muted)' }}>Loading console stream...</div>
+            ) : !liveLogs.logs || liveLogs.logs.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)' }}>No logs found for latest sync session.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ color: '#a78bfa', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 6, marginBottom: 6 }}>
+                  [CONSOLE SESSION: {liveLogs.type}]
+                </div>
+                {liveLogs.logs.map((log, index) => (
+                  <div key={index} style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ color: '#f43f5e', userSelect: 'none' }}>[{index + 1}]</span>
+                    {log.id && log.id !== 'SYSTEM' && (
+                      <span style={{ color: '#60a5fa', fontWeight: 600 }}>{log.id}:</span>
+                    )}
+                    <span style={{ color: log.status === 'FAILED' ? '#f43f5e' : log.status === 'ABORTED' ? '#fb923c' : '#34d399' }}>
+                      {log.message || log.error || 'Processed'}
+                    </span>
+                    {log.details && (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>({log.details})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </div>
