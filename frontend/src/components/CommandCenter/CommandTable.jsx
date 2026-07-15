@@ -392,6 +392,28 @@ export default function CommandTable({
 
   return (
     <>
+      <style>{`
+        .phone-container-wrap:hover .phone-copy-btn,
+        .ref-container-wrap:hover .ref-copy-btn,
+        .track-container-wrap:hover .track-copy-btn {
+          opacity: 0.5 !important;
+        }
+        .phone-copy-btn:hover {
+          opacity: 1 !important;
+          color: var(--blue) !important;
+          transform: scale(1.15);
+        }
+        .ref-copy-btn:hover {
+          opacity: 1 !important;
+          color: var(--brand) !important;
+          transform: scale(1.15);
+        }
+        .track-copy-btn:hover {
+          opacity: 1 !important;
+          color: var(--blue) !important;
+          transform: scale(1.15);
+        }
+      `}</style>
       <div className="table-wrapper" style={{ minWidth: '100%', width: '100%', overflowX: 'auto' }}>
         <div style={{ 
           background: 'var(--bg-elevated)', 

@@ -116,16 +116,56 @@ const CommandTableRow = React.memo(({
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-                <a 
-                  href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  onClick={() => setActiveRowId(o.id)}
-                  style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
-                >
-                  {o.ref_number || o.shopify_order_id}
-                </a>
+              <div className="ref-container-wrap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', lineHeight: '13px' }}>
+                  <a 
+                    href={`https://${o.shop_domain || activeShopDomain}/admin/orders/${o.shopify_order_id}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    onClick={() => setActiveRowId(o.id)}
+                    style={{ color: 'var(--brand)', fontSize: '0.75rem', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+                  >
+                    {o.ref_number || o.shopify_order_id}
+                  </a>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      navigator.clipboard.writeText(o.ref_number || o.shopify_order_id);
+                      addToast('Order reference copied!', 'success');
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '2px',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                      opacity: 0,
+                      transition: 'opacity 0.15s ease, transform 0.15s ease',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      verticalAlign: 'middle',
+                      borderRadius: '4px',
+                    }}
+                    className="ref-copy-btn"
+                    title="Copy Order Reference"
+                  >
+                    <svg 
+                      width="10" 
+                      height="10" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                    >
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                  </button>
+                </div>
                 
                 <span style={{ 
                   fontSize: '0.55rem', 
@@ -547,23 +587,61 @@ const CommandTableRow = React.memo(({
                     <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>▼</span>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '28px', minHeight: '28px', maxHeight: '28px', overflow: 'hidden' }}>
-                    <a 
-                      href={"tel:" + phone}
-                      onClick={() => setActiveRowId(o.id)}
-                      className="tabular-nums text-sm font-semibold hover:underline"
-                      style={{ 
-                        color: 'var(--text-primary)', 
-                        textDecoration: 'none', 
-                        fontSize: '0.75rem', 
-                        lineHeight: '13px',
-                        display: 'block',
-                        cursor: 'pointer'
-                      }}
-                      title="Click to initiate SIM Call"
-                    >
-                      {phone}
-                    </a>
+                  <div className="phone-container-wrap" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '28px', minHeight: '28px', maxHeight: '28px', overflow: 'visible' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', lineHeight: '13px' }}>
+                      <a 
+                        href={"tel:" + phone}
+                        onClick={() => setActiveRowId(o.id)}
+                        className="tabular-nums text-sm font-semibold hover:underline"
+                        style={{ 
+                          color: 'var(--text-primary)', 
+                          textDecoration: 'none', 
+                          fontSize: '0.75rem', 
+                          display: 'block',
+                          cursor: 'pointer'
+                        }}
+                        title="Click to initiate SIM Call"
+                      >
+                        {phone}
+                      </a>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          navigator.clipboard.writeText(phone);
+                          addToast('Phone number copied!', 'success');
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '2px',
+                          cursor: 'pointer',
+                          color: 'var(--text-secondary)',
+                          opacity: 0,
+                          transition: 'opacity 0.15s ease, transform 0.15s ease',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '4px',
+                        }}
+                        className="phone-copy-btn"
+                        title="Copy phone number"
+                      >
+                        <svg 
+                          width="10" 
+                          height="10" 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2.5" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </button>
+                    </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '1px', lineHeight: '13px' }}>
                       <a 
@@ -738,7 +816,7 @@ const CommandTableRow = React.memo(({
           return (
             <td key={col.id} style={{ fontSize: '0.75rem', lineHeight: '13px', verticalAlign: 'middle' }}>
               {o.tracking_number ? (
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div className="track-container-wrap" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1px' }}>
                     <a 
                       href={isInstaPortal 
@@ -763,19 +841,30 @@ const CommandTableRow = React.memo(({
                         border: 'none',
                         padding: '2px',
                         cursor: 'pointer',
-                        fontSize: '0.7rem',
-                        opacity: 0.6,
-                        transition: 'opacity 0.2s',
+                        color: 'var(--text-secondary)',
+                        opacity: 0,
+                        transition: 'opacity 0.15s ease, transform 0.15s ease',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        lineHeight: 1
+                        borderRadius: '4px',
                       }}
-                      onMouseEnter={(e) => e.target.style.opacity = '1'}
-                      onMouseLeave={(e) => e.target.style.opacity = '0.6'}
+                      className="track-copy-btn"
                       title="Copy tracking number"
                     >
-                      📋
+                      <svg 
+                        width="10" 
+                        height="10" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2.5" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
                     </button>
                   </div>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', paddingLeft: '14px', display: 'block' }}>
