@@ -68,7 +68,36 @@ export default function CommandCenterFilters({
 
           {/* Date Preset */}
           <div style={{ width: '180px', minWidth: '180px' }}>
-            <label className="form-label">📅 Date Preset</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label className="form-label" style={{ margin: 0 }}>📅 Date Preset</label>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <span 
+                  onClick={() => setPreset('Today')}
+                  style={{ 
+                    fontSize: '0.65rem', 
+                    color: preset === 'Today' ? 'var(--blue)' : 'var(--text-muted)', 
+                    cursor: 'pointer',
+                    fontWeight: preset === 'Today' ? 700 : 500,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Today
+                </span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>|</span>
+                <span 
+                  onClick={() => setPreset('Yesterday')}
+                  style={{ 
+                    fontSize: '0.65rem', 
+                    color: preset === 'Yesterday' ? 'var(--blue)' : 'var(--text-muted)', 
+                    cursor: 'pointer',
+                    fontWeight: preset === 'Yesterday' ? 700 : 500,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Yest
+                </span>
+              </div>
+            </div>
             <select className="form-select" value={preset} onChange={e => setPreset(e.target.value)}>
               {DATE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -90,7 +119,36 @@ export default function CommandCenterFilters({
 
           {/* Status / Mode */}
           <div style={{ width: '180px', minWidth: '180px' }}>
-            <label className="form-label">🏷️ Status / Mode</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <label className="form-label" style={{ margin: 0 }}>🏷️ Status / Mode</label>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <span 
+                  onClick={() => setStatus('All Statuses')}
+                  style={{ 
+                    fontSize: '0.65rem', 
+                    color: status === 'All Statuses' ? 'var(--blue)' : 'var(--text-muted)', 
+                    cursor: 'pointer',
+                    fontWeight: status === 'All Statuses' ? 700 : 500,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  All
+                </span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>|</span>
+                <span 
+                  onClick={() => setStatus('Pending')}
+                  style={{ 
+                    fontSize: '0.65rem', 
+                    color: status === 'Pending' ? 'var(--blue)' : 'var(--text-muted)', 
+                    cursor: 'pointer',
+                    fontWeight: status === 'Pending' ? 700 : 500,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Pend
+                </span>
+              </div>
+            </div>
             <select className="form-select" value={status} onChange={e => setStatus(e.target.value)}>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
