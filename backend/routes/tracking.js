@@ -165,7 +165,7 @@ router.post('/sync-shopify', async (req, res) => {
     });
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Shopify sync request timed out')), 35000)
+      setTimeout(() => reject(new Error('Shopify sync request timed out')), 300000)
     );
 
     const result = await Promise.race([syncPromise, timeoutPromise]);
@@ -215,7 +215,7 @@ router.post('/sync-couriers', async (req, res) => {
     });
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Courier sync request timed out')), 35000)
+      setTimeout(() => reject(new Error('Courier sync request timed out')), 300000)
     );
 
     const result = await Promise.race([syncPromise, timeoutPromise]);
