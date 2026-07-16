@@ -32,9 +32,27 @@ router.get('/couriers', async (req, res) => {
 // GET /api/finance/sync-status
 router.get('/sync-status', (req, res) => {
   const tenantId = req.tenantId || 'default';
+  const storeId = req.query.store_id;
   global.activeSyncs = global.activeSyncs || {};
   const status = global.activeSyncs[tenantId] || { shopify: false, courier: false };
-  res.json({ success: true, ...status });
+  
+  // Also return current syncProgress for the store (polling fallback when SSE is unavailable)
+  let progress = null;
+  if (storeId && global.syncProgress && global.syncProgress[storeId]) {
+    const p = global.syncProgress[storeId];
+    if (p && !p.abort) {
+      progress = {
+        status: p.status || null,
+        processed: p.processed || 0,
+        total: p.total || 0,
+        currentOrder: p.currentOrder || null,
+        sync_type: p.sync_type || null,
+        storeId: storeId
+      };
+    }
+  }
+  
+  res.json({ success: true, ...status, progress });
 });
 
 // GET /api/finance/ghost-product-orders?store_id=1&name=Product%20Name

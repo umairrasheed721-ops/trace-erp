@@ -8,6 +8,7 @@ export const SyncButtons = React.memo(function SyncButtons() {
 
   const [isSyncingShopify, setSyncingShopify] = useState(false)
   const [isSyncingCourier, setSyncingCourier] = useState(false)
+  const [polledProgress, setPolledProgress] = useState(null)
 
   useEffect(() => {
     if (!token) return
@@ -17,16 +18,19 @@ export const SyncButtons = React.memo(function SyncButtons() {
 
     const checkSyncStatus = async () => {
       try {
-        const res = await fetch('/api/finance/sync-status', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+        const url = activeStoreId
+          ? `/api/finance/sync-status?store_id=${activeStoreId}`
+          : '/api/finance/sync-status'
+        const res = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${token}` }
         })
         if (res.ok && active) {
           const data = await res.json()
           if (data.success) {
             setSyncingShopify(data.shopify)
             setSyncingCourier(data.courier)
+            // Polling fallback: use progress data when SSE not available
+            setPolledProgress(data.progress || null)
           }
         }
       } catch (err) {
@@ -35,13 +39,13 @@ export const SyncButtons = React.memo(function SyncButtons() {
     }
 
     checkSyncStatus()
-    intervalId = setInterval(checkSyncStatus, 5000)
+    intervalId = setInterval(checkSyncStatus, 3000)
 
     return () => {
       active = false
       if (intervalId) clearInterval(intervalId)
     }
-  }, [token])
+  }, [token, activeStoreId])
 
   const handleSync = async (type) => {
     if (!activeStoreId || syncState) return
@@ -129,8 +133,11 @@ export const SyncButtons = React.memo(function SyncButtons() {
     }
   }
 
-  const processed = syncState?.processed || 0
-  const total = syncState?.total || 0
+  // Use SSE syncState, fallback to polled progress
+  const effectiveSyncState = syncState || polledProgress
+
+  const processed = effectiveSyncState?.processed || 0
+  const total = effectiveSyncState?.total || 0
   const rawPercent = total > 0 ? Math.round((processed / total) * 100) : 0
   const percent = Math.min(rawPercent, 100)
 
@@ -249,7 +256,7 @@ export const SyncButtons = React.memo(function SyncButtons() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
                 {spinnerSvg}
                 <span style={{ fontWeight: 700, fontSize: '0.8rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {syncState?.status?.match(/Syncing:\s*([^(\-]+)/i)?.[1]?.trim() || '🚚 Courier'}
+                  {effectiveSyncState?.status?.match(/Syncing:\s*([^(\-]+)/i)?.[1]?.trim() || '🚚 Courier'}
                 </span>
                 {total > 0 && (
                   <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '1px 6px', whiteSpace: 'nowrap' }}>
