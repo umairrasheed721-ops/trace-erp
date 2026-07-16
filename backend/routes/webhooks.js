@@ -100,11 +100,15 @@ router.post('/postex', (req, res) => {
 
     const historyJson = JSON.stringify(history);
 
-    // Always update courier_status, tracking_history and update delivery_status if mapping exists
+    // Always update courier_status, tracking_history and update delivery_status if mapping exists, keeping dead statuses protected
     db.prepare(`
       UPDATE orders 
       SET courier_status = ?,
-          delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+          delivery_status = CASE 
+            WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+            WHEN ? IS NOT NULL THEN ? 
+            ELSE delivery_status 
+          END,
           status_date = ?,
           tracking_history = ?
       WHERE id = ?
@@ -215,11 +219,15 @@ router.post('/instaworld', (req, res) => {
     const statusMap = loadStatusMaps();
     const mappedStatus = applyMap(statusMap, courier, rawStatus);
     
-    // Always update courier_status, and update delivery_status if mapping exists
+    // Always update courier_status, and update delivery_status if mapping exists, keeping dead statuses protected
     db.prepare(`
       UPDATE orders 
       SET courier_status = ?,
-          delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+          delivery_status = CASE 
+            WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+            WHEN ? IS NOT NULL THEN ? 
+            ELSE delivery_status 
+          END,
           courier = ?,
           status_date = ?
       WHERE id = ?

@@ -266,7 +266,11 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
     UPDATE orders
     SET courier_status = COALESCE(?, courier_status),
         courier = COALESCE(?, courier),
-        delivery_status = CASE WHEN ? IS NOT NULL THEN ? ELSE delivery_status END,
+        delivery_status = CASE 
+          WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+          WHEN ? IS NOT NULL THEN ? 
+          ELSE delivery_status 
+        END,
         status_date = CASE WHEN ? IS NOT NULL THEN ? ELSE status_date END,
         failed_attempts = failed_attempts + ?,
         tracking_history = COALESCE(?, tracking_history)
