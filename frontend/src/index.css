@@ -2253,6 +2253,16 @@ input:checked + .slider:before {
   100% { transform: translateX(100%); }
 }
 
+@keyframes indeterminate-slide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(350%); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.0); }
+  50%       { box-shadow: 0 0 6px 2px rgba(99, 102, 241, 0.18); }
+}
+
 .wa-sync-progress {
   position: absolute;
   top: 0; left: 0; right: 0;

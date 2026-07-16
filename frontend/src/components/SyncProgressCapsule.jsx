@@ -99,18 +99,20 @@ export const SyncProgressCapsule = React.memo(function SyncProgressCapsule() {
         {/* ROW 2: progress bar */}
         <div style={{
           height: 5, borderRadius: 4,
-          background: 'rgba(255,255,255,0.1)',
-          overflow: 'hidden'
+          background: 'rgba(99,102,241,0.15)',
+          overflow: 'hidden',
+          position: 'relative'
         }}>
           <div style={{
             height: '100%',
             background: isReconnecting
               ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-              : 'linear-gradient(90deg, var(--brand), #818cf8)',
-            width: total > 0 ? `${percent}%` : '100%',
-            transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-            animation: total === 0 ? 'shimmer-slide 1.5s infinite' : 'none',
-            borderRadius: 4
+              : 'linear-gradient(90deg, #6366f1, #818cf8)',
+            width: total > 0 ? `${percent}%` : '40%',
+            transition: total > 0 ? 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
+            animation: total === 0 ? 'indeterminate-slide 1.4s ease-in-out infinite' : 'none',
+            borderRadius: 4,
+            minWidth: 30
           }}></div>
         </div>
 
