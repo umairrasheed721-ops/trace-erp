@@ -172,6 +172,12 @@ router.post('/sync-shopify', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (e) {
     console.error(`Shopify sync error for ${store.shop_domain}: ${e.message}`);
+    if (global.activeSyncs && global.activeSyncs[tenantId]) {
+      global.activeSyncs[tenantId].shopify = false;
+    }
+    if (global.syncProgress && global.syncProgress[store_id]) {
+      delete global.syncProgress[store_id];
+    }
     res.status(500).json({ error: e.message || 'Sync failed' });
   }
 });
@@ -222,6 +228,13 @@ router.post('/sync-couriers', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (e) {
     console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
+    // Force-reset stuck state on any error/timeout
+    if (global.activeSyncs && global.activeSyncs[tenantId]) {
+      global.activeSyncs[tenantId].courier = false;
+    }
+    if (global.syncProgress && global.syncProgress[store_id]) {
+      delete global.syncProgress[store_id];
+    }
     res.status(500).json({ error: e.message || 'Sync failed' });
   }
 });
