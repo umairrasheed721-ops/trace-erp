@@ -408,44 +408,6 @@ router.get('/courier-comparison', (req, res) => {
   }
 });
 
-router.get('/profitability-chart-data', (req, res) => {
-  const { store_id, days = 30 } = req.query;
-  if (!store_id) return res.status(400).json({ error: 'store_id required' });
-
-  try {
-    const dateLimit = new Date();
-    dateLimit.setDate(dateLimit.getDate() - parseInt(days));
-    const dateStr = dateLimit.toISOString().split('T')[0];
-
-    const query = `
-      SELECT 
-        substr(o.order_date, 1, 10) as date,
-        SUM(o.price) as revenue,
-        SUM(o.cost) as total_cost,
-        SUM(CASE WHEN o.delivery_status = 'Delivered' THEN o.price ELSE 0 END) as delivered_revenue,
-        COALESCE(m.marketing_spend, 0) + COALESCE(m.tiktok_marketing, 0) as ad_spend
-      FROM orders o
-      LEFT JOIN daily_metrics m ON substr(o.order_date, 1, 10) = m.date_string AND o.store_id = m.store_id
-      WHERE o.store_id = ? AND o.order_date >= ?
-      GROUP BY substr(o.order_date, 1, 10)
-      ORDER BY o.order_date ASC
-    `;
-    const results = db.prepare(query).all(store_id, dateStr);
-
-    const chartData = results.map(row => ({
-      date: row.date,
-      revenue: Math.round(row.revenue),
-      netProfit: Math.round(row.delivered_revenue - row.total_cost - row.ad_spend),
-      adSpend: Math.round(row.ad_spend),
-      roi: row.ad_spend > 0 ? parseFloat((row.revenue / row.ad_spend).toFixed(2)) : 0
-    }));
-
-    res.json(chartData);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // GET /api/reports/logistics-intelligence - Comprehensive offline courier auditing (10 metrics)
 router.get('/logistics-intelligence', (req, res) => {
   const { store_id, startDate, endDate } = req.query;

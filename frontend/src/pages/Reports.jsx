@@ -5,7 +5,6 @@ import { useRoutePersistence } from '../context/RoutePersistenceContext';
 import useReportsData from '../hooks/useReportsData';
 import ReportsFilterBar from '../components/Reports/ReportsFilterBar';
 import PnLMetricsPanel from '../components/Reports/PnLMetricsPanel';
-import ReportsChartSection from '../components/Reports/ReportsChartSection';
 
 export default function Reports() {
   const { activeStoreId, setSidebarCollapsed } = useApp();
@@ -197,8 +196,6 @@ export default function Reports() {
         tableContainerRef={tableContainerRef}
         handleDrilldown={handleDrilldown}
       />
-
-      <ReportsChartSection />
 
       {reportsData.showBulkModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>

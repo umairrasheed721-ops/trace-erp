@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import ProfitabilityCharts from '../components/ProfitabilityCharts'
 import ApiStatusBanner from '../components/ApiStatusBanner'
 
 const KPI_CONFIG = {
@@ -192,9 +191,6 @@ export default function Dashboard() {
               )
             })}
           </div>
-
-          {/* ─── Charts ─── */}
-          {user?.role === 'admin' && <ProfitabilityCharts storeId={activeStoreId} />}
 
           {/* ─── Bottom Row ─── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 8 }}>
