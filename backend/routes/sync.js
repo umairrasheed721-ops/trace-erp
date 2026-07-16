@@ -119,6 +119,16 @@ router.get('/stream', (req, res) => {
           sync_type: row.sync_type
         };
         res.write(`event: sync_progress\ndata: ${JSON.stringify(payload)}\n\n`);
+      } else if (global.syncProgress && global.syncProgress[store_id]) {
+        const prog = global.syncProgress[store_id];
+        const payload = {
+          storeId: Number(store_id),
+          status: prog.status || 'Syncing...',
+          processed: Number(prog.processed) || 0,
+          total: Number(prog.total) || 0,
+          sync_type: prog.sync_type || 'Courier Sync'
+        };
+        res.write(`event: sync_progress\ndata: ${JSON.stringify(payload)}\n\n`);
       }
     } catch (e) {
       console.error('Failed to stream initial sync progress:', e.message);

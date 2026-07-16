@@ -155,7 +155,9 @@ router.post('/sync-shopify', async (req, res) => {
         reject(err);
       } finally {
         // Only clear sync status when the actual sync background job finishes!
-        delete global.syncProgress[store_id];
+        setTimeout(() => {
+          if (global.syncProgress) delete global.syncProgress[store_id];
+        }, 5000);
         if (global.activeSyncs[tenantId]) {
           global.activeSyncs[tenantId].shopify = false;
         }
@@ -203,7 +205,9 @@ router.post('/sync-couriers', async (req, res) => {
         reject(err);
       } finally {
         // Only clear sync status when the actual sync background job finishes!
-        delete global.syncProgress[store_id];
+        setTimeout(() => {
+          if (global.syncProgress) delete global.syncProgress[store_id];
+        }, 5000);
         if (global.activeSyncs[tenantId]) {
           global.activeSyncs[tenantId].courier = false;
         }
