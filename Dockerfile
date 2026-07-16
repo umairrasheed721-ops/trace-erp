@@ -1,24 +1,6 @@
-# STAGE 1: Builder
-FROM node:22-slim AS builder
+FROM node:22-slim
 
-WORKDIR /app
-
-# Copy dependency manifests
-COPY package*.json ./
-
-# Install ALL dependencies (including devDependencies for building frontend)
-RUN npm ci
-
-# Copy source code
-COPY . .
-
-# Run production build (compiles frontend assets and relocates to backend/public)
-RUN npm run build
-
-# STAGE 2: Runner
-FROM node:22-slim AS runner
-
-# Install Puppeteer/Chromium system dependencies
+# Install Puppeteer/Chromium system dependencies (cached)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libatk1.0-0 \
@@ -48,8 +30,8 @@ COPY package*.json ./
 # Install ONLY production dependencies
 RUN npm ci --omit=dev
 
-# Copy backend files and compiled assets from builder
-COPY --from=builder /app/backend ./backend
+# Copy backend files directly (already built locally)
+COPY backend ./backend
 
 # Expose the application port
 EXPOSE 3001
