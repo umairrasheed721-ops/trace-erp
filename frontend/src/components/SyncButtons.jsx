@@ -193,14 +193,23 @@ export const SyncButtons = React.memo(function SyncButtons() {
           onClick={() => handleSync('shopify')} 
           disabled={isShopifyActive || !!syncState} 
           className="btn btn-secondary btn-sm"
-          style={shopifyBtnStyle}
+          style={{ ...shopifyBtnStyle, flexDirection: 'column', gap: 2, height: 'auto', minHeight: 38, paddingTop: 6, paddingBottom: 6, position: 'relative', overflow: 'hidden', minWidth: isShopifyActive ? 170 : 'auto' }}
         >
           {isShopifyActive ? (
             <>
-              {spinnerSvg}
-              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                {spinnerSvg}
+                <span style={{ fontWeight: 700, fontSize: '0.8rem', flex: 1 }}>🛒 Shopify Sync</span>
+                {total > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '1px 6px' }}>
+                    {processed}/{total}
+                  </span>
+                )}
+                <button onClick={handleCancelSync} title="Stop" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: 0, lineHeight: 1 }}>🛑</button>
+              </div>
+              <div style={{ width: '100%', height: 3, borderRadius: 2, background: 'rgba(99,102,241,0.15)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg,#6366f1,#818cf8)', width: total > 0 ? `${percent}%` : '40%', animation: total === 0 ? 'indeterminate-slide 1.4s ease-in-out infinite' : 'none', transition: 'width 0.4s ease', minWidth: 20 }}></div>
+              </div>
             </>
           ) : (
             <>
@@ -209,28 +218,6 @@ export const SyncButtons = React.memo(function SyncButtons() {
             </>
           )}
         </button>
-        {isShopifyActive && (
-          <button
-            onClick={handleCancelSync}
-            title="Stop Sync"
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              color: 'white',
-              borderRadius: '50%',
-              width: 28,
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-            }}
-          >
-            🛑
-          </button>
-        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -238,14 +225,25 @@ export const SyncButtons = React.memo(function SyncButtons() {
           onClick={() => handleSync('courier')} 
           disabled={isCourierActive || !!syncState} 
           className="btn btn-secondary btn-sm"
-          style={courierBtnStyle}
+          style={{ ...courierBtnStyle, flexDirection: 'column', gap: 2, height: 'auto', minHeight: 38, paddingTop: 6, paddingBottom: 6, position: 'relative', overflow: 'hidden', minWidth: isCourierActive ? 190 : 'auto' }}
         >
           {isCourierActive ? (
             <>
-              {spinnerSvg}
-              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                {percent > 0 ? `Syncing... (${percent}%)` : 'Syncing...'}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                {spinnerSvg}
+                <span style={{ fontWeight: 700, fontSize: '0.8rem', flex: 1 }}>
+                  {syncState?.status?.match(/Syncing:\s*([^(-]+)/i)?.[1]?.trim() || '🚚 Courier'}
+                </span>
+                {total > 0 && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, background: 'rgba(99,102,241,0.15)', borderRadius: 6, padding: '1px 6px' }}>
+                    {processed}/{total}
+                  </span>
+                )}
+                <button onClick={handleCancelSync} title="Stop" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', padding: 0, lineHeight: 1 }}>🛑</button>
+              </div>
+              <div style={{ width: '100%', height: 3, borderRadius: 2, background: 'rgba(99,102,241,0.15)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg,#6366f1,#818cf8)', width: total > 0 ? `${percent}%` : '40%', animation: total === 0 ? 'indeterminate-slide 1.4s ease-in-out infinite' : 'none', transition: 'width 0.4s ease', minWidth: 20 }}></div>
+              </div>
             </>
           ) : (
             <>
@@ -254,28 +252,6 @@ export const SyncButtons = React.memo(function SyncButtons() {
             </>
           )}
         </button>
-        {isCourierActive && (
-          <button
-            onClick={handleCancelSync}
-            title="Stop Sync"
-            style={{
-              background: '#ef4444',
-              border: 'none',
-              color: 'white',
-              borderRadius: '50%',
-              width: 28,
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-            }}
-          >
-            🛑
-          </button>
-        )}
       </div>
     </>
   )
