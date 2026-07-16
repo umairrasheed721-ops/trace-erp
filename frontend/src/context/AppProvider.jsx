@@ -179,7 +179,7 @@ export default function AppProvider({ children }) {
     theme, toggleTheme, showAgingBar, toggleAgingBar,
     token, setToken, user, setUser, logout,
     permissions, setPermissions, fetchPermissions,
-    syncHistory, fetchSyncHistory,
+    syncHistory, setSyncHistory, fetchSyncHistory,
     isFocusMode, toggleFocusMode
   }
 
