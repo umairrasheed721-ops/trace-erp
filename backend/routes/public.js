@@ -67,19 +67,23 @@ router.get('/poll-diag', (req, res) => {
     const crypto = require('crypto');
     const result = {};
 
-    // whatsapp_polls table
+    // Custom debug query
     try {
-      result.polls = db.prepare('SELECT id, message_id, remote_jid, poll_name, poll_options, created_at FROM whatsapp_polls ORDER BY id DESC LIMIT 5').all();
-      result.poll_count = db.prepare('SELECT COUNT(*) as c FROM whatsapp_polls').get().c;
+      result.recon_logs = db.prepare("SELECT * FROM recon_logs WHERE order_id = 201899").all();
     } catch (e) {
-      result.polls_error = e.message;
+      result.recon_logs_error = e.message;
     }
 
-    // recent orders
     try {
-      result.recent_orders = db.prepare('SELECT id, shopify_order_id, phone, delivery_status, store_id FROM orders ORDER BY id DESC LIMIT 5').all();
+      result.audit_logs = db.prepare("SELECT * FROM audit_logs WHERE order_id = 201899").all();
     } catch (e) {
-      result.orders_error = e.message;
+      result.audit_logs_error = e.message;
+    }
+
+    try {
+      result.order = db.prepare("SELECT * FROM orders WHERE id = 201899").get();
+    } catch (e) {
+      result.order_error = e.message;
     }
 
     // stores
