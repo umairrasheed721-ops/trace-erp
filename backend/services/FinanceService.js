@@ -51,6 +51,12 @@ class FinanceService {
     let healedCount = 0;
     for (const order of orders) {
       try {
+        // Protect final dead statuses from being overwritten by Shopify tag auto-repair
+        const currentStatusLower = String(order.delivery_status).toLowerCase();
+        if (['return received', 'delivered', 'cancelled'].includes(currentStatusLower)) {
+          continue;
+        }
+
         const status = await getShopifyOrderStatus(store, order.shopify_order_id);
         
         let newDelivery = order.delivery_status;
