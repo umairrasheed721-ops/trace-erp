@@ -661,10 +661,12 @@ router.get('/order-full-details/:id', (req, res) => {
         if (!order) return res.status(404).json({ error: 'Order not found' });
 
         const history = db.prepare('SELECT * FROM order_history WHERE order_id = ? ORDER BY created_at ASC').all(order.id);
+        const reconLogs = db.prepare('SELECT * FROM recon_logs WHERE order_id = ?').all(order.id);
 
         res.json({
             order,
-            history
+            history,
+            reconLogs
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
