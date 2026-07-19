@@ -46,6 +46,23 @@ cron.schedule('*/30 * * * * *', () => {
           if (bot.status === 'DISABLED') {
             return;
           }
+
+          // Check if session is registered in the DB
+          let isSessionRegistered = false;
+          try {
+            const { db: tenantDb } = require('../../db');
+            const row = tenantDb.prepare("SELECT value FROM wa_session_store WHERE key = 'creds'").get();
+            if (row) {
+              const creds = JSON.parse(row.value);
+              isSessionRegistered = !!creds.registered;
+            }
+          } catch (e) {}
+
+          if (!isSessionRegistered) {
+            // If the session is not registered, do not force soft reconnect (avoids infinite QR timeout loops)
+            return;
+          }
+
           console.warn(`⚠️ [Heartbeat] Tenant [${tenantId}] WhatsApp socket is inactive.`);
           
           // 1. Immediately update DB status to 'DISCONNECTED'
