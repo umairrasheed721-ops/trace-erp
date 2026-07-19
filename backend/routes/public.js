@@ -227,4 +227,144 @@ router.options('/track', (req, res) => {
   res.sendStatus(200);
 });
 
+// OPTIONS preflight for draft order
+router.options('/create-draft-order', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
+// POST /api/public/create-draft-order
+router.post('/create-draft-order', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+
+  try {
+    // 1. Initialize DB Table
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS whatsapp_draft_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        draft_order_id TEXT,
+        draft_order_name TEXT,
+        phone TEXT,
+        name TEXT,
+        email TEXT,
+        address TEXT,
+        invoice_url TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `).run();
+
+    const { name, phone, email, address, items } = req.body;
+
+    if (!name || !phone || !email || !address || !items || !items.length) {
+      return res.status(400).json({ error: 'Missing required checkout details' });
+    }
+
+    // 2. Identify the active store
+    const origin = req.get('origin') || '';
+    let store = null;
+
+    if (origin) {
+      try {
+        const originUrl = new URL(origin);
+        const hostname = originUrl.hostname;
+        store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE shop_domain LIKE ? OR shop_domain = ?').get(`%${hostname}%`, hostname);
+      } catch (_) {}
+    }
+
+    if (!store) {
+      store = db.prepare('SELECT id, shop_domain, access_token FROM stores LIMIT 1').get();
+    }
+
+    if (!store) {
+      return res.status(500).json({ error: 'No active store configuration found.' });
+    }
+
+    const { shop_domain: shopDomain, access_token: accessToken } = store;
+
+    // 3. Format payload
+    const nameParts = name.trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Customer';
+    const lastName = nameParts.slice(1).join(' ') || '.';
+
+    const payload = {
+      draft_order: {
+        line_items: items.map(item => ({
+          variant_id: item.id,
+          quantity: item.quantity
+        })),
+        customer: {
+          first_name: firstName,
+          last_name: lastName,
+          email: email,
+          phone: phone
+        },
+        shipping_address: {
+          first_name: firstName,
+          last_name: lastName,
+          address1: address,
+          phone: phone
+        },
+        tags: 'WhatsApp-In-Funnel, Trace-CRO-Funnels',
+        use_customer_default_address: false
+      }
+    };
+
+    // 4. Post to Shopify Admin API
+    const url = `https://${shopDomain}/admin/api/2024-10/draft_orders.json`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload),
+      timeout: 10000
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Shopify Draft Order Creation Failed: ${response.status} - ${errText}`);
+    }
+
+    const data = await response.json();
+    const draft = data.draft_order;
+
+    if (!draft) {
+      throw new Error('Invalid response payload received from Shopify draft orders API');
+    }
+
+    // 5. Store session logs in SQLite
+    db.prepare(`
+      INSERT INTO whatsapp_draft_sessions (draft_order_id, draft_order_name, phone, name, email, address, invoice_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      String(draft.id),
+      draft.name || '',
+      phone,
+      name,
+      email,
+      address,
+      draft.invoice_url || ''
+    );
+
+    res.json({
+      success: true,
+      draft_order_id: draft.id,
+      draft_order_name: draft.name,
+      invoice_url: draft.invoice_url
+    });
+
+  } catch (err) {
+    console.error('[Create Draft Order Error]:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
