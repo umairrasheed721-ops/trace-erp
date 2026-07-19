@@ -475,9 +475,52 @@ router.post('/sync-shopify-costs', async (req, res) => {
     if (!store.access_token) return res.status(400).json({ error: 'Store has no Shopify access token configured. Please reconnect this store.' });
 
     const { getShopifyInventoryCosts } = require('../../engines/shopify_finance');
-    const products = await getShopifyInventoryCosts(store);
+    const selectByGid = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND shopify_variant_id = ?');
+    const selectByTitle = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?');
+    const updateCost = db.prepare(`
+      UPDATE product_master_costs SET
+        shopify_variant_id = ?,
+        sku = ?,
+        parent_title = ?,
+        variant_title = ?,
+        shopify_cost = ?,
+        selling_price = ?,
+        inventory_qty = ?,
+        variant_image_url = ?,
+        inventory_policy = ?,
+        status = ?,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `);
+    const insertCost = db.prepare(`
+      INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, variant_image_url, inventory_policy, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    if (products.length === 0) {
+    let totalSynced = 0;
+    await getShopifyInventoryCosts(store, async (products) => {
+      db.transaction(() => {
+        for (const p of products) {
+          let existing = null;
+          if (p.shopify_variant_id) {
+            existing = selectByGid.get(Number(store_id), p.shopify_variant_id);
+          }
+
+          if (!existing) {
+            existing = selectByTitle.get(Number(store_id), p.parent_name, p.variant_name);
+          }
+
+          if (existing) {
+            updateCost.run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active', existing.id);
+          } else {
+            insertCost.run(Number(store_id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active');
+          }
+        }
+      })();
+      totalSynced += products.length;
+    });
+
+    if (totalSynced === 0) {
       return res.json({ 
         success: true, 
         count: 0,
@@ -485,43 +528,7 @@ router.post('/sync-shopify-costs', async (req, res) => {
       });
     }
 
-    db.transaction(() => {
-      for (const p of products) {
-        let existing = null;
-        if (p.shopify_variant_id) {
-          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND shopify_variant_id = ?').get(Number(store_id), p.shopify_variant_id);
-        }
-
-        if (!existing) {
-          existing = db.prepare('SELECT id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store_id), p.parent_name, p.variant_name);
-        }
-
-        if (existing) {
-          db.prepare(`
-            UPDATE product_master_costs SET
-              shopify_variant_id = ?,
-              sku = ?,
-              parent_title = ?,
-              variant_title = ?,
-              shopify_cost = ?,
-              selling_price = ?,
-              inventory_qty = ?,
-              variant_image_url = ?,
-              inventory_policy = ?,
-              status = ?,
-              updated_at = datetime('now')
-            WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active', existing.id);
-        } else {
-          db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, variant_image_url, inventory_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(Number(store_id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.inventory_policy || 'deny', p.status || 'active');
-        }
-      }
-    })();
-
-    res.json({ success: true, count: products.length });
+    res.json({ success: true, count: totalSynced });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

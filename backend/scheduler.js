@@ -53,62 +53,71 @@ async function runMultiTenant(jobName, task) {
 
 async function syncStoreInventoryAndCosts(store) {
   console.log(`📦 [CRON] Background Inventory & Cost Sync starting for Store ${store.id}...`);
+  let totalSynced = 0;
   try {
-    const products = await getShopifyInventoryCosts(store);
-    db.transaction(() => {
-      for (const p of products) {
-        let existing = null;
-        const variantId = p.shopify_variant_id ? String(p.shopify_variant_id) : '';
-        const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
-        const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
-        const sku = p.sku ? String(p.sku).trim() : '';
+    const selectStmt = db.prepare(`
+      SELECT id FROM product_master_costs 
+      WHERE store_id = ? 
+      AND (
+        shopify_variant_id = ? 
+        OR shopify_variant_id = ? 
+        OR (sku = ? AND sku != '')
+      )
+      ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
+               (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
+      LIMIT 1
+    `);
 
-        const queryVariantId1 = numericVariantId || '__NONE__';
-        const queryVariantId2 = gidVariantId || '__NONE__';
-        const querySku = sku || '__NONE__';
+    const updateStmt = db.prepare(`
+      UPDATE product_master_costs SET
+        shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?,
+        shopify_cost = ?, selling_price = ?, inventory_qty = ?,
+        variant_image_url = COALESCE(?, variant_image_url),
+        status = ?,
+        inventory_policy = ?,
+        updated_at = datetime('now')
+      WHERE id = ?
+    `);
 
-        existing = db.prepare(`
-          SELECT id FROM product_master_costs 
-          WHERE store_id = ? 
-          AND (
-            shopify_variant_id = ? 
-            OR shopify_variant_id = ? 
-            OR (sku = ? AND sku != '')
-          )
-          ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 ELSE 1 END) ASC, 
-                   (CASE WHEN sku = ? THEN 0 ELSE 1 END) ASC
-          LIMIT 1
-        `).get(Number(store.id), queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+    const insertStmt = db.prepare(`
+      INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, status, inventory_policy, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
+        shopify_variant_id = excluded.shopify_variant_id,
+        sku = COALESCE(excluded.sku, product_master_costs.sku),
+        shopify_cost = excluded.shopify_cost,
+        selling_price = excluded.selling_price,
+        inventory_qty = excluded.inventory_qty,
+        status = excluded.status,
+        inventory_policy = excluded.inventory_policy,
+        updated_at = datetime('now')
+    `);
 
-        if (existing) {
-          db.prepare(`
-            UPDATE product_master_costs SET
-              shopify_variant_id = ?, sku = ?, parent_title = ?, variant_title = ?,
-              shopify_cost = ?, selling_price = ?, inventory_qty = ?,
-              variant_image_url = COALESCE(?, variant_image_url),
-              status = ?,
-              inventory_policy = ?,
-              updated_at = datetime('now')
-            WHERE id = ?
-          `).run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.status || 'active', p.inventory_policy || 'deny', existing.id);
-        } else {
-          db.prepare(`
-            INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, status, inventory_policy, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
-              shopify_variant_id = excluded.shopify_variant_id,
-              sku = COALESCE(excluded.sku, product_master_costs.sku),
-              shopify_cost = excluded.shopify_cost,
-              selling_price = excluded.selling_price,
-              inventory_qty = excluded.inventory_qty,
-              status = excluded.status,
-              inventory_policy = excluded.inventory_policy,
-              updated_at = datetime('now')
-          `).run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.status || 'active', p.inventory_policy || 'deny');
+    await getShopifyInventoryCosts(store, async (products) => {
+      db.transaction(() => {
+        for (const p of products) {
+          const variantId = p.shopify_variant_id ? String(p.shopify_variant_id) : '';
+          const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+          const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+          const sku = p.sku ? String(p.sku).trim() : '';
+
+          const queryVariantId1 = numericVariantId || '__NONE__';
+          const queryVariantId2 = gidVariantId || '__NONE__';
+          const querySku = sku || '__NONE__';
+
+          const existing = selectStmt.get(Number(store.id), queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+
+          if (existing) {
+            updateStmt.run(p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.image_url || null, p.status || 'active', p.inventory_policy || 'deny', existing.id);
+          } else {
+            insertStmt.run(Number(store.id), p.shopify_variant_id, p.sku, p.parent_name, p.variant_name, p.shopify_cost, p.selling_price, p.qty, p.status || 'active', p.inventory_policy || 'deny');
+          }
         }
-      }
-    })();
-    console.log(`✅ [CRON] Successfully synced ${products.length} catalog items for Store ${store.id}.`);
+      })();
+      totalSynced += products.length;
+    });
+
+    console.log(`✅ [CRON] Successfully synced ${totalSynced} catalog items for Store ${store.id}.`);
   } catch (e) {
     console.error(`❌ [CRON] Inventory sync failed for Store ${store.id}:`, e.message);
   }
@@ -247,18 +256,6 @@ module.exports = function schedulerInit() {
     });
   });
 
-  // 2. Every 1 hour: Fetch new Shopify orders
-  cron.schedule('0 * * * *', async () => {
-    console.log('🔄 [CRON] Hourly Shopify fetch starting...');
-    await runMultiTenant('shopify_fetch_1h', async (tenantId) => {
-      try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
-        for (const store of stores) {
-          try { await fetchShopifyOrders(store); } catch (e) { console.error(`[CRON] Hourly fetch error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
-        }
-      } catch (err) {}
-    });
-  });
 
   // 3. Every 2 hours: Refresh recent Shopify updates
   cron.schedule('0 */2 * * *', async () => {
@@ -286,10 +283,10 @@ module.exports = function schedulerInit() {
     });
   });
 
-  // 5. Every 1 hour: Automated background inventory & cost sync
-  cron.schedule('0 * * * *', async () => {
-    console.log('📦 [CRON] Automated 1-hour inventory & cost sync starting...');
-    await runMultiTenant('inventory_sync_1h', async (tenantId) => {
+  // 5. Every 12 hours: Automated background inventory & cost sync
+  cron.schedule('0 */12 * * *', async () => {
+    console.log('📦 [CRON] Automated 12-hour inventory & cost sync starting...');
+    await runMultiTenant('inventory_sync_12h', async (tenantId) => {
       try {
         const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
         for (const store of stores) {

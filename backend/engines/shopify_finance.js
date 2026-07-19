@@ -242,10 +242,10 @@ async function getShopifyOrderStatus(store, orderId) {
   };
 }
 
-async function getShopifyInventoryCosts(store) {
-  let allVariants = [];
+async function getShopifyInventoryCosts(store, onBatch) {
   let hasNextPage = true;
   let cursor = null;
+  let accumulator = [];
 
   while (hasNextPage) {
     const query = `
@@ -302,56 +302,62 @@ async function getShopifyInventoryCosts(store) {
     const pageInfo = json.data?.productVariants?.pageInfo;
     const edges = json.data?.productVariants?.edges || [];
     
-    allVariants = allVariants.concat(edges.map(e => e.node));
     hasNextPage = pageInfo?.hasNextPage;
     cursor = pageInfo?.endCursor;
+
+    const pageMap = {};
+    edges.forEach((edge) => {
+      const node = edge.node;
+      if (!node) return;
+      const parentName = node.product?.title;
+      const variantName = node.title === 'Default Title' ? '' : node.title;
+      const variantId = node.id;
+      if (!parentName) return;
+
+      const rawCost = node.inventoryItem?.unitCost?.amount;
+      const cost = rawCost ? parseFloat(rawCost) : 0;
+      const sellingPrice = parseFloat(node.price || 0);
+      const status = node.product?.status ? String(node.product.status).toLowerCase() : 'active';
+
+      let qty = 0;
+      const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
+      invEdges.forEach(invEdge => {
+        qty += invEdge.node?.quantities?.[0]?.quantity || 0;
+      });
+      
+      const key = variantId || `${parentName}@@@${variantName}`;
+      if (!pageMap[key]) {
+        pageMap[key] = { 
+          shopify_variant_id: variantId,
+          sku: node.sku || '',
+          parent_name: parentName, 
+          variant_name: variantName, 
+          shopify_cost: cost, 
+          selling_price: sellingPrice,
+          qty: qty,
+          image_url: node.image?.url || '',
+          status: status,
+          inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
+        };
+      } else {
+        pageMap[key].qty += qty;
+        if (!pageMap[key].image_url && node.image?.url) {
+          pageMap[key].image_url = node.image.url;
+        }
+      }
+    });
+
+    const pageData = Object.values(pageMap);
+    if (onBatch) {
+      await onBatch(pageData);
+    } else {
+      accumulator = accumulator.concat(pageData);
+    }
 
     if (hasNextPage) await sleep(200); // Respect rate limits
   }
 
-  const aggregated = {};
-  
-  allVariants.forEach((node) => {
-    const parentName = node.product?.title;
-    const variantName = node.title === 'Default Title' ? '' : node.title;
-    const variantId = node.id;
-    if (!parentName) return;
-
-    const rawCost = node.inventoryItem?.unitCost?.amount;
-    const cost = rawCost ? parseFloat(rawCost) : 0;
-    const sellingPrice = parseFloat(node.price || 0);
-    const status = node.product?.status ? String(node.product.status).toLowerCase() : 'active';
-
-    let qty = 0;
-    const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
-    invEdges.forEach(invEdge => {
-      qty += invEdge.node?.quantities?.[0]?.quantity || 0;
-    });
-    
-    const key = variantId || `${parentName}@@@${variantName}`;
-    if (!aggregated[key]) {
-      aggregated[key] = { 
-        shopify_variant_id: variantId,
-        sku: node.sku || '',
-        parent_name: parentName, 
-        variant_name: variantName, 
-        shopify_cost: cost, 
-        selling_price: sellingPrice,
-        qty: qty,
-        image_url: node.image?.url || '',
-        status: status,
-        inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
-      };
-    } else {
-      aggregated[key].qty += qty;
-      // Keep/update image if missing
-      if (!aggregated[key].image_url && node.image?.url) {
-        aggregated[key].image_url = node.image.url;
-      }
-    }
-  });
-  
-  return Object.values(aggregated);
+  return onBatch ? null : accumulator;
 }
 
 module.exports = {

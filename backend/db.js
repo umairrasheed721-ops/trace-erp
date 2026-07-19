@@ -104,7 +104,7 @@ function initDb(db) {
     db.exec(`PRAGMA synchronous = NORMAL`);       // Faster writes, safe with WAL
     db.exec(`PRAGMA cache_size = -32000`);         // 32MB page cache
     db.exec(`PRAGMA temp_store = MEMORY`);         // Temp tables in RAM
-    db.exec(`PRAGMA mmap_size = 536870912`);       // 512MB memory-mapped I/O
+    db.exec(`PRAGMA mmap_size = 67108864`);       // 64MB memory-mapped I/O
     db.exec(`PRAGMA foreign_keys = ON`);
     db.exec(`PRAGMA busy_timeout = 15000`);         // Wait 15s instead of failing on lock
     db.exec(`PRAGMA wal_autocheckpoint = 1000`);   // Checkpoint every 1000 pages

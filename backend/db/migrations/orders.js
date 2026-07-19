@@ -240,6 +240,7 @@ module.exports = [
   `CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_phone_last10 ON orders(SUBSTR(phone, -10));`,
+  `CREATE INDEX IF NOT EXISTS idx_orders_shopify_order_id ON orders(shopify_order_id);`,
 
   // 14. Idempotent Schema Alterations (Try-catch wrapper)
   (db) => {
@@ -306,7 +307,8 @@ module.exports = [
       "ALTER TABLE users ADD COLUMN allowed_stores TEXT DEFAULT '[]'",
       "ALTER TABLE orders ADD COLUMN is_cs_edited INTEGER DEFAULT 0",
       "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
-      "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)"
+      "CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email)",
+      "CREATE INDEX IF NOT EXISTS idx_orders_shopify_order_id ON orders(shopify_order_id)"
     ];
 
     alters.forEach(sql => {

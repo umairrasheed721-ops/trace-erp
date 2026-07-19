@@ -308,27 +308,25 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     console.log(`📅 [ShopifySync] Min Date: ${dateMin}, forceDeepSync: ${forceDeepSync}`);
     console.log(`🔗 [ShopifySync] Initial URL: ${nextUrl}`);
 
-    const existingRows = db.prepare('SELECT shopify_order_id FROM orders WHERE store_id = ?').all(storeId);
-    const existingIds = new Set(existingRows.map(r => String(r.shopify_order_id)));
-
+    const checkExists = db.prepare('SELECT 1 FROM orders WHERE store_id = ? AND shopify_order_id = ? LIMIT 1');
     let totalAdded = 0;
     let totalScanned = 0;
-
+ 
     while (nextUrl) {
       if (global.syncProgress && global.syncProgress[storeId] && global.syncProgress[storeId].abort) {
         console.log(`🛑 Shopify Fetch Sync aborted by user`);
         auditLogs.push({ id: 'SYSTEM', status: 'ABORTED', message: 'Sync stopped by user', details: `Added ${totalAdded}/${totalScanned}` });
         break;
       }
-
+ 
       const res = await fetch(nextUrl, { headers: { 'X-Shopify-Access-Token': access_token }, timeout: API_TIMEOUT });
-
+ 
       const rateLimit = res.headers.get('X-Shopify-Shop-Api-Call-Limit');
       if (rateLimit) {
         const [used, total] = rateLimit.split('/').map(Number);
         if (used >= total - 5) await sleep(2000);
       }
-
+ 
       const data = await res.json();
       const batch = data.orders || [];
       console.log(`📦 [ShopifySync] Batch received: ${batch.length} orders.`);
@@ -338,33 +336,37 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
         break;
       }
       if (!batch.length) break;
-
+ 
       totalScanned += batch.length;
       
-      const newlyFoundInBatch = batch.filter(o => !existingIds.has(String(o.id)));
+      const newlyFoundInBatch = [];
+      for (const o of batch) {
+        const exists = checkExists.get(storeId, String(o.id));
+        if (!exists) {
+          newlyFoundInBatch.push(o);
+        }
+      }
       
       if (newlyFoundInBatch.length > 0) {
         const firstOrderName = newlyFoundInBatch[0]?.name || '';
         updateStatus('syncing', `Processing batch... ${totalScanned} scanned, ${totalAdded + newlyFoundInBatch.length} saved.`, totalAdded, totalAdded + 500, firstOrderName);
-
+ 
         const batchVariantIds = [...new Set(
           newlyFoundInBatch.flatMap(o => o.line_items.map(i => i.variant_id).filter(Boolean))
         )];
-
+ 
         const costMap = await getLiveShopifyCosts(
           shop_domain, access_token, batchVariantIds,
           (msg) => updateStatus('syncing', `Batch Progress: ${msg}`, totalAdded, totalAdded + 500, firstOrderName)
         );
-
+ 
         const added = insertChunk(newlyFoundInBatch.reverse(), costMap);
         totalAdded += added;
-        
-        newlyFoundInBatch.forEach(o => existingIds.add(String(o.id)));
         
         db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
         console.log(`✅ [ShopifySync] Batch processed: ${added} added. Total so far: ${totalAdded}`);
       }
-
+ 
       if (!forceDeepSync && newlyFoundInBatch.length < batch.length) {
         console.log(`🛑 [ShopifySync] Reached overlap with existing data. Stopping.`);
         break;
