@@ -1,7 +1,48 @@
+/**
+ * ⚡ PUBLIC ROUTES — No authentication required
+ *
+ * These endpoints are called directly from the Shopify storefront (theme JS).
+ * CORS is manually set per-route to allow any storefront origin.
+ *
+ * Routes:
+ *   GET  /api/public/reviews          — Fetch product reviews
+ *   GET  /api/public/track            — Customer order tracking lookup
+ *   POST /api/public/create-draft-order — Securely create a Shopify Draft Order
+ *                                         (locks stock, generates checkout link)
+ *
+ * AI AGENT NOTE:
+ *   - Do NOT add authentication middleware here — these are public-facing.
+ *   - Store credentials are resolved server-side by matching request origin to
+ *     the `stores` DB table. Never expose access_token to the client.
+ *   - SHOPIFY_API_VERSION is defined below — update it here when upgrading.
+ */
+
 const express = require('express');
 const router = express.Router();
 const { db, logAction } = require('../db');
 const { addClient } = require('../sse');
+
+// node-fetch v2 shim — use native fetch if available (Node 18+), fallback to require
+const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+
+// ── Shopify API version — update here when upgrading ──
+const SHOPIFY_API_VERSION = '2024-10';
+
+// ── Ensure draft session log table exists at startup (runs once) ──
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS whatsapp_draft_sessions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    draft_order_id  TEXT,
+    draft_order_name TEXT,
+    phone           TEXT,
+    name            TEXT,
+    email           TEXT,
+    address         TEXT,
+    invoice_url     TEXT,
+    status          TEXT DEFAULT 'pending',
+    created_at      TEXT DEFAULT (datetime('now'))
+  )
+`).run();
 
 // ── Reviews public endpoints (sub-mount) ──
 const reviewsRouter = require('./reviews');
@@ -237,44 +278,33 @@ router.options('/create-draft-order', (req, res) => {
 });
 
 // POST /api/public/create-draft-order
+// Called from storefront JS (trace-cro-funnel.liquid) on WhatsApp checkout submit.
+// Creates a Shopify Draft Order to lock stock and generate an instant payment link.
+// The storefront enforces a 1500ms timeout — if this takes longer, it falls back
+// gracefully to a plain WhatsApp redirect. This endpoint must always respond fast.
 router.post('/create-draft-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
-
   try {
-    // 1. Initialize DB Table
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS whatsapp_draft_sessions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        draft_order_id TEXT,
-        draft_order_name TEXT,
-        phone TEXT,
-        name TEXT,
-        email TEXT,
-        address TEXT,
-        invoice_url TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-
     const { name, phone, email, address, items } = req.body;
 
+    // 1. Validate required fields
     if (!name || !phone || !email || !address || !items || !items.length) {
       return res.status(400).json({ error: 'Missing required checkout details' });
     }
 
-    // 2. Identify the active store
+    // 2. Resolve the active store from request origin (multi-store safe)
+    //    Tries exact hostname match first, then LIKE match, then first store fallback.
     const origin = req.get('origin') || '';
     let store = null;
 
     if (origin) {
       try {
-        const originUrl = new URL(origin);
-        const hostname = originUrl.hostname;
-        store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE shop_domain LIKE ? OR shop_domain = ?').get(`%${hostname}%`, hostname);
+        const hostname = new URL(origin).hostname;
+        store = db.prepare(
+          'SELECT id, shop_domain, access_token FROM stores WHERE shop_domain = ? OR shop_domain LIKE ? LIMIT 1'
+        ).get(hostname, `%${hostname}%`);
       } catch (_) {}
     }
 
@@ -288,81 +318,68 @@ router.post('/create-draft-order', async (req, res) => {
 
     const { shop_domain: shopDomain, access_token: accessToken } = store;
 
-    // 3. Format payload
+    // 3. Split customer name into first/last for Shopify customer object
     const nameParts = name.trim().split(/\s+/);
     const firstName = nameParts[0] || 'Customer';
-    const lastName = nameParts.slice(1).join(' ') || '.';
+    const lastName  = nameParts.slice(1).join(' ') || '.';
 
+    // 4. Build Shopify Draft Order payload
     const payload = {
       draft_order: {
         line_items: items.map(item => ({
           variant_id: item.id,
-          quantity: item.quantity
+          quantity:   item.quantity
         })),
-        customer: {
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
-          phone: phone
-        },
-        shipping_address: {
-          first_name: firstName,
-          last_name: lastName,
-          address1: address,
-          phone: phone
-        },
+        customer: { first_name: firstName, last_name: lastName, email, phone },
+        shipping_address: { first_name: firstName, last_name: lastName, address1: address, phone },
         tags: 'WhatsApp-In-Funnel, Trace-CRO-Funnels',
         use_customer_default_address: false
       }
     };
 
-    // 4. Post to Shopify Admin API
-    const url = `https://${shopDomain}/admin/api/2024-10/draft_orders.json`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      timeout: 10000
-    });
+    // 5. POST to Shopify Admin API with 8-second AbortController timeout
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 8000);
+
+    let response;
+    try {
+      response = await fetch(
+        `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/draft_orders.json`,
+        {
+          method:  'POST',
+          headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+          signal:  controller.signal
+        }
+      );
+    } finally {
+      clearTimeout(abortTimer);
+    }
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Shopify Draft Order Creation Failed: ${response.status} - ${errText}`);
+      throw new Error(`Shopify API ${response.status}: ${errText}`);
     }
 
-    const data = await response.json();
-    const draft = data.draft_order;
+    const { draft_order: draft } = await response.json();
+    if (!draft) throw new Error('Empty draft_order in Shopify response');
 
-    if (!draft) {
-      throw new Error('Invalid response payload received from Shopify draft orders API');
-    }
-
-    // 5. Store session logs in SQLite
-    db.prepare(`
-      INSERT INTO whatsapp_draft_sessions (draft_order_id, draft_order_name, phone, name, email, address, invoice_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      String(draft.id),
-      draft.name || '',
-      phone,
-      name,
-      email,
-      address,
-      draft.invoice_url || ''
-    );
+    // 6. Log the session to SQLite for abandoned-cart recovery tracking
+    db.prepare(
+      `INSERT INTO whatsapp_draft_sessions
+         (draft_order_id, draft_order_name, phone, name, email, address, invoice_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(String(draft.id), draft.name || '', phone, name, email, address, draft.invoice_url || '');
 
     res.json({
-      success: true,
-      draft_order_id: draft.id,
+      success:          true,
+      draft_order_id:   draft.id,
       draft_order_name: draft.name,
-      invoice_url: draft.invoice_url
+      invoice_url:      draft.invoice_url
     });
 
   } catch (err) {
-    console.error('[Create Draft Order Error]:', err.message);
+    console.error('[Draft Order Error]:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
