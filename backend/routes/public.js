@@ -287,10 +287,10 @@ router.post('/create-draft-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   try {
-    const { name, phone, email, address, items } = req.body;
+    const { name, phone, email, city, address, items } = req.body;
 
     // 1. Validate required fields
-    if (!name || !phone || !email || !address || !items || !items.length) {
+    if (!name || !phone || !email || !city || !address || !items || !items.length) {
       return res.status(400).json({ error: 'Missing required checkout details' });
     }
 
@@ -331,7 +331,7 @@ router.post('/create-draft-order', async (req, res) => {
           quantity:   item.quantity
         })),
         customer: { first_name: firstName, last_name: lastName, email, phone },
-        shipping_address: { first_name: firstName, last_name: lastName, address1: address, phone },
+        shipping_address: { first_name: firstName, last_name: lastName, address1: address, city: city || '', phone },
         tags: 'WhatsApp-In-Funnel, Trace-CRO-Funnels',
         use_customer_default_address: false
       }
@@ -369,7 +369,7 @@ router.post('/create-draft-order', async (req, res) => {
       `INSERT INTO whatsapp_draft_sessions
          (draft_order_id, draft_order_name, phone, name, email, address, invoice_url)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(String(draft.id), draft.name || '', phone, name, email, address, draft.invoice_url || '');
+    ).run(String(draft.id), draft.name || '', phone, name, email, city ? `${city}, ${address}` : address, draft.invoice_url || '');
 
     res.json({
       success:          true,
