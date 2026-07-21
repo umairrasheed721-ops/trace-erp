@@ -10,7 +10,7 @@ const ERP_STATUSES = [
   'Pending', 'Confirmed', 'Booked', 'Picked Up', 'In Transit',
   'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered',
   'Refused', 'Delivered', 'Return Initiated',
-  'Returned', 'Cancelled'
+  'Returned', 'Return Received', 'Cancelled'
 ];
 
 // --- Auth guard: admin only ---

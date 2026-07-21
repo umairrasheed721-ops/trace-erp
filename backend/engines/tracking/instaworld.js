@@ -119,7 +119,7 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       let newStatus = applyMap(statusMap, courierName || 'Instaworld', lowerRaw) || null;
       
       if (newStatus && newStatus.toLowerCase() === 'return received') {
-         newStatus = 'Returned';
+         // Keep 'Return Received' intact as configured in status mapping.
       }
 
       // Extract status date from Instaworld / Leopards / TCS response
