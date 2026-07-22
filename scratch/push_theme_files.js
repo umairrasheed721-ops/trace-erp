@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-const shopDomain = '041839-3.myshopify.com';
+const shopDomain = 'tracepk.com';
 const accessToken = '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';
 const themeId = '159705432323';
 

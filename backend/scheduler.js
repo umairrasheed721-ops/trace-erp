@@ -162,41 +162,40 @@ async function runDynamicScheduler() {
   });
 }
 
-async function sendReviewEmails() {
+async function sendReviewEmails(daysWindow = 7) {
   try {
     // Ensure column exists (idempotent)
     try { db.exec("ALTER TABLE orders ADD COLUMN review_email_sent INTEGER DEFAULT 0"); } catch (_) {}
 
-    // Find delivered orders 24–72h ago where we haven't sent a review email
-    // Safety check: order_date must be on or after 2026-06-15 (launch date)
+    // Find delivered orders within the last X days (default 7 days) where review_email_sent is 0 or NULL
+    const windowDays = parseInt(daysWindow) || 7;
     const orders = db.prepare(`
-      SELECT id, customer_name, phone, product_titles, line_items,
+      SELECT id, ref_number, customer_name, email, phone, product_titles, line_items,
              delivery_status, status_date
       FROM orders
       WHERE delivery_status IN ('Delivered', 'delivered')
         AND (review_email_sent IS NULL OR review_email_sent = 0)
         AND status_date IS NOT NULL
         AND datetime(status_date) <= datetime('now', '-24 hours')
-        AND datetime(status_date) >= datetime('now', '-72 hours')
-        AND order_date >= '2026-06-15'
+        AND datetime(status_date) >= datetime('now', '-${windowDays} days')
     `).all();
 
-    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails`);
+    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails (Last ${windowDays} days)`);
 
+    let sentCount = 0;
     for (const order of orders) {
       try {
-        // Try to get customer email from line_items JSON or skip if no email
-        let customerEmail = null;
+        let customerEmail = (order.email || '').trim();
         let productHandle = 'general';
         let productTitle = order.product_titles || 'your recent purchase';
 
-        // Try to parse line_items for email and product handle
+        // Try to parse line_items for product handle / title / fallback email
         if (order.line_items) {
           try {
             const items = JSON.parse(order.line_items);
             if (Array.isArray(items) && items.length > 0) {
               const first = items[0];
-              if (first.email) customerEmail = first.email;
+              if (!customerEmail && first.email) customerEmail = first.email.trim();
               if (first.handle) productHandle = first.handle;
               if (first.title) productTitle = first.title;
             }
@@ -204,8 +203,8 @@ async function sendReviewEmails() {
         }
 
         if (!customerEmail) {
-          // Mark as sent to avoid re-checking (no email available)
-          db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
+          // Mark as -1 (Skipped - No email address available)
+          db.prepare("UPDATE orders SET review_email_sent = -1 WHERE id = ?").run(order.id);
           continue;
         }
 
@@ -219,6 +218,7 @@ async function sendReviewEmails() {
 
         if (sent) {
           db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
+          sentCount++;
         }
 
         // Add 3 seconds delay between emails to protect Gmail limits
@@ -227,8 +227,10 @@ async function sendReviewEmails() {
         console.error(`[Review Email] Failed for order #${order.id}:`, e.message);
       }
     }
+    return { success: true, processed: orders.length, sent: sentCount };
   } catch (e) {
     console.error('[Review Email Scan] Error:', e.message);
+    return { success: false, error: e.message };
   }
 }
 
@@ -492,3 +494,5 @@ module.exports = function schedulerInit() {
     });
   }, { timezone: 'UTC' });
 };
+
+module.exports.sendReviewEmails = sendReviewEmails;

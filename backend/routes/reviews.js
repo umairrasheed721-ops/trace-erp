@@ -555,5 +555,167 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: GET /api/reviews/campaigns/stats
+// Returns email campaign stats for delivered orders within last X days
+// ─────────────────────────────────────────────────────────────────
+router.get('/campaigns/stats', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const targetStoreId = req.query.store_id || req.headers['x-active-store-id'];
+    
+    let storeFilter = '';
+    const params = [];
+    if (targetStoreId) {
+      storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+      params.push(parseInt(targetStoreId));
+    }
+
+    const stats = db.prepare(`
+      SELECT 
+        COUNT(*) as total_delivered,
+        SUM(CASE WHEN review_email_sent = 1 THEN 1 ELSE 0 END) as sent,
+        SUM(CASE WHEN review_email_sent IS NULL OR review_email_sent = 0 THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN review_email_sent = -1 THEN 1 ELSE 0 END) as no_email
+      FROM orders
+      WHERE delivery_status IN ('Delivered', 'delivered')
+        AND status_date IS NOT NULL
+        AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
+    `).get(...params);
+
+    res.json({
+      success: true,
+      data: {
+        daysWindow: days,
+        totalDelivered: stats?.total_delivered || 0,
+        sent: stats?.sent || 0,
+        pending: stats?.pending || 0,
+        noEmail: stats?.no_email || 0
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: GET /api/reviews/campaigns/orders
+// Returns list of delivered orders in last X days with email status
+// ─────────────────────────────────────────────────────────────────
+router.get('/campaigns/orders', (req, res) => {
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+    const targetStoreId = req.query.store_id || req.headers['x-active-store-id'];
+
+    let storeFilter = '';
+    const params = [];
+    if (targetStoreId) {
+      storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+      params.push(parseInt(targetStoreId));
+    }
+
+    const orders = db.prepare(`
+      SELECT id, ref_number, customer_name, email, phone, product_titles, line_items,
+             delivery_status, status_date, review_email_sent
+      FROM orders
+      WHERE delivery_status IN ('Delivered', 'delivered')
+        AND status_date IS NOT NULL
+        AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
+      ORDER BY status_date DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+
+    const totalRow = db.prepare(`
+      SELECT COUNT(*) as total
+      FROM orders
+      WHERE delivery_status IN ('Delivered', 'delivered')
+        AND status_date IS NOT NULL
+        AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
+    `).get(...params);
+
+    res.json({
+      success: true,
+      data: {
+        orders,
+        total: totalRow?.total || 0,
+        page,
+        limit
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: POST /api/reviews/campaigns/send-single
+// Manually send review request email for a single order
+// ─────────────────────────────────────────────────────────────────
+router.post('/campaigns/send-single', async (req, res) => {
+  try {
+    const { order_id, email } = req.body;
+    if (!order_id) return res.status(400).json({ success: false, error: 'Order ID is required' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(order_id);
+    if (!order) return res.status(404).json({ success: false, error: 'Order not found' });
+
+    let customerEmail = email?.trim() || (order.email || '').trim();
+    let productHandle = 'general';
+    let productTitle = order.product_titles || 'your recent purchase';
+
+    if (order.line_items) {
+      try {
+        const items = JSON.parse(order.line_items);
+        if (Array.isArray(items) && items.length > 0) {
+          const first = items[0];
+          if (!customerEmail && first.email) customerEmail = first.email.trim();
+          if (first.handle) productHandle = first.handle;
+          if (first.title) productTitle = first.title;
+        }
+      } catch (_) {}
+    }
+
+    if (!customerEmail) {
+      return res.status(400).json({ success: false, error: 'No email address available for this order. Please enter customer email.' });
+    }
+
+    const { sendReviewRequestEmail } = require('../services/reviewEmailService');
+    const sent = await sendReviewRequestEmail({
+      orderId: order.id,
+      customerName: order.customer_name,
+      customerEmail,
+      productHandle,
+      productTitle,
+    });
+
+    if (sent) {
+      db.prepare("UPDATE orders SET review_email_sent = 1, email = ? WHERE id = ?").run(customerEmail, order.id);
+      return res.json({ success: true, message: `Review request email sent to ${customerEmail}` });
+    } else {
+      return res.status(500).json({ success: false, error: 'Failed to send email. Verify EMAIL_USER and EMAIL_PASS environment settings.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: POST /api/reviews/campaigns/trigger-scan
+// Trigger review email scan for last X days
+// ─────────────────────────────────────────────────────────────────
+router.post('/campaigns/trigger-scan', async (req, res) => {
+  try {
+    const days = parseInt(req.body.days) || 7;
+    const { sendReviewEmails } = require('../scheduler');
+    const result = await sendReviewEmails(days);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
 

@@ -492,7 +492,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         courier = ?,
         delivery_status = ?,
         shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
-        discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END
+        discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
+        email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END
       WHERE id = ?
     `);
 
@@ -569,8 +570,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           });
         }
 
-        const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
-        const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
+        const customerEmail = fresh.email || fresh.contact_email || fresh.customer?.email || '';
 
         updateStmt.run(
           finalPrice, activeCount, fresh.note || '',
@@ -582,6 +582,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           newDeliveryStatus, 
           shopifyShipping,
           shopifyDiscount,
+          customerEmail,
           row.id
         );
         count++;
@@ -722,13 +723,16 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           line_items = ?,
           shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
           discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
+          email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END,
           status_date = datetime('now')
         WHERE id = ?
       `).run(
         finalPrice, activeCount, order.note || '', productTitles,
         mapShopifyFinancialStatus(order.financial_status),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
-        tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount, existing.id
+        tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount,
+        order.email || order.contact_email || customer.email || addr.email || '',
+        existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
@@ -742,13 +746,14 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       
       const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
       const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
+      const customerEmail = order.email || order.contact_email || customer.email || addr.email || '';
 
       db.prepare(`
         INSERT INTO orders (
           store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
           address, city, price, tracking_number, items_count, notes, product_titles,
-          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?)
+          line_items, delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount, email
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?,?)
       `).run(
         storeId, String(order.id), order.name,
         fullName,
@@ -763,7 +768,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         0.5, courier, totalCost, source, token,
         require('../../tenant-context').getStore() || 'default',
         shopifyShipping,
-        shopifyDiscount
+        shopifyDiscount,
+        customerEmail
       );
 
       if (newDeliveryStatus === 'Pending' && (addr.phone || customer.phone)) {
