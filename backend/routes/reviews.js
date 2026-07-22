@@ -22,6 +22,28 @@ const { parseReviewToken } = require('../services/reviewEmailService');
 
 const BACKEND_URL = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
 
+// ── Ensure store_id column exists on product_reviews ──
+try {
+  db.prepare('ALTER TABLE product_reviews ADD COLUMN store_id INTEGER').run();
+} catch (_) {}
+
+// ── Helper to resolve active store from request origin (Multi-Store Safe) ──
+function getStoreFromRequest(req) {
+  const origin = req.get('origin') || req.get('referer') || '';
+  let store = null;
+  if (origin) {
+    try {
+      const hostname = new URL(origin).hostname;
+      store = db.prepare('SELECT id, shop_domain FROM stores WHERE shop_domain = ? OR shop_domain LIKE ? LIMIT 1')
+        .get(hostname, `%${hostname}%`);
+    } catch (_) {}
+  }
+  if (!store) {
+    store = db.prepare('SELECT id, shop_domain FROM stores LIMIT 1').get();
+  }
+  return store;
+}
+
 // ─────────────────────────────────────────────────────────────────
 // PUBLIC: GET /api/public/reviews
 // Query: ?handle=texture-white OR ?handles=texture-white,texture-black
@@ -42,9 +64,18 @@ router.get('/reviews', (req, res) => {
     let summary;
     let reviews;
 
+    const store = getStoreFromRequest(req);
+    const storeId = store ? store.id : null;
+
     if (handleList.length > 0) {
       // Build placeholder string for SQL IN clause
       const placeholders = handleList.map(() => '?').join(',');
+      const params = [...handleList];
+      let storeFilter = '';
+      if (storeId) {
+        storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+        params.push(storeId);
+      }
 
       // Summary: avg rating + total + distribution
       summary = db.prepare(`
@@ -57,18 +88,25 @@ router.get('/reviews', (req, res) => {
           SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as r2,
           SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as r1
         FROM product_reviews
-        WHERE product_handle IN (${placeholders}) AND status = 'approved'
-      `).get(...handleList);
+        WHERE product_handle IN (${placeholders}) AND status = 'approved'${storeFilter}
+      `).get(...params);
 
       // Reviews paginated, newest first
       reviews = db.prepare(`
         SELECT id, product_handle, reviewer_name, rating, title, body, review_date, location, picture_urls
         FROM product_reviews
-        WHERE product_handle IN (${placeholders}) AND status = 'approved'
+        WHERE product_handle IN (${placeholders}) AND status = 'approved'${storeFilter}
         ORDER BY review_date DESC, id DESC
         LIMIT ? OFFSET ?
-      `).all(...handleList, parseInt(limit), offset);
+      `).all(...params, parseInt(limit), offset);
     } else {
+      let storeFilter = '';
+      const params = [];
+      if (storeId) {
+        storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+        params.push(storeId);
+      }
+
       // Summary for all products
       summary = db.prepare(`
         SELECT 
@@ -80,17 +118,17 @@ router.get('/reviews', (req, res) => {
           SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as r2,
           SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as r1
         FROM product_reviews
-        WHERE status = 'approved'
-      `).get();
+        WHERE status = 'approved'${storeFilter}
+      `).get(...params);
 
       // Reviews paginated, newest first across all products
       reviews = db.prepare(`
         SELECT id, product_handle, reviewer_name, rating, title, body, review_date, location, picture_urls
         FROM product_reviews
-        WHERE status = 'approved'
+        WHERE status = 'approved'${storeFilter}
         ORDER BY review_date DESC, id DESC
         LIMIT ? OFFSET ?
-      `).all(parseInt(limit), offset);
+      `).all(...params, parseInt(limit), offset);
     }
 
     return res.json({
@@ -146,7 +184,16 @@ router.get('/reviews/bulk-summary', (req, res) => {
       return res.json({ success: true, data: {} });
     }
 
+    const store = getStoreFromRequest(req);
+    const storeId = store ? store.id : null;
+
     const placeholders = handleList.map(() => '?').join(',');
+    const params = [...handleList];
+    let storeFilter = '';
+    if (storeId) {
+      storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+      params.push(storeId);
+    }
 
     const rows = db.prepare(`
       SELECT 
@@ -154,9 +201,9 @@ router.get('/reviews/bulk-summary', (req, res) => {
         COUNT(*) as total,
         ROUND(AVG(rating), 1) as avg
       FROM product_reviews
-      WHERE product_handle IN (${placeholders}) AND status = 'approved'
+      WHERE product_handle IN (${placeholders}) AND status = 'approved'${storeFilter}
       GROUP BY product_handle
-    `).all(...handleList);
+    `).all(...params);
 
     const result = {};
     handleList.forEach(h => {
@@ -405,21 +452,24 @@ router.post('/write-review', (req, res) => {
       return res.status(400).json({ success: false, error: 'Review is too short' });
     }
 
+    const store = getStoreFromRequest(req);
+    const storeId = store ? store.id : null;
+
     // Check for duplicate to prevent spamming
-    const existing = db.prepare('SELECT id FROM product_reviews WHERE reviewer_email = ? AND product_handle = ? LIMIT 1')
-      .get(email.trim().toLowerCase(), handle.trim());
+    const existing = db.prepare('SELECT id FROM product_reviews WHERE reviewer_email = ? AND product_handle = ? AND (store_id = ? OR store_id IS NULL) LIMIT 1')
+      .get(email.trim().toLowerCase(), handle.trim(), storeId);
     if (existing) {
       return res.status(409).json({ success: false, error: 'You have already submitted a review for this product' });
     }
 
     // Insert as pending (manual moderation by admin)
     db.prepare(`
-      INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date)
-      VALUES (?, ?, ?, ?, ?, ?, 'public_direct', 'pending', datetime('now'))
+      INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date, store_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'public_direct', 'pending', datetime('now'), ?)
     `).run(handle.trim(), name.trim().substring(0, 80), email.trim().toLowerCase(), ratingNum,
-           title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000));
+           title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000), storeId);
 
-    console.log(`⭐ [Reviews] Direct pending review from ${email} for ${handle} (${ratingNum}★)`);
+    console.log(`⭐ [Reviews] Direct pending review from ${email} for ${handle} (${ratingNum}★) storeId=${storeId}`);
 
     res.json({ success: true, message: 'Review submitted and pending approval' });
   } catch (err) {
