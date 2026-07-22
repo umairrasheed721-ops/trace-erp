@@ -37,12 +37,17 @@ db.prepare(`
     phone           TEXT,
     name            TEXT,
     email           TEXT,
+    city            TEXT,
     address         TEXT,
     invoice_url     TEXT,
     status          TEXT DEFAULT 'pending',
     created_at      TEXT DEFAULT (datetime('now'))
   )
 `).run();
+
+try {
+  db.prepare('ALTER TABLE whatsapp_draft_sessions ADD COLUMN city TEXT').run();
+} catch (_) {}
 
 // ── Reviews public endpoints (sub-mount) ──
 const reviewsRouter = require('./reviews');
@@ -318,20 +323,56 @@ router.post('/create-draft-order', async (req, res) => {
 
     const { shop_domain: shopDomain, access_token: accessToken } = store;
 
-    // 3. Split customer name into first/last for Shopify customer object
+    // 3. Clean fields and split customer name
+    const cleanEmail   = (email || '').trim().toLowerCase();
+    const cleanCity    = (city || '').trim();
+    const cleanAddress = (address || '').trim();
+    const cleanPhone   = (phone || '').trim();
+
     const nameParts = name.trim().split(/\s+/);
     const firstName = nameParts[0] || 'Customer';
     const lastName  = nameParts.slice(1).join(' ') || '.';
 
-    // 4. Build Shopify Draft Order payload
+    // 4. Build bulletproof Shopify Draft Order payload
+    //    Sets root email/phone, customer object, shipping_address with country, billing_address, note, and note_attributes
     const payload = {
       draft_order: {
+        email: cleanEmail,
+        phone: cleanPhone,
         line_items: items.map(item => ({
           variant_id: item.id,
           quantity:   item.quantity
         })),
-        customer: { first_name: firstName, last_name: lastName, email, phone },
-        shipping_address: { first_name: firstName, last_name: lastName, address1: address, city: city || '', phone },
+        customer: {
+          first_name: firstName,
+          last_name:  lastName,
+          email:      cleanEmail,
+          phone:      cleanPhone
+        },
+        shipping_address: {
+          first_name:   firstName,
+          last_name:    lastName,
+          address1:     cleanAddress,
+          city:         cleanCity,
+          country:      'Pakistan',
+          country_code: 'PK',
+          phone:        cleanPhone
+        },
+        billing_address: {
+          first_name:   firstName,
+          last_name:    lastName,
+          address1:     cleanAddress,
+          city:         cleanCity,
+          country:      'Pakistan',
+          country_code: 'PK',
+          phone:        cleanPhone
+        },
+        note: `City: ${cleanCity} | Address: ${cleanAddress} | Email: ${cleanEmail}`,
+        note_attributes: [
+          { name: 'City', value: cleanCity },
+          { name: 'Email', value: cleanEmail },
+          { name: 'Delivery Address', value: cleanAddress }
+        ],
         tags: 'WhatsApp-In-Funnel, Trace-CRO-Funnels',
         use_customer_default_address: false
       }
@@ -367,9 +408,9 @@ router.post('/create-draft-order', async (req, res) => {
     // 6. Log the session to SQLite for abandoned-cart recovery tracking
     db.prepare(
       `INSERT INTO whatsapp_draft_sessions
-         (draft_order_id, draft_order_name, phone, name, email, address, invoice_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(String(draft.id), draft.name || '', phone, name, email, city ? `${city}, ${address}` : address, draft.invoice_url || '');
+         (draft_order_id, draft_order_name, phone, name, email, city, address, invoice_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(String(draft.id), draft.name || '', cleanPhone, name.trim(), cleanEmail, cleanCity, cleanAddress, draft.invoice_url || '');
 
     res.json({
       success:          true,
