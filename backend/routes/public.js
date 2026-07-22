@@ -371,25 +371,36 @@ router.post('/create-draft-order', async (req, res) => {
       }
     } catch (_) {}
 
-    // 5. Calculate estimated discount if target_total is passed
-    const targetTotalNum = target_total ? parseFloat(target_total) : 0;
-    let regularSubtotal = 0;
-    if (items && Array.isArray(items)) {
-      items.forEach(item => {
-        if (item.price && item.price > 0) {
-          regularSubtotal += (parseFloat(item.price) * (item.quantity || 1));
-        }
-      });
+    // 5. Calculate bundle deal pricing & per-item custom unit price
+    const targetTotalNum = target_total ? parseFloat(String(target_total).replace(/[^0-9.]/g, '')) : 0;
+    const totalQty       = items.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 1), 0);
+
+    let perItemPrice = null;
+    let targetRemainder = 0;
+    if (targetTotalNum > 0 && totalQty > 0) {
+      perItemPrice = (Math.floor((targetTotalNum / totalQty) * 100) / 100).toFixed(2);
+      const calculatedSum = parseFloat(perItemPrice) * totalQty;
+      targetRemainder = (targetTotalNum - calculatedSum).toFixed(2);
     }
 
+    const lineItemsPayload = items.map(item => {
+      const lineObj = {
+        variant_id: item.id,
+        quantity:   item.quantity || 1
+      };
+      if (perItemPrice && parseFloat(perItemPrice) > 0) {
+        lineObj.price = perItemPrice;
+      }
+      return lineObj;
+    });
+
     let appliedDiscount = null;
-    if (targetTotalNum > 0 && regularSubtotal > targetTotalNum) {
-      const discountVal = (regularSubtotal - targetTotalNum).toFixed(2);
+    if (parseFloat(targetRemainder) > 0.01 || parseFloat(targetRemainder) < -0.01) {
       appliedDiscount = {
         title:       'Bundle Deal Savings',
         description: 'Bundle Deal Savings',
-        value:       discountVal,
-        amount:      discountVal,
+        value:       Math.abs(parseFloat(targetRemainder)).toFixed(2),
+        amount:      Math.abs(parseFloat(targetRemainder)).toFixed(2),
         value_type:  'fixed_amount'
       };
     }
@@ -397,13 +408,10 @@ router.post('/create-draft-order', async (req, res) => {
     // 6. Build bulletproof Shopify Draft Order payload
     const payload = {
       draft_order: {
-        email: cleanEmail,
-        phone: cleanPhone,
-        line_items: items.map(item => ({
-          variant_id: item.id,
-          quantity:   item.quantity
-        })),
-        customer: customerObj,
+        email:      cleanEmail,
+        phone:      cleanPhone,
+        line_items: lineItemsPayload,
+        customer:   customerObj,
         shipping_address: {
           first_name:   firstName,
           last_name:    lastName,
