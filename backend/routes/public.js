@@ -386,9 +386,11 @@ router.post('/create-draft-order', async (req, res) => {
     if (targetTotalNum > 0 && regularSubtotal > targetTotalNum) {
       const discountVal = (regularSubtotal - targetTotalNum).toFixed(2);
       appliedDiscount = {
-        title:      'Bundle Deal Savings',
-        value:      discountVal,
-        value_type: 'fixed_amount'
+        title:       'Bundle Deal Savings',
+        description: 'Bundle Deal Savings',
+        value:       discountVal,
+        amount:      discountVal,
+        value_type:  'fixed_amount'
       };
     }
 
@@ -478,9 +480,11 @@ router.post('/create-draft-order', async (req, res) => {
               draft_order: {
                 id: draft.id,
                 applied_discount: {
-                  title:      'Bundle Deal Savings',
-                  value:      requiredDiscount,
-                  value_type: 'fixed_amount'
+                  title:       'Bundle Deal Savings',
+                  description: 'Bundle Deal Savings',
+                  value:       requiredDiscount,
+                  amount:      requiredDiscount,
+                  value_type:  'fixed_amount'
                 }
               }
             })
