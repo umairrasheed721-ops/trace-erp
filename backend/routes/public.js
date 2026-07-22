@@ -19,8 +19,23 @@
 
 const express = require('express');
 const router = express.Router();
-const { db, logAction } = require('../db');
-const { addClient } = require('../sse');
+const db = require('../db');
+const { SHOPIFY_API_VERSION } = require('../utils/constants');
+
+function formatE164Phone(rawPhone) {
+  if (!rawPhone) return '';
+  const digits = String(rawPhone).replace(/[^0-9]/g, '');
+  if (digits.startsWith('92') && digits.length === 12) {
+    return '+' + digits;
+  }
+  if (digits.startsWith('03') && digits.length === 11) {
+    return '+92' + digits.substring(1);
+  }
+  if (digits.startsWith('3') && digits.length === 10) {
+    return '+92' + digits;
+  }
+  return digits.length > 5 ? '+' + digits : String(rawPhone).trim();
+}
 
 // node-fetch v2 shim — use native fetch if available (Node 18+), fallback to require
 const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
@@ -323,17 +338,18 @@ router.post('/create-draft-order', async (req, res) => {
 
     const { shop_domain: shopDomain, access_token: accessToken } = store;
 
-    // 3. Clean fields and split customer name
+    // 3. Clean fields, format phone to E.164, and split customer name
     const cleanEmail   = (email || '').trim().toLowerCase();
     const cleanCity    = (city || '').trim();
     const cleanAddress = (address || '').trim();
-    const cleanPhone   = (phone || '').trim();
+    const rawPhone     = (phone || '').trim();
+    const cleanPhone   = formatE164Phone(rawPhone) || rawPhone;
 
     const nameParts = name.trim().split(/\s+/);
     const firstName = nameParts[0] || 'Customer';
     const lastName  = nameParts.slice(1).join(' ') || '.';
 
-    // 4. Check if customer profile already exists in Shopify, update profile email/phone if missing
+    // 4. Check if customer profile already exists in Shopify, update profile email/phone
     let customerObj = {
       first_name: firstName,
       last_name:  lastName,
@@ -357,16 +373,15 @@ router.post('/create-draft-order', async (req, res) => {
             email:      cleanEmail,
             phone:      cleanPhone
           };
-          if (!found.email || !found.phone) {
-            await fetch(
-              `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/${found.id}.json`,
-              {
-                method:  'PUT',
-                headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ customer: { id: found.id, email: cleanEmail, phone: cleanPhone } })
-              }
-            ).catch(() => {});
-          }
+          // Always update customer profile so Contact Information has both email & E.164 phone
+          await fetch(
+            `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/${found.id}.json`,
+            {
+              method:  'PUT',
+              headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ customer: { id: found.id, email: cleanEmail, phone: cleanPhone, first_name: firstName, last_name: lastName } })
+            }
+          ).catch(() => {});
         }
       }
     } catch (_) {}
