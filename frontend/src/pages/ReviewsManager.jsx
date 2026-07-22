@@ -36,7 +36,7 @@ export default function ReviewsManager() {
   const { token, addToast, activeStoreId } = useApp()
   
   // Navigation tab state
-  const [activeTab, setActiveTab] = useState('moderation') // 'moderation' | 'campaigns'
+  const [activeTab, setActiveTab] = useState('moderation') // 'moderation' | 'campaigns' | 'templates'
   
   // Moderation tab state
   const [reviews, setReviews]     = useState([])
@@ -58,6 +58,12 @@ export default function ReviewsManager() {
   const [scanLoading, setScanLoading]       = useState(false)
   const [sendingSingle, setSendingSingle]   = useState({})
   const [inputEmails, setInputEmails]       = useState({})
+
+  // Template Manager state
+  const [templateSubject, setTemplateSubject] = useState('')
+  const [templateHtml, setTemplateHtml]       = useState('')
+  const [templateLoading, setTemplateLoading] = useState(false)
+  const [templateSaving, setTemplateSaving]   = useState(false)
 
   const fetchReviews = useCallback(async () => {
     setLoading(true)
@@ -109,10 +115,73 @@ export default function ReviewsManager() {
     }
   }, [token, daysWindow, campaignPage, activeStoreId])
 
+  const fetchTemplateData = useCallback(async () => {
+    setTemplateLoading(true)
+    try {
+      const res = await fetch(`${API}/api/reviews/templates/review_request`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const json = await res.json()
+      if (json.success) {
+        setTemplateSubject(json.data.subject)
+        setTemplateHtml(json.data.bodyHtml)
+      }
+    } catch (err) {
+      addToast('Failed to load email template', 'error')
+    } finally {
+      setTemplateLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
     if (activeTab === 'moderation') fetchReviews()
-    else fetchCampaignData()
-  }, [activeTab, fetchReviews, fetchCampaignData])
+    else if (activeTab === 'campaigns') fetchCampaignData()
+    else if (activeTab === 'templates') fetchTemplateData()
+  }, [activeTab, fetchReviews, fetchCampaignData, fetchTemplateData])
+
+  async function saveTemplate() {
+    setTemplateSaving(true)
+    try {
+      const res = await fetch(`${API}/api/reviews/templates/review_request`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ subject: templateSubject, bodyHtml: templateHtml })
+      })
+      const json = await res.json()
+      if (json.success) {
+        addToast('✅ Email template saved successfully!', 'success')
+      } else {
+        addToast(json.error || 'Failed to save template', 'error')
+      }
+    } catch (err) {
+      addToast('Failed to save template', 'error')
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
+
+  async function resetTemplate() {
+    if (!window.confirm('Reset template to original default design?')) return
+    setTemplateSaving(true)
+    try {
+      const res = await fetch(`${API}/api/reviews/templates/review_request/reset`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const json = await res.json()
+      if (json.success) {
+        setTemplateSubject(json.data.subject)
+        setTemplateHtml(json.data.bodyHtml)
+        addToast('✅ Template reset to default', 'success')
+      } else {
+        addToast(json.error || 'Failed to reset template', 'error')
+      }
+    } catch (err) {
+      addToast('Failed to reset template', 'error')
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
 
   async function doAction(id, action) {
     setActionLoading(prev => ({ ...prev, [id]: action }))
@@ -195,8 +264,15 @@ export default function ReviewsManager() {
 
   const totalPages = Math.ceil(total / LIMIT)
 
+  // Compute live preview HTML with mock variables
+  const previewHtml = (templateHtml || '')
+    .replace(/\{\{customer_name\}\}/g, 'Salar Khan')
+    .replace(/\{\{first_name\}\}/g, 'Salar')
+    .replace(/\{\{product_title\}\}/g, 'TRACE Heavyweight Oversized Hoodie')
+    .replace(/\{\{review_url\}\}/g, '#preview-mode')
+
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
@@ -205,7 +281,7 @@ export default function ReviewsManager() {
             ⭐ Reviews & Email Campaigns
           </h1>
           <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: 13 }}>
-            Moderate customer reviews and manage post-delivery review request emails
+            Moderate customer reviews, manage review request campaigns, and customize email templates
           </p>
         </div>
 
@@ -214,24 +290,35 @@ export default function ReviewsManager() {
           <button
             onClick={() => setActiveTab('moderation')}
             style={{
-              padding: '8px 20px', borderRadius: 8, border: 'none',
+              padding: '8px 18px', borderRadius: 8, border: 'none',
               background: activeTab === 'moderation' ? 'var(--accent)' : 'transparent',
               color: activeTab === 'moderation' ? '#000' : 'var(--text-muted)',
               fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s'
             }}
           >
-            ⭐ Reviews Moderation
+            ⭐ Moderation
           </button>
           <button
             onClick={() => setActiveTab('campaigns')}
             style={{
-              padding: '8px 20px', borderRadius: 8, border: 'none',
+              padding: '8px 18px', borderRadius: 8, border: 'none',
               background: activeTab === 'campaigns' ? 'var(--accent)' : 'transparent',
               color: activeTab === 'campaigns' ? '#000' : 'var(--text-muted)',
               fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s'
             }}
           >
-            📧 Email Campaigns ({daysWindow} Days)
+            📧 Campaigns
+          </button>
+          <button
+            onClick={() => setActiveTab('templates')}
+            style={{
+              padding: '8px 18px', borderRadius: 8, border: 'none',
+              background: activeTab === 'templates' ? 'var(--accent)' : 'transparent',
+              color: activeTab === 'templates' ? '#000' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s'
+            }}
+          >
+            📝 Template Manager
           </button>
         </div>
       </div>
@@ -614,6 +701,140 @@ export default function ReviewsManager() {
             )}
           </div>
         </>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* TAB 3: EMAIL TEMPLATE MANAGER */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {activeTab === 'templates' && (
+        <div>
+          {templateLoading ? (
+            <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
+              <div className="loading-spinner" style={{ margin: '0 auto 12px' }} />
+              Loading Email Template...
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+              
+              {/* Left Column: Template Editor */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📝 Review Request Email Template</h3>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={resetTemplate}
+                      disabled={templateSaving}
+                      style={{
+                        padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'transparent', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      Reset Default
+                    </button>
+                    <button
+                      onClick={saveTemplate}
+                      disabled={templateSaving}
+                      style={{
+                        padding: '6px 18px', borderRadius: 8, border: 'none',
+                        background: 'var(--accent)', color: '#000', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        opacity: templateSaving ? 0.6 : 1
+                      }}
+                    >
+                      {templateSaving ? 'Saving...' : '💾 Save Template'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Available Variables Pills */}
+                <div style={{ marginBottom: 16, background: '#111', padding: 12, borderRadius: 10, border: '1px dashed #333' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Available Placeholders (Click to insert):
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {['{{customer_name}}', '{{first_name}}', '{{product_title}}', '{{review_url}}'].map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setTemplateHtml(prev => prev + tag)
+                          addToast(`Copied/Inserted: ${tag}`, 'info')
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                          color: 'var(--accent)', borderRadius: 6, padding: '4px 8px', fontSize: 11,
+                          fontFamily: 'monospace', cursor: 'pointer'
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Subject Field */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Email Subject Line:
+                  </label>
+                  <input
+                    type="text"
+                    value={templateSubject}
+                    onChange={e => setTemplateSubject(e.target.value)}
+                    placeholder="e.g. How was your TRACE order, {{first_name}}? ⭐"
+                    style={{
+                      width: '100%', background: '#141414', border: '1px solid var(--border)',
+                      borderRadius: 8, padding: '10px 14px', color: '#fff', fontSize: 13,
+                      fontWeight: 600, outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* HTML Body Editor */}
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    HTML Template Body Code:
+                  </label>
+                  <textarea
+                    value={templateHtml}
+                    onChange={e => setTemplateHtml(e.target.value)}
+                    rows={18}
+                    style={{
+                      width: '100%', background: '#0d0d0d', border: '1px solid var(--border)',
+                      borderRadius: 8, padding: '12px', color: '#38bdf8', fontSize: 12,
+                      fontFamily: 'monospace', lineHeight: 1.5, outline: 'none', resize: 'vertical'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Right Column: Live Email Preview */}
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>👁️ Live Email Preview</h3>
+                  <span style={{ fontSize: 11, background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.2)', padding: '2px 8px', borderRadius: 99, fontWeight: 700 }}>
+                    Real-time Sample Render
+                  </span>
+                </div>
+
+                {/* Preview Frame */}
+                <div style={{ border: '1px solid #333', borderRadius: 10, overflow: 'hidden', background: '#0a0a0a' }}>
+                  {/* Mock Email Top Bar */}
+                  <div style={{ background: '#1e1e1e', padding: '10px 14px', borderBottom: '1px solid #333', fontSize: 12, color: '#aaa' }}>
+                    <div><strong>From:</strong> TRACE Pakistan &lt;info@tracepk.com&gt;</div>
+                    <div style={{ marginTop: 4 }}><strong>Subject:</strong> {templateSubject.replace(/\{\{first_name\}\}/g, 'Salar').replace(/\{\{customer_name\}\}/g, 'Salar Khan')}</div>
+                  </div>
+
+                  {/* Rendered HTML */}
+                  <iframe
+                    title="Email Preview"
+                    srcDoc={previewHtml}
+                    style={{ width: '100%', height: 480, border: 'none', background: '#0a0a0a' }}
+                  />
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
       )}
 
     </div>

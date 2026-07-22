@@ -67,24 +67,8 @@ function parseReviewToken(token) {
   }
 }
 
-/**
- * Send a review request email to a customer.
- */
-async function sendReviewRequestEmail({ orderId, customerName, customerEmail, productHandle, productTitle }) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️ [Reviews] EMAIL_USER/EMAIL_PASS not set — skipping review email');
-    return false;
-  }
-
-  const token = generateReviewToken(orderId, customerEmail, productHandle);
-  const reviewUrl = `${BACKEND_URL}/api/public/review-form?token=${token}`;
-
-  const starsHtml = `
-    <div style="font-size:32px;letter-spacing:4px;margin:12px 0;">⭐⭐⭐⭐⭐</div>
-  `;
-
-  const html = `
-<!DOCTYPE html>
+const DEFAULT_SUBJECT = 'How was your TRACE order, {{first_name}}? ⭐';
+const DEFAULT_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -106,19 +90,19 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
           <!-- Body -->
           <tr>
             <td style="padding:40px;">
-              <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;">Hi ${customerName || 'Valued Customer'}, 👋</p>
+              <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;">Hi {{customer_name}}, 👋</p>
               <p style="margin:0 0 24px;font-size:15px;color:#aaa;line-height:1.6;">
-                Your order has been delivered! We hope you're loving your <strong style="color:#fff;">${productTitle || 'TRACE purchase'}</strong>.
+                Your order has been delivered! We hope you're loving your <strong style="color:#fff;">{{product_title}}</strong>.
               </p>
 
               <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;text-align:center;margin:0 0 28px;">
                 <p style="margin:0 0 8px;font-size:14px;color:#888;text-transform:uppercase;letter-spacing:2px;">Share Your Experience</p>
-                ${starsHtml}
+                <div style="font-size:32px;letter-spacing:4px;margin:12px 0;">⭐⭐⭐⭐⭐</div>
                 <p style="margin:0;font-size:13px;color:#666;">It only takes 30 seconds!</p>
               </div>
 
               <div style="text-align:center;margin:0 0 28px;">
-                <a href="${reviewUrl}"
+                <a href="{{review_url}}"
                    style="display:inline-block;background:#fff;color:#000;font-weight:700;font-size:14px;letter-spacing:2px;text-transform:uppercase;padding:16px 40px;border-radius:8px;text-decoration:none;">
                   Write a Review →
                 </a>
@@ -143,15 +127,68 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
     </tr>
   </table>
 </body>
-</html>
-  `;
+</html>`;
+
+function getTemplateFromDb() {
+  try {
+    const path = require('path');
+    const { DatabaseSync } = require('node:sqlite');
+    const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../trace_erp.db');
+    const db = new DatabaseSync(DB_PATH);
+    
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_key TEXT UNIQUE,
+        name TEXT,
+        subject TEXT,
+        body_html TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    const row = db.prepare("SELECT subject, body_html FROM email_templates WHERE template_key = 'review_request'").get();
+    if (row && row.subject && row.body_html) {
+      return { subject: row.subject, body_html: row.body_html };
+    }
+  } catch (e) {}
+  return { subject: DEFAULT_SUBJECT, body_html: DEFAULT_HTML };
+}
+
+/**
+ * Send a review request email to a customer.
+ */
+async function sendReviewRequestEmail({ orderId, customerName, customerEmail, productHandle, productTitle }) {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('⚠️ [Reviews] EMAIL_USER/EMAIL_PASS not set — skipping review email');
+    return false;
+  }
+
+  const token = generateReviewToken(orderId, customerEmail, productHandle);
+  const reviewUrl = `${BACKEND_URL}/api/public/review-form?token=${token}`;
+
+  const template = getTemplateFromDb();
+  const firstName = customerName?.split(' ')[0] || 'there';
+  const fullName = customerName || 'Valued Customer';
+  const itemTitle = productTitle || 'your recent purchase';
+
+  const subject = (template.subject || DEFAULT_SUBJECT)
+    .replace(/\{\{customer_name\}\}/g, fullName)
+    .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{product_title\}\}/g, itemTitle);
+
+  const html = (template.body_html || DEFAULT_HTML)
+    .replace(/\{\{customer_name\}\}/g, fullName)
+    .replace(/\{\{first_name\}\}/g, firstName)
+    .replace(/\{\{product_title\}\}/g, itemTitle)
+    .replace(/\{\{review_url\}\}/g, reviewUrl);
 
   try {
     const transporter = getTransporter();
     await transporter.sendMail({
       from: `"TRACE Pakistan" <${process.env.EMAIL_USER}>`,
       to: customerEmail,
-      subject: `How was your TRACE order, ${customerName?.split(' ')[0] || 'there'}? ⭐`,
+      subject,
       html,
     });
     console.log(`📧 [Reviews] Review request email sent to ${customerEmail} for order #${orderId}`);
@@ -162,4 +199,11 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
   }
 }
 
-module.exports = { sendReviewRequestEmail, parseReviewToken, generateReviewToken };
+module.exports = {
+  sendReviewRequestEmail,
+  parseReviewToken,
+  generateReviewToken,
+  getTemplateFromDb,
+  DEFAULT_SUBJECT,
+  DEFAULT_HTML
+};

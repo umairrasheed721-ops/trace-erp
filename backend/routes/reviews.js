@@ -717,5 +717,82 @@ router.post('/campaigns/trigger-scan', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: GET /api/reviews/templates/review_request
+// Get Review Email Template
+// ─────────────────────────────────────────────────────────────────
+router.get('/templates/review_request', (req, res) => {
+  try {
+    const { getTemplateFromDb, DEFAULT_SUBJECT, DEFAULT_HTML } = require('../services/reviewEmailService');
+    const tpl = getTemplateFromDb();
+    res.json({
+      success: true,
+      data: {
+        templateKey: 'review_request',
+        subject: tpl.subject || DEFAULT_SUBJECT,
+        bodyHtml: tpl.body_html || DEFAULT_HTML,
+        defaults: { subject: DEFAULT_SUBJECT, bodyHtml: DEFAULT_HTML }
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: PUT /api/reviews/templates/review_request
+// Update Review Email Template
+// ─────────────────────────────────────────────────────────────────
+router.put('/templates/review_request', (req, res) => {
+  try {
+    const { subject, bodyHtml } = req.body;
+    if (!subject || !bodyHtml) {
+      return res.status(400).json({ success: false, error: 'Subject and body HTML are required' });
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_key TEXT UNIQUE,
+        name TEXT,
+        subject TEXT,
+        body_html TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.prepare(`
+      INSERT INTO email_templates (template_key, name, subject, body_html, updated_at)
+      VALUES ('review_request', 'Review Request Email', ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(template_key) DO UPDATE SET
+        subject = excluded.subject,
+        body_html = excluded.body_html,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(subject, bodyHtml);
+
+    res.json({ success: true, message: 'Email template updated successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: POST /api/reviews/templates/review_request/reset
+// Reset Review Email Template to Default
+// ─────────────────────────────────────────────────────────────────
+router.post('/templates/review_request/reset', (req, res) => {
+  try {
+    db.prepare("DELETE FROM email_templates WHERE template_key = 'review_request'").run();
+    const { DEFAULT_SUBJECT, DEFAULT_HTML } = require('../services/reviewEmailService');
+    res.json({
+      success: true,
+      message: 'Template reset to default',
+      data: { subject: DEFAULT_SUBJECT, bodyHtml: DEFAULT_HTML }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
 
