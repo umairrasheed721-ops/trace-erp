@@ -87,12 +87,10 @@ async function main() {
     await uploadAsset(`assets/${font}`, path.join(themeDir, 'assets', font));
   }
 
-  // 4. Upload config/settings_schema.json and settings_data.json
+  // 4. Upload config/settings_schema.json
   await uploadAsset('config/settings_schema.json', path.join(themeDir, 'config/settings_schema.json'));
-  await uploadAsset('config/settings_data.json', path.join(themeDir, 'config/settings_data.json'));
+  // Note: We DO NOT push config/settings_data.json or templates/index.json to avoid overwriting merchant store editor customizations.
 
-  // 5. Upload templates/index.json
-  await uploadAsset('templates/index.json', path.join(themeDir, 'templates/index.json'));
 
   // 6. Upload trace-reviews section and snippet
   await uploadAsset('sections/trace-reviews.liquid', path.join(themeDir, 'sections/trace-reviews.liquid'));

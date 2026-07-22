@@ -33,7 +33,7 @@ function StatusBadge({ status }) {
 }
 
 export default function ReviewsManager() {
-  const { token, addToast } = useApp()
+  const { token, addToast, activeStoreId } = useApp()
   const [reviews, setReviews]     = useState([])
   const [total, setTotal]         = useState(0)
   const [loading, setLoading]     = useState(true)
@@ -48,6 +48,7 @@ export default function ReviewsManager() {
     try {
       const params = new URLSearchParams({ status: filter, page, limit: LIMIT })
       if (search) params.set('handle', search.trim())
+      if (activeStoreId) params.set('store_id', activeStoreId)
       const res = await fetch(`${API}/api/reviews?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -61,7 +62,7 @@ export default function ReviewsManager() {
     } finally {
       setLoading(false)
     }
-  }, [token, filter, page, search])
+  }, [token, filter, page, search, activeStoreId])
 
   useEffect(() => { fetchReviews() }, [fetchReviews])
 

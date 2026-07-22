@@ -483,8 +483,9 @@ router.post('/write-review', (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 router.get('/', (req, res) => {
   try {
-    const { status = 'all', page = 1, limit = 50, handle } = req.query;
+    const { status = 'all', page = 1, limit = 50, handle, store_id } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
+    const targetStoreId = store_id || req.headers['x-active-store-id'];
 
     let sql = 'SELECT * FROM product_reviews';
     const params = [];
@@ -497,6 +498,10 @@ router.get('/', (req, res) => {
     if (handle) {
       conditions.push('product_handle = ?');
       params.push(handle);
+    }
+    if (targetStoreId) {
+      conditions.push('(store_id = ? OR store_id IS NULL)');
+      params.push(parseInt(targetStoreId));
     }
 
     if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
