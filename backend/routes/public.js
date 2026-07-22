@@ -371,47 +371,26 @@ router.post('/create-draft-order', async (req, res) => {
       }
     } catch (_) {}
 
-    // 5. Calculate bundle deal pricing & per-item custom unit price
-    const targetTotalNum = target_total ? parseFloat(String(target_total).replace(/[^0-9.]/g, '')) : 0;
-    const totalQty       = items.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 1), 0);
-
-    let perItemPrice = null;
-    let targetRemainder = 0;
-    if (targetTotalNum > 0 && totalQty > 0) {
-      perItemPrice = (Math.floor((targetTotalNum / totalQty) * 100) / 100).toFixed(2);
-      const calculatedSum = parseFloat(perItemPrice) * totalQty;
-      targetRemainder = (targetTotalNum - calculatedSum).toFixed(2);
+    // 5. Build clean, standard Shopify Draft Order payload
+    const noteText = `City: ${cleanCity} | Address: ${cleanAddress} | Email: ${cleanEmail}${target_total ? ` | Deal Total: Rs. ${target_total}` : ''}`;
+    const noteAttributes = [
+      { name: 'City', value: cleanCity },
+      { name: 'Email', value: cleanEmail },
+      { name: 'Delivery Address', value: cleanAddress }
+    ];
+    if (target_total) {
+      noteAttributes.push({ name: 'Deal Total', value: `Rs. ${target_total}` });
     }
 
-    const lineItemsPayload = items.map(item => {
-      const lineObj = {
-        variant_id: item.id,
-        quantity:   item.quantity || 1
-      };
-      if (perItemPrice && parseFloat(perItemPrice) > 0) {
-        lineObj.price = perItemPrice;
-      }
-      return lineObj;
-    });
-
-    let appliedDiscount = null;
-    if (parseFloat(targetRemainder) > 0.01 || parseFloat(targetRemainder) < -0.01) {
-      appliedDiscount = {
-        title:       'Bundle Deal Savings',
-        description: 'Bundle Deal Savings',
-        value:       Math.abs(parseFloat(targetRemainder)).toFixed(2),
-        amount:      Math.abs(parseFloat(targetRemainder)).toFixed(2),
-        value_type:  'fixed_amount'
-      };
-    }
-
-    // 6. Build bulletproof Shopify Draft Order payload
     const payload = {
       draft_order: {
         email:      cleanEmail,
         phone:      cleanPhone,
-        line_items: lineItemsPayload,
-        customer:   customerObj,
+        line_items: items.map(item => ({
+          variant_id: item.id,
+          quantity:   item.quantity || 1
+        })),
+        customer: customerObj,
         shipping_address: {
           first_name:   firstName,
           last_name:    lastName,
@@ -430,22 +409,14 @@ router.post('/create-draft-order', async (req, res) => {
           country_code: 'PK',
           phone:        cleanPhone
         },
-        note: `City: ${cleanCity} | Address: ${cleanAddress} | Email: ${cleanEmail}`,
-        note_attributes: [
-          { name: 'City', value: cleanCity },
-          { name: 'Email', value: cleanEmail },
-          { name: 'Delivery Address', value: cleanAddress }
-        ],
-        tags: 'WhatsApp-In-Funnel, Trace-CRO-Funnels',
+        note:            noteText,
+        note_attributes: noteAttributes,
+        tags:            'WhatsApp-In-Funnel, Trace-CRO-Funnels',
         use_customer_default_address: false
       }
     };
 
-    if (appliedDiscount) {
-      payload.draft_order.applied_discount = appliedDiscount;
-    }
-
-    // 5. POST to Shopify Admin API with 8-second AbortController timeout
+    // 6. POST to Shopify Admin API with 8-second AbortController timeout
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 8000);
 
@@ -469,43 +440,8 @@ router.post('/create-draft-order', async (req, res) => {
       throw new Error(`Shopify API ${response.status}: ${errText}`);
     }
 
-    let { draft_order: draft } = await response.json();
+    const { draft_order: draft } = await response.json();
     if (!draft) throw new Error('Empty draft_order in Shopify response');
-
-    // 7. Verify & ensure exact bundle discount if subtotal exceeds target_total
-    const createdSubtotal = parseFloat(draft.subtotal_price || 0);
-    const createdTotal    = parseFloat(draft.total_price || 0);
-
-    if (targetTotalNum > 0 && createdSubtotal > targetTotalNum && (createdTotal > targetTotalNum || !draft.applied_discount)) {
-      const requiredDiscount = (createdSubtotal - targetTotalNum).toFixed(2);
-      try {
-        const updateRes = await fetch(
-          `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}.json`,
-          {
-            method:  'PUT',
-            headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
-            body:    JSON.stringify({
-              draft_order: {
-                id: draft.id,
-                applied_discount: {
-                  title:       'Bundle Deal Savings',
-                  description: 'Bundle Deal Savings',
-                  value:       requiredDiscount,
-                  amount:      requiredDiscount,
-                  value_type:  'fixed_amount'
-                }
-              }
-            })
-          }
-        );
-        if (updateRes.ok) {
-          const updatedJson = await updateRes.json();
-          if (updatedJson.draft_order) {
-            draft = updatedJson.draft_order;
-          }
-        }
-      } catch (_) {}
-    }
 
     // 8. Log the session to SQLite for abandoned-cart recovery tracking
     db.prepare(
