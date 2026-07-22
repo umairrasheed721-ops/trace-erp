@@ -292,7 +292,7 @@ router.post('/create-draft-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   try {
-    const { name, phone, email, city, address, items } = req.body;
+    const { name, phone, email, city, address, target_total, items } = req.body;
 
     // 1. Validate required fields
     if (!name || !phone || !email || !city || !address || !items || !items.length) {
@@ -371,7 +371,28 @@ router.post('/create-draft-order', async (req, res) => {
       }
     } catch (_) {}
 
-    // 5. Build bulletproof Shopify Draft Order payload
+    // 5. Calculate estimated discount if target_total is passed
+    const targetTotalNum = target_total ? parseFloat(target_total) : 0;
+    let regularSubtotal = 0;
+    if (items && Array.isArray(items)) {
+      items.forEach(item => {
+        if (item.price && item.price > 0) {
+          regularSubtotal += (parseFloat(item.price) * (item.quantity || 1));
+        }
+      });
+    }
+
+    let appliedDiscount = null;
+    if (targetTotalNum > 0 && regularSubtotal > targetTotalNum) {
+      const discountVal = (regularSubtotal - targetTotalNum).toFixed(2);
+      appliedDiscount = {
+        title:      'Bundle Deal Savings',
+        value:      discountVal,
+        value_type: 'fixed_amount'
+      };
+    }
+
+    // 6. Build bulletproof Shopify Draft Order payload
     const payload = {
       draft_order: {
         email: cleanEmail,
@@ -410,6 +431,10 @@ router.post('/create-draft-order', async (req, res) => {
       }
     };
 
+    if (appliedDiscount) {
+      payload.draft_order.applied_discount = appliedDiscount;
+    }
+
     // 5. POST to Shopify Admin API with 8-second AbortController timeout
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 8000);
@@ -434,10 +459,43 @@ router.post('/create-draft-order', async (req, res) => {
       throw new Error(`Shopify API ${response.status}: ${errText}`);
     }
 
-    const { draft_order: draft } = await response.json();
+    let { draft_order: draft } = await response.json();
     if (!draft) throw new Error('Empty draft_order in Shopify response');
 
-    // 6. Log the session to SQLite for abandoned-cart recovery tracking
+    // 7. Verify & ensure exact bundle discount if subtotal exceeds target_total
+    const createdSubtotal = parseFloat(draft.subtotal_price || 0);
+    const createdTotal    = parseFloat(draft.total_price || 0);
+
+    if (targetTotalNum > 0 && createdSubtotal > targetTotalNum && (createdTotal > targetTotalNum || !draft.applied_discount)) {
+      const requiredDiscount = (createdSubtotal - targetTotalNum).toFixed(2);
+      try {
+        const updateRes = await fetch(
+          `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}.json`,
+          {
+            method:  'PUT',
+            headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+            body:    JSON.stringify({
+              draft_order: {
+                id: draft.id,
+                applied_discount: {
+                  title:      'Bundle Deal Savings',
+                  value:      requiredDiscount,
+                  value_type: 'fixed_amount'
+                }
+              }
+            })
+          }
+        );
+        if (updateRes.ok) {
+          const updatedJson = await updateRes.json();
+          if (updatedJson.draft_order) {
+            draft = updatedJson.draft_order;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 8. Log the session to SQLite for abandoned-cart recovery tracking
     db.prepare(
       `INSERT INTO whatsapp_draft_sessions
          (draft_order_id, draft_order_name, phone, name, email, city, address, invoice_url)
