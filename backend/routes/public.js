@@ -333,8 +333,45 @@ router.post('/create-draft-order', async (req, res) => {
     const firstName = nameParts[0] || 'Customer';
     const lastName  = nameParts.slice(1).join(' ') || '.';
 
-    // 4. Build bulletproof Shopify Draft Order payload
-    //    Sets root email/phone, customer object, shipping_address with country, billing_address, note, and note_attributes
+    // 4. Check if customer profile already exists in Shopify, update profile email/phone if missing
+    let customerObj = {
+      first_name: firstName,
+      last_name:  lastName,
+      email:      cleanEmail,
+      phone:      cleanPhone
+    };
+
+    try {
+      const searchRes = await fetch(
+        `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/search.json?query=${encodeURIComponent(cleanEmail)}`,
+        { headers: { 'X-Shopify-Access-Token': accessToken } }
+      );
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.customers && searchData.customers.length > 0) {
+          const found = searchData.customers[0];
+          customerObj = {
+            id:         found.id,
+            first_name: firstName,
+            last_name:  lastName,
+            email:      cleanEmail,
+            phone:      cleanPhone
+          };
+          if (!found.email || !found.phone) {
+            await fetch(
+              `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/customers/${found.id}.json`,
+              {
+                method:  'PUT',
+                headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ customer: { id: found.id, email: cleanEmail, phone: cleanPhone } })
+              }
+            ).catch(() => {});
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 5. Build bulletproof Shopify Draft Order payload
     const payload = {
       draft_order: {
         email: cleanEmail,
@@ -343,12 +380,7 @@ router.post('/create-draft-order', async (req, res) => {
           variant_id: item.id,
           quantity:   item.quantity
         })),
-        customer: {
-          first_name: firstName,
-          last_name:  lastName,
-          email:      cleanEmail,
-          phone:      cleanPhone
-        },
+        customer: customerObj,
         shipping_address: {
           first_name:   firstName,
           last_name:    lastName,
