@@ -214,8 +214,8 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     INSERT OR IGNORE INTO orders (
       store_id, shopify_order_id, ref_number, customer_name, order_date, phone,
       address, city, price, tracking_number, items_count, notes, product_titles,
-      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, shipping_fee, discount_amount
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?)
+      delivery_status, payment_status, postex_weight, courier, cost, order_source, status_date, confirmation_token, tenant_id, shipping_fee, discount_amount
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'),?,?,?,?)
   `);
 
   const insertChunk = db.transaction((orders, costMap) => {
@@ -263,6 +263,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           order.financial_status === 'paid' ? 'Paid' : 
           (order.financial_status === 'voided' ? 'Voided' : 'Pending'),
           0.5, courier, totalCost, source, token,
+          require('../../tenant-context').getStore() || 'default',
           shopifyShipping,
           shopifyDiscount
         );
@@ -525,12 +526,26 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
               const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
               const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
               const sku = item.sku ? String(item.sku).trim() : '';
+              const pName = item.title ? String(item.title).trim() : (item.name ? String(item.name).split(' - ')[0].trim() : '');
+              const vName = item.variant_title ? String(item.variant_title).trim() : (item.name && item.name.includes(' - ') ? String(item.name).split(' - ').slice(1).join(' - ').trim() : '');
 
               const queryVariantId1 = numericVariantId || '__NONE__';
               const queryVariantId2 = gidVariantId || '__NONE__';
               const querySku = sku || '__NONE__';
 
-              const registry = registryLookupStmt.get(storeId, queryVariantId1, queryVariantId2, querySku, queryVariantId1, queryVariantId2, querySku);
+              const registry = registryLookupStmt.get(
+                storeId,
+                queryVariantId1,
+                queryVariantId2,
+                querySku,
+                pName.toLowerCase(),
+                queryVariantId1,
+                queryVariantId2,
+                querySku,
+                pName.toLowerCase(),
+                vName.toLowerCase(),
+                pName.toLowerCase()
+              );
               
               if (registry) unitCost = registry.landed_cost || registry.shopify_cost || 0;
             }
@@ -570,6 +585,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           });
         }
 
+        const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
+        const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
         const customerEmail = fresh.email || fresh.contact_email || fresh.customer?.email || '';
 
         updateStmt.run(
