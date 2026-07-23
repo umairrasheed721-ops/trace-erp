@@ -185,37 +185,53 @@ async function runReconciliation() {
       let trackingNumber = null;
       let errorMsg = null;
 
-      try {
-        const url = `https://api.postex.pk/services/integration/api/order/v1/get-order-detail-by-ref-number?orderRefNumber=${encodeURIComponent(orderRef)}`;
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'token': store.postex_token,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // Strict 10-second timeout
-        });
+      // Prepare list of ref formats to try: e.g. '#31057' and '31057'
+      const refCandidates = [orderRef];
+      if (orderRef.startsWith('#')) {
+        refCandidates.push(orderRef.replace(/^#/, ''));
+      }
 
-        if (!response.ok) {
-          throw new Error(`HTTP error ${response.status}`);
-        }
+      for (const candidateRef of refCandidates) {
+        try {
+          const url = `https://api.postex.pk/services/integration/api/order/v1/get-order-detail-by-ref-number?orderRefNumber=${encodeURIComponent(candidateRef)}`;
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'token': store.postex_token,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          });
 
-        const data = await response.json();
-        
-        if (data.statusCode === '200') {
-          trackingNumber = data.dist?.trackingNumber || data.dist?.tracking_number || data.dist?.trackingNo || data.trackingNumber || data.tracking_number;
-          if (!trackingNumber && data.dist && typeof data.dist === 'string') {
-            trackingNumber = data.dist;
+          if (response.status === 404) {
+            errorMsg = `Order reference '${candidateRef}' not found in PostEx portal (404)`;
+            continue; // Try next candidate or record 404
           }
+
+          if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+
+          const data = await response.json();
           
-          if (!trackingNumber) {
-            errorMsg = 'PostEx API returned 200, but no trackingNumber field was found in response';
+          if (data.statusCode === '200') {
+            trackingNumber = data.dist?.trackingNumber || data.dist?.tracking_number || data.dist?.trackingNo || data.trackingNumber || data.tracking_number;
+            if (!trackingNumber && data.dist && typeof data.dist === 'string') {
+              trackingNumber = data.dist;
+            }
+            
+            if (!trackingNumber) {
+              errorMsg = 'PostEx API returned 200, but no trackingNumber field was found in response';
+            } else {
+              errorMsg = null;
+              break; // Found tracking number!
+            }
+          } else {
+            errorMsg = data.statusMessage || `PostEx error code: ${data.statusCode}`;
           }
-        } else {
-          errorMsg = data.statusMessage || `PostEx error code: ${data.statusCode}`;
+        } catch (err) {
+          errorMsg = `PostEx API Request Failed: ${err.message}`;
         }
-      } catch (err) {
-        errorMsg = `PostEx API Request Failed: ${err.message}`;
       }
 
       if (trackingNumber) {
