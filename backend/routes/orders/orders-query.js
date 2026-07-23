@@ -345,7 +345,7 @@ router.get('/:id/details', async (req, res) => {
       ? order.price 
       : (parseFloat(shopifyOrder.current_total_price || shopifyOrder.total_price) || order.price);
     const ref_number = shopifyOrder.name || order.ref_number;
-    const notes = shopifyOrder.note || order.notes;
+    const notes = shopifyOrder.note !== undefined && shopifyOrder.note !== null ? shopifyOrder.note : (order.notes || '');
 
     // Update local database with full fresh info
     db.prepare(`

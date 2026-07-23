@@ -752,7 +752,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         existing.id
       );
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
-      try { require('../../sse').broadcast('message', { type: 'order_updated', storeId, shopifyOrderId }); } catch(e) {}
+      try { require('../../sse').broadcast('order_updated', { storeId, shopifyOrderId }); } catch(e) {}
     } else {
       const token = crypto.randomBytes(16).toString('hex');
       const fullName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || '');
