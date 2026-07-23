@@ -214,6 +214,20 @@ const COLUMN_INFO = {
   }
 };
 
+// ─── Group Styles ────────────────────────────────────────────────────────────
+const GROUP_STYLES = {
+  income:  { bg: 'rgba(161,98,7,0.10)',   border: 'rgba(161,98,7,0.3)',    accent: '#f59e0b', badge: 'linear-gradient(135deg,#92400e,#b45309)',  label: '💸 INCOME'   },
+  expense: { bg: 'rgba(109,40,217,0.10)', border: 'rgba(109,40,217,0.28)', accent: '#a855f7', badge: 'linear-gradient(135deg,#5b21b6,#7c3aed)',  label: '📉 EXPENSES' },
+  profit:  { bg: 'rgba(6,95,70,0.12)',    border: 'rgba(6,95,70,0.32)',    accent: '#10b981', badge: 'linear-gradient(135deg,#065f46,#047857)',  label: '💰 PROFIT'   },
+  kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
+};
+
+const CLICKABLE_IDS = new Set(['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit']);
+const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate']);
+const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
+const EDITABLE_IDS = new Set(['marketingSpend','tiktokMarketing','actualExp','diffCorrection']);
+
 export default function PnLMetricsPanel({
   loading,
   view,
@@ -234,7 +248,7 @@ export default function PnLMetricsPanel({
     const rawVal = row[field];
     const displayVal = (rawVal === 0 || rawVal === null || rawVal === undefined) ? '' : Math.round(rawVal * 100) / 100;
     return (
-      <input 
+      <input
         type="text" inputMode="numeric"
         value={displayVal}
         onChange={(e) => handleMetricChange(row.date, field, e.target.value.replace(/[^0-9.]/g, ''))}
@@ -257,122 +271,168 @@ export default function PnLMetricsPanel({
   const dataset = view === 'daily' ? filteredDaily : monthlyData;
 
   // ─── Vertical Layout ────────────────────────────────────────────────────────
-  // Rows = metrics, Columns = periods (months / days)
   if (tableLayout === 'vertical' && dataset.length > 0) {
-    const GROUP_META = {
-      income:  { label: '💸 INCOME',   cls: 'head-sales' },
-      expense: { label: '📉 EXPENSES', cls: 'head-out' },
-      profit:  { label: '💰 PROFIT',   cls: 'head-pnl' },
-      kpi:     { label: '🛡️ KPIs',     cls: 'head-kpi' },
-    };
     const metricCols = visibleCols.filter(c => c.id !== 'date');
     const periods = dataset.map(r => r.date || r.month);
 
     const getCellContent = (col, row) => {
-      const isEditable = view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id);
-      if (isEditable) return renderEditable(row, col.id);
-
+      if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
       let content = row[col.id];
-      if (['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit'].includes(col.id)) content = formatCurrency(row[col.id]);
-      if (['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate'].includes(col.id)) content = formatPercent(row[col.id]);
-      if (['roasMeta','deliveredRoas'].includes(col.id)) content = formatNumber(row[col.id]);
+      if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
+      if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
+      if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
       return content;
     };
 
-    const isClickable = id => ['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount'].includes(id);
-
+    // Inject separator rows before each new group
+    const rowsWithSeparators = [];
     let lastGroup = null;
+    for (const col of metricCols) {
+      if (col.group !== lastGroup) {
+        rowsWithSeparators.push({ type: 'separator', group: col.group });
+        lastGroup = col.group;
+      }
+      rowsWithSeparators.push({ type: 'metric', col });
+    }
+
+    const InfoModal = () => activeColumnInfo && (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
+        <div style={{ width: 460, padding: '28px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
+          <h3 style={{ color: 'var(--brand)', margin: '0 0 14px', fontSize: '1.15rem', fontWeight: 800 }}>ℹ️ {activeColumnInfo.label}</h3>
+          <p style={{ fontSize: '0.88rem', lineHeight: 1.7, margin: '0 0 14px', color: 'var(--text-primary)' }}>{activeColumnInfo.description}</p>
+          {activeColumnInfo.example && (
+            <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', marginBottom: 12 }}>
+              <strong style={{ display: 'block', fontSize: '0.7rem', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>💡 Simple Explanation</strong>
+              <span style={{ fontSize: '0.84rem', lineHeight: 1.65 }}>{activeColumnInfo.example}</span>
+            </div>
+          )}
+          <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--brand)', wordBreak: 'break-all', marginBottom: 16 }}>
+            <strong style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Formula / Logic</strong>
+            {activeColumnInfo.formula}
+          </div>
+          <button className="btn btn-primary" style={{ width: '100%', padding: 10 }} onClick={() => setActiveColumnInfo(null)}>Dismiss</button>
+        </div>
+      </div>
+    );
 
     return (
       <>
-        <div ref={tableContainerRef} className="stat-card" style={{ padding: 0, overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-          <table className="reports-table">
+        <style>{`
+          .vt-wrap { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-surface); }
+          .vt-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+
+          /* Header */
+          .vt-corner { position: sticky; left: 0; z-index: 21; background: var(--bg-elevated); padding: 11px 18px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: var(--text-muted);
+            text-transform: uppercase; border-bottom: 2px solid var(--border); border-right: 2px solid var(--border); white-space: nowrap; }
+          .vt-period { padding: 11px 18px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+            text-align: right; text-transform: uppercase; background: var(--bg-elevated);
+            color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap; }
+
+          /* Separator rows */
+          .vt-sep td { padding: 0 !important; border: none !important; height: 36px; }
+          .vt-sep-inner { display: flex; align-items: center; gap: 10px; padding: 8px 16px 4px; }
+          .vt-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 13px 3px 10px;
+            border-radius: 20px; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.07em;
+            color: #fff; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+          .vt-sep-line { flex: 1; height: 1px; opacity: 0.5; }
+
+          /* Metric rows */
+          .vt-row td { border-bottom: 1px solid rgba(255,255,255,0.035); transition: background 0.1s; }
+          .vt-row:hover td { background: rgba(255,255,255,0.035) !important; }
+
+          /* Label sticky cell */
+          .vt-label-cell { position: sticky; left: 0; z-index: 18; background: var(--bg-surface);
+            border-right: 2px solid var(--border); padding: 0; min-width: 230px; max-width: 280px; }
+          .vt-label-inner { display: flex; align-items: center; gap: 7px; padding: 10px 16px;
+            font-weight: 600; font-size: 0.8rem; color: var(--text-primary); white-space: nowrap; }
+          .vt-info-btn { opacity: 0; transition: opacity 0.15s; cursor: pointer; display: inline-flex;
+            align-items: center; justify-content: center; flex-shrink: 0;
+            width: 16px; height: 16px; border-radius: 50%; background: var(--bg-elevated);
+            border: 1px solid var(--border); font-size: 9px; color: var(--text-secondary); font-weight: bold; }
+          .vt-row:hover .vt-info-btn { opacity: 1; }
+
+          /* Data cells */
+          .vt-cell { padding: 10px 18px !important; text-align: right !important;
+            font-size: 0.82rem; font-weight: 500; white-space: nowrap; }
+          .vt-cell.clickable { cursor: pointer; }
+          .vt-cell.clickable:hover { background: rgba(255,255,255,0.05) !important; }
+
+          /* PNL highlight rows */
+          .vt-pnl-row .vt-label-cell { background: var(--bg-elevated) !important; }
+          .vt-pnl-row .vt-label-inner { font-size: 0.85rem; font-weight: 800; }
+          .vt-pnl-row .vt-cell { font-size: 0.88rem !important; font-weight: 800 !important; }
+        `}</style>
+
+        <div ref={tableContainerRef} className="vt-wrap stat-card" style={{ padding: 0, overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
+          <table className="vt-table">
             <thead>
               <tr>
-                {/* top-left corner: group label column */}
-                <th className="sticky-col" style={{ minWidth: 48, width: 48 }}></th>
-                {/* metric name column */}
-                <th className="sticky-col" style={{ minWidth: 160, left: 48, textAlign: 'left', zIndex: 21, borderLeft: '1px solid var(--border)' }}>METRIC</th>
-                {/* one column per period */}
+                <th className="vt-corner">METRIC</th>
                 {periods.map(p => (
-                  <th key={p} style={{ minWidth: 140, textAlign: 'right', fontWeight: 700 }}>{p}</th>
+                  <th key={p} className="vt-period">{p}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {metricCols.map((col, idx) => {
-                const info = COLUMN_INFO[col.id];
-                const groupChanged = col.group !== lastGroup;
-                lastGroup = col.group;
-                const gm = GROUP_META[col.group] || {};
-                return (
-                  <tr key={col.id} style={{ background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : undefined }}>
-                    {/* Group badge cell */}
-                    <td
-                      className={groupChanged ? gm.cls : ''}
-                      style={{
-                        position: 'sticky', left: 0, zIndex: 19,
-                        fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.05em',
-                        writingMode: 'vertical-lr', textOrientation: 'mixed',
-                        transform: 'rotate(180deg)',
-                        textAlign: 'center',
-                        padding: '4px 6px',
-                        whiteSpace: 'nowrap',
-                        background: groupChanged ? undefined : 'var(--bg-surface)',
-                        borderRight: '1px solid rgba(255,255,255,0.1)',
-                        color: groupChanged ? 'white' : 'transparent',
-                        userSelect: 'none',
-                        minWidth: 48, width: 48,
-                        verticalAlign: 'middle'
-                      }}
-                    >
-                      {groupChanged ? gm.label : ''}
-                    </td>
+              {rowsWithSeparators.map((item, idx) => {
+                if (item.type === 'separator') {
+                  const gs = GROUP_STYLES[item.group] || GROUP_STYLES.kpi;
+                  return (
+                    <tr key={`sep-${item.group}`} className="vt-sep">
+                      <td colSpan={periods.length + 1}>
+                        <div className="vt-sep-inner">
+                          <span className="vt-badge" style={{ background: gs.badge }}>{gs.label}</span>
+                          <span className="vt-sep-line" style={{ background: gs.border }} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
 
-                    {/* Metric name sticky cell */}
-                    <td
-                      style={{
-                        position: 'sticky', left: 48, zIndex: 18,
-                        background: 'var(--bg-surface)',
-                        fontWeight: 700, fontSize: '0.76rem',
-                        textAlign: 'left', whiteSpace: 'nowrap',
-                        borderRight: '3px solid var(--border)',
-                        boxShadow: '2px 0 5px rgba(0,0,0,0.1)',
-                        padding: '8px 14px',
-                        display: 'table-cell',
-                        cursor: info ? 'help' : 'default'
-                      }}
-                      title={info ? `${info.description}\nFormula: ${info.formula}` : undefined}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {col.label}
+                const { col } = item;
+                const info = COLUMN_INFO[col.id];
+                const gs = GROUP_STYLES[col.group] || GROUP_STYLES.kpi;
+                const isPnl = col.id === 'pnl' || col.id === 'actualPnl';
+
+                return (
+                  <tr key={col.id} className={`vt-row${isPnl ? ' vt-pnl-row' : ''}`}>
+                    {/* Sticky label */}
+                    <td className="vt-label-cell" style={{ background: isPnl ? 'var(--bg-elevated)' : undefined }}>
+                      <div className="vt-label-inner">
+                        <span style={{ flex: 1, color: isPnl ? gs.accent : undefined }}>{col.label}</span>
                         {info && (
-                          <span
-                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 9, color: 'var(--text-secondary)', fontWeight: 'bold' }}
-                            onClick={() => setActiveColumnInfo({ label: col.label, ...info })}
-                          >i</span>
+                          <span className="vt-info-btn" onClick={() => setActiveColumnInfo({ label: col.label, ...info })}>i</span>
                         )}
                       </div>
                     </td>
 
-                    {/* One data cell per period */}
+                    {/* Data cells */}
                     {dataset.map(row => {
                       const content = getCellContent(col, row);
-                      const clickable = isClickable(col.id);
-                      const isAlert = ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0));
-                      const isPnl = col.id === 'pnl' || col.id === 'actualPnl';
+                      const clickable = CLICKABLE_IDS.has(col.id);
+                      const isAlert = (
+                        (col.id === 'costGaps'          && row.costGaps > 0) ||
+                        (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
+                        (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0)
+                      );
+                      const pnlColor = isPnl ? (row[col.id] >= 0 ? '#10b981' : '#ef4444') : undefined;
+
                       return (
                         <td
                           key={row.date || row.month}
+                          className={`vt-cell${clickable ? ' clickable' : ''}`}
                           style={{
-                            textAlign: 'right',
-                            color: isPnl ? (row[col.id] >= 0 ? 'var(--green)' : 'var(--red)') : isAlert ? 'var(--red)' : undefined,
-                            fontWeight: isPnl || isAlert ? 800 : undefined,
-                            cursor: clickable ? 'pointer' : 'default'
+                            color:      pnlColor || (isAlert ? '#ef4444' : undefined),
+                            fontWeight: isPnl ? 800 : isAlert ? 700 : undefined,
+                            borderLeft: `2px solid ${gs.border}`,
                           }}
                           onClick={() => clickable && handleDrilldown(row, col.id)}
                         >
-                          {clickable ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span> : content}
+                          {clickable
+                            ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span>
+                            : content
+                          }
                         </td>
                       );
                     })}
@@ -383,25 +443,7 @@ export default function PnLMetricsPanel({
           </table>
         </div>
 
-        {activeColumnInfo && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-            <div className="stat-card" style={{ width: 450, padding: '24px', border: '1px solid var(--border)', background: 'var(--bg-surface)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-              <h3 style={{ color: 'var(--brand)', marginTop: 0, marginBottom: '16px', fontSize: '1.2rem', fontWeight: 800 }}>ℹ️ {activeColumnInfo.label}</h3>
-              <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>{activeColumnInfo.description}</p>
-              {activeColumnInfo.example && (
-                <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', marginBottom: 12 }}>
-                  <strong style={{ display: 'block', fontSize: '0.72rem', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>💡 Simple Explanation</strong>
-                  <span style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>{activeColumnInfo.example}</span>
-                </div>
-              )}
-              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--brand)', wordBreak: 'break-all' }}>
-                <strong style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Formula / Logic</strong>
-                {activeColumnInfo.formula}
-              </div>
-              <button className="btn btn-primary" style={{ width: '100%', marginTop: 8, padding: 10 }} onClick={() => setActiveColumnInfo(null)}>Dismiss</button>
-            </div>
-          </div>
-        )}
+        <InfoModal />
       </>
     );
   }
@@ -423,62 +465,25 @@ export default function PnLMetricsPanel({
             {visibleCols.map(col => {
               const info = COLUMN_INFO[col.id];
               return (
-                <th 
-                  key={col.id} 
-                  className={col.id === 'date' ? 'sticky-col' : ''} 
+                <th
+                  key={col.id}
+                  className={col.id === 'date' ? 'sticky-col' : ''}
                   onClick={() => requestSort(col.id)}
-                  style={{
-                    minWidth: getColMinWidth(col),
-                  }}
+                  style={{ minWidth: getColMinWidth(col) }}
                   title={info ? `${info.description}\nFormula: ${info.formula}` : undefined}
                 >
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: col.id === 'date' ? 'flex-start' : 'flex-end', 
-                    gap: 4,
-                    width: '100%'
-                  }}>
-                    <span style={{ 
-                      flexGrow: 1, 
-                      minWidth: 0, 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis', 
-                      whiteSpace: 'nowrap',
-                      textAlign: col.id === 'date' ? 'left' : 'right'
-                    }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: col.id === 'date' ? 'flex-start' : 'flex-end', gap: 4, width: '100%' }}>
+                    <span style={{ flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: col.id === 'date' ? 'left' : 'right' }}>
                       {col.label}
                     </span>
                     {info && (
-                      <span 
-                        style={{
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '14px',
-                          height: '14px',
-                          borderRadius: '50%',
-                          background: 'var(--bg-elevated)',
-                          border: '1px solid var(--border)',
-                          fontSize: '9px',
-                          color: 'var(--text-secondary)',
-                          marginLeft: '2px',
-                          fontWeight: 'bold',
-                          flexShrink: 0
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveColumnInfo({ label: col.label, ...info });
-                        }}
-                      >
-                        i
-                      </span>
+                      <span
+                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '14px', height: '14px', borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '9px', color: 'var(--text-secondary)', marginLeft: '2px', fontWeight: 'bold', flexShrink: 0 }}
+                        onClick={(e) => { e.stopPropagation(); setActiveColumnInfo({ label: col.label, ...info }); }}
+                      >i</span>
                     )}
                     {sortConfig.key === col.id && (
-                      <span style={{ flexShrink: 0, marginLeft: 2 }}>
-                        {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                      </span>
+                      <span style={{ flexShrink: 0, marginLeft: 2 }}>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </div>
                 </th>
@@ -493,29 +498,32 @@ export default function PnLMetricsPanel({
                 let content = row[col.id];
                 let style = {};
                 if (col.id === 'date') return <td key={col.id} className="sticky-col">{row.date || row.month}</td>;
-                if (['aov', 'deliveredSale', 'cgs', 'taxPaid', 'grossProfit', 'estCourier', 'actualCourier', 'courierDiff', 'actualExp', 'pnl', 'actualPnl', 'paymentPaid', 'marketingSpend', 'tiktokMarketing', 'cpaAvg', 'netCpaAvg', 'unpaidAmount', 'diffCorrection', 'cashInTransit'].includes(col.id)) content = formatCurrency(row[col.id]);
-                if (['cgsPercent', 'marPercent', 'delPercent', 'canPercent', 'ndrRecoveryRate'].includes(col.id)) content = formatPercent(row[col.id]);
-                if (['roasMeta', 'deliveredRoas'].includes(col.id)) content = formatNumber(row[col.id]);
-                if (view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id)) content = renderEditable(row, col.id);
-                
-                if (col.id === 'pnl') style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
+                if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
+                if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
+                if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
+                if (view === 'daily' && EDITABLE_IDS.has(col.id)) content = renderEditable(row, col.id);
+
+                if (col.id === 'pnl')      style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
                 if (col.id === 'actualPnl') style = { color: row.actualPnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
-                const isClickable = ['landedOrders', 'cancelations', 'pending', 'booked', 'totalDispatched', 'delivered', 'restock', 'missingParcel', 'intransit', 'cashInTransit', 'fakeReturns', 'withoutTrackingId', 'deliveredPaymentPending', 'costGaps', 'overduePayoutCount', 'zeroExpenseCount'].includes(col.id);
+                const isClickable = CLICKABLE_IDS.has(col.id);
+                const isAlert = (
+                  (col.id === 'costGaps'          && row.costGaps > 0) ||
+                  (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
+                  (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0)
+                );
 
                 return (
-                  <td 
-                    key={col.id} 
-                    style={{ 
-                      ...style, 
+                  <td
+                    key={col.id}
+                    style={{
+                      ...style,
                       cursor: isClickable ? 'pointer' : 'default',
-                      color: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0)) ? 'var(--red)' : style.color,
-                      fontWeight: ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0)) ? 'bold' : style.fontWeight
-                    }} 
+                      color: isAlert ? 'var(--red)' : style.color,
+                      fontWeight: isAlert ? 'bold' : style.fontWeight
+                    }}
                     onClick={() => isClickable && handleDrilldown(row, col.id)}
                   >
-                    {isClickable ? (
-                      <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span>
-                    ) : content}
+                    {isClickable ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span> : content}
                   </td>
                 );
               })}
