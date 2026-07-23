@@ -349,8 +349,7 @@ export default function StatusMappingManager() {
           { label: 'Total Rules', value: stats.total, color: 'var(--brand)', icon: '📋' },
           { label: 'Active Rules', value: stats.active, color: '#4ade80', icon: '🟢' },
           { label: 'Dead Status Locks', value: stats.finalLocks, color: '#ef4444', icon: '🔒' },
-          { label: 'Wildcard Rules', value: stats.wildcard, color: '#fb923c', icon: '✱' },
-          { label: 'Regex Rules', value: stats.regex, color: '#f87171', icon: '.*' },
+          { label: 'Exact Rules (Strict Match)', value: stats.total, color: '#60a5fa', icon: '⚡' },
         ].map(s => (
           <div key={s.label} style={{
             background: 'var(--bg-surface)', border: '1px solid var(--border)',
@@ -502,10 +501,8 @@ export default function StatusMappingManager() {
                 </div>
                 <div className="form-group" style={{ flex: '1 1 160px', marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 11, fontWeight: 600 }}>Match Mode</label>
-                  <select className="form-select btn-sm" value={newMapping.matching_type} onChange={e => setNewMapping({ ...newMapping, matching_type: e.target.value })}>
-                    <option value="exact">Exact Match (=)</option>
-                    <option value="wildcard">Wildcard (✱)</option>
-                    <option value="regex">Regular Expression (.*)</option>
+                  <select className="form-select btn-sm" value="exact" disabled>
+                    <option value="exact">⚡ Exact Match (Strict)</option>
                   </select>
                 </div>
                 <div className="form-group" style={{ flex: '2 1 200px', marginBottom: 0 }}>
