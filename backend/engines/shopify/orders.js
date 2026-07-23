@@ -491,7 +491,11 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         cost = ?,
         tracking_number = ?,
         courier = ?,
-        delivery_status = ?,
+        delivery_status = CASE 
+          WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+          WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
+          ELSE ? 
+        END,
         shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
         discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
         email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END
@@ -735,7 +739,11 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           cost = ?,
           tracking_number = ?,
           courier = ?,
-          delivery_status = ?, 
+          delivery_status = CASE 
+            WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+            WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
+            ELSE ? 
+          END, 
           line_items = ?,
           shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
           discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
@@ -860,7 +868,11 @@ async function syncSpecificOrders(store, shopifyIds) {
         payment_status = CASE WHEN payment_status IN ('Paid', 'Payment Posted') THEN payment_status ELSE ? END,
         tracking_number = ?,
         courier = ?,
-        delivery_status = ?,
+        delivery_status = CASE 
+          WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+          WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
+          ELSE ? 
+        END,
         shipping_fee = CASE WHEN is_cs_edited = 1 THEN shipping_fee ELSE ? END,
         discount_amount = CASE WHEN is_cs_edited = 1 THEN discount_amount ELSE ? END,
         status_date = datetime('now')
