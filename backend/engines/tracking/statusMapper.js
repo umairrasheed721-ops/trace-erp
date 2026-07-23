@@ -97,6 +97,9 @@ function applyMap(statusMap, courier, rawStatus) {
     }
   }
 
+  return null;
+}
+
 function isFinalStatus(status) {
   if (!status) return false;
   const clean = String(status).toLowerCase().trim();
