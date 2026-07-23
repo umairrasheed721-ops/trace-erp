@@ -680,6 +680,9 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const { isFinalStatus } = require('../tracking/statusMapper');
     const isProtected = isFinalStatus(existing?.delivery_status);
 
+    const dbStatus = (existing?.delivery_status || '').trim().toLowerCase();
+    const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
+
     if (!isCancelled && !isReturned) {
       const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, activeItems, costMap);
       totalCost = tc;
