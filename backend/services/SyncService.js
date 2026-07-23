@@ -52,17 +52,17 @@ function markOrderAsCancelled(storeId, shopifyOrderId) {
  */
 async function resyncSingleOrder(orderId) {
   try {
-    const order = db.prepare('SELECT store_id, shopify_order_id FROM orders WHERE id = ?').get(orderId);
+    const order = db.prepare('SELECT id, store_id, shopify_order_id FROM orders WHERE id = ? OR ref_number = ?').get(orderId, String(orderId));
     if (!order || !order.shopify_order_id) {
       throw new Error('Order not found in database or missing Shopify order reference.');
     }
 
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
     if (!store) {
-      throw new Error('Store not found.');
+      throw new Error('Store configuration not found.');
     }
 
-    console.log(`[SyncService] Force Resync triggered for Order ID ${orderId} (Shopify ID: ${order.shopify_order_id})`);
+    console.log(`[SyncService] Force Resync triggered for Order ID ${order.id} (Shopify ID: ${order.shopify_order_id})`);
     
     // Resolve dynamically to prevent circular dependencies
     const { syncSingleShopifyOrder } = require('../engines/shopify');
@@ -71,7 +71,7 @@ async function resyncSingleOrder(orderId) {
       console.log(`[SyncService] Force Resync Success: Synced Shopify Order ID ${order.shopify_order_id}`);
       return { success: true };
     } else {
-      throw new Error('Sync engine failed to fetch latest data.');
+      throw new Error('Sync engine failed to update order.');
     }
   } catch (err) {
     console.error('[SyncService] resyncSingleOrder error:', err.message);

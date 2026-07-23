@@ -644,22 +644,30 @@ function mapShopifyStatus(order) {
 
 async function syncSingleShopifyOrder(store, shopifyOrderId) {
   const { id: storeId, shop_domain, access_token } = store;
-  if (!access_token || access_token === 'PENDING') return null;
+  if (!access_token || access_token === 'PENDING') throw new Error('Missing Shopify API Access Token');
 
   try {
     const res = await fetch(`https://${shop_domain}/admin/api/2024-10/orders/${shopifyOrderId}.json`, {
       headers: { 'X-Shopify-Access-Token': access_token },
       timeout: API_TIMEOUT
     });
-    if (!res.ok) throw new Error(`Shopify API error: ${res.status}`);
+    if (!res.ok) throw new Error(`Shopify API returned HTTP ${res.status}`);
     const data = await res.json();
     const order = data.order;
-    if (!order) return null;
+    if (!order) throw new Error(`Order ${shopifyOrderId} not found in Shopify`);
 
     const activeItems = getActiveLineItems(order);
     const variantIds = [];
     activeItems.forEach(i => { if (i.variant_id) variantIds.push(i.variant_id); });
-    const costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
+    
+    let costMap = {};
+    try {
+      if (variantIds.length > 0) {
+        costMap = await getLiveShopifyCosts(shop_domain, access_token, [...new Set(variantIds)]);
+      }
+    } catch (costErr) {
+      console.warn(`[syncSingleShopifyOrder] Cost lookup skipped for ${shopifyOrderId}:`, costErr.message);
+    }
 
     const addr = order.shipping_address || {};
     const customer = order.customer || {};
