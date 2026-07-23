@@ -19,7 +19,9 @@ export default function ReportsFilterBar({
   setView,
   filteredDaily,
   monthlyData,
-  setShowBulkModal
+  setShowBulkModal,
+  tableLayout,
+  setTableLayout
 }) {
   return (
     <>
@@ -104,6 +106,25 @@ export default function ReportsFilterBar({
         </div>
 
         <button className="btn" onClick={() => setShowBulkModal(true)} style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid var(--blue)' }}>🚀 Bulk Sync Spend</button>
+
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-active)', padding: 5, borderRadius: 10, marginLeft: 'auto' }}>
+          <button
+            className={`btn ${tableLayout === 'horizontal' ? 'btn-primary' : ''}`}
+            onClick={() => setTableLayout('horizontal')}
+            title="Horizontal: Months as rows"
+            style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem' }}
+          >
+            <span>⬌</span> Horizontal
+          </button>
+          <button
+            className={`btn ${tableLayout === 'vertical' ? 'btn-primary' : ''}`}
+            onClick={() => setTableLayout('vertical')}
+            title="Vertical: Months as columns"
+            style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem' }}
+          >
+            <span>⬍</span> Vertical
+          </button>
+        </div>
       </div>
     </>
   );

@@ -227,7 +227,8 @@ export default function PnLMetricsPanel({
   handleDrilldown,
   tableContainerRef,
   hiddenColumns,
-  columns
+  columns,
+  tableLayout
 }) {
   const renderEditable = (row, field) => {
     const rawVal = row[field];
@@ -254,6 +255,157 @@ export default function PnLMetricsPanel({
   }
 
   const dataset = view === 'daily' ? filteredDaily : monthlyData;
+
+  // ─── Vertical Layout ────────────────────────────────────────────────────────
+  // Rows = metrics, Columns = periods (months / days)
+  if (tableLayout === 'vertical' && dataset.length > 0) {
+    const GROUP_META = {
+      income:  { label: '💸 INCOME',   cls: 'head-sales' },
+      expense: { label: '📉 EXPENSES', cls: 'head-out' },
+      profit:  { label: '💰 PROFIT',   cls: 'head-pnl' },
+      kpi:     { label: '🛡️ KPIs',     cls: 'head-kpi' },
+    };
+    const metricCols = visibleCols.filter(c => c.id !== 'date');
+    const periods = dataset.map(r => r.date || r.month);
+
+    const getCellContent = (col, row) => {
+      const isEditable = view === 'daily' && ['marketingSpend', 'tiktokMarketing', 'actualExp', 'diffCorrection'].includes(col.id);
+      if (isEditable) return renderEditable(row, col.id);
+
+      let content = row[col.id];
+      if (['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit'].includes(col.id)) content = formatCurrency(row[col.id]);
+      if (['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate'].includes(col.id)) content = formatPercent(row[col.id]);
+      if (['roasMeta','deliveredRoas'].includes(col.id)) content = formatNumber(row[col.id]);
+      return content;
+    };
+
+    const isClickable = id => ['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount'].includes(id);
+
+    let lastGroup = null;
+
+    return (
+      <>
+        <div ref={tableContainerRef} className="stat-card" style={{ padding: 0, overflowX: 'auto', maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+          <table className="reports-table">
+            <thead>
+              <tr>
+                {/* top-left corner: group label column */}
+                <th className="sticky-col" style={{ minWidth: 48, width: 48 }}></th>
+                {/* metric name column */}
+                <th className="sticky-col" style={{ minWidth: 160, left: 48, textAlign: 'left', zIndex: 21, borderLeft: '1px solid var(--border)' }}>METRIC</th>
+                {/* one column per period */}
+                {periods.map(p => (
+                  <th key={p} style={{ minWidth: 140, textAlign: 'right', fontWeight: 700 }}>{p}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {metricCols.map((col, idx) => {
+                const info = COLUMN_INFO[col.id];
+                const groupChanged = col.group !== lastGroup;
+                lastGroup = col.group;
+                const gm = GROUP_META[col.group] || {};
+                return (
+                  <tr key={col.id} style={{ background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : undefined }}>
+                    {/* Group badge cell */}
+                    <td
+                      className={groupChanged ? gm.cls : ''}
+                      style={{
+                        position: 'sticky', left: 0, zIndex: 19,
+                        fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.05em',
+                        writingMode: 'vertical-lr', textOrientation: 'mixed',
+                        transform: 'rotate(180deg)',
+                        textAlign: 'center',
+                        padding: '4px 6px',
+                        whiteSpace: 'nowrap',
+                        background: groupChanged ? undefined : 'var(--bg-surface)',
+                        borderRight: '1px solid rgba(255,255,255,0.1)',
+                        color: groupChanged ? 'white' : 'transparent',
+                        userSelect: 'none',
+                        minWidth: 48, width: 48,
+                        verticalAlign: 'middle'
+                      }}
+                    >
+                      {groupChanged ? gm.label : ''}
+                    </td>
+
+                    {/* Metric name sticky cell */}
+                    <td
+                      style={{
+                        position: 'sticky', left: 48, zIndex: 18,
+                        background: 'var(--bg-surface)',
+                        fontWeight: 700, fontSize: '0.76rem',
+                        textAlign: 'left', whiteSpace: 'nowrap',
+                        borderRight: '3px solid var(--border)',
+                        boxShadow: '2px 0 5px rgba(0,0,0,0.1)',
+                        padding: '8px 14px',
+                        display: 'table-cell',
+                        cursor: info ? 'help' : 'default'
+                      }}
+                      title={info ? `${info.description}\nFormula: ${info.formula}` : undefined}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {col.label}
+                        {info && (
+                          <span
+                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 9, color: 'var(--text-secondary)', fontWeight: 'bold' }}
+                            onClick={() => setActiveColumnInfo({ label: col.label, ...info })}
+                          >i</span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* One data cell per period */}
+                    {dataset.map(row => {
+                      const content = getCellContent(col, row);
+                      const clickable = isClickable(col.id);
+                      const isAlert = ((col.id === 'costGaps' && row.costGaps > 0) || (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) || (col.id === 'zeroExpenseCount' && row.zeroExpenseCount > 0));
+                      const isPnl = col.id === 'pnl' || col.id === 'actualPnl';
+                      return (
+                        <td
+                          key={row.date || row.month}
+                          style={{
+                            textAlign: 'right',
+                            color: isPnl ? (row[col.id] >= 0 ? 'var(--green)' : 'var(--red)') : isAlert ? 'var(--red)' : undefined,
+                            fontWeight: isPnl || isAlert ? 800 : undefined,
+                            cursor: clickable ? 'pointer' : 'default'
+                          }}
+                          onClick={() => clickable && handleDrilldown(row, col.id)}
+                        >
+                          {clickable ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span> : content}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {activeColumnInfo && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+            <div className="stat-card" style={{ width: 450, padding: '24px', border: '1px solid var(--border)', background: 'var(--bg-surface)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+              <h3 style={{ color: 'var(--brand)', marginTop: 0, marginBottom: '16px', fontSize: '1.2rem', fontWeight: 800 }}>ℹ️ {activeColumnInfo.label}</h3>
+              <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>{activeColumnInfo.description}</p>
+              {activeColumnInfo.example && (
+                <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', marginBottom: 12 }}>
+                  <strong style={{ display: 'block', fontSize: '0.72rem', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>💡 Simple Explanation</strong>
+                  <span style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>{activeColumnInfo.example}</span>
+                </div>
+              )}
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--brand)', wordBreak: 'break-all' }}>
+                <strong style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Formula / Logic</strong>
+                {activeColumnInfo.formula}
+              </div>
+              <button className="btn btn-primary" style={{ width: '100%', marginTop: 8, padding: 10 }} onClick={() => setActiveColumnInfo(null)}>Dismiss</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+  // ─── End Vertical Layout ─────────────────────────────────────────────────────
 
   return (
     <>

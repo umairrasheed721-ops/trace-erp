@@ -20,7 +20,7 @@ export default function Reports() {
   }, [setSidebarCollapsed]);
   
   const reportsData = useReportsData(activeStoreId, toast);
-  const { view, datePreset, customStart, customEnd, showCustom, setView, setDatePreset, setCustomStart, setCustomEnd, setShowCustom, hiddenColumns } = reportsData;
+  const { view, datePreset, customStart, customEnd, showCustom, setView, setDatePreset, setCustomStart, setCustomEnd, setShowCustom, hiddenColumns, tableLayout, setTableLayout } = reportsData;
 
   // ─── Route Persistence ───────────────────────────────────────────
   const { registerModule, unregisterModule, persistModuleState, getModuleState } = useRoutePersistence();
@@ -187,6 +187,8 @@ export default function Reports() {
       <ReportsFilterBar
         {...reportsData}
         columns={columns}
+        tableLayout={tableLayout}
+        setTableLayout={setTableLayout}
       />
 
       <PnLMetricsPanel
@@ -195,6 +197,7 @@ export default function Reports() {
         columns={columns}
         tableContainerRef={tableContainerRef}
         handleDrilldown={handleDrilldown}
+        tableLayout={tableLayout}
       />
 
       {reportsData.showBulkModal && (

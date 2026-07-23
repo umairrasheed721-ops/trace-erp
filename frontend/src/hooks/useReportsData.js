@@ -78,6 +78,11 @@ export default function useReportsData(activeStoreId, toast) {
     return saved ? JSON.parse(saved) : { key: 'date', direction: 'desc' };
   });
   const [showColPicker, setShowColPicker] = useState(false);
+  const [tableLayout, setTableLayout] = useState(() => localStorage.getItem('reports_table_layout') || 'horizontal');
+
+  useEffect(() => {
+    localStorage.setItem('reports_table_layout', tableLayout);
+  }, [tableLayout]);
 
   useEffect(() => {
     localStorage.setItem('reports_hidden_columns', JSON.stringify(hiddenColumns));
@@ -396,6 +401,8 @@ export default function useReportsData(activeStoreId, toast) {
     filteredDaily,
     requestSort,
     toggleColumn,
-    fetchData
+    fetchData,
+    tableLayout,
+    setTableLayout
   };
 }
