@@ -527,9 +527,28 @@ export default function StatusMappingManager() {
                 </div>
                 <div className="form-group" style={{ flex: '1 1 160px', marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: 11, fontWeight: 600 }}>ERP Status</label>
-                  <select className="form-select btn-sm" value={newMapping.erp_status} onChange={e => setNewMapping({ ...newMapping, erp_status: e.target.value })}>
+                  <select className="form-select btn-sm" value={newMapping.erp_status} onChange={e => {
+                    const status = e.target.value;
+                    const isLocked = isStatusLocked(status);
+                    setNewMapping({
+                      ...newMapping,
+                      erp_status: status,
+                      is_final: isLocked ? 1 : newMapping.is_final,
+                      courier_status: newMapping.courier_status || (status === 'Return Received' ? 'return_received' : '')
+                    });
+                  }}>
                     {erpStatuses.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!newMapping.is_final}
+                      onChange={e => setNewMapping({ ...newMapping, is_final: e.target.checked ? 1 : 0 })}
+                    />
+                    <span>🔒 Lock (Dead Status)</span>
+                  </label>
                 </div>
                 <div>
                   <button type="submit" className="btn btn-primary btn-sm" style={{ height: 32, borderRadius: 6, fontWeight: 600 }}>
