@@ -79,24 +79,7 @@ function applyMap(statusMap, courier, rawStatus) {
   if (statusMap.exact[exactKey]) return statusMap.exact[exactKey];
   if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
 
-  // 2. Try WILDCARD matches
-  for (const w of statusMap.wildcard) {
-    if (w.courier === 'all' || w.courier === targetCourier) {
-      if (w.regex.test(raw)) {
-        return w.erp_status;
-      }
-    }
-  }
-
-  // 3. Try REGEX matches
-  for (const r of statusMap.regex) {
-    if (r.courier === 'all' || r.courier === targetCourier) {
-      if (r.regex.test(raw)) {
-        return r.erp_status;
-      }
-    }
-  }
-
+  // Wildcard and Regex matching disabled to prevent greedy status overrides & reverts
   return null;
 }
 
