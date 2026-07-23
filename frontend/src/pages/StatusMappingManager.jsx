@@ -586,11 +586,9 @@ export default function StatusMappingManager() {
                   {couriers.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <select className="form-select btn-sm" value={filterMode} onChange={e => setFilterMode(e.target.value)} style={{ borderRadius: 6 }}>
-                  <option value="All">All Modes</option>
+                  <option value="All">All Rules</option>
                   <option value="final">🔒 Dead Status Locks</option>
-                  <option value="exact">Exact</option>
-                  <option value="wildcard">Wildcard</option>
-                  <option value="regex">Regex</option>
+                  <option value="exact">⚡ Exact Match Only</option>
                 </select>
               </div>
             </div>
