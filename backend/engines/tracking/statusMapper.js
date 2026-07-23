@@ -1,6 +1,6 @@
 const { db } = require('../../db');
 
-const DEAD_STATUSES = ['delivered', 'return received', 'cancelled', 'returned'];
+const DEAD_STATUSES = ['delivered', 'return received', 'cancelled'];
 const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
 const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'delivery unsuccessful', 'shipper advice'];
 
@@ -103,7 +103,7 @@ function applyMap(statusMap, courier, rawStatus) {
 function isFinalStatus(status) {
   if (!status) return false;
   const clean = String(status).toLowerCase().trim();
-  const defaultFinals = ['return received', 'delivered', 'cancelled', 'returned'];
+  const defaultFinals = ['return received', 'delivered', 'cancelled'];
   if (defaultFinals.includes(clean)) return true;
 
   try {
