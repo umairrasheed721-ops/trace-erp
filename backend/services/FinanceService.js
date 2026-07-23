@@ -52,8 +52,8 @@ class FinanceService {
     for (const order of orders) {
       try {
         // Protect final dead statuses from being overwritten by Shopify tag auto-repair
-        const currentStatusLower = String(order.delivery_status).toLowerCase();
-        if (['return received', 'delivered', 'cancelled'].includes(currentStatusLower)) {
+        const { isFinalStatus } = require('../engines/tracking/statusMapper');
+        if (isFinalStatus(order.delivery_status)) {
           continue;
         }
 

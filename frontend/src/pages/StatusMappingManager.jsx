@@ -271,7 +271,8 @@ export default function StatusMappingManager() {
   // Row filtering
   const visibleMappings = mappings.filter(m => {
     if (filterCourier !== 'All' && m.courier !== filterCourier) return false
-    if (filterMode !== 'All' && (m.matching_type || 'exact') !== filterMode) return false
+    if (filterMode === 'final' && !m.is_final) return false
+    if (filterMode !== 'All' && filterMode !== 'final' && (m.matching_type || 'exact') !== filterMode) return false
     if (search) {
       const s = search.toLowerCase()
       return m.courier_status.toLowerCase().includes(s) || m.erp_status.toLowerCase().includes(s)
@@ -283,6 +284,7 @@ export default function StatusMappingManager() {
   const stats = {
     total: mappings.length,
     active: mappings.filter(m => m.is_active).length,
+    finalLocks: mappings.filter(m => m.is_final).length,
     wildcard: mappings.filter(m => m.matching_type === 'wildcard').length,
     regex: mappings.filter(m => m.matching_type === 'regex').length,
   }
@@ -324,6 +326,7 @@ export default function StatusMappingManager() {
         {[
           { label: 'Total Rules', value: stats.total, color: 'var(--brand)', icon: '📋' },
           { label: 'Active Rules', value: stats.active, color: '#4ade80', icon: '🟢' },
+          { label: 'Dead Status Locks', value: stats.finalLocks, color: '#ef4444', icon: '🔒' },
           { label: 'Wildcard Rules', value: stats.wildcard, color: '#fb923c', icon: '✱' },
           { label: 'Regex Rules', value: stats.regex, color: '#f87171', icon: '.*' },
         ].map(s => (
@@ -460,6 +463,7 @@ export default function StatusMappingManager() {
                 </select>
                 <select className="form-select btn-sm" value={filterMode} onChange={e => setFilterMode(e.target.value)} style={{ borderRadius: 6 }}>
                   <option value="All">All Modes</option>
+                  <option value="final">🔒 Dead Status Locks</option>
                   <option value="exact">Exact</option>
                   <option value="wildcard">Wildcard</option>
                   <option value="regex">Regex</option>

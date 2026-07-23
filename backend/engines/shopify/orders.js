@@ -503,8 +503,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const fresh = shopifyMap[String(row.shopify_order_id)];
         if (!fresh) continue;
 
-        const currentStatus = (row.delivery_status || '').trim().toLowerCase();
-        const isProtected = currentStatus === 'return received' || currentStatus === 'delivered';
+        const { isFinalStatus } = require('../tracking/statusMapper');
+        const isProtected = isFinalStatus(row.delivery_status);
 
         const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
         let totalCost = 0, productTitles = [], activeCount = 0;
@@ -665,9 +665,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const isCancelled = order.cancelled_at !== null;
     
     const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked, tracking_number FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
-    const dbStatus = (existing?.delivery_status || '').trim().toLowerCase();
-    const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
-    const isProtected = dbStatus === 'return received' || dbStatus === 'delivered';
+    const { isFinalStatus } = require('../tracking/statusMapper');
+    const isProtected = isFinalStatus(existing?.delivery_status);
 
     if (!isCancelled && !isReturned) {
       const { totalCost: tc, productTitles: titles, activeCount: count } = calculateOrderCost(storeId, activeItems, costMap);

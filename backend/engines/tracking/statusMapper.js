@@ -103,7 +103,7 @@ function applyMap(statusMap, courier, rawStatus) {
 function isFinalStatus(status) {
   if (!status) return false;
   const clean = String(status).toLowerCase().trim();
-  const defaultFinals = ['return received', 'delivered', 'cancelled'];
+  const defaultFinals = ['return received', 'delivered', 'cancelled', 'returned'];
   if (defaultFinals.includes(clean)) return true;
 
   try {
@@ -114,12 +114,15 @@ function isFinalStatus(status) {
   }
 }
 
+const isDeadStatus = isFinalStatus;
+
 module.exports = {
   DEAD_STATUSES,
   EARLY_STATUSES,
   ATTEMPT_FAILURE_STATUSES,
   loadStatusMaps,
   applyMap,
-  isFinalStatus
+  isFinalStatus,
+  isDeadStatus
 };
 
