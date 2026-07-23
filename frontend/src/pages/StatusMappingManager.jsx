@@ -290,17 +290,18 @@ export default function StatusMappingManager() {
     } catch (e) { addToast('Sync trigger failed', 'error') }
   }
 
-  // Row filtering
+  // Row filtering (Strict Exact Rules Only)
   const visibleMappings = mappings.filter(m => {
-    if (filterCourier !== 'All' && m.courier !== filterCourier) return false
-    if (filterMode === 'final' && !m.is_final) return false
-    if (filterMode !== 'All' && filterMode !== 'final' && (m.matching_type || 'exact') !== filterMode) return false
+    if (m.matching_type === 'wildcard' || m.matching_type === 'regex' || (m.courier_status || '').includes('%')) return false;
+    if (filterCourier !== 'All' && m.courier !== filterCourier) return false;
+    if (filterMode === 'final' && !m.is_final) return false;
+    if (filterMode !== 'All' && filterMode !== 'final' && (m.matching_type || 'exact') !== filterMode) return false;
     if (search) {
-      const s = search.toLowerCase()
-      return m.courier_status.toLowerCase().includes(s) || m.erp_status.toLowerCase().includes(s)
+      const s = search.toLowerCase();
+      return m.courier_status.toLowerCase().includes(s) || m.erp_status.toLowerCase().includes(s);
     }
-    return true
-  })
+    return true;
+  });
 
   // Numeric stats calculations
   const stats = {
