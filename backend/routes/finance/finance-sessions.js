@@ -202,6 +202,9 @@ router.post('/bulk-update', async (req, res) => {
 
             if (shouldCapture) {
               await captureShopifyPayment(store, order.shopify_order_id, amount);
+            }
+
+            if (syncToShopify) {
               combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
             }
 
@@ -212,12 +215,12 @@ router.post('/bulk-update', async (req, res) => {
 
             db.prepare(`
               UPDATE orders 
-              SET payment_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN payment_status ELSE 'Paid' END,
-                  delivery_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status ELSE 'Delivered' END,
+              SET payment_status = 'Paid',
+                  delivery_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'cancelled') THEN delivery_status ELSE 'Delivered' END,
                   courier_fee = ?,
                   payment_ref = ?,
-                  paid_amount = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN paid_amount ELSE ? END,
-                  payment_date = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN payment_date ELSE ? END,
+                  paid_amount = ?,
+                  payment_date = ?,
                   cost_locked = 1 
               WHERE id = ?
             `).run(finalCourierFee, ref, amount, dateStr, order.id);
@@ -528,7 +531,13 @@ router.post('/lock-cpr', (req, res) => {
 
     const updateMainOrdDelivered = db.prepare(`
       UPDATE orders 
-      SET payment_status = 'Paid', delivery_status = 'Delivered', payment_ref = ?, paid_amount = ?, courier_fee = ?, payment_date = ?, cost_locked = 1 
+      SET payment_status = 'Paid', 
+          delivery_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'cancelled') THEN delivery_status ELSE 'Delivered' END, 
+          payment_ref = ?, 
+          paid_amount = ?, 
+          courier_fee = ?, 
+          payment_date = ?, 
+          cost_locked = 1 
       WHERE store_id = ? AND (tracking_number = ? OR shopify_order_id = ? OR ref_number = ?)
     `);
 
