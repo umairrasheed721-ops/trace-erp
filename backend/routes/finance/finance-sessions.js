@@ -682,4 +682,55 @@ router.get('/cpr-ledger', (req, res) => {
   }
 });
 
+// POST /api/finance/sync-shopify-notes — Sync Shopify notes to ERP DB for a list of tracking numbers
+router.post('/sync-shopify-notes', async (req, res) => {
+  const { store_id, tracking_numbers, order_ids } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
+  if (!store || !store.access_token || store.access_token === 'PENDING') {
+    return res.status(400).json({ error: 'Store not found or missing access token' });
+  }
+
+  const { shop_domain, access_token } = store;
+
+  let targetOrders = [];
+  if (Array.isArray(tracking_numbers) && tracking_numbers.length > 0) {
+    const placeholders = tracking_numbers.map(() => '?').join(',');
+    targetOrders = db.prepare(`SELECT id, shopify_order_id, tracking_number, notes FROM orders WHERE store_id = ? AND tracking_number IN (${placeholders})`).all(Number(store_id), ...tracking_numbers);
+  } else if (Array.isArray(order_ids) && order_ids.length > 0) {
+    const placeholders = order_ids.map(() => '?').join(',');
+    targetOrders = db.prepare(`SELECT id, shopify_order_id, tracking_number, notes FROM orders WHERE store_id = ? AND id IN (${placeholders})`).all(Number(store_id), ...order_ids);
+  } else {
+    targetOrders = db.prepare(`SELECT id, shopify_order_id, tracking_number, notes FROM orders WHERE store_id = ? AND (payment_ref IS NOT NULL AND payment_ref != '') ORDER BY id DESC LIMIT 200`).all(Number(store_id));
+  }
+
+  let updatedCount = 0;
+  const results = [];
+
+  for (const ord of targetOrders) {
+    if (!ord.shopify_order_id) continue;
+    try {
+      const resp = await fetch(`https://${shop_domain}/admin/api/2024-10/orders/${ord.shopify_order_id}.json?fields=id,note`, {
+        headers: { 'X-Shopify-Access-Token': access_token }
+      });
+      if (resp.ok) {
+        const sData = await resp.json();
+        const shopifyNote = sData.order?.note || '';
+        if (shopifyNote !== ord.notes) {
+          db.prepare('UPDATE orders SET notes = ? WHERE id = ?').run(shopifyNote, ord.id);
+          updatedCount++;
+          results.push({ tracking: ord.tracking_number, oldNote: ord.notes, newNote: shopifyNote, status: '✅ Updated' });
+        } else {
+          results.push({ tracking: ord.tracking_number, note: shopifyNote, status: 'ℹ️ Already in sync' });
+        }
+      }
+    } catch (err) {
+      results.push({ tracking: ord.tracking_number, error: err.message, status: '❌ Failed' });
+    }
+  }
+
+  res.json({ success: true, updatedCount, total: targetOrders.length, results });
+});
+
 module.exports = router;
