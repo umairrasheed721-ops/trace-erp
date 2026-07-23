@@ -404,10 +404,11 @@ export default function StatusMappingManager() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>🔒</span> Dead Status Lock Control Panel
+              <span>🔒</span> Dead Status Lock Control Panel (Internal ERP States)
             </h3>
-            <p style={{ margin: '4px 0 0', opacity: 0.6, fontSize: 12 }}>
-              Orders in a <strong>Dead Status</strong> are protected — no courier sync, Shopify sync, or automated job can change their delivery status.
+            <p style={{ margin: '4px 0 0', opacity: 0.65, fontSize: 12 }}>
+              Internal ERP states (like <strong>Return Received</strong> from warehouse scanning) do not rely on courier APIs.
+              When locked as a <strong>Dead Status</strong>, no courier sync or Shopify sync can overwrite the order's delivery status.
             </p>
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#f87171', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', padding: '5px 12px', borderRadius: 20 }}>
@@ -415,9 +416,29 @@ export default function StatusMappingManager() {
           </div>
         </div>
 
+        {/* Informational Callout */}
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: 8,
+          background: 'rgba(59,130,246,0.05)',
+          border: '1px solid rgba(59,130,246,0.15)',
+          marginBottom: 16,
+          fontSize: '0.8rem',
+          color: 'var(--text-secondary)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10
+        }}>
+          <span style={{ fontSize: '1.1rem' }}>💡</span>
+          <div>
+            <strong>Internal Action Protection:</strong> Statuses like <span style={{ color: 'var(--brand)', fontWeight: 700 }}>Return Received</span> are set when your team scans parcels in Unified Returns. Locking them prevents background courier syncs (which still report <em>Returned</em>) from overwriting your warehouse receiving.
+          </div>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
           {erpStatuses.map(status => {
             const locked = isStatusLocked(status);
+            const isInternal = status === 'Return Received';
             return (
               <div key={status} style={{
                 padding: '12px 14px',
@@ -431,7 +452,14 @@ export default function StatusMappingManager() {
                 transition: 'all 0.15s ease'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <ErpBadge status={status} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <ErpBadge status={status} />
+                    {isInternal && (
+                      <span style={{ fontSize: 9, fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)', padding: '1px 5px', borderRadius: 4 }}>
+                        Warehouse Scan
+                      </span>
+                    )}
+                  </div>
                   <span style={{ fontSize: 10, fontWeight: 800, color: locked ? '#f87171' : 'var(--text-muted)' }}>
                     {locked ? '🔒 DEAD' : '🔓 OPEN'}
                   </span>
