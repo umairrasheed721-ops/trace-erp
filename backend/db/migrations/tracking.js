@@ -158,5 +158,28 @@ module.exports = [
     } catch (e) {
       console.error('Failed to migrate hardcoded status rules to database:', e.message);
     }
+  },
+  // 7. Add is_final column to status_mappings and seed default terminal locks
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE status_mappings ADD COLUMN is_final INTEGER DEFAULT 0`);
+      console.log('✅ Migration: Added is_final column to status_mappings');
+    } catch (e) {
+      if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+        console.warn('Migration warning on status_mappings is_final column:', e.message);
+      }
+    }
+
+    try {
+      db.prepare(`
+        UPDATE status_mappings 
+        SET is_final = 1 
+        WHERE LOWER(erp_status) IN ('return received', 'delivered', 'cancelled')
+      `).run();
+      console.log('✅ Migration: Updated default final status locks in status_mappings');
+    } catch (e) {
+      console.warn('Failed to update status_mappings is_final defaults:', e.message);
+    }
   }
 ];
+

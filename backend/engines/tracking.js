@@ -187,10 +187,17 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
   }
 
   if (updatesToApply.length > 0) {
+    const { logOrderStatusChange } = require('../utils/historyLogger');
+    const getStatusStmt = db.prepare('SELECT delivery_status FROM orders WHERE id = ?');
     const updateStmt = db.prepare(`
       UPDATE orders 
       SET courier_status = ?, 
-          delivery_status = COALESCE(?, delivery_status),
+          delivery_status = CASE 
+            WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+            WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN orders.delivery_status
+            WHEN ? IS NOT NULL THEN ? 
+            ELSE delivery_status 
+          END,
           courier = COALESCE(?, courier),
           status_date = datetime('now'), 
           failed_attempts = failed_attempts + ? 
@@ -199,7 +206,13 @@ async function syncSpecificCourierOrders(store, orderIds, onProgress) {
     const { broadcast } = require('../sse');
     const updateMany = db.transaction(items => {
       for (const u of items) {
-        updateStmt.run(u.courier_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
+        const prevOrder = getStatusStmt.get(u.id);
+        const oldStatus = prevOrder ? prevOrder.delivery_status : null;
+        updateStmt.run(u.courier_status, u.delivery_status, u.delivery_status, u.courier, u.failed_attempt_increment || 0, u.id);
+        const updatedOrder = getStatusStmt.get(u.id);
+        if (updatedOrder && oldStatus && updatedOrder.delivery_status !== oldStatus) {
+          logOrderStatusChange(db, u.id, oldStatus, updatedOrder.delivery_status, null, 'Auto Sync Tracking');
+        }
       }
     });
     updateMany(updatesToApply);

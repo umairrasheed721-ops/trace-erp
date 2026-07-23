@@ -86,12 +86,12 @@ router.get('/', adminOnly, (req, res) => {
 
 // POST /api/status-mappings — create
 router.post('/', adminOnly, (req, res) => {
-  const { courier, courier_status, erp_status, matching_type } = req.body;
+  const { courier, courier_status, erp_status, matching_type, is_final } = req.body;
   if (!courier_status || !erp_status) return res.status(400).json({ error: 'courier_status and erp_status required' });
   try {
     const result = db.prepare(
-      `INSERT INTO status_mappings (courier, courier_status, erp_status, matching_type) VALUES (?, ?, ?, ?)`
-    ).run(courier || 'All', courier_status.trim().toLowerCase(), erp_status.trim(), matching_type || 'exact');
+      `INSERT INTO status_mappings (courier, courier_status, erp_status, matching_type, is_final) VALUES (?, ?, ?, ?, ?)`
+    ).run(courier || 'All', courier_status.trim().toLowerCase(), erp_status.trim(), matching_type || 'exact', is_final ? 1 : 0);
     
     // Check conflicts immediately
     const updatedRows = db.prepare(`SELECT * FROM status_mappings`).all();
@@ -112,16 +112,17 @@ router.post('/', adminOnly, (req, res) => {
 
 // PUT /api/status-mappings/:id — update
 router.put('/:id', adminOnly, (req, res) => {
-  const { courier, courier_status, erp_status, is_active, matching_type } = req.body;
+  const { courier, courier_status, erp_status, is_active, matching_type, is_final } = req.body;
   try {
     db.prepare(
-      `UPDATE status_mappings SET courier=?, courier_status=?, erp_status=?, is_active=?, matching_type=? WHERE id=?`
+      `UPDATE status_mappings SET courier=?, courier_status=?, erp_status=?, is_active=?, matching_type=?, is_final=? WHERE id=?`
     ).run(
       courier || 'All',
       (courier_status || '').trim().toLowerCase(),
       (erp_status || '').trim(),
       is_active === false || is_active === 0 ? 0 : 1,
       matching_type || 'exact',
+      is_final ? 1 : 0,
       req.params.id
     );
 
@@ -144,6 +145,16 @@ router.put('/:id', adminOnly, (req, res) => {
 router.patch('/:id/toggle', adminOnly, (req, res) => {
   try {
     db.prepare(`UPDATE status_mappings SET is_active = 1 - is_active WHERE id=?`).run(req.params.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/status-mappings/:id/toggle-final — toggle is_final terminal lock
+router.patch('/:id/toggle-final', adminOnly, (req, res) => {
+  try {
+    db.prepare(`UPDATE status_mappings SET is_final = 1 - COALESCE(is_final, 0) WHERE id=?`).run(req.params.id);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

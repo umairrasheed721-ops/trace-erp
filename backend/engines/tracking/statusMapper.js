@@ -97,7 +97,18 @@ function applyMap(statusMap, courier, rawStatus) {
     }
   }
 
-  return null;
+function isFinalStatus(status) {
+  if (!status) return false;
+  const clean = String(status).toLowerCase().trim();
+  const defaultFinals = ['return received', 'delivered', 'cancelled'];
+  if (defaultFinals.includes(clean)) return true;
+
+  try {
+    const row = db.prepare(`SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = ?`).get(clean);
+    return !!row;
+  } catch (e) {
+    return false;
+  }
 }
 
 module.exports = {
@@ -105,5 +116,7 @@ module.exports = {
   EARLY_STATUSES,
   ATTEMPT_FAILURE_STATUSES,
   loadStatusMaps,
-  applyMap
+  applyMap,
+  isFinalStatus
 };
+

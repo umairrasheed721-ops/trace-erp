@@ -192,6 +192,16 @@ export default function StatusMappingManager() {
     } catch (e) { addToast('Toggle failed', 'error') }
   }
 
+  const handleToggleFinal = async (id) => {
+    try {
+      const res = await fetch(`/api/status-mappings/${id}/toggle-final`, { method: 'PATCH' })
+      if (res.ok) {
+        setMappings(mappings.map(m => m.id === id ? { ...m, is_final: 1 - (m.is_final || 0) } : m))
+        addToast('Terminal status lock updated', 'info')
+      }
+    } catch (e) { addToast('Toggle final status failed', 'error') }
+  }
+
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this rule?')) return
     try {
@@ -462,9 +472,9 @@ export default function StatusMappingManager() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: 'rgba(255,255,255,0.01)', borderBottom: '1px solid var(--border)' }}>
-                    {['Courier', 'Mode', 'Raw Courier Pattern', '', 'ERP Target', 'Active', 'Actions'].map((h, idx) => (
+                    {['Courier', 'Mode', 'Raw Courier Pattern', '', 'ERP Target', 'Terminal Lock', 'Active', 'Actions'].map((h, idx) => (
                       <th key={idx} style={{
-                        padding: '12px 16px', textAlign: idx === 6 ? 'right' : 'left',
+                        padding: '12px 16px', textAlign: idx === 7 ? 'right' : 'left',
                         fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
                         color: 'var(--text-muted)', letterSpacing: '0.05em',
                       }}>{h}</th>
@@ -473,10 +483,10 @@ export default function StatusMappingManager() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="7" style={{ textAlign: 'center', padding: 48, opacity: 0.5 }}>Loading mapping rules...</td></tr>
+                    <tr><td colSpan="8" style={{ textAlign: 'center', padding: 48, opacity: 0.5 }}>Loading mapping rules...</td></tr>
                   ) : visibleMappings.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>
                         No status rules matched the active search filters.
                       </td>
                     </tr>
@@ -551,6 +561,23 @@ export default function StatusMappingManager() {
                         ) : (
                           <ErpBadge status={m.erp_status} />
                         )}
+                      </td>
+
+                      {/* Terminal Lock (is_final) Switch */}
+                      <td style={{ padding: '10px 16px' }}>
+                        <div
+                          onClick={() => handleToggleFinal(m.id)}
+                          title="If locked (FINAL), once an order reaches this ERP status, future courier updates will be ignored."
+                          style={{
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+                            fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20,
+                            background: m.is_final ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.04)',
+                            color: m.is_final ? '#f87171' : 'var(--text-muted)',
+                            border: `1px solid ${m.is_final ? 'rgba(239,68,68,0.25)' : 'var(--border)'}`,
+                          }}
+                        >
+                          <span>{m.is_final ? '🔒 FINAL' : '🔓 OPEN'}</span>
+                        </div>
                       </td>
 
                       {/* Active Status Switch */}
