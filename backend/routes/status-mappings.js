@@ -161,6 +161,27 @@ router.patch('/:id/toggle-final', adminOnly, (req, res) => {
   }
 });
 
+// POST /api/status-mappings/toggle-erp-final — bulk toggle terminal lock for an ERP status
+router.post('/toggle-erp-final', adminOnly, (req, res) => {
+  const { erp_status, is_final } = req.body;
+  if (!erp_status) return res.status(400).json({ error: 'erp_status required' });
+  try {
+    const targetStatus = erp_status.trim();
+    const finalVal = is_final ? 1 : 0;
+    db.prepare(`UPDATE status_mappings SET is_final = ? WHERE LOWER(erp_status) = LOWER(?)`).run(finalVal, targetStatus);
+    
+    const count = db.prepare(`SELECT COUNT(*) as cnt FROM status_mappings WHERE LOWER(erp_status) = LOWER(?)`).get(targetStatus).cnt;
+    if (count === 0 && finalVal === 1) {
+      db.prepare(`INSERT INTO status_mappings (courier, courier_status, erp_status, matching_type, is_final, is_active) VALUES ('All', ?, ?, 'exact', 1, 1)`).run(targetStatus.toLowerCase(), targetStatus);
+    }
+    
+    const updatedRows = db.prepare(`SELECT * FROM status_mappings`).all();
+    res.json({ success: true, mappings: updatedRows });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE /api/status-mappings/:id — delete
 router.delete('/:id', adminOnly, (req, res) => {
   try {

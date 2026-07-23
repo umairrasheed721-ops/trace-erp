@@ -202,6 +202,28 @@ export default function StatusMappingManager() {
     } catch (e) { addToast('Toggle final status failed', 'error') }
   }
 
+  const handleToggleErpFinal = async (status, enableLock) => {
+    try {
+      const res = await fetch('/api/status-mappings/toggle-erp-final', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ erp_status: status, is_final: enableLock })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setMappings(data.mappings || [])
+        addToast(`${status} dead status lock ${enableLock ? 'ENABLED 🔒' : 'DISABLED 🔓'}`, enableLock ? 'warning' : 'info')
+      }
+    } catch (e) { addToast('Toggle dead status failed', 'error') }
+  }
+
+  const isStatusLocked = (status) => {
+    const defaults = ['Return Received', 'Delivered', 'Cancelled', 'Returned'];
+    const matching = mappings.filter(m => m.erp_status?.toLowerCase() === status.toLowerCase());
+    if (matching.length > 0) return matching.some(m => m.is_final === 1);
+    return defaults.map(d => d.toLowerCase()).includes(status.toLowerCase());
+  }
+
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this rule?')) return
     try {
@@ -369,6 +391,64 @@ export default function StatusMappingManager() {
           </div>
         </div>
       )}
+
+      {/* 🔒 Dead Status Control Panel */}
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 12,
+        padding: '20px',
+        marginBottom: 28,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-bright)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🔒</span> Dead Status Lock Control Panel
+            </h3>
+            <p style={{ margin: '4px 0 0', opacity: 0.6, fontSize: 12 }}>
+              Orders in a <strong>Dead Status</strong> are protected — no courier sync, Shopify sync, or automated job can change their delivery status.
+            </p>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#f87171', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', padding: '5px 12px', borderRadius: 20 }}>
+            🔒 {erpStatuses.filter(isStatusLocked).length} Locked Dead Statuses
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+          {erpStatuses.map(status => {
+            const locked = isStatusLocked(status);
+            return (
+              <div key={status} style={{
+                padding: '12px 14px',
+                borderRadius: 10,
+                background: locked ? 'rgba(239,68,68,0.05)' : 'rgba(255,255,255,0.015)',
+                border: `1px solid ${locked ? 'rgba(239,68,68,0.25)' : 'var(--border)'}`,
+                display: 'flex',
+                flexDirection: 'column',
+                justify: 'space-between',
+                gap: 10,
+                transition: 'all 0.15s ease'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <ErpBadge status={status} />
+                  <span style={{ fontSize: 10, fontWeight: 800, color: locked ? '#f87171' : 'var(--text-muted)' }}>
+                    {locked ? '🔒 DEAD' : '🔓 OPEN'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${locked ? 'btn-danger' : 'btn-secondary'}`}
+                  style={{ width: '100%', fontSize: 11, fontWeight: 700, padding: '6px 0', borderRadius: 6, cursor: 'pointer' }}
+                  onClick={() => handleToggleErpFinal(status, !locked)}
+                >
+                  {locked ? '🔒 Locked (Dead Status)' : '🔓 Click to Lock'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── Main Layout Column Split ─────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: 24, alignItems: 'start' }}>
