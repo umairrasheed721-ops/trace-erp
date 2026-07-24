@@ -44,7 +44,7 @@ router.get('/stuck', (req, res) => {
     FROM orders
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
-    AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','returned','void','voided')
+    AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','void','voided')
     AND datetime(COALESCE(status_date, order_date)) < datetime('now', '-' || ? || ' hours')
     AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
   `).all(store_id, thresholdHours, store_id);
@@ -98,6 +98,8 @@ router.get('/stuck', (req, res) => {
     
     if (isManual) {
       insight_type = 'MANUAL_ID';
+    } else if (statusLower.includes('returned') || statusLower.includes('rto') || statusLower === 'returned') {
+      insight_type = 'STUCK_RETURN';
     } else if (statusLower === 'booked' || statusLower === 'confirmed') {
       insight_type = 'PICKUP_PENDING';
     } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {

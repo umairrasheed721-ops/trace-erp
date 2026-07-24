@@ -98,6 +98,7 @@ export default function StuckMonitor() {
     ALL: orders.length,
     ADVICE_REQUIRED: orders.filter(o => o.insight_type === 'ADVICE_REQUIRED').length,
     STUCK_TRANSIT: orders.filter(o => o.insight_type === 'STUCK_TRANSIT').length,
+    STUCK_RETURN: orders.filter(o => o.insight_type === 'STUCK_RETURN').length,
     PICKUP_PENDING: orders.filter(o => o.insight_type === 'PICKUP_PENDING').length,
     MANUAL_ID: orders.filter(o => o.insight_type === 'MANUAL_ID').length,
   }
@@ -152,6 +153,7 @@ export default function StuckMonitor() {
           { key: 'ALL', label: 'All Stuck', icon: 'All', badge: counts.ALL },
           { key: 'ADVICE_REQUIRED', label: 'Advice Needed', icon: '⚠️', badge: counts.ADVICE_REQUIRED },
           { key: 'STUCK_TRANSIT', label: 'Stuck in Transit', icon: '📦', badge: counts.STUCK_TRANSIT },
+          { key: 'STUCK_RETURN', label: 'Returned (Pending Scan)', icon: '↩️', badge: counts.STUCK_RETURN },
           { key: 'PICKUP_PENDING', label: 'Pick-up Pending', icon: '⏳', badge: counts.PICKUP_PENDING },
           { key: 'MANUAL_ID', label: 'Manual IDs', icon: '📝', badge: counts.MANUAL_ID }
         ].map(t => (
@@ -250,6 +252,11 @@ export default function StuckMonitor() {
                       {o.insight_type === 'STUCK_TRANSIT' && (
                         <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--yellow)', alignSelf: 'flex-start' }}>
                           📦 Stuck in Transit
+                        </span>
+                      )}
+                      {o.insight_type === 'STUCK_RETURN' && (
+                        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', alignSelf: 'flex-start' }}>
+                          ↩️ Returned (Pending Scan)
                         </span>
                       )}
                       {o.insight_type === 'ADVICE_REQUIRED' && (
