@@ -23,46 +23,20 @@ function findConflicts(mappings) {
   const active = mappings.filter(m => m.is_active !== 0 && m.is_active !== '0');
   const conflicts = [];
 
-  const compilePattern = (m) => {
-    try {
-      if (m.matching_type === 'regex') {
-        return new RegExp(m.courier_status, 'i');
-      } else if (m.matching_type === 'wildcard') {
-        const escaped = m.courier_status.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        const pattern = escaped.replace(/%/g, '.*');
-        return new RegExp(`^${pattern}$`, 'i');
-      } else {
-        const escaped = m.courier_status.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-        return new RegExp(`^${escaped}$`, 'i');
-      }
-    } catch (e) {
-      return null;
-    }
-  };
+  for (let i = 0; i < active.length; i++) {
+    for (let j = i + 1; j < active.length; j++) {
+      const a = active[i];
+      const b = active[j];
 
-  const compiled = active.map(m => ({ ...m, regex: compilePattern(m) })).filter(m => m.regex !== null);
-
-  for (let i = 0; i < compiled.length; i++) {
-    for (let j = i + 1; j < compiled.length; j++) {
-      const a = compiled[i];
-      const b = compiled[j];
-
-      // Only conflicts if targeting different erp statuses
       if (a.erp_status === b.erp_status) continue;
-
-      // Only conflicts if couriers overlap
       const couriersOverlap = a.courier === b.courier || a.courier === 'All' || b.courier === 'All';
       if (!couriersOverlap) continue;
 
-      // Check if A's pattern matches B's raw pattern, or vice versa
-      const aMatchesB = a.regex.test(b.courier_status);
-      const bMatchesA = b.regex.test(a.courier_status);
-
-      if (aMatchesB || bMatchesA) {
+      if (a.courier_status.trim().toLowerCase() === b.courier_status.trim().toLowerCase()) {
         conflicts.push({
           ruleId1: a.id,
           ruleId2: b.id,
-          message: `Overlap: "${a.courier_status}" (${a.matching_type || 'exact'}) clashing with "${b.courier_status}" (${b.matching_type || 'exact'})`
+          message: `Overlap: "${a.courier_status}" clashing with "${b.courier_status}"`
         });
       }
     }

@@ -8,52 +8,16 @@ function loadStatusMaps() {
   try {
     const rows = db.prepare(`SELECT id, courier, courier_status, erp_status, matching_type FROM status_mappings WHERE is_active = 1`).all();
     const exact = {};
-    const wildcard = [];
-    const regex = [];
 
     rows.forEach(r => {
-      const mode = (r.matching_type || 'exact').toLowerCase().trim();
       const courier = r.courier.toLowerCase();
       const pattern = r.courier_status.toLowerCase().trim();
-
-      if (mode === 'exact') {
-        const key = `${courier}:${pattern}`;
-        exact[key] = r.erp_status;
-        exact[`all:${pattern}`] = r.erp_status;
-      } else if (mode === 'wildcard') {
-        // Convert wildcard pattern (% -> .*, _ -> .) to regex
-        let regexStr = pattern
-          .replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Escape standard regex
-          .replace(/%/g, '.*')
-          .replace(/_/g, '.');
-        regexStr = `^${regexStr}$`;
-        try {
-          wildcard.push({
-            id: r.id,
-            courier,
-            rawPattern: r.courier_status,
-            regex: new RegExp(regexStr, 'i'),
-            erp_status: r.erp_status
-          });
-        } catch (err) {
-          console.error(`Invalid wildcard pattern "${pattern}":`, err.message);
-        }
-      } else if (mode === 'regex') {
-        try {
-          regex.push({
-            id: r.id,
-            courier,
-            rawPattern: r.courier_status,
-            regex: new RegExp(pattern, 'i'),
-            erp_status: r.erp_status
-          });
-        } catch (err) {
-          console.error(`Invalid RegExp pattern "${pattern}":`, err.message);
-        }
-      }
+      const key = `${courier}:${pattern}`;
+      exact[key] = r.erp_status;
+      exact[`all:${pattern}`] = r.erp_status;
     });
 
-    return { exact, wildcard, regex, rawRows: rows };
+    return { exact, wildcard: [], regex: [], rawRows: rows };
   } catch (e) {
     console.error('⚠️ Failed to load status maps from DB, using empty map:', e.message);
     return { exact: {}, wildcard: [], regex: [], rawRows: [] };
