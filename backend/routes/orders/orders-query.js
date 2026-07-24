@@ -5,6 +5,28 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : requir
 const { broadcast } = require('../../sse');
 const { getOrderFilters } = require('../../services/orderFilterBuilder');
 
+// POST /api/orders/bulk-update-status - Set delivery_status for tracking numbers
+router.post('/bulk-update-status', (req, res) => {
+  const { tracking_numbers, status } = req.body;
+  if (!Array.isArray(tracking_numbers) || tracking_numbers.length === 0 || !status) {
+    return res.status(400).json({ error: 'tracking_numbers array and status required' });
+  }
+
+  try {
+    const placeholders = tracking_numbers.map(() => '?').join(',');
+    const stmt = db.prepare(`
+      UPDATE orders 
+      SET delivery_status = ?, status_date = datetime('now') 
+      WHERE tracking_number IN (${placeholders})
+    `);
+
+    const result = stmt.run(status, ...tracking_numbers);
+    res.json({ success: true, updatedCount: result.changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/orders/history-search - Deep search customer history across ALL stores
 router.get('/history-search', (req, res) => {
   const { phone, email, name } = req.query;
