@@ -645,7 +645,6 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/users', label: 'User Management', icon: '👥' },
     { id: '/diagnostics', label: 'Diagnostic Center', icon: '🛠️' },
     { id: '/system-status', label: 'System Status', icon: '🛡️' },
-    { id: '/status-mappings', label: 'Status Mappings', icon: '🔀' },
     { id: '/profile', label: 'My Profile', icon: '👤' },
   ]
 

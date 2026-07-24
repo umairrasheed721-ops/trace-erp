@@ -58,7 +58,6 @@ const WhatsAppBot = lazyWithRetry(() => import('./pages/WhatsAppBot'), 'WhatsApp
 const TemplateManager = lazyWithRetry(() => import('./pages/TemplateManager'), 'TemplateManager')
 const DiagnosticCenter = lazyWithRetry(() => import('./pages/DiagnosticCenter'), 'DiagnosticCenter')
 const SystemStatus = lazyWithRetry(() => import('./pages/SystemStatus'), 'SystemStatus')
-const StatusMappingManager = lazyWithRetry(() => import('./pages/StatusMappingManager'), 'StatusMappingManager')
 
 const PayoutReconciler = lazyWithRetry(() => import('./pages/PayoutReconciler'), 'PayoutReconciler')
 const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'TrackingPortal')
@@ -161,7 +160,6 @@ function AppContent() {
                   <Route path="/marketing" element={<MarketingIntelligence />} />
                   <Route path="/diagnostics" element={<DiagnosticCenter />} />
                   <Route path="/system-status" element={<SystemStatus />} />
-                  <Route path="/status-mappings" element={<StatusMappingManager />} />
                   <Route path="/reviews" element={<ReviewsManager />} />
                 </Routes>
               </ErrorBoundary>
