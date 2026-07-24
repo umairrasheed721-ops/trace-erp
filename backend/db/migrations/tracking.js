@@ -53,7 +53,6 @@ module.exports = [
       ['PostEx', 'returned at merchant', 'Returned'],
       ['PostEx', 'returned to merchant', 'Returned'],
       ['PostEx', 'returned at merchant warehouse', 'Returned'],
-      ['PostEx', 'return received', 'Returned'],
       ['PostEx', 'attempted', 'Attempted'],
       ['PostEx', 'shipper advice', 'Shipper Advice'],
       ['PostEx', 'refused', 'Refused'],
@@ -91,7 +90,7 @@ module.exports = [
 
     try {
       const insertMapping = db.prepare(
-        `INSERT OR REPLACE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
+        `INSERT OR IGNORE INTO status_mappings (courier, courier_status, erp_status) VALUES (?, ?, ?)`
       );
       seeds.forEach(([courier, cs, erp]) => insertMapping.run(courier, cs, erp));
     } catch (e) {
@@ -129,22 +128,7 @@ module.exports = [
   // 6. Migrate hardcoded fallback rules to database mapping table
   (db) => {
     const fallbackRules = [
-      // PostEx regex/wildcard rules
-      ['PostEx', '^en-route to .* warehouse$', 'In Transit', 'regex'],
-      ['PostEx', 'arrived at %', 'In Transit', 'wildcard'],
-      ['PostEx', 'departed to %', 'In Transit', 'wildcard'],
-      ['PostEx', 'received at %', 'In Transit', 'wildcard'],
-      ['PostEx', 'at %', 'In Transit', 'wildcard'],
-      ['PostEx', '%transit hub%', 'In Transit', 'wildcard'],
-      ['PostEx', '%warehouse%', 'In Transit', 'wildcard'],
-      ['PostEx', 'waiting for delivery', 'In Transit', 'exact'],
-      
-      // All couriers wildcard rules
-      ['All', '%return in-transit%', 'Return Initiated', 'wildcard'],
-      ['All', '%returned at merchant%', 'Returned', 'wildcard'],
-      ['All', '%returned to merchant%', 'Returned', 'wildcard'],
-      ['All', '%returned at merchant warehouse%', 'Returned', 'wildcard'],
-      ['All', '%returned to shipper%', 'Returned', 'wildcard']
+      ['PostEx', 'waiting for delivery', 'In Transit', 'exact']
     ];
 
     try {
