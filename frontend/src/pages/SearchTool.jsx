@@ -1011,9 +1011,19 @@ export default function SearchTool() {
    */
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
     setLoading(true);
-    clearAllFilters();
     isCustomerSearchRef.current = true;
     
+    // Reset local UI filter states without firing redundant empty API queries
+    setPreset('All Time');
+    setStatus('All Statuses');
+    setCustomStart('');
+    setCustomEnd('');
+    const emptyColFilters = {
+      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    };
+    setColFilters(emptyColFilters);
+    setDebouncedColFilters(emptyColFilters);
+
     const inputEl = searchInputRef.current;
     if (inputEl) {
       inputEl.focus();
@@ -1024,11 +1034,8 @@ export default function SearchTool() {
     } else {
       setKeyword(newKeyword);
     }
+    setDebouncedKeyword(newKeyword);
     console.log('📡 [SearchTool] Imperatively triggering search for customer keyword:', newKeyword);
-    
-    const emptyColFilters = {
-      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
-    };
     
     setPage(1);
     setGlobalSearch(true);
@@ -1050,7 +1057,7 @@ export default function SearchTool() {
       isCustomerSearchRef.current = false;
       console.log('📡 [SearchTool] Resetting isCustomerSearchRef after stabilization');
     }, 600);
-  }, [clearAllFilters, fetchOrders]);
+  }, [fetchOrders]);
 
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()

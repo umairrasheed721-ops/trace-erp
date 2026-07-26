@@ -108,20 +108,23 @@ function getOrderFilters(req) {
             }
           }
         } else {
-          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ?)';
+          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\') LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ?)';
           whereClauses.push(isNegated ? `NOT (${clause})` : clause);
           const searchVal = `%${actualToken}%`;
           
           let phoneSearchVal = searchVal;
+          let cleanPhoneDigits = searchVal;
           if (/^\+?\d+$/.test(actualToken) || (actualToken.startsWith('+') && /^\d+$/.test(actualToken.slice(1)))) {
             const digits = actualToken.replace(/\D/g, '');
             if (digits.length >= 10) {
               phoneSearchVal = `%${digits.slice(-10)}%`;
+              cleanPhoneDigits = `%${digits.slice(-10)}%`;
             } else {
               phoneSearchVal = `%${digits}%`;
+              cleanPhoneDigits = `%${digits}%`;
             }
           }
-          queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, searchVal, searchVal);
+          queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, cleanPhoneDigits, searchVal, searchVal);
         }
       });
     }
