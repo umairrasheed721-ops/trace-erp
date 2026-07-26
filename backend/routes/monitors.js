@@ -137,6 +137,7 @@ router.get('/advice', (req, res) => {
   const adviceOrders = orders.filter(o => {
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase();
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return false;
+    if (deliveryStatusLower.includes('reattempt requested') || deliveryStatusLower.includes('return initiated')) return false;
 
     if (isExcludedFromAdvice(o.courier_status)) return false;
 
@@ -146,6 +147,21 @@ router.get('/advice', (req, res) => {
   });
 
   res.json(adviceOrders);
+});
+
+// GET /api/monitors/reattempts?store_id=1
+router.get('/reattempts', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  const orders = db.prepare(`
+    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, status_date
+    FROM orders WHERE store_id = ?
+    AND (LOWER(delivery_status) IN ('reattempt requested', 'return initiated') OR notes LIKE '%[Shipper Advice%')
+    ORDER BY COALESCE(status_date, order_date) DESC
+  `).all(store_id);
+
+  res.json(orders);
 });
 
 // GET /api/monitors/blacklist - Get blacklisted tracking numbers with metadata

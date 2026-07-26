@@ -4,7 +4,9 @@ import { useApp } from '../context/AppContext'
 
 export default function AdviceMonitor() {
   const { activeStoreId, addToast, setBadgeCounts } = useApp()
+  const [activeTab, setActiveTab] = useState('advice') // 'advice' | 'reattempts'
   const [orders, setOrders] = useState([])
+  const [reattemptOrders, setReattemptOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [actionStates, setActionStates] = useState({})
   
@@ -20,14 +22,15 @@ export default function AdviceMonitor() {
   const load = () => {
     if (!activeStoreId) return
     setLoading(true)
-    fetch(`/api/monitors/advice?store_id=${activeStoreId}`)
-      .then(r => r.json())
-      .then(data => {
-        setOrders(Array.isArray(data) ? data : [])
-        setBadgeCounts(prev => ({ ...prev, advice: Array.isArray(data) ? data.length : 0 }))
-        setLoading(false)
-      })
-      .catch(() => { addToast('Failed to load advice orders', 'error'); setLoading(false) })
+    Promise.all([
+      fetch(`/api/monitors/advice?store_id=${activeStoreId}`).then(r => r.json()),
+      fetch(`/api/monitors/reattempts?store_id=${activeStoreId}`).then(r => r.json())
+    ]).then(([adviceData, reattemptData]) => {
+      setOrders(Array.isArray(adviceData) ? adviceData : [])
+      setReattemptOrders(Array.isArray(reattemptData) ? reattemptData : [])
+      setBadgeCounts(prev => ({ ...prev, advice: Array.isArray(adviceData) ? adviceData.length : 0 }))
+      setLoading(false)
+    }).catch(() => { addToast('Failed to load advice orders', 'error'); setLoading(false) })
   }
 
   useEffect(() => { load() }, [activeStoreId])
@@ -49,6 +52,7 @@ export default function AdviceMonitor() {
       if (data.success) {
         addToast(data.message || `✅ ${action} sent to ${order.courier || 'Courier'}`, 'success')
         setActionStates(prev => ({ ...prev, [order.id]: 'done' }))
+        load()
       } else {
         addToast(`❌ ${data.error}`, 'error')
         setActionStates(prev => ({ ...prev, [order.id]: null }))
@@ -109,25 +113,45 @@ export default function AdviceMonitor() {
     return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
   }
 
+  const displayOrders = activeTab === 'advice' ? orders : reattemptOrders
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h2>🧠 Advice Monitor</h2>
-          <p>Orders requiring shipper action (Refused, Incomplete Address, etc.)</p>
+          <p>Orders requiring shipper action & tracked reattempt requests</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
           {loading ? <span className="loading-spinner"></span> : '🔄'} Refresh
         </button>
       </div>
 
+      {/* Tabs Switcher */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+        <button
+          className={`btn ${activeTab === 'advice' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('advice')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 8, padding: '8px 16px', fontWeight: 600 }}
+        >
+          🚨 Action Required ({orders.length})
+        </button>
+        <button
+          className={`btn ${activeTab === 'reattempts' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('reattempts')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 8, padding: '8px 16px', fontWeight: 600 }}
+        >
+          🔁 Reattempts Sent ({reattemptOrders.length})
+        </button>
+      </div>
+
       {loading ? (
         <div className="loading-overlay"><span className="loading-spinner"></span> Scanning...</div>
-      ) : orders.length === 0 ? (
+      ) : displayOrders.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">✅</div>
-          <h3>No Orders Need Action</h3>
-          <p>No shipper advice statuses detected</p>
+          <h3>{activeTab === 'advice' ? 'No Orders Need Action' : 'No Reattempts Sent Yet'}</h3>
+          <p>{activeTab === 'advice' ? 'No shipper advice statuses detected' : 'Parcels with reattempt requests will appear here'}</p>
         </div>
       ) : (
         <div className="table-wrapper">
@@ -147,7 +171,7 @@ export default function AdviceMonitor() {
               </tr>
             </thead>
             <tbody>
-              {orders.map(o => {
+              {displayOrders.map(o => {
                 const state = actionStates[o.id]
                 const isDone = state === 'done'
                 const isLoading = state === 'loading'
