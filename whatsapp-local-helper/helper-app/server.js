@@ -404,17 +404,18 @@ app.post('/paste-image', async (req, res) => {
   if (urls.length === 0) return res.status(400).json({ error: 'Image URL(s) required' });
 
   try {
-    console.log(`📥 Downloading ${urls.length} images...`);
+    console.log(`📥 Processing ${urls.length} image URL(s)...`);
     const localFiles = await downloadImages(urls);
     
     if (localFiles.length === 0) {
-      return res.status(400).json({ error: 'Failed to download any images' });
+      console.warn('⚠️ All image downloads returned 404 (Images deleted or expired on Shopify CDN). Proceeding text-only.');
+      return res.json({ success: false, warning: 'Images unavailable on Shopify CDN', downloadedCount: 0 });
     }
 
-    console.log(`📋 Copying ${localFiles.length} files to clipboard and triggering WhatsApp...`);
+    console.log(`📋 Copying ${localFiles.length} valid file(s) to clipboard and triggering WhatsApp...`);
     copyImagesToClipboardAndSend(localFiles);
 
-    res.json({ success: true, message: `${localFiles.length} images processed, copying to clipboard & sending...` });
+    res.json({ success: true, downloadedCount: localFiles.length, message: `${localFiles.length} image(s) processed & copied to clipboard.` });
   } catch (err) {
     console.error('Error processing image send:', err.message);
     res.status(500).json({ error: err.message });
