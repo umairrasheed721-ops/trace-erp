@@ -395,8 +395,9 @@ const CommandTableRow = React.memo(({
           return (
             <td key={col.id} className="min-w-[200px] whitespace-nowrap shrink-0" style={{ fontSize: '0.75rem', width: 200, minWidth: 200, maxWidth: 200, overflow: 'visible' }}>
               {formattedPhone ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', overflow: 'visible' }}>
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '28px', height: '28px', justifyContent: 'center', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%', overflow: 'visible' }}>
+                  {/* 1. ⚡ Auto Dispatch (API) Dropdown */}
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '22px', height: '22px', justifyContent: 'center', flexShrink: 0 }} title="⚡ Auto Dispatch via Baileys API">
                     <select 
                       className="wa-template-select"
                       onClick={(e) => {
@@ -407,15 +408,15 @@ const CommandTableRow = React.memo(({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        width: '28px',
-                        height: '28px',
-                        minWidth: '28px',
+                        width: '22px',
+                        height: '22px',
+                        minWidth: '22px',
                         flexShrink: 0,
-                        borderRadius: '6px',
-                        border: '1px solid var(--border-bright)',
-                        background: 'var(--bg-elevated)',
+                        borderRadius: '5px',
+                        border: '1px solid rgba(168,85,247,0.3)',
+                        background: 'rgba(168,85,247,0.12)',
                         cursor: 'pointer',
-                        fontSize: '0.75rem',
+                        fontSize: '0.7rem',
                         padding: 0,
                         textAlign: 'center',
                         textAlignLast: 'center',
@@ -432,53 +433,37 @@ const CommandTableRow = React.memo(({
                         if (!actionValue) return;
                         
                         if (actionValue === 'send_images') {
-                          e.target.value = ""; // Reset
+                          e.target.value = "";
                           addToast("Sending actual images...", "info");
-                          
-                          fetch('/api/whatsapp/send-order-images', {
-                            method: 'POST',
-                            headers: { 
-                              'Content-Type': 'application/json',
-                              'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
-                            },
-                            body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
-                          })
-                          .then(async (res) => {
+                          try {
+                            const res = await fetch('/api/whatsapp/send-order-images', {
+                              method: 'POST',
+                              headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+                              },
+                              body: JSON.stringify({ orderId: o.id, phone: formattedPhone })
+                            });
                             const data = await res.json();
                             if (res.ok && data.success) {
                               addToast(`✅ Images sent successfully! (Sent ${data.sentCount} items)`, 'success');
                             } else {
                               addToast(`❌ Failed to send images: ${data.error || 'Unknown error'}`, 'error');
                             }
-                          })
-                          .catch((err) => {
+                          } catch (err) {
                             addToast(`❌ Failed to send images: ${err.message || err}`, 'error');
-                          });
+                          }
                           return;
                         }
 
                         if (actionValue === 'auto_cod') {
-                          e.target.value = ""; // Reset
+                          e.target.value = "";
                           handleAutoCODConfirm();
                           return;
                         }
 
-                        if (actionValue === 'manual_cod') {
-                          e.target.value = ""; // Reset
-                          const name = formatCustomerName(o.customer_name);
-                          const orderId = o.ref_number || o.shopify_order_id;
-                          const amount = Math.round(parseFloat(o.price) || 0);
-                          const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
-                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
-                          const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
-                          const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
-                          const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
-                          window.open(waLink, '_blank');
-                          return;
-                        }
-
                         if (actionValue.startsWith('auto_template_')) {
-                          e.target.value = ""; // Reset
+                          e.target.value = "";
                           const templateId = actionValue.replace('auto_template_', '');
                           const template = waTemplates.find(t => t.id === parseInt(templateId));
                           if (!template) return;
@@ -541,9 +526,70 @@ const CommandTableRow = React.memo(({
                           }
                           return;
                         }
+                      }}
+                    >
+                      <option value="" disabled>⚡</option>
+                      <option value="auto_cod">⚡ Auto COD Confirm</option>
+                      <option value="send_images">🖼️ Send Product Images</option>
+                      {waTemplates.map(t => (
+                        <option key={`auto_${t.id}`} value={`auto_template_${t.id}`}>⚡ {t.name}</option>
+                      ))}
+                    </select>
+                    <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: '0.6rem', color: '#c084fc', fontWeight: 800 }}>⚡</span>
+                  </div>
+
+                  {/* 2. 📱 Manual Dispatch (Native App) Dropdown */}
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: '22px', height: '22px', justifyContent: 'center', flexShrink: 0 }} title="📱 Manual Dispatch via WhatsApp App">
+                    <select 
+                      className="wa-template-select"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveRowId(o.id);
+                      }}
+                      style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '22px',
+                        height: '22px',
+                        minWidth: '22px',
+                        flexShrink: 0,
+                        borderRadius: '5px',
+                        border: '1px solid rgba(37,211,102,0.3)',
+                        background: 'rgba(37,211,102,0.12)',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        padding: 0,
+                        textAlign: 'center',
+                        textAlignLast: 'center',
+                        WebkitAppearance: 'none',
+                        MozAppearance: 'none',
+                        appearance: 'none',
+                        outline: 'none',
+                        boxShadow: 'none',
+                        color: 'transparent'
+                      }}
+                      value=""
+                      onChange={async (e) => {
+                        const actionValue = e.target.value;
+                        if (!actionValue) return;
+
+                        if (actionValue === 'manual_cod') {
+                          e.target.value = "";
+                          const name = formatCustomerName(o.customer_name);
+                          const orderId = o.ref_number || o.shopify_order_id;
+                          const amount = Math.round(parseFloat(o.price) || 0);
+                          const manualConfirmMsg = `Assalam o Alaikum ${name}, please confirm your order #${orderId} of Rs. ${amount}. Reply 1 to Confirm, 2 to Cancel.`;
+                          const waPhone = formattedPhone.replace(/\D/g,'').replace(/^0/,'92');
+                          const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+                          const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+                          const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(manualConfirmMsg)}`;
+                          window.open(waLink, '_blank');
+                          return;
+                        }
 
                         if (actionValue.startsWith('template_')) {
-                          e.target.value = ""; // Reset
+                          e.target.value = "";
                           const templateId = actionValue.replace('template_', '');
                           const template = waTemplates.find(t => t.id === parseInt(templateId));
                           if (!template) return;
@@ -637,22 +683,13 @@ const CommandTableRow = React.memo(({
                         }
                       }}
                     >
-                      <option value="" disabled>▼</option>
-                      <optgroup label="Auto Dispatch (API)">
-                        <option value="auto_cod">Auto COD Confirm</option>
-                        <option value="send_images">🖼️ Send Product Images</option>
-                        {waTemplates.map(t => (
-                          <option key={`auto_${t.id}`} value={`auto_template_${t.id}`}>{t.name}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Manual Dispatch (Native App)">
-                        <option value="manual_cod">Manual COD Confirm</option>
-                        {waTemplates.map(t => (
-                          <option key={t.id} value={`template_${t.id}`}>{t.name}</option>
-                        ))}
-                      </optgroup>
+                      <option value="" disabled>📱</option>
+                      <option value="manual_cod">📱 Manual COD Confirm</option>
+                      {waTemplates.map(t => (
+                        <option key={`manual_${t.id}`} value={`template_${t.id}`}>{t.name}</option>
+                      ))}
                     </select>
-                    <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>▼</span>
+                    <span style={{ position: 'absolute', pointerEvents: 'none', fontSize: '0.6rem', color: '#25d366', fontWeight: 800 }}>💬</span>
                   </div>
 
                   <div className="phone-container-wrap" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '28px', minHeight: '28px', maxHeight: '28px', overflow: 'visible' }}>
