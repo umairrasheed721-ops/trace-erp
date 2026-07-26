@@ -100,15 +100,33 @@ async function downloadImages(urls, concurrency = 5) {
             fs.copyFileSync(cachePath, tempPath);
             downloadedFiles[index] = tempPath;
           } else {
-            console.log(`🌐 Cache Miss [${index + 1}/${total}]. Downloading image...`);
-            const response = await axiosInstance({
-              url: url,
-              method: 'GET',
-              responseType: 'stream',
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            console.log(`🌐 Cache Miss [${index + 1}/${total}]. Downloading image: ${url}`);
+            let response;
+            try {
+              response = await axiosInstance({
+                url: url,
+                method: 'GET',
+                responseType: 'stream',
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
+              });
+            } catch (err1) {
+              if (url.includes('?')) {
+                const cleanUrl = url.split('?')[0];
+                console.log(`⚠️ Retry with cleaned URL: ${cleanUrl}`);
+                response = await axiosInstance({
+                  url: cleanUrl,
+                  method: 'GET',
+                  responseType: 'stream',
+                  headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                  }
+                });
+              } else {
+                throw err1;
               }
-            });
+            }
 
             await new Promise((resolve, reject) => {
               const writer = fs.createWriteStream(cachePath);
@@ -126,7 +144,7 @@ async function downloadImages(urls, concurrency = 5) {
             console.log(`✅ Cache Saved [${index + 1}/${total}]: ${url}`);
           }
         } catch (e) {
-          console.error(`❌ Failed to process image at index ${index}:`, e.message);
+          console.error(`❌ Failed to process image at index ${index} (${url}):`, e.message);
         }
       }
     };
