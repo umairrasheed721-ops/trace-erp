@@ -137,7 +137,10 @@ export default function SearchTool() {
    * Supports overrides for immediate clears/resets.
    */
   const fetchOrders = useCallback(async (options = {}) => {
-    if (!activeStoreId) return;
+    if (!activeStoreId) {
+      setLoading(false);
+      return;
+    }
 
     const wasProgrammatic = options.wasProgrammatic || false;
     const isRefresh = options.isRefresh || false;
@@ -206,6 +209,7 @@ export default function SearchTool() {
 
     if (!isRefresh && !wasProgrammatic && urlWithoutTimestamp === lastFetchedUrlRef.current) {
       console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
+      setLoading(false);
       return;
     }
 
@@ -1017,6 +1021,7 @@ export default function SearchTool() {
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
     setLoading(true);
     isCustomerSearchRef.current = true;
+    lastFetchedUrlRef.current = '';
     
     // Reset local UI filter states without firing redundant empty API queries
     setPreset('All Time');
