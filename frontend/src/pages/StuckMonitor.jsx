@@ -229,7 +229,7 @@ export default function StuckMonitor() {
                     </div>
                     {o.order_date && (
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>
-                        {new Date(o.order_date.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                        {new Date(o.order_date.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </div>
                     )}
                   </td>
