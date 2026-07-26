@@ -7,19 +7,14 @@ const { cancelInstaworldOrder } = require('../engines/instaworld');
 const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
 const ADVICE_KEYWORDS = [
   'shipper advice', 
-  'delivery under review', 
-  'delivery unsuccessful',
-  'consignee refused', 
-  'incomplete address', 
-  'consignee not available', 
-  'rfd', 
-  'refused'
+  'delivery under review'
 ];
 
 function isExcludedFromAdvice(courierStatus) {
   if (!courierStatus) return false;
   const statusLower = courierStatus.toLowerCase();
   if (
+    statusLower.includes('attempt made') ||
     statusLower.includes('return process') ||
     statusLower.includes('waiting for return') ||
     statusLower.includes('return to ') ||
