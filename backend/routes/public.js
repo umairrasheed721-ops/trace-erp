@@ -20,6 +20,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { addClient } = require('../sse');
 
 function formatE164Phone(rawPhone) {
   if (!rawPhone) return '';
