@@ -1210,23 +1210,22 @@ export default function SearchTool() {
 
   // Apply drill-down state from Reports page or URL parameters
   useEffect(() => {
-    if (location.state) {
+    const params = new URLSearchParams(location.search)
+    const urlQuery = params.get('q') || params.get('search') || params.get('tracking')
+    const stateQuery = location.state?.keyword
+    const targetQuery = urlQuery || stateQuery
+
+    if (targetQuery) {
       isProgrammaticRef.current = true
-      const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: k } = location.state
+      setKeyword(targetQuery)
+    }
+
+    if (location.state) {
+      const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state
       if (p) setPreset(p)
       if (cs) setCustomStart(cs)
       if (ce) setCustomEnd(ce)
       if (s) setStatus(s)
-      if (k) setKeyword(k)
-      // Clear state after application so refreshes use defaults or current state
-      window.history.replaceState({}, document.title)
-    } else if (location.search) {
-      const params = new URLSearchParams(location.search)
-      const q = params.get('q') || params.get('search') || params.get('tracking')
-      if (q) {
-        isProgrammaticRef.current = true
-        setKeyword(q)
-      }
     }
   }, [location.state, location.search])
 

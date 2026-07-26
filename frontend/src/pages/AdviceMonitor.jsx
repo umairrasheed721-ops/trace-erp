@@ -157,7 +157,10 @@ export default function AdviceMonitor() {
                       <div style={{ color: 'var(--brand)', fontWeight: 600, fontSize: '0.78rem' }}>{o.tracking_number}</div>
                       <button
                         className="btn btn-secondary btn-xs"
-                        onClick={() => navigate(`/search?q=${encodeURIComponent(o.tracking_number)}`, { state: { keyword: o.tracking_number } })}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/search?q=${encodeURIComponent(o.tracking_number)}`, { state: { keyword: o.tracking_number } })
+                        }}
                         title="Open this order in Command Center"
                         style={{
                           marginTop: 4,
