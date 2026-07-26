@@ -118,10 +118,12 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
                 className="btn btn-primary btn-sm"
                 onClick={() => {
                   const targetKeyword = (phone && phone !== 'null' && phone !== 'undefined') ? phone : (email && email !== 'null' && email !== 'undefined') ? email : '';
-                  if (targetKeyword) {
-                    onOpenAllOrders(targetKeyword);
-                  }
                   onClose();
+                  if (targetKeyword) {
+                    setTimeout(() => {
+                      onOpenAllOrders(targetKeyword);
+                    }, 50);
+                  }
                 }}
               >
                 Open All Orders in Command Center
