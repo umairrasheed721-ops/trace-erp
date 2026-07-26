@@ -1197,7 +1197,6 @@ export default function SearchTool() {
       setCustomStart('');
       setCustomEnd('');
       setKeyword(cleanKw);
-      setDebouncedKeyword(cleanKw);
       setPage(1);
       setGlobalSearch(true);
       const emptyColFilters = {
