@@ -223,10 +223,10 @@ export default function SearchTool() {
     console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
     
     try {
-      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const authToken = token || localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
       const res = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${authToken}`
         }
       });
       if (!res.ok) {
@@ -248,13 +248,15 @@ export default function SearchTool() {
         isClearingStageRef.current = null;
       }
       console.error('❌ [SearchTool] fetchOrders failed:', err.message);
-      addToast('Failed to load orders', 'error');
+      if (err.name !== 'AbortError' && !err.message?.includes('abort')) {
+        addToast(`Failed to load orders: ${err.message}`, 'error');
+      }
     } finally {
       setLoading(false);
     }
   }, [
     activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, colFilters, debouncedColFilters,
-    sortKey, sortDir, limit, page, setAllOrders, setTotalCount, setDebugWhere, setLoading, addToast, keyword
+    sortKey, sortDir, limit, page, setAllOrders, setTotalCount, setDebugWhere, setLoading, addToast, keyword, token
   ]);
 
   const runSearch = useCallback(() => {
