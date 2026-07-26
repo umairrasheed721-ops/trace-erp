@@ -154,9 +154,6 @@ function AppContent() {
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/costing" element={<CostManager />} />
                   <Route path="/prevention" element={<CostManager />} />
-                  <Route path="/marketing" element={<MarketingIntelligence />} />
-                  <Route path="/diagnostics" element={<DiagnosticCenter />} />
-                  <Route path="/system-status" element={<SystemStatus />} />
                   <Route path="/reviews" element={<ReviewsManager />} />
                 </Routes>
               </ErrorBoundary>
