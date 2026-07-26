@@ -635,7 +635,6 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/costing', label: 'Master Costing', icon: '💎' },
     { id: '/prevention', label: 'Cost Watchdog', icon: '🛡️' },
     { id: '/reports', label: 'Profit & Loss', icon: '📊' },
-    { id: '/marketing', label: 'Marketing Intel', icon: '🧠' },
     { id: '/reviews', label: 'Reviews Manager', icon: '⭐' },
     { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚' },
     { id: '/stuck', label: 'Stuck Monitor', icon: '⏳' },
@@ -643,8 +642,6 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/watchdog', label: 'Watchdog', icon: '🐕' },
     { id: '/connect', label: 'Connect Store', icon: '🔌' },
     { id: '/users', label: 'User Management', icon: '👥' },
-    { id: '/diagnostics', label: 'Diagnostic Center', icon: '🛠️' },
-    { id: '/system-status', label: 'System Status', icon: '🛡️' },
     { id: '/profile', label: 'My Profile', icon: '👤' },
   ]
 

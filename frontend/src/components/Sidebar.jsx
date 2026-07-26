@@ -32,7 +32,6 @@ export default function Sidebar() {
     { to: '/payout-reconciler', icon: '💸', label: 'Payout Reconciler', permission: 'admin_only' },
     { to: '/costing', icon: '🛡️', label: 'Costing & Watchdog', permission: 'admin_only' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },
-    { to: '/marketing', icon: '🧠', label: 'Marketing Intel', permission: 'admin_only' },
     { to: '/reviews', icon: '⭐', label: 'Reviews Manager', permission: 'admin_only' },
     { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
@@ -40,8 +39,6 @@ export default function Sidebar() {
     { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
     { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'admin_only' },
     { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
-    { to: '/diagnostics', icon: '🛠️', label: 'Diagnostic Center', permission: 'admin_only' },
-    { to: '/system-status', icon: '🛡️', label: 'System Status', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },
   ].filter(item => {
     if (user?.role === 'admin') return true

@@ -42,7 +42,6 @@ const webhooksRoutes    = safeRequire('./webhooks',     'Webhooks');
 const whatsappRoutes    = safeRequire('./whatsapp',     'WhatsApp');
 const publicRoutes      = safeRequire('./public',       'Public');
 const templatesRoutes   = safeRequire('./templates',    'Templates');
-const diagnosticsRoutes = safeRequire('./diagnostics',  'Diagnostics');
 const statusMappingsRoutes = safeRequire('./status-mappings', 'StatusMappings');
 const schedulerRoutes   = safeRequire('./scheduler',    'SchedulerAPI');
 const costManagerRoutes = safeRequire('./cost-manager', 'CostManager');
@@ -70,7 +69,6 @@ router.use('/api/webhooks', webhooksRoutes);
 router.use('/api/whatsapp', whatsappRoutes);
 router.use('/api/public', publicRoutes);
 router.use('/api/templates', templatesRoutes);
-router.use('/api/diagnostics', diagnosticsRoutes);
 router.use('/api/status-mappings', statusMappingsRoutes);
 router.use('/api/cost-manager', costManagerRoutes);
 router.use('/api/sync', syncRoutes);
@@ -96,7 +94,6 @@ const ROUTE_MAP = {
   'Users':       ['/api/users',       './users'],
   'WhatsApp':    ['/api/whatsapp',    './whatsapp'],
   'Templates':   ['/api/templates',   './templates'],
-  'Diagnostics': ['/api/diagnostics', './diagnostics'],
   'CostManager': ['/api/cost-manager', './cost-manager'],
   'Settings':    ['/api/settings',    './settings'],
 };
