@@ -49,7 +49,6 @@ const syncRoutes        = safeRequire('./sync',         'Sync');
 const customerSuccessRoutes = safeRequire('./customer-success', 'CustomerSuccess');
 const whatsappGovernanceRoutes = safeRequire('./whatsapp-governance', 'WhatsAppGovernance');
 const settingsRoutes    = safeRequire('./settings',     'Settings');
-const systemRoutes      = safeRequire('./system',       'System');
 const citiesRoutes      = require('./cities');
 const bulkRoutes        = require('./bulk_booking');
 const postexRoutes      = safeRequire('./postex',       'PostEx');
