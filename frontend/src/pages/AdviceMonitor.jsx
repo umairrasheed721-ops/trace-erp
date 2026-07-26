@@ -153,7 +153,29 @@ export default function AdviceMonitor() {
 
                 return (
                   <tr key={o.id}>
-                    <td className="font-mono" style={{ color: 'var(--brand)', fontSize: '0.75rem' }}>{o.tracking_number}</td>
+                    <td className="font-mono" style={{ fontSize: '0.75rem' }}>
+                      <div style={{ color: 'var(--brand)', fontWeight: 600, fontSize: '0.78rem' }}>{o.tracking_number}</div>
+                      <button
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => navigate(`/search?q=${encodeURIComponent(o.tracking_number)}`, { state: { keyword: o.tracking_number } })}
+                        title="Open this order in Command Center"
+                        style={{
+                          marginTop: 4,
+                          padding: '2px 7px',
+                          fontSize: '0.65rem',
+                          background: 'rgba(99,102,241,0.12)',
+                          color: '#818cf8',
+                          border: '1px solid rgba(99,102,241,0.3)',
+                          borderRadius: 4,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 3,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ⚡ Command Center ↗
+                      </button>
+                    </td>
                     <td>{o.customer_name}</td>
                     <td><span className="badge badge-advice">{o.delivery_status}</span></td>
                     <td>

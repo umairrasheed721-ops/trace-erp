@@ -1208,7 +1208,7 @@ export default function SearchTool() {
     setDraggedIdx(null)
   }
 
-  // Apply drill-down state from Reports page
+  // Apply drill-down state from Reports page or URL parameters
   useEffect(() => {
     if (location.state) {
       isProgrammaticRef.current = true
@@ -1220,8 +1220,15 @@ export default function SearchTool() {
       if (k) setKeyword(k)
       // Clear state after application so refreshes use defaults or current state
       window.history.replaceState({}, document.title)
+    } else if (location.search) {
+      const params = new URLSearchParams(location.search)
+      const q = params.get('q') || params.get('search') || params.get('tracking')
+      if (q) {
+        isProgrammaticRef.current = true
+        setKeyword(q)
+      }
     }
-  }, [location.state])
+  }, [location.state, location.search])
 
   const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')
