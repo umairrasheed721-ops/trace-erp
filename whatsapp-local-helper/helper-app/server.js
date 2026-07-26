@@ -26,7 +26,13 @@ const axiosInstance = axios.create({
 let isDispatching = false;
 
 // Helper to generate md5 hash filename for caching
-function getCachePath(url) {
+function getCachePath(rawUrl) {
+  let url = (rawUrl || '').trim();
+  if (url.startsWith('//')) {
+    url = 'https:' + url;
+  } else if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
   const urlHash = crypto.createHash('md5').update(url).digest('hex');
   let ext = '.png';
   try {
@@ -58,7 +64,15 @@ async function downloadImages(urls, concurrency = 5) {
   console.log(`🚀 Dispatch started. Pausing background pre-fetching queue.`);
 
   try {
-    const tasks = urls.map((url, index) => ({ url, index }));
+    const tasks = urls.map((rawUrl, index) => {
+      let url = (rawUrl || '').trim();
+      if (url.startsWith('//')) {
+        url = 'https:' + url;
+      } else if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      return { url, index };
+    });
     const total = urls.length;
 
     const worker = async () => {
@@ -245,9 +259,15 @@ function copyImagesToClipboardAndSend(filePaths) {
 
 // End-point to proxy external images to the extension, avoiding CORS restrictions
 app.get('/fetch-image', async (req, res) => {
-  const { url } = req.query;
+  let { url } = req.query;
   if (!url) {
     return res.status(400).json({ error: 'URL parameter required' });
+  }
+  url = url.trim();
+  if (url.startsWith('//')) {
+    url = 'https:' + url;
+  } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
   }
   try {
     const response = await axios({
