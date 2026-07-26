@@ -180,14 +180,38 @@ const handleCourierAction = async (req, res) => {
   const { store_id, tracking_number, action, note } = req.body;
   if (!store_id || !tracking_number || !action) return res.status(400).json({ error: 'Missing fields' });
 
-  // 1. Fetch order to detect the courier
-  const order = db.prepare('SELECT courier FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
+  // 1. Fetch order to detect courier and existing notes
+  const order = db.prepare('SELECT id, shopify_order_id, courier, notes FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
   const courierName = order ? (order.courier || 'PostEx') : 'PostEx';
   const isPostEx = courierName.toLowerCase().includes('postex');
 
   // 2. Fetch store details
   const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
   if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  // Build formatted advice note entry
+  const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const adviceEntry = `[Shipper Advice - ${action}${note && note.trim() ? ': ' + note.trim() : ''} (${dateStr})]`;
+  const existingNotes = order ? (order.notes || '').trim() : '';
+  const updatedNotes = existingNotes ? `${existingNotes} | ${adviceEntry}` : adviceEntry;
+
+  const syncNoteToShopify = (notesToSync) => {
+    if (order && order.shopify_order_id && store.shop_domain && store.access_token) {
+      fetch(`https://${store.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`, {
+        method: 'PUT',
+        headers: {
+          'X-Shopify-Access-Token': store.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          order: {
+            id: order.shopify_order_id,
+            note: notesToSync
+          }
+        })
+      }).catch(err => console.error('Failed to sync advice note to Shopify:', err.message));
+    }
+  };
 
   if (isPostEx) {
     if (!store.postex_token) return res.status(400).json({ error: 'PostEx token not configured' });
@@ -204,9 +228,11 @@ const handleCourierAction = async (req, res) => {
 
       if (response.ok) {
         const newStatus = action === 'Return' ? 'Return Initiated' : 'Reattempt Requested';
-        db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
-          .run(newStatus, store_id, tracking_number);
-        return res.json({ success: true, message: `✅ ${action} sent to PostEx` });
+        db.prepare("UPDATE orders SET delivery_status=?, notes=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+          .run(newStatus, updatedNotes, store_id, tracking_number);
+
+        syncNoteToShopify(updatedNotes);
+        return res.json({ success: true, message: `✅ ${action} sent to PostEx & note saved` });
       } else {
         return res.status(400).json({ error: `PostEx API returned ${response.status}` });
       }
@@ -222,9 +248,11 @@ const handleCourierAction = async (req, res) => {
         const cancelled = await cancelInstaworldOrder(store, tracking_number);
         if (cancelled) {
           const newStatus = 'Return Initiated';
-          db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
-            .run(newStatus, store_id, tracking_number);
-          return res.json({ success: true, message: `✅ Return initiated / Order cancelled in Instaworld` });
+          db.prepare("UPDATE orders SET delivery_status=?, notes=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+            .run(newStatus, updatedNotes, store_id, tracking_number);
+
+          syncNoteToShopify(updatedNotes);
+          return res.json({ success: true, message: `✅ Return initiated / Order cancelled in Instaworld & note saved` });
         } else {
           return res.status(400).json({ error: 'Failed to cancel order in Instaworld' });
         }
@@ -234,9 +262,11 @@ const handleCourierAction = async (req, res) => {
     } else if (action === 'Reattempt') {
       try {
         const newStatus = 'Reattempt Requested';
-        db.prepare("UPDATE orders SET delivery_status=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
-          .run(newStatus, store_id, tracking_number);
-        return res.json({ success: true, message: `✅ Reattempt status updated locally for ${courierName}` });
+        db.prepare("UPDATE orders SET delivery_status=?, notes=?, status_date=datetime('now') WHERE store_id=? AND tracking_number=?")
+          .run(newStatus, updatedNotes, store_id, tracking_number);
+
+        syncNoteToShopify(updatedNotes);
+        return res.json({ success: true, message: `✅ Reattempt status updated & note saved for ${courierName}` });
       } catch (e) {
         return res.status(500).json({ error: e.message });
       }
