@@ -477,6 +477,71 @@ const CommandTableRow = React.memo(({
                           return;
                         }
 
+                        if (actionValue.startsWith('auto_template_')) {
+                          e.target.value = ""; // Reset
+                          const templateId = actionValue.replace('auto_template_', '');
+                          const template = waTemplates.find(t => t.id === parseInt(templateId));
+                          if (!template) return;
+
+                          const name = formatCustomerName(o.customer_name);
+                          const orderId = o.ref_number || o.shopify_order_id;
+                          const price = Math.round(parseFloat(o.price)||0);
+                          const courier = o.courier || 'our courier';
+                          const tracking = o.tracking_number || '';
+                          
+                          let msg = template.content
+                             .replace(/\[Name\]/g, name)
+                             .replace(/\[OrderID\]/g, orderId)
+                             .replace(/\[Price\]/g, price)
+                             .replace(/\[Courier\]/g, courier)
+                             .replace(/\[Tracking\]/g, tracking)
+                             .replace(/\[Address\]/g, o.address || 'N/A')
+                             .replace(/\[City\]/g, o.city || 'N/A')
+                             .replace(/\[Phone\]/g, o.phone || 'N/A')
+                             .replace(/\[Products\]/g, o.product_titles || 'N/A')
+                             .replace(/\[RefNumber\]/g, o.ref_number || 'N/A')
+                             .replace(/\[ItemsCount\]/g, o.items_count || '0');
+
+                          const trackingSlug = o.tracking_slug || 'tr_mock_slug';
+                          const trackingLink = `${window.location.origin}/track/${trackingSlug}`;
+
+                          let courierLink = 'N/A';
+                          if (tracking && tracking !== 'N/A') {
+                            const courierLower = (courier || '').toLowerCase();
+                            if (courierLower.includes('postex')) {
+                              courierLink = `https://postex.pk/tracking?cn=${tracking}`;
+                            } else {
+                              courierLink = `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
+                            }
+                          }
+
+                          msg = msg
+                            .replace(/\[Link\]/g, trackingLink)
+                            .replace(/\[TraceLink\]/g, trackingLink)
+                            .replace(/\[CourierLink\]/g, courierLink);
+
+                          addToast(`📡 Dispatching "${template.name}" via API...`, 'info');
+                          try {
+                            const res = await fetch('/api/whatsapp/send-test', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('trace_token') || localStorage.getItem('token') || ''}`
+                              },
+                              body: JSON.stringify({ phone: formattedPhone, message: msg })
+                            });
+                            const resData = await res.json();
+                            if (res.ok && resData.success) {
+                              addToast(`✅ "${template.name}" sent via API!`, 'success');
+                            } else {
+                              addToast(`❌ API Error: ${resData.error || 'Failed to send'}`, 'error');
+                            }
+                          } catch (err) {
+                            addToast(`❌ Network Error: ${err.message}`, 'error');
+                          }
+                          return;
+                        }
+
                         if (actionValue.startsWith('template_')) {
                           e.target.value = ""; // Reset
                           const templateId = actionValue.replace('template_', '');
@@ -576,6 +641,9 @@ const CommandTableRow = React.memo(({
                       <optgroup label="Auto Dispatch (API)">
                         <option value="auto_cod">Auto COD Confirm</option>
                         <option value="send_images">🖼️ Send Product Images</option>
+                        {waTemplates.map(t => (
+                          <option key={`auto_${t.id}`} value={`auto_template_${t.id}`}>{t.name}</option>
+                        ))}
                       </optgroup>
                       <optgroup label="Manual Dispatch (Native App)">
                         <option value="manual_cod">Manual COD Confirm</option>
