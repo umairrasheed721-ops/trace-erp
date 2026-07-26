@@ -47,6 +47,7 @@ export default function SearchTool() {
   const isBacklogSearchRef = useRef(false)
   const searchInputRef = useRef(null)
   const lastFetchedUrlRef = useRef('')
+  const lastProcessedUrlQueryRef = useRef('')
   const lastRefreshRef = useRef(0)
   const isClearingRef = useRef(false)
   const isClearingStageRef = useRef(null)
@@ -247,10 +248,7 @@ export default function SearchTool() {
         isClearingRef.current = false;
         isClearingStageRef.current = null;
       }
-      console.error('❌ [SearchTool] fetchOrders failed:', err.message);
-      if (err.name !== 'AbortError' && !err.message?.includes('abort')) {
-        addToast(`Failed to load orders: ${err.message}`, 'error');
-      }
+      console.error('❌ [SearchTool] fetchOrders error:', err.message);
     } finally {
       setLoading(false);
     }
@@ -1193,6 +1191,11 @@ export default function SearchTool() {
 
     if (targetQuery) {
       const cleanKw = targetQuery.trim();
+      if (lastProcessedUrlQueryRef.current === cleanKw) {
+        return;
+      }
+      lastProcessedUrlQueryRef.current = cleanKw;
+
       console.log('📡 [SearchTool] Target search query detected:', cleanKw);
       setPreset('All Time');
       setStatus('All Statuses');
@@ -1223,12 +1226,15 @@ export default function SearchTool() {
         clearColFilters: true,
         globalSearch: true
       });
-    } else if (location.state) {
-      const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state;
-      if (p) setPreset(p);
-      if (cs) setCustomStart(cs);
-      if (ce) setCustomEnd(ce);
-      if (s) setStatus(s);
+    } else {
+      lastProcessedUrlQueryRef.current = '';
+      if (location.state) {
+        const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state;
+        if (p) setPreset(p);
+        if (cs) setCustomStart(cs);
+        if (ce) setCustomEnd(ce);
+        if (s) setStatus(s);
+      }
     }
   }, [location.state, location.search, fetchOrders]);
 
