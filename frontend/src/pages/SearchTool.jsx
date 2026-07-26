@@ -217,7 +217,12 @@ export default function SearchTool() {
     console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
     
     try {
-      const res = await fetch(url);
+      const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
