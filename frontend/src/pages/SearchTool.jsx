@@ -1203,7 +1203,6 @@ export default function SearchTool() {
         ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
       };
       setColFilters(emptyColFilters);
-      setDebouncedColFilters(emptyColFilters);
 
       if (searchInputRef.current) {
         searchInputRef.current.value = cleanKw;
