@@ -218,13 +218,20 @@ export default function StuckMonitor() {
               {filteredOrders.map(o => (
                 <tr key={o.id} className={getRowClass(o.days_stuck)}>
                   <td>
-                    <button 
-                      className="btn-link" 
-                      onClick={() => navigate('/search', { state: { keyword: o.ref_number, status: 'All Statuses', preset: 'All Time' } })}
-                      style={{ fontWeight: 800, color: 'var(--brand)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                    >
-                      {o.ref_number || '—'}
-                    </button>
+                    <div>
+                      <button 
+                        className="btn-link" 
+                        onClick={() => navigate('/search', { state: { keyword: o.ref_number, status: 'All Statuses', preset: 'All Time' } })}
+                        style={{ fontWeight: 800, color: 'var(--brand)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.85rem' }}
+                      >
+                        {o.ref_number || '—'}
+                      </button>
+                    </div>
+                    {o.order_date && (
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>
+                        {new Date(o.order_date.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                      </div>
+                    )}
                   </td>
                   <td className="font-mono" style={{ fontSize: '0.75rem' }}>
                     <a

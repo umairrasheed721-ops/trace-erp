@@ -41,7 +41,7 @@ router.get('/stuck', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, ref_number, tracking_number, customer_name, phone, delivery_status, status_date, notes, price, product_titles, courier, courier_status
+    SELECT id, ref_number, tracking_number, customer_name, phone, delivery_status, status_date, order_date, notes, price, product_titles, courier, courier_status
     FROM orders
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
