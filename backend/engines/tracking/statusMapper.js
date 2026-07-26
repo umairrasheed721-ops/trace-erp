@@ -29,21 +29,24 @@ function applyMap(statusMap, courier, rawStatus) {
   const raw = rawStatus.toLowerCase().trim();
   const targetCourier = (courier || 'all').toLowerCase().trim();
 
-  // Handle legacy flat object format fallback if passed
-  const isLegacy = !statusMap.exact;
-  if (isLegacy) {
-    const courierKey = `${targetCourier}:${raw}`;
-    const allKey = `all:${raw}`;
-    return statusMap[courierKey] || statusMap[allKey] || null;
+  // 1. Try DB EXACT match first (O(1) lookup)
+  if (statusMap && statusMap.exact) {
+    const exactKey = `${targetCourier}:${raw}`;
+    const exactAllKey = `all:${raw}`;
+    if (statusMap.exact[exactKey]) return statusMap.exact[exactKey];
+    if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
   }
 
-  // 1. Try EXACT match first (O(1) lookup)
-  const exactKey = `${targetCourier}:${raw}`;
-  const exactAllKey = `all:${raw}`;
-  if (statusMap.exact[exactKey]) return statusMap.exact[exactKey];
-  if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
+  // 2. Standard ERP Hardcoded Rules Fallback
+  if (raw === 'delivered' || raw === 'delivered to customer') return 'Delivered';
+  if (raw === 'return received') return 'Return Received';
+  if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
+  if (raw.includes('delivery under review') || raw.includes('shipper advice')) return 'Shipper Advice';
+  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper') || raw.includes('return to origin')) return 'Returned';
+  if (raw.includes('out for return')) return 'Return Initiated';
+  if (raw.includes('attempted')) return 'Attempted';
+  if (raw.includes('refused')) return 'Refused';
 
-  // Wildcard and Regex matching disabled to prevent greedy status overrides & reverts
   return null;
 }
 
