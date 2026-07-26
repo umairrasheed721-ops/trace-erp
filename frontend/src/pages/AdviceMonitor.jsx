@@ -11,6 +11,11 @@ export default function AdviceMonitor() {
   const [retryModalOrder, setRetryModalOrder] = useState(null)
   const [retryNote, setRetryNote] = useState('')
 
+  // History Timeline Modal State
+  const [historyModalOrder, setHistoryModalOrder] = useState(null)
+  const [historyData, setHistoryData] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
   const load = () => {
     if (!activeStoreId) return
     setLoading(true)
@@ -59,6 +64,25 @@ export default function AdviceMonitor() {
   const handleOpenRetryModal = (order) => {
     setRetryModalOrder(order)
     setRetryNote('')
+  }
+
+  const handleOpenHistory = async (order) => {
+    setHistoryModalOrder(order)
+    setHistoryData([])
+    setHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/monitors/tracking-history?store_id=${activeStoreId}&tracking_number=${order.tracking_number}`)
+      const data = await res.json()
+      if (data.success && Array.isArray(data.history)) {
+        setHistoryData(data.history)
+      } else {
+        addToast('No tracking history available', 'info')
+      }
+    } catch {
+      addToast('Failed to fetch tracking history', 'error')
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   const handleIgnore = async (order) => {
@@ -133,9 +157,19 @@ export default function AdviceMonitor() {
                     <td>{o.customer_name}</td>
                     <td><span className="badge badge-advice">{o.delivery_status}</span></td>
                     <td>
-                      <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '0.72rem' }}>
-                        {o.courier_status || '—'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '0.72rem' }}>
+                          {o.courier_status || '—'}
+                        </span>
+                        <button
+                          className="btn btn-secondary btn-xs"
+                          title="View Full Courier Milestone History"
+                          onClick={() => handleOpenHistory(o)}
+                          style={{ padding: '2px 7px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        >
+                          📜 History
+                        </button>
+                      </div>
                     </td>
                     <td style={{ color: 'var(--text-primary)', fontSize: '0.78rem', maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word' }}>
                       {o.notes ? <span style={{ background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.2)' }}>{o.notes}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -207,7 +241,84 @@ export default function AdviceMonitor() {
           </div>
         </div>
       )}
+
+      {/* Courier Tracking Milestone Timeline Modal */}
+      {historyModalOrder && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="modal-content" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>📜 Courier Milestone Timeline</h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Tracking: <strong style={{ color: 'var(--brand)' }}>{historyModalOrder.tracking_number}</strong> ({historyModalOrder.customer_name})
+                </p>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setHistoryModalOrder(null)}>✕</button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: 6 }}>
+              {historyLoading ? (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                  <span className="loading-spinner"></span> Fetching courier tracking history...
+                </div>
+              ) : historyData.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                  No detailed tracking events found for this parcel.
+                </div>
+              ) : (
+                <div style={{ position: 'relative', paddingLeft: 24 }}>
+                  {/* Vertical Timeline Bar */}
+                  <div style={{ position: 'absolute', left: 8, top: 10, bottom: 10, width: 2, background: 'var(--border)' }} />
+
+                  {historyData.map((item, idx) => {
+                    const msgLower = (item.message || '').toLowerCase();
+                    const isAttempt = msgLower.includes('attempt') || msgLower.includes('hcr') || msgLower.includes('cna') || msgLower.includes('ica');
+                    const isReview = msgLower.includes('review') || msgLower.includes('advice');
+                    const isLatest = idx === historyData.length - 1;
+
+                    let dotBg = isLatest ? '#6366f1' : isReview ? '#f59e0b' : isAttempt ? '#ef4444' : '#10b981';
+
+                    return (
+                      <div key={idx} style={{ position: 'relative', marginBottom: 18 }}>
+                        {/* Timeline Circle Node */}
+                        <div style={{
+                          position: 'absolute',
+                          left: -20,
+                          top: 4,
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          background: dotBg,
+                          boxShadow: isLatest ? `0 0 10px ${dotBg}` : 'none'
+                        }} />
+
+                        <div style={{ background: isLatest ? 'rgba(99,102,241,0.08)' : 'var(--bg-card)', border: isLatest ? '1px solid rgba(99,102,241,0.3)' : '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: isLatest ? 700 : 500, color: isAttempt ? '#f87171' : isReview ? '#fbbf24' : 'var(--text-primary)' }}>
+                              {item.message}
+                            </span>
+                            {item.dateTime && (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                {new Date(item.dateTime).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 16, pt: 12, borderTop: '1px solid var(--border)', textAlign: 'right' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setHistoryModalOrder(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
 

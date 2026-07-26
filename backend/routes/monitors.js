@@ -280,6 +280,64 @@ const handleCourierAction = async (req, res) => {
 router.post('/postex-action', handleCourierAction);
 router.post('/courier-action', handleCourierAction);
 
+// GET /api/monitors/tracking-history?store_id=1&tracking_number=20120050025388
+router.get('/tracking-history', async (req, res) => {
+  const { store_id, tracking_number } = req.query;
+  if (!store_id || !tracking_number) return res.status(400).json({ error: 'store_id and tracking_number required' });
+
+  const order = db.prepare('SELECT courier FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
+  const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+  if (!store) return res.status(404).json({ error: 'Store not found' });
+
+  const courierName = order ? (order.courier || 'PostEx') : 'PostEx';
+  const isPostEx = courierName.toLowerCase().includes('postex');
+
+  if (isPostEx) {
+    if (!store.postex_token) return res.status(400).json({ error: 'PostEx token not configured' });
+
+    try {
+      const response = await fetch(`https://api.postex.pk/services/integration/api/order/v1/track-order/${encodeURIComponent(String(tracking_number).trim())}`, {
+        method: 'GET',
+        headers: { 'token': store.postex_token, 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        return res.status(400).json({ error: `PostEx API returned ${response.status}` });
+      }
+
+      const data = await response.json();
+      const rawHistory = data?.dist?.transactionStatusHistory 
+        || data?.transactionStatusHistory 
+        || data?.data?.transactionStatusHistory 
+        || data?.dist?.trackingHistory 
+        || data?.trackingHistory 
+        || [];
+
+      const formattedHistory = rawHistory.map(h => ({
+        message: h.transactionStatusMessage || h.statusMessage || h.message || h.status || 'Event Recorded',
+        dateTime: h.dateTime || h.date || h.timestamp || h.updatedAt || null
+      }));
+
+      return res.json({
+        success: true,
+        courier: 'PostEx',
+        trackingNumber: tracking_number,
+        currentStatus: data?.dist?.transactionStatusMessage || data?.transactionStatusMessage || null,
+        history: formattedHistory
+      });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  } else {
+    return res.json({
+      success: true,
+      courier: courierName,
+      trackingNumber: tracking_number,
+      history: []
+    });
+  }
+});
+
 // GET /api/monitors/sync-audit?store_id=1
 router.get('/sync-audit', (req, res) => {
   const { store_id, limit = 100 } = req.query;
