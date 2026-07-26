@@ -627,7 +627,6 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/', label: 'Dashboard', icon: '🏠' },
     { id: '/search', label: 'Command Center', icon: '🔍' },
     { id: '/returns', label: 'Unified Returns', icon: '↩️' },
-    { id: '/whatsapp-portal', label: 'WA Live Chat', icon: '💬' },
     { id: '/whatsapp-bot', label: 'WhatsApp Bot', icon: '🤖' },
     { id: '/whatsapp-templates', label: 'WA Templates', icon: '✍️' },
     { id: '/finance', label: 'Finance Engine', icon: '💰' },

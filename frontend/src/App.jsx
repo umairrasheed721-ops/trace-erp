@@ -58,7 +58,6 @@ const TemplateManager = lazyWithRetry(() => import('./pages/TemplateManager'), '
 
 const PayoutReconciler = lazyWithRetry(() => import('./pages/PayoutReconciler'), 'PayoutReconciler')
 const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'TrackingPortal')
-const WhatsAppPortal = lazyWithRetry(() => import('./pages/WhatsAppPortal'), 'WhatsAppPortal')
 const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'ReviewsManager')
 
 function AppContent() {
@@ -138,7 +137,6 @@ function AppContent() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/search" element={<SearchTool />} />
                   <Route path="/returns" element={<ReturnsManager />} />
-                  <Route path="/whatsapp-portal" element={<WhatsAppPortal />} />
                   <Route path="/whatsapp-bot" element={<WhatsAppBot />} />
                   <Route path="/whatsapp-templates" element={<TemplateManager />} />
                   <Route path="/finance" element={<FinanceManager />} />
