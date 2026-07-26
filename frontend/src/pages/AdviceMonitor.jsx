@@ -113,7 +113,7 @@ export default function AdviceMonitor() {
                 <th>Customer</th>
                 <th>ERP Status</th>
                 <th>Courier Raw Status</th>
-                <th>Courier Note</th>
+                <th>Order Notes</th>
                 <th>Price</th>
                 <th>Product</th>
                 <th>Courier Action</th>
@@ -137,7 +137,9 @@ export default function AdviceMonitor() {
                         {o.courier_status || '—'}
                       </span>
                     </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.75rem', maxWidth: 180 }} className="truncate">{o.notes || '—'}</td>
+                    <td style={{ color: 'var(--text-primary)', fontSize: '0.78rem', maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {o.notes ? <span style={{ background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.2)' }}>{o.notes}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    </td>
                     <td style={{ fontWeight: 600 }}>Rs {parseInt(o.price || 0).toLocaleString()}</td>
                     <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 160 }} className="truncate">{o.product_titles || '—'}</td>
                     <td>
