@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
@@ -36,6 +36,7 @@ export default function SearchTool() {
   const [activeRowId, setActiveRowId] = useState(null)
   const canSeeFinancials = user?.role === 'admin'
   const location = useLocation()
+  const navigate = useNavigate()
   const [allOrders, setAllOrders] = useState([])
   const [backlogDates, setBacklogDates] = useState([])
   const [loading, setLoading] = useState(false)
@@ -1020,55 +1021,10 @@ export default function SearchTool() {
    * @param {string} newKeyword - Customer search keyword (phone number or email).
    */
   const triggerCustomerOrdersSearch = useCallback((newKeyword) => {
-    setLoading(true);
-    isCustomerSearchRef.current = true;
-    lastFetchedUrlRef.current = '';
-    
-    // Reset local UI filter states without firing redundant empty API queries
-    setPreset('All Time');
-    setStatus('All Statuses');
-    setCustomStart('');
-    setCustomEnd('');
-    const emptyColFilters = {
-      ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
-    };
-    setColFilters(emptyColFilters);
-    setDebouncedColFilters(emptyColFilters);
-
-    const inputEl = searchInputRef.current;
-    if (inputEl) {
-      inputEl.focus();
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-      nativeInputValueSetter.call(inputEl, newKeyword);
-      const event = new Event('input', { bubbles: true });
-      inputEl.dispatchEvent(event);
-    } else {
-      setKeyword(newKeyword);
-    }
-    setDebouncedKeyword(newKeyword);
-    console.log('📡 [SearchTool] Imperatively triggering search for customer keyword:', newKeyword);
-    
-    setPage(1);
-    setGlobalSearch(true);
-    fetchOrders({
-      preset: 'All Time',
-      status: 'All Statuses',
-      customStart: '',
-      customEnd: '',
-      keyword: newKeyword,
-      colFilters: emptyColFilters,
-      isRefresh: true,
-      wasProgrammatic: true,
-      clearKeyword: false,
-      clearColFilters: true,
-      globalSearch: true
-    });
-
-    setTimeout(() => {
-      isCustomerSearchRef.current = false;
-      console.log('📡 [SearchTool] Resetting isCustomerSearchRef after stabilization');
-    }, 600);
-  }, [fetchOrders]);
+    if (!newKeyword) return;
+    console.log('📡 [SearchTool] Navigating to customer search for keyword:', newKeyword);
+    navigate(`/search?q=${encodeURIComponent(newKeyword)}`);
+  }, [navigate]);
 
   const isBacklogOrder = (o) => {
     const status = (o.delivery_status || '').toLowerCase()
@@ -1229,37 +1185,52 @@ export default function SearchTool() {
   // Apply drill-down state from Reports page or URL parameters
   useEffect(() => {
     const params = new URLSearchParams(location.search)
-    const urlQuery = params.get('q') || params.get('search') || params.get('tracking')
+    const urlQuery = params.get('q') || params.get('search') || params.get('tracking') || params.get('order') || params.get('phone')
     const stateQuery = location.state?.keyword
     const targetQuery = urlQuery || stateQuery
 
     if (targetQuery) {
-      setPreset('All Time')
-      setStatus('All Statuses')
-      setKeyword(targetQuery)
-      setPage(1)
-      setGlobalSearch(true)
+      const cleanKw = targetQuery.trim();
+      console.log('📡 [SearchTool] Target search query detected:', cleanKw);
+      setPreset('All Time');
+      setStatus('All Statuses');
+      setCustomStart('');
+      setCustomEnd('');
+      setKeyword(cleanKw);
+      setDebouncedKeyword(cleanKw);
+      setPage(1);
+      setGlobalSearch(true);
+      const emptyColFilters = {
+        ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+      };
+      setColFilters(emptyColFilters);
+      setDebouncedColFilters(emptyColFilters);
+
+      if (searchInputRef.current) {
+        searchInputRef.current.value = cleanKw;
+      }
+
       fetchOrders({
         preset: 'All Time',
         status: 'All Statuses',
         customStart: '',
         customEnd: '',
-        keyword: targetQuery,
-        colFilters: { ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' },
+        keyword: cleanKw,
+        colFilters: emptyColFilters,
         isRefresh: true,
         wasProgrammatic: true,
         clearKeyword: false,
         clearColFilters: true,
         globalSearch: true
-      })
+      });
     } else if (location.state) {
-      const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state
-      if (p) setPreset(p)
-      if (cs) setCustomStart(cs)
-      if (ce) setCustomEnd(ce)
-      if (s) setStatus(s)
+      const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state;
+      if (p) setPreset(p);
+      if (cs) setCustomStart(cs);
+      if (ce) setCustomEnd(ce);
+      if (s) setStatus(s);
     }
-  }, [location.state, location.search, fetchOrders])
+  }, [location.state, location.search, fetchOrders]);
 
   const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')
@@ -1299,6 +1270,14 @@ export default function SearchTool() {
    */
   useEffect(() => {
     if (!activeStoreId) return;
+
+    // Skip background filter watcher if URL query parameter is present
+    const params = new URLSearchParams(location.search);
+    const hasUrlQuery = params.get('q') || params.get('search') || params.get('tracking') || params.get('order') || params.get('phone');
+    if (hasUrlQuery) {
+      console.log('📡 [SearchTool] Skipping background filter watcher because URL search query is active');
+      return;
+    }
 
     // Skip trigger if clear sequence is pending
     if (isClearingStageRef.current === 'pending') {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getStatusColor } from '../utils/orderUtils'
 
 const getStoreDisplayName = (o) => {
@@ -12,6 +13,7 @@ const getStoreDisplayName = (o) => {
 }
 
 export default function CustomerHistoryModal({ phone, email, name, onClose, onOpenAllOrders }) {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -120,9 +122,11 @@ export default function CustomerHistoryModal({ phone, email, name, onClose, onOp
                   const targetKeyword = (phone && phone !== 'null' && phone !== 'undefined') ? phone : (email && email !== 'null' && email !== 'undefined') ? email : '';
                   onClose();
                   if (targetKeyword) {
-                    setTimeout(() => {
+                    if (onOpenAllOrders) {
                       onOpenAllOrders(targetKeyword);
-                    }, 50);
+                    } else {
+                      navigate(`/search?q=${encodeURIComponent(targetKeyword)}`);
+                    }
                   }
                 }}
               >
