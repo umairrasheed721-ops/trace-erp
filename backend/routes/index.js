@@ -75,7 +75,6 @@ router.use('/api/scheduler', schedulerRoutes);
 router.use('/api/customer-success', customerSuccessRoutes);
 router.use('/api/whatsapp-governance', whatsappGovernanceRoutes);
 router.use('/api/settings', settingsRoutes);
-router.use('/api/system', systemRoutes);
 router.use('/api/cities', citiesRoutes);
 router.use('/api/bulk', bulkRoutes);
 router.use('/api/postex', postexRoutes);
