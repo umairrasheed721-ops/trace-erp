@@ -137,7 +137,8 @@ export default function SearchTool() {
    * Supports overrides for immediate clears/resets.
    */
   const fetchOrders = useCallback(async (options = {}) => {
-    if (!activeStoreId) {
+    const storeId = activeStoreId || parseInt(localStorage.getItem('trace_active_store_id')) || 1;
+    if (!storeId) {
       setLoading(false);
       return;
     }
@@ -147,10 +148,10 @@ export default function SearchTool() {
 
     const isGlobal = options.hasOwnProperty('globalSearch')
       ? options.globalSearch
-      : (wasProgrammatic ? globalSearch : false);
+      : globalSearch;
 
-    if (!wasProgrammatic && !options.hasOwnProperty('globalSearch')) {
-      setGlobalSearch(false);
+    if (options.hasOwnProperty('globalSearch')) {
+      setGlobalSearch(options.globalSearch);
     }
     
     // Choose source of values (accept override parameters for immediate/clear runs)
@@ -205,7 +206,7 @@ export default function SearchTool() {
     const sCol = backendSortMap[sortKey] || 'created_timestamp';
 
     const globalSearchParam = isGlobal ? '&global_search=true' : '';
-    const urlWithoutTimestamp = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}`;
+    const urlWithoutTimestamp = `/api/orders?store_id=${storeId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}`;
 
     if (!isRefresh && !wasProgrammatic && urlWithoutTimestamp === lastFetchedUrlRef.current) {
       console.log('📡 [SearchTool] Skipping redundant fetch for URL:', urlWithoutTimestamp);
@@ -216,7 +217,7 @@ export default function SearchTool() {
     lastFetchedUrlRef.current = urlWithoutTimestamp;
     setLoading(true);
 
-    const url = `/api/orders?store_id=${activeStoreId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}&t=${Date.now()}`;
+    const url = `/api/orders?store_id=${storeId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}&t=${Date.now()}`;
 
     console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
     
