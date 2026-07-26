@@ -1216,18 +1216,15 @@ export default function SearchTool() {
     const targetQuery = urlQuery || stateQuery
 
     if (targetQuery) {
-      isProgrammaticRef.current = true
-      setKeyword(targetQuery)
-    }
-
-    if (location.state) {
+      triggerCustomerOrdersSearch(targetQuery)
+    } else if (location.state) {
       const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state
       if (p) setPreset(p)
       if (cs) setCustomStart(cs)
       if (ce) setCustomEnd(ce)
       if (s) setStatus(s)
     }
-  }, [location.state, location.search])
+  }, [location.state, location.search, triggerCustomerOrdersSearch])
 
   const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')
