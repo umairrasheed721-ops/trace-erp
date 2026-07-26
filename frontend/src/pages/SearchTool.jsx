@@ -1216,7 +1216,24 @@ export default function SearchTool() {
     const targetQuery = urlQuery || stateQuery
 
     if (targetQuery) {
-      triggerCustomerOrdersSearch(targetQuery)
+      setPreset('All Time')
+      setStatus('All Statuses')
+      setKeyword(targetQuery)
+      setPage(1)
+      setGlobalSearch(true)
+      fetchOrders({
+        preset: 'All Time',
+        status: 'All Statuses',
+        customStart: '',
+        customEnd: '',
+        keyword: targetQuery,
+        colFilters: { ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: '' },
+        isRefresh: true,
+        wasProgrammatic: true,
+        clearKeyword: false,
+        clearColFilters: true,
+        globalSearch: true
+      })
     } else if (location.state) {
       const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state
       if (p) setPreset(p)
@@ -1224,7 +1241,7 @@ export default function SearchTool() {
       if (ce) setCustomEnd(ce)
       if (s) setStatus(s)
     }
-  }, [location.state, location.search, triggerCustomerOrdersSearch])
+  }, [location.state, location.search, fetchOrders])
 
   const [savedViews, setSavedViews] = useState([])
   const [selectedView, setSelectedView] = useState('')

@@ -155,12 +155,9 @@ export default function AdviceMonitor() {
                   <tr key={o.id}>
                     <td className="font-mono" style={{ fontSize: '0.75rem' }}>
                       <div style={{ color: 'var(--brand)', fontWeight: 600, fontSize: '0.78rem' }}>{o.tracking_number}</div>
-                      <button
+                      <Link
+                        to={`/search?q=${encodeURIComponent(o.tracking_number)}`}
                         className="btn btn-secondary btn-xs"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          navigate(`/search?q=${encodeURIComponent(o.tracking_number)}`, { state: { keyword: o.tracking_number } })
-                        }}
                         title="Open this order in Command Center"
                         style={{
                           marginTop: 4,
@@ -173,11 +170,11 @@ export default function AdviceMonitor() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 3,
-                          cursor: 'pointer'
+                          textDecoration: 'none'
                         }}
                       >
                         ⚡ Command Center ↗
-                      </button>
+                      </Link>
                     </td>
                     <td>{o.customer_name}</td>
                     <td><span className="badge badge-advice">{o.delivery_status}</span></td>
