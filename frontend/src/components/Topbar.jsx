@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import SyncProgressCapsule from './SyncProgressCapsule'
-import SyncButtons from './SyncButtons'
 
 export default function Topbar() {
   const { 
@@ -62,9 +61,6 @@ export default function Topbar() {
         </div>
 
         <div className="topbar-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <SyncButtons />
-
-          <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 8px', opacity: 0.5 }}></div>
 
           {/* 🔔 NOTIFICATION HUB */}
           <div style={{ position: 'relative' }} ref={notificationRef}>
