@@ -465,9 +465,10 @@ module.exports = function schedulerInit() {
     });
   });
 
-  // Fire sniper, follow-ups & feedback once on boot (after 60s delay to let bot connect)
+  // Fire tracking sync, sniper, follow-ups & feedback once on boot (after 5s delay)
   setTimeout(async () => {
     await runMultiTenant('boot_initial_checks', async (tenantId) => {
+      try { console.log('🚚 [BOOT] Running initial tracking sync on startup...'); await runDynamicScheduler(); } catch(e) { console.error('Boot tracking sync error:', e.message); }
       try { await runSniperScan(); } catch(e) {}
       try {
         const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
@@ -480,7 +481,7 @@ module.exports = function schedulerInit() {
         await checkAndSendPostDeliveryFeedback(db, bot);
       } catch(e) {}
     });
-  }, 60000);
+  }, 5000);
 
   // 16. Every day at 10:00 AM PKT (5:00 AM UTC): Send review request emails
   cron.schedule('0 5 * * *', async () => {
