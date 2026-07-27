@@ -20,14 +20,14 @@ function chunks(arr, size) {
 
 async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   const { id: storeId, instaworld_key, instaworld_key_backup, instaworld_track_url } = store;
-  if (!instaworld_key) {
+  if (!instaworld_key && !instaworld_key_backup && !store.instaworld_key_3) {
     console.log(`⚠️ Instaworld: No key for store ${store.shop_domain}`);
     return { updated: 0, logs: [{ id: 'CONFIG', status: 'FAILED', message: 'No Instaworld Key', details: 'Check store settings' }], failed: 1 };
   }
 
-  let trackUrl = instaworld_track_url || 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
-  if (trackUrl.includes('one.instaworld.pk/track')) {
-    trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+  let trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+  if (instaworld_track_url && !instaworld_track_url.includes('app.instaworld.pk') && !instaworld_track_url.includes('one.instaworld.pk/track')) {
+    trackUrl = instaworld_track_url;
   }
   const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
 
@@ -87,22 +87,25 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
       const data = await res.json();
       let rawStatus = null;
+      let courierName = null;
 
-      if (Array.isArray(data) && data.length > 0) {
-        rawStatus = data[data.length - 1]?.status || data[data.length - 1]?.statusDescription;
-      } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-        rawStatus = data.data[data.data.length - 1]?.status;
+      let historyArray = null;
+      if (Array.isArray(data)) {
+        historyArray = data;
+      } else if (Array.isArray(data?.tracking_history)) {
+        historyArray = data.tracking_history;
+      } else if (Array.isArray(data?.data)) {
+        historyArray = data.data;
+      }
+
+      if (historyArray && historyArray.length > 0) {
+        const lastEvent = historyArray[historyArray.length - 1];
+        rawStatus = lastEvent?.status || lastEvent?.statusDescription || lastEvent?.status_description;
+        courierName = lastEvent?.courier_name || lastEvent?.vendor_name || courierName;
       } else if (data?.status) {
         rawStatus = data.status;
       }
 
-      let courierName = null;
-      if (Array.isArray(data) && data.length > 0) {
-        courierName = data[data.length - 1]?.courier_name || data[data.length - 1]?.vendor_name;
-      } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-        courierName = data.data[data.data.length - 1]?.courier_name || data.data[data.data.length - 1]?.vendor_name;
-      }
-      
       if (!courierName && order.tracking_number) {
         const tn = String(order.tracking_number).toUpperCase();
         if (tn.startsWith('LE') || tn.startsWith('LCS')) courierName = 'Leopards';
@@ -124,18 +127,12 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
 
       // Extract status date from Instaworld / Leopards / TCS response
       let statusDate = null;
-      let lastEvent = null;
-      if (Array.isArray(data) && data.length > 0) {
-        lastEvent = data[data.length - 1];
-      } else if (data?.data && Array.isArray(data.data) && data.data.length > 0) {
-        lastEvent = data.data[data.data.length - 1];
-      } else {
-        lastEvent = data;
-      }
-      
+      let lastEvent = (historyArray && historyArray.length > 0) ? historyArray[historyArray.length - 1] : data;
+
       if (lastEvent) {
         statusDate = lastEvent.dateTime 
           || lastEvent.dateTimeString 
+          || lastEvent.date_time
           || lastEvent.status_date 
           || lastEvent.status_datetime 
           || lastEvent.time 
@@ -153,15 +150,15 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
         }
       }
 
-      let historyArray = [];
-      if (Array.isArray(data)) {
-        historyArray = data;
-      } else if (data?.data && Array.isArray(data.data)) {
-        historyArray = data.data;
+      if (!historyArray || historyArray.length === 0) {
+        if (Array.isArray(data)) historyArray = data;
+        else if (Array.isArray(data?.tracking_history)) historyArray = data.tracking_history;
+        else if (Array.isArray(data?.data)) historyArray = data.data;
+        else historyArray = [];
       }
 
       const mappedHistory = historyArray.map(item => ({
-        dateTime: item.dateTime || item.dateTimeString || item.status_date || item.status_datetime || item.time || item.timestamp || item.created_at || null,
+        dateTime: item.dateTime || item.dateTimeString || item.date_time || item.status_date || item.status_datetime || item.time || item.timestamp || item.created_at || null,
         transactionStatus: item.status || item.statusDescription || item.activity || item.remarks || item.description || ''
       })).filter(item => item.transactionStatus);
 

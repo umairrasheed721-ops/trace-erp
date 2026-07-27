@@ -463,5 +463,19 @@ module.exports = [
     } catch (e) {
       console.error('Failed to auto-heal return status orders in migration:', e.message);
     }
+  },
+
+  // 20. Auto-heal legacy instaworld_track_url in stores table
+  (db) => {
+    try {
+      db.prepare(`
+        UPDATE stores 
+        SET instaworld_track_url = 'https://one-be.instaworld.pk/logistics/v1/trackShipment'
+        WHERE instaworld_track_url LIKE '%app.instaworld.pk%' OR instaworld_track_url IS NULL OR instaworld_track_url = ''
+      `).run();
+      console.log('✅ [Migration] Auto-healed legacy Instaworld tracking URLs in stores table.');
+    } catch (e) {
+      console.error('Failed to update instaworld_track_url in migration:', e.message);
+    }
   }
 ];
