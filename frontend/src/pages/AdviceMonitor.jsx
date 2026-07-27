@@ -113,10 +113,30 @@ export default function AdviceMonitor() {
     return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
   }
 
-  // Categorize advice orders strictly by category tag
-  const adviceRequiredOrders = orders.filter(o => o.advice_category === 'advice_required')
-  const firstAttemptOrders = orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1))
-  const immediateReturnOrders = orders.filter(o => o.advice_category === 'immediate_return')
+  // State to toggle SLA Expired (>48h) orders
+  const [showExpired, setShowExpired] = useState(false)
+
+  // Categorize & filter advice orders strictly by category tag & SLA status (<48h by default)
+  const filterBySla = (list) => {
+    if (showExpired) return list
+    return list.filter(o => {
+      const rawDate = o.status_date || o.order_date
+      if (!rawDate) return true
+      try {
+        const dateStr = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T') + '+05:00'
+        const parsedMs = Date.parse(dateStr)
+        if (!isNaN(parsedMs)) {
+          const elapsedHours = (Date.now() - parsedMs) / 3600000
+          return elapsedHours <= 48
+        }
+      } catch (_) {}
+      return true
+    })
+  }
+
+  const adviceRequiredOrders = filterBySla(orders.filter(o => o.advice_category === 'advice_required'))
+  const firstAttemptOrders = filterBySla(orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1)))
+  const immediateReturnOrders = filterBySla(orders.filter(o => o.advice_category === 'immediate_return'))
 
   let displayOrders = []
   if (activeTab === 'advice_required') displayOrders = adviceRequiredOrders
@@ -243,6 +263,16 @@ export default function AdviceMonitor() {
               📱 Bulk WhatsApp ({displayOrders.length})
             </button>
           )}
+
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', background: 'var(--bg-card)', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <input
+              type="checkbox"
+              checked={showExpired}
+              onChange={(e) => setShowExpired(e.target.checked)}
+              style={{ cursor: 'pointer', accentColor: 'var(--brand)' }}
+            />
+            Show Expired (&gt;48h)
+          </label>
 
           <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
             {loading ? <span className="loading-spinner"></span> : '🔄'} Refresh
