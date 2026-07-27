@@ -65,7 +65,7 @@ async function instaworldFetch(targetUrl, options = {}) {
       if (parsed.tracking_number != null && parsed.api_key != null) {
         const h = { 'Content-Type': 'application/json' };
         if (secret) h['X-Instaworld-Proxy-Secret'] = secret;
-        return fetch(proxy, {
+        const proxyRes = await fetch(proxy, {
           method: 'POST',
           headers: h,
           body: JSON.stringify({
@@ -74,10 +74,16 @@ async function instaworldFetch(targetUrl, options = {}) {
           }),
           timeout: fetchOpts.timeout,
         });
+        if (proxyRes.ok) {
+          return proxyRes;
+        }
+        console.warn(`⚠️ GAS Proxy returned HTTP ${proxyRes.status}. Falling back to direct Instaworld API...`);
       }
-    } catch (_) {
-      /* fall through */
+    } catch(e) {
+      console.warn(`⚠️ GAS Proxy error (${e.message}). Falling back to direct Instaworld API...`);
     }
+
+    return fetch(targetUrl, fetchOpts);
   }
 
   // Simple proxy cannot relay bookOrder / cancelOrder / getCities — avoid POSTing relay JSON the script won't understand.
