@@ -124,6 +124,97 @@ export default function AdviceMonitor() {
   else if (activeTab === 'immediate_return') displayOrders = immediateReturnOrders
   else if (activeTab === 'reattempts') displayOrders = reattemptOrders
 
+  // Bulk WhatsApp Modal State
+  const [showBulkWaModal, setShowBulkWaModal] = useState(false)
+
+  const getSlaBadge = (order) => {
+    const rawDate = order.status_date || order.order_date
+    if (!rawDate) return null
+
+    let elapsedHours = 0
+    try {
+      const dateStr = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T') + '+05:00'
+      const parsedMs = Date.parse(dateStr)
+      if (!isNaN(parsedMs)) {
+        elapsedHours = (Date.now() - parsedMs) / 3600000
+      }
+    } catch (_) {}
+
+    const remainingSla = Math.max(0, Math.floor(24 - elapsedHours))
+    
+    if (remainingSla > 0) {
+      return (
+        <span
+          className="badge"
+          style={{
+            background: 'rgba(245, 158, 11, 0.15)',
+            color: '#f59e0b',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 3,
+            marginTop: 4
+          }}
+          title={`${Math.round(elapsedHours)}h elapsed since status update`}
+        >
+          ⏳ {remainingSla}h SLA Left
+        </span>
+      )
+    }
+
+    return (
+      <span
+        className="badge"
+        style={{
+          background: 'rgba(239, 68, 68, 0.15)',
+          color: '#ef4444',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          fontSize: '0.68rem',
+          fontWeight: 800,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          marginTop: 4
+        }}
+        title="More than 24h elapsed - Return risk!"
+      >
+        🚨 SLA Expired
+      </span>
+    )
+  }
+
+  const exportViolationReport = () => {
+    const listToExport = immediateReturnOrders.length > 0 ? immediateReturnOrders : orders.filter(o => o.advice_category === 'immediate_return')
+    if (listToExport.length === 0) {
+      addToast('No violation orders to export', 'info')
+      return
+    }
+
+    const headers = ['Tracking Number', 'Customer Name', 'Phone', 'Courier', 'Courier Raw Status', 'Status Date', 'Violation Details']
+    const rows = listToExport.map(o => [
+      `"${o.tracking_number}"`,
+      `"${(o.customer_name || '').replace(/"/g, '""')}"`,
+      `"${o.phone || ''}"`,
+      `"${o.courier || ''}"`,
+      `"${(o.courier_status || o.delivery_status || '').replace(/"/g, '""')}"`,
+      `"${o.status_date || o.order_date || ''}"`,
+      `"Direct Return Initiated on 1st Attempt without Shipper Advice Notice"`
+    ])
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `Courier_Violation_Escalation_${new Date().toISOString().slice(0,10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    addToast(`📄 Exported ${listToExport.length} violation orders to CSV`, 'success')
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -131,9 +222,32 @@ export default function AdviceMonitor() {
           <h2>🧠 Advice Monitor</h2>
           <p>Real-time Shipper Advice tracking & 1st attempt failure alerts</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
-          {loading ? <span className="loading-spinner"></span> : '🔄'} Refresh
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {activeTab === 'immediate_return' && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={exportViolationReport}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'rgba(239, 68, 68, 0.4)', color: '#ef4444' }}
+              title="Export CSV for Courier Account Manager Penalty Waiver"
+            >
+              📄 Export Dispute Sheet (.csv)
+            </button>
+          )}
+
+          {displayOrders.length > 0 && activeTab !== 'reattempts' && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setShowBulkWaModal(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#25D366', borderColor: '#25D366', color: '#fff' }}
+            >
+              📱 Bulk WhatsApp ({displayOrders.length})
+            </button>
+          )}
+
+          <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
+            {loading ? <span className="loading-spinner"></span> : '🔄'} Refresh
+          </button>
+        </div>
       </div>
 
       {/* Tabs Switcher */}
@@ -239,7 +353,12 @@ export default function AdviceMonitor() {
                       </Link>
                     </td>
                     <td>{o.customer_name}</td>
-                    <td><span className="badge badge-advice">{o.delivery_status}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <span className="badge badge-advice">{o.delivery_status}</span>
+                        {getSlaBadge(o)}
+                      </div>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '0.72rem' }}>
@@ -287,6 +406,62 @@ export default function AdviceMonitor() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Bulk WhatsApp Dispatch Modal */}
+      {showBulkWaModal && (
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="modal-content" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 650, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8, color: '#25D366' }}>
+                📱 Bulk WhatsApp Dispatcher ({displayOrders.length} Customers)
+              </h3>
+              <button className="btn btn-secondary btn-xs" onClick={() => setShowBulkWaModal(false)}>✕</button>
+            </div>
+            
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Click any customer line to open WhatsApp Web/App pre-filled message instantly:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {displayOrders.map((o, idx) => (
+                <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                      #{idx + 1}. {o.customer_name} <span style={{ opacity: 0.6, fontSize: '0.78rem' }}>({o.phone})</span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      📦 {o.tracking_number} • Status: {o.delivery_status} • Price: Rs {parseInt(o.price || 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <a
+                    href={getWhatsAppLink(o)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-sm"
+                    style={{ background: '#25D366', color: '#fff', border: 'none', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  >
+                    📱 Send WA ↗
+                  </a>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 20, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  const links = displayOrders.map(o => `${o.customer_name} (${o.phone}): ${getWhatsAppLink(o)}`).join('\n\n')
+                  navigator.clipboard.writeText(links)
+                  addToast('📋 All WhatsApp links copied to clipboard!', 'success')
+                }}
+              >
+                📋 Copy All WA Links
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowBulkWaModal(false)}>Close</button>
+            </div>
+          </div>
         </div>
       )}
 
