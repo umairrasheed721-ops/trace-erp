@@ -7,22 +7,32 @@ const { cancelInstaworldOrder } = require('../engines/instaworld');
 const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
 const ADVICE_KEYWORDS = [
   'shipper advice', 
-  'delivery under review'
+  'delivery under review',
+  'under review',
+  'refused',
+  'incomplete',
+  'not available',
+  'unreachable',
+  'wrong phone',
+  'address not found',
+  'consignee unavailable',
+  'attempt failed',
+  'failed attempt',
+  'undelivered',
+  'un-delivered',
+  'delivery failed'
 ];
 
 function isExcludedFromAdvice(courierStatus) {
   if (!courierStatus) return false;
   const statusLower = courierStatus.toLowerCase();
   if (
-    statusLower.includes('attempt made') ||
     statusLower.includes('return process') ||
     statusLower.includes('waiting for return') ||
     statusLower.includes('return to ') ||
     statusLower.includes('returned') ||
     statusLower.includes('out for return') ||
-    statusLower.includes('return received') ||
-    statusLower.includes('request for re-attempt') ||
-    statusLower.includes('reattempt requested')
+    statusLower.includes('return received')
   ) {
     return true;
   }
@@ -59,62 +69,16 @@ router.get('/stuck', (req, res) => {
       SELECT h.old_value, h.new_value, h.created_at, u.username
       FROM order_history h
       LEFT JOIN users u ON h.user_id = u.id
-      WHERE h.order_id = ? AND h.change_type IN ('TRACKING_UPDATE', 'MANUAL_EDIT')
-      ORDER BY h.id DESC
+      WHERE h.order_id = ? AND h.field_name = 'tracking_number'
+      ORDER BY h.created_at DESC
     `).all(o.id);
 
-    let tracking_update = null;
-    for (const h of history) {
-      try {
-        const oldVal = JSON.parse(h.old_value);
-        const newVal = JSON.parse(h.new_value);
-        if (oldVal && newVal && oldVal.tracking_number !== undefined && newVal.tracking_number !== undefined && oldVal.tracking_number !== newVal.tracking_number) {
-          tracking_update = {
-            old_tracking: oldVal.tracking_number,
-            new_tracking: newVal.tracking_number,
-            changed_at: h.created_at,
-            changed_by: h.username || 'Shopify Sync'
-          };
-          break;
-        }
-      } catch (e) {}
-    }
-
-    // Determine manual ID
-    const trackingLower = (o.tracking_number || '').toLowerCase();
-    const isManual = trackingLower.includes('@') || 
-                     trackingLower.includes('local') || 
-                     trackingLower.includes('exchange') || 
-                     trackingLower.includes('bus') || 
-                     trackingLower.includes('pvt') || 
-                     trackingLower.includes('deliver') || 
-                     trackingLower.includes('shop') || 
-                     trackingLower.includes('wholesale') || 
-                     trackingLower.includes('purchased') ||
-                     (trackingLower.length > 0 && !/^\d+$/.test(trackingLower) && !/^le\d+$/i.test(trackingLower));
-
-    // Dynamic insight classification
-    let insight_type = 'STUCK_TRANSIT';
-    const statusLower = (o.courier_status || o.delivery_status || '').toLowerCase();
-    
-    if (isManual) {
-      insight_type = 'MANUAL_ID';
-    } else if (statusLower.includes('returned') || statusLower.includes('rto') || statusLower === 'returned') {
-      insight_type = 'STUCK_RETURN';
-    } else if (statusLower === 'booked' || statusLower === 'confirmed') {
-      insight_type = 'PICKUP_PENDING';
-    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {
-      insight_type = 'ADVICE_REQUIRED';
-    }
-
-    return { 
-      ...o, 
-      hours_stuck: Math.floor(hours), 
-      days_stuck: Math.floor(hours / 24),
-      tracking_update,
-      insight_type
+    return {
+      ...o,
+      stuck_hours: Math.round(hours),
+      tracking_history_changes: history
     };
-  }).sort((a, b) => b.hours_stuck - a.hours_stuck);
+  }).sort((a, b) => b.stuck_hours - a.stuck_hours);
 
   res.json(stuckOrders);
 });
@@ -155,7 +119,7 @@ router.get('/advice', (req, res) => {
                           courierStatusLower.includes('out for return') ||
                           courierStatusLower.includes('waiting for return');
 
-    // 🚨 1st Attempt Immediate Return: Courier marked return on 1st attempt failure!
+    // ⚡ 1. 1st Attempt Immediate Return: Courier marked return on 1st attempt failure!
     if (isReturnStatus && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
@@ -166,15 +130,30 @@ router.get('/advice', (req, res) => {
     if (isReturnStatus) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
-    // 🎯 Explicit Shipper Advice Keyword Match
-    if (ADVICE_KEYWORDS.some(k => combinedStatus.includes(k))) {
+    // 🚨 2. Shipper Advice / Delivery Under Review Match
+    if (
+      deliveryStatusLower.includes('delivery under review') ||
+      deliveryStatusLower.includes('shipper advice') ||
+      courierStatusLower.includes('delivery under review') ||
+      courierStatusLower.includes('shipper advice') ||
+      courierStatusLower.includes('under review')
+    ) {
       o.advice_category = 'advice_required';
       adviceOrders.push(o);
       return;
     }
 
-    // 🔴 1st Attempt Failed
-    if (deliveryStatusLower.includes('refused') || deliveryStatusLower.includes('undelivered') || deliveryStatusLower.includes('failed')) {
+    // 🔴 3. 1st Attempt Failed (Refused, Incomplete address, Not available, Undelivered, Attempt Failed)
+    const isFailureReason = combinedStatus.includes('refused') ||
+                            combinedStatus.includes('incomplete') ||
+                            combinedStatus.includes('not available') ||
+                            combinedStatus.includes('unreachable') ||
+                            combinedStatus.includes('wrong phone') ||
+                            combinedStatus.includes('address') ||
+                            combinedStatus.includes('undelivered') ||
+                            combinedStatus.includes('failed');
+
+    if (isFailureReason) {
       if (failedCount <= 1) {
         o.advice_category = 'first_attempt';
         adviceOrders.push(o);
