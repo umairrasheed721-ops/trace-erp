@@ -79,10 +79,10 @@ router.get('/stuck', (req, res) => {
 
     // Check tracking number change history
     const history = db.prepare(`
-      SELECT h.old_value, h.new_value, h.created_at, u.username
+      SELECT h.old_value, h.new_value, h.created_at, h.change_type, u.username
       FROM order_history h
       LEFT JOIN users u ON h.user_id = u.id
-      WHERE h.order_id = ? AND h.field_name = 'tracking_number'
+      WHERE h.order_id = ? AND h.change_type IN ('TRACKING_UPDATE', 'MANUAL_EDIT')
       ORDER BY h.created_at DESC
     `).all(o.id);
 
