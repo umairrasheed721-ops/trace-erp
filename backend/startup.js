@@ -182,19 +182,6 @@ function runEarlyStartup() {
 
   const shutdown = () => {
     console.log('\n👋 Shutdown signal received. Closing resources gracefully...');
-    try {
-      const { sessions } = require('./engines/whatsapp_bot');
-      if (sessions) {
-        for (const [tenantId, botInstance] of sessions.entries()) {
-          if (botInstance.sock) {
-            console.log(`🔌 Closing WebSocket gracefully for tenant [${tenantId}]...`);
-            try { botInstance.sock.end(undefined); } catch(_) {}
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Failed to end bot sockets gracefully:', e.message);
-    }
 
     if (activeServer) {
       activeServer.close(() => {

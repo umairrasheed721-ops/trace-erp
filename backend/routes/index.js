@@ -39,7 +39,6 @@ const financeRoutes     = safeRequire('./finance',      'Finance');
 const reportsRoutes     = safeRequire('./reports',      'Reports');
 const usersRoutes       = safeRequire('./users',        'Users');
 const webhooksRoutes    = safeRequire('./webhooks',     'Webhooks');
-const whatsappRoutes    = safeRequire('./whatsapp',     'WhatsApp');
 const publicRoutes      = safeRequire('./public',       'Public');
 const templatesRoutes   = safeRequire('./templates',    'Templates');
 const statusMappingsRoutes = safeRequire('./status-mappings', 'StatusMappings');
@@ -47,7 +46,6 @@ const schedulerRoutes   = safeRequire('./scheduler',    'SchedulerAPI');
 const costManagerRoutes = safeRequire('./cost-manager', 'CostManager');
 const syncRoutes        = safeRequire('./sync',         'Sync');
 const customerSuccessRoutes = safeRequire('./customer-success', 'CustomerSuccess');
-const whatsappGovernanceRoutes = safeRequire('./whatsapp-governance', 'WhatsAppGovernance');
 const settingsRoutes    = safeRequire('./settings',     'Settings');
 const citiesRoutes      = require('./cities');
 const bulkRoutes        = require('./bulk_booking');
@@ -65,7 +63,6 @@ router.use('/api/finance', financeRoutes);
 router.use('/api/reports', reportsRoutes);
 router.use('/api/users', usersRoutes);
 router.use('/api/webhooks', webhooksRoutes);
-router.use('/api/whatsapp', whatsappRoutes);
 router.use('/api/public', publicRoutes);
 router.use('/api/templates', templatesRoutes);
 router.use('/api/status-mappings', statusMappingsRoutes);
@@ -73,7 +70,6 @@ router.use('/api/cost-manager', costManagerRoutes);
 router.use('/api/sync', syncRoutes);
 router.use('/api/scheduler', schedulerRoutes);
 router.use('/api/customer-success', customerSuccessRoutes);
-router.use('/api/whatsapp-governance', whatsappGovernanceRoutes);
 router.use('/api/settings', settingsRoutes);
 router.use('/api/cities', citiesRoutes);
 router.use('/api/bulk', bulkRoutes);
@@ -124,65 +120,9 @@ setInterval(() => {
 
 router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
 
-router.get('/api/fire-test', async (req, res) => {
-  try {
-    const bot = require('../engines/whatsapp_bot');
-    const sock = bot.sock;
-    if (!sock) {
-      return res.status(500).json({ error: 'WhatsApp bot is not connected. Socket is undefined.' });
-    }
-    await sock.sendMessage('923034070779@s.whatsapp.net', { 
-      text: "🤖 AUTOMATED SERVER TEST: Text pipeline is fully operational." 
-    });
-
-    const uploadsDir = path.join(DB_DIR, 'uploads');
-    
-    let latestMp4 = null;
-    if (fs.existsSync(uploadsDir)) {
-      const files = fs.readdirSync(uploadsDir);
-      let latestTime = 0;
-      files.forEach(file => {
-        if (file.endsWith('.mp4')) {
-          const filePath = path.join(uploadsDir, file);
-          try {
-            const stat = fs.statSync(filePath);
-            if (stat.mtimeMs > latestTime) {
-              latestTime = stat.mtimeMs;
-              latestMp4 = filePath;
-            }
-          } catch (statErr) {}
-        }
-      });
-    }
-
-    if (!latestMp4) {
-      return res.json({ 
-        success: true, 
-        message: "Text message fired, but no .mp4 voice notes were found in persistent storage uploads folder to test." 
-      });
-    }
-
-    await sock.sendMessage('923034070779@s.whatsapp.net', { 
-      audio: { url: latestMp4 }, 
-      mimetype: 'audio/mp4', 
-      ptt: true 
-    });
-
-    res.json({ success: true, message: `Test fired to 03034070779! Sent voice note: ${path.basename(latestMp4)}` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
-
-  let waBotStatus = 'UNKNOWN';
-  try {
-    const waBot = require.cache[require.resolve('../engines/whatsapp_bot')]?.exports;
-    waBotStatus = waBot ? waBot.getStatus().status : 'NOT_LOADED';
-  } catch (_) { waBotStatus = 'NOT_LOADED'; }
 
   let persistentErrors = [];
   try {
@@ -213,7 +153,6 @@ router.get('/api/admin/system-status', (req, res) => {
       percentUsed: ((mem.rss / 1024 / 1024) / 512 * 100).toFixed(1),
     },
     modules: moduleRegistry,
-    whatsappBot: waBotStatus,
     recentLogs: stats.logBuffer.slice(-100),
     recentErrors: stats.logBuffer.filter(l => l.level === 'ERROR').slice(-20),
     persistentErrors,

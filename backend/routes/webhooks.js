@@ -5,31 +5,7 @@ const { loadStatusMaps, applyMap } = require('../engines/tracking');
 const { fulfillShopifyOrder, syncSingleShopifyOrder } = require('../engines/shopify');
 const { broadcast } = require('../sse');
 
-function handlePostDeliveryFeedbackCheck(db, order) {
-  try {
-    const settings = db.prepare('SELECT enable_post_delivery_feedback FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get();
-    if (settings && settings.enable_post_delivery_feedback === 1) {
-      const existing = db.prepare('SELECT id FROM whatsapp_polls WHERE order_id = ? ORDER BY id DESC LIMIT 1').get(order.id);
-      if (existing) {
-        db.prepare("UPDATE whatsapp_polls SET erp_status = ?, shopify_synced = 0 WHERE id = ?").run('Trace: Delivered', existing.id);
-      } else {
-        const messageId = `post_delivery_${order.id}_${Date.now()}`;
-        let cleanPhone = order.phone || '';
-        cleanPhone = cleanPhone.replace('+', '').replace('-', '').replace(' ', '');
-        if (cleanPhone && !cleanPhone.includes('@')) {
-          cleanPhone = `${cleanPhone}@s.whatsapp.net`;
-        }
-        db.prepare(`
-          INSERT INTO whatsapp_polls (message_id, remote_jid, poll_name, poll_options, erp_status, order_id, shopify_synced)
-          VALUES (?, ?, ?, ?, ?, ?, 0)
-        `).run(messageId, cleanPhone || 'unknown@s.whatsapp.net', 'Post-Delivery Feedback', '[]', 'Trace: Delivered', order.id);
-      }
-      console.log(`[Webhook] Post-Delivery Feedback scheduled. Set erp_status = 'Trace: Delivered' for order ${order.id}`);
-    }
-  } catch (err) {
-    console.error('Failed to handle post-delivery feedback scheduling:', err.message);
-  }
-}
+
 
 // POST /api/webhooks/postex
 router.post('/postex', (req, res) => {
@@ -154,11 +130,7 @@ router.post('/postex', (req, res) => {
       }
     }
 
-    // Check for post-delivery feedback scheduling
-    const isDelivered = (transactionStatus === 'Delivered' || mappedStatus === 'Delivered');
-    if (isDelivered) {
-      handlePostDeliveryFeedbackCheck(db, order);
-    }
+
 
     // Broadcast the update in real-time to the frontend
     try {
@@ -275,44 +247,5 @@ router.post('/instaworld', (req, res) => {
 // POST /api/webhooks/shopify
 const handleShopifyWebhook = require('../webhooks/shopify');
 router.post('/shopify', handleShopifyWebhook);
-
-// POST /api/webhooks/whatsapp/portal-hook
-router.post('/whatsapp/portal-hook', async (req, res) => {
-  const authHeader = req.headers.auth || req.query.token;
-  if (authHeader !== 'tracepk') {
-    console.warn('⚠️ Unauthorized Portal Webhook Attempt (Token Mismatch)');
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const { msg } = req.body;
-  if (!msg) return res.status(400).json({ error: 'Missing msg payload' });
-
-  const tenantId = req.query.tenant_id || req.headers['x-tenant-id'] || req.tenantId || 'default';
-  
-  // Acknowledge immediately to prevent hanging webhooks and duplicate retries
-  res.json({ success: true });
-
-  try {
-    const { getBot } = require('../engines/whatsapp_bot');
-    const { processIncomingMessage } = require('../engines/whatsapp_message_processor');
-    const { db: tenantDb } = require('../db');
-    const tenantContext = require('../tenant-context');
-
-    const botInstance = getBot(tenantId);
-    
-    // Process in background under the correct AsyncLocalStorage tenant context
-    setImmediate(() => {
-      tenantContext.run(tenantId, async () => {
-        try {
-          await processIncomingMessage(botInstance, msg, botInstance.sock, tenantDb);
-        } catch (err) {
-          console.error(`❌ [Portal Webhook Background] Error processing message for tenant [${tenantId}]:`, err.stack || err.message);
-        }
-      });
-    });
-  } catch (err) {
-    console.error(`❌ [Portal Webhook] Error setting up background task:`, err.message);
-  }
-});
 
 module.exports = router;

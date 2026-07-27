@@ -64,7 +64,6 @@ app.use((req, res, next) => {
   if (req.path === '/api/auth/login') return next();
   if (req.path.startsWith('/api/webhooks/')) return next();
   if (req.path.startsWith('/api/public/')) return next();
-  if (req.path === '/api/whatsapp-governance/webhook/whatsapp') return next();
 
   // Media Proxy Route handles token from query parameter or authorization header
   if (req.path.startsWith('/api/media/')) {

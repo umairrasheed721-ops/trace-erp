@@ -6,7 +6,6 @@ import PaymentSummary from '@components/PaymentSummary';
 import CourierBooking from '@components/CourierBooking';
 import { useApp } from '@context/AppContext';
 import AddressVerificationPanel from '@components/EditOrderModal/AddressVerificationPanel';
-import WhatsAppChatPanel from '@components/EditOrderModal/WhatsAppChatPanel';
 
 export default function EditOrderModal({
   editingOrder,
@@ -560,28 +559,6 @@ export default function EditOrderModal({
             >
               <span>🚚</span>
               <span>Courier Logistics & Timeline</span>
-            </button>
-            <button 
-              type="button"
-              onClick={() => setActiveTab('whatsapp_chat')}
-              style={{ 
-                padding: '12px 20px', 
-                background: activeTab === 'whatsapp_chat' ? '#0f172a' : 'transparent', 
-                color: activeTab === 'whatsapp_chat' ? '#6366f1' : '#94a3b8', 
-                borderTopLeftRadius: 16, 
-                borderTopRightRadius: 16, 
-                border: activeTab === 'whatsapp_chat' ? '1px solid #334155' : 'none', 
-                borderBottom: 'none', 
-                fontWeight: 700, 
-                fontSize: '0.85rem', 
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
-            >
-              <span>💬</span>
-              <span>Live WhatsApp Chat</span>
             </button>
           </div>
         </OrderHeader>
@@ -1219,14 +1196,6 @@ export default function EditOrderModal({
               updateOrderField={updateOrderField}
               editingOrder={editingOrder}
               setEditingOrder={setEditingOrder}
-            />
-          )}
-
-          {/* TAB 4: Live WhatsApp Chat */}
-          {activeTab === 'whatsapp_chat' && (
-            <WhatsAppChatPanel
-              editingOrder={editingOrder}
-              management={management}
             />
           )}
 
