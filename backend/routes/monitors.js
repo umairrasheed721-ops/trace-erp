@@ -103,8 +103,8 @@ router.get('/advice', (req, res) => {
   orders.forEach(o => {
     if (blacklistSet.has(o.tracking_number)) return;
 
-    const deliveryStatusLower = (o.delivery_status || '').toLowerCase();
-    const courierStatusLower = (o.courier_status || '').toLowerCase();
+    const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
+    const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
     const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
 
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return;
@@ -126,38 +126,38 @@ router.get('/advice', (req, res) => {
       return;
     }
 
-    // Exclude general returns if not 1st attempt
     if (isReturnStatus) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
-    // 🚨 2. Shipper Advice / Delivery Under Review Match
-    if (
-      deliveryStatusLower.includes('delivery under review') ||
-      deliveryStatusLower.includes('shipper advice') ||
-      courierStatusLower.includes('delivery under review') ||
-      courierStatusLower.includes('shipper advice') ||
-      courierStatusLower.includes('under review')
-    ) {
-      o.advice_category = 'advice_required';
-      adviceOrders.push(o);
-      return;
-    }
+    // 🚨 2. All Shipper Advice / Action Required / Failed Attempt Matches
+    const isAdviceOrFailure = deliveryStatusLower.includes('delivery under review') ||
+                              deliveryStatusLower.includes('shipper advice') ||
+                              deliveryStatusLower.includes('under review') ||
+                              courierStatusLower.includes('delivery under review') ||
+                              courierStatusLower.includes('shipper advice') ||
+                              courierStatusLower.includes('under review') ||
+                              combinedStatus.includes('refused') ||
+                              combinedStatus.includes('incomplete') ||
+                              combinedStatus.includes('not available') ||
+                              combinedStatus.includes('unreachable') ||
+                              combinedStatus.includes('wrong phone') ||
+                              combinedStatus.includes('address') ||
+                              combinedStatus.includes('undelivered') ||
+                              combinedStatus.includes('failed');
 
-    // 🔴 3. 1st Attempt Failed (Refused, Incomplete address, Not available, Undelivered, Attempt Failed)
-    const isFailureReason = combinedStatus.includes('refused') ||
-                            combinedStatus.includes('incomplete') ||
-                            combinedStatus.includes('not available') ||
-                            combinedStatus.includes('unreachable') ||
-                            combinedStatus.includes('wrong phone') ||
-                            combinedStatus.includes('address') ||
-                            combinedStatus.includes('undelivered') ||
-                            combinedStatus.includes('failed');
-
-    if (isFailureReason) {
-      if (failedCount <= 1) {
+    if (isAdviceOrFailure) {
+      if (
+        deliveryStatusLower.includes('delivery under review') ||
+        deliveryStatusLower.includes('shipper advice') ||
+        courierStatusLower.includes('delivery under review') ||
+        courierStatusLower.includes('shipper advice') ||
+        courierStatusLower.includes('under review')
+      ) {
+        o.advice_category = 'advice_required';
+      } else {
         o.advice_category = 'first_attempt';
-        adviceOrders.push(o);
       }
+      adviceOrders.push(o);
     }
   });
 

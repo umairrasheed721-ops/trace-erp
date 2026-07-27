@@ -114,8 +114,8 @@ export default function AdviceMonitor() {
   }
 
   // Categorize advice orders by failed attempts & immediate return status
-  const adviceRequiredOrders = orders.filter(o => o.advice_category === 'advice_required')
-  const firstAttemptOrders = orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1))
+  const adviceRequiredOrders = orders.filter(o => o.advice_category === 'advice_required' || o.advice_category === 'first_attempt' || !o.advice_category)
+  const firstAttemptOrders = orders.filter(o => o.advice_category === 'first_attempt')
   const immediateReturnOrders = orders.filter(o => o.advice_category === 'immediate_return')
 
   let displayOrders = []
