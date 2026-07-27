@@ -119,7 +119,7 @@ router.get('/advice', (req, res) => {
                           courierStatusLower.includes('out for return') ||
                           courierStatusLower.includes('waiting for return');
 
-    // ⚡ 1. 1st Attempt Immediate Return: Courier marked return on 1st attempt failure!
+    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt without asking for Shipper Advice!)
     if (isReturnStatus && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
@@ -129,35 +129,36 @@ router.get('/advice', (req, res) => {
     if (isReturnStatus) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
-    // 🚨 2. All Shipper Advice / Action Required / Failed Attempt Matches
-    const isAdviceOrFailure = deliveryStatusLower.includes('delivery under review') ||
-                              deliveryStatusLower.includes('shipper advice') ||
-                              deliveryStatusLower.includes('under review') ||
-                              courierStatusLower.includes('delivery under review') ||
-                              courierStatusLower.includes('shipper advice') ||
-                              courierStatusLower.includes('under review') ||
-                              combinedStatus.includes('refused') ||
-                              combinedStatus.includes('incomplete') ||
-                              combinedStatus.includes('not available') ||
-                              combinedStatus.includes('unreachable') ||
-                              combinedStatus.includes('wrong phone') ||
-                              combinedStatus.includes('address') ||
-                              combinedStatus.includes('undelivered') ||
-                              combinedStatus.includes('failed');
+    // 🚨 Tab 1: Shipper Advice Required (Courier explicitly asked for Shipper Advice / Delivery Under Review!)
+    const isExplicitAdviceRequired = deliveryStatusLower.includes('delivery under review') ||
+                                     deliveryStatusLower.includes('shipper advice') ||
+                                     deliveryStatusLower.includes('under review') ||
+                                     courierStatusLower.includes('delivery under review') ||
+                                     courierStatusLower.includes('shipper advice') ||
+                                     courierStatusLower.includes('under review') ||
+                                     courierStatusLower.includes('postex advice');
 
-    if (isAdviceOrFailure) {
-      if (
-        deliveryStatusLower.includes('delivery under review') ||
-        deliveryStatusLower.includes('shipper advice') ||
-        courierStatusLower.includes('delivery under review') ||
-        courierStatusLower.includes('shipper advice') ||
-        courierStatusLower.includes('under review')
-      ) {
-        o.advice_category = 'advice_required';
-      } else {
-        o.advice_category = 'first_attempt';
-      }
+    if (isExplicitAdviceRequired) {
+      o.advice_category = 'advice_required';
       adviceOrders.push(o);
+      return;
+    }
+
+    // 🔴 Tab 2: 1st Attempt Failed (1st attempt failed, but courier has NOT asked for Shipper Advice yet)
+    const isFailureReason = combinedStatus.includes('refused') ||
+                            combinedStatus.includes('incomplete') ||
+                            combinedStatus.includes('not available') ||
+                            combinedStatus.includes('unreachable') ||
+                            combinedStatus.includes('wrong phone') ||
+                            combinedStatus.includes('address') ||
+                            combinedStatus.includes('undelivered') ||
+                            combinedStatus.includes('failed') ||
+                            combinedStatus.includes('attempt made');
+
+    if (isFailureReason && failedCount <= 1) {
+      o.advice_category = 'first_attempt';
+      adviceOrders.push(o);
+      return;
     }
   });
 
