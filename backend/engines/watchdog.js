@@ -7,24 +7,16 @@ function formatTime(dateObj) {
   return dateObj.toTimeString().slice(0, 5);
 }
 
-// 🐕 WATCHDOG: Runs on PostEx, Instaworld, Leopards, and TCS orders
+// 🐕 WATCHDOG: Runs on PostEx, Instaworld, Leopards, TCS, Trax and all courier orders
 async function runWatchdog(store) {
   const { id: storeId } = store;
 
-  // We look back up to 14 days and check orders that are > 12 hours old
-  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-
-  // Find candidates directly via SQL: must have tracking_history populated in the database
+  // Find candidate orders with failure, attempt, or return status
   const candidates = db.prepare(`
     SELECT id, tracking_number, status_date, order_date, delivery_status, courier_status, tracking_history 
     FROM orders
     WHERE store_id = ?
-      AND LOWER(courier) IN ('postex', 'post ex', 'instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs')
-      AND status_date > datetime('now', '-14 days')
-      AND status_date < ?
-      AND tracking_history IS NOT NULL AND tracking_history != '' AND tracking_history != '[]'
-      AND tracking_number IS NOT NULL AND tracking_number != ''
-      AND tracking_number NOT IN (SELECT tracking_number FROM watchdog_results WHERE store_id = ?)
+      AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND (
         LOWER(delivery_status) LIKE '%shipper advice%' OR
         LOWER(delivery_status) LIKE '%attempt%' OR
@@ -39,9 +31,9 @@ async function runWatchdog(store) {
         LOWER(courier_status) LIKE '%undelivered%' OR
         LOWER(courier_status) LIKE '%return%'
       )
-    ORDER BY status_date DESC
-    LIMIT 200
-  `).all(storeId, cutoff, storeId);
+    ORDER BY COALESCE(status_date, order_date) DESC
+    LIMIT 300
+  `).all(storeId);
 
   if (!candidates.length) {
     return { audited: 0, candidatesCount: 0 };
@@ -57,11 +49,18 @@ async function runWatchdog(store) {
 
   for (const order of candidates) {
     try {
-      const history = JSON.parse(order.tracking_history);
-      if (!Array.isArray(history) || history.length === 0) continue;
+      let history = [];
+      if (order.tracking_history) {
+        try { history = JSON.parse(order.tracking_history); } catch (e) { history = []; }
+      }
+      if (!Array.isArray(history) || history.length === 0) {
+        history = [
+          { dateTime: order.order_date, status: 'Dispatched' },
+          { dateTime: order.status_date || order.order_date, status: order.courier_status || order.delivery_status || 'Attempted' }
+        ];
+      }
 
       const requestTime = new Date(order.status_date || order.order_date || Date.now());
-      // We pass the parsed tracking history inside an object containing 'trackingHistory' matching the audit parser format
       const result = auditPostExOrder({ 
         trackingHistory: history, 
         transactionStatus: order.courier_status || order.delivery_status 
@@ -89,11 +88,10 @@ async function runWatchdog(store) {
     insertMany(rows);
   }
 
-  console.log(`🕵️ Offline Watchdog [Store ID ${storeId}]: Audited ${audited} PostEx orders from database`);
+  console.log(`🕵️ Offline Watchdog [Store ID ${storeId}]: Audited ${audited} candidate orders from database`);
   return { 
     audited, 
-    candidatesCount: candidates.length, 
-    cutoff
+    candidatesCount: candidates.length
   };
 }
 
@@ -135,19 +133,26 @@ function auditPostExOrder(distData, requestTime) {
     let enrouteIdx = -1;
     for (let i = sortedHistory.length - 1; i >= 0; i--) {
       const st = getMoveStatus(sortedHistory[i]).toLowerCase();
-      if (st.includes('enroute') || st.includes('out for delivery') || st.includes('dispatched')) {
+      if (
+        st.includes('enroute') || 
+        st.includes('out for delivery') || 
+        st.includes('dispatched') ||
+        st.includes('shipped') ||
+        st.includes('in transit') ||
+        st.includes('picked up') ||
+        st.includes('manifested') ||
+        st.includes('received at hub') ||
+        st.includes('arrived at station') ||
+        st.includes('booked') ||
+        st.includes('created')
+      ) {
         enrouteIdx = i;
         break;
       }
     }
 
-    if (enrouteIdx === -1) {
-      return {
-        latestStatus: currentStatus,
-        verdict: '⚪ Moving / No Attempt Yet',
-        duration: 'Pending',
-        evidence: 'No enroute status found in history'
-      };
+    if (enrouteIdx === -1 && sortedHistory.length > 0) {
+      enrouteIdx = 0; // Use earliest tracking movement as baseline
     }
 
     const enrouteTime = new Date(getMoveTime(sortedHistory[enrouteIdx]));
