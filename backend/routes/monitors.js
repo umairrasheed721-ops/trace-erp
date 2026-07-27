@@ -56,15 +56,28 @@ router.get('/stuck', (req, res) => {
     WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
     AND LOWER(delivery_status) NOT IN ('delivered','return received','paid','pending','cancelled','void','voided')
-    AND datetime(COALESCE(status_date, order_date)) < datetime('now', '-' || ? || ' hours')
-    AND tracking_number NOT IN (SELECT tracking_number FROM blacklist WHERE store_id = ?)
-  `).all(store_id, thresholdHours, store_id);
+  `).all(store_id);
 
-  const stuckOrders = orders.map(o => {
-    const statusDateStr = o.status_date ? o.status_date.replace(' ', 'T') + '+05:00' : null;
-    const hours = statusDateStr ? (Date.now() - new Date(statusDateStr).getTime()) / 3600000 : 0;
+  const stuckOrders = [];
 
-    // Check if tracking number has changed in history
+  orders.forEach(o => {
+    if (blacklistSet.has(o.tracking_number)) return;
+
+    const rawDate = o.status_date || o.order_date;
+    if (!rawDate) return;
+
+    let hours = 0;
+    try {
+      const dateStr = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T') + '+05:00';
+      const parsedMs = Date.parse(dateStr);
+      if (!isNaN(parsedMs)) {
+        hours = (Date.now() - parsedMs) / 3600000;
+      }
+    } catch (_) {}
+
+    if (hours < thresholdHours) return;
+
+    // Check tracking number change history
     const history = db.prepare(`
       SELECT h.old_value, h.new_value, h.created_at, u.username
       FROM order_history h
@@ -73,13 +86,44 @@ router.get('/stuck', (req, res) => {
       ORDER BY h.created_at DESC
     `).all(o.id);
 
-    return {
+    // Determine manual ID
+    const trackingLower = (o.tracking_number || '').toLowerCase();
+    const isManual = trackingLower.includes('@') || 
+                     trackingLower.includes('local') || 
+                     trackingLower.includes('exchange') || 
+                     trackingLower.includes('bus') || 
+                     trackingLower.includes('pvt') || 
+                     trackingLower.includes('deliver') || 
+                     trackingLower.includes('shop') || 
+                     trackingLower.includes('wholesale') || 
+                     trackingLower.includes('purchased') ||
+                     (trackingLower.length > 0 && !/^\d+$/.test(trackingLower) && !/^le\d+$/i.test(trackingLower));
+
+    // Determine insight_type for Stuck Monitor tabs
+    let insight_type = 'STUCK_TRANSIT';
+    const statusLower = (o.courier_status || o.delivery_status || '').toLowerCase();
+
+    if (isManual) {
+      insight_type = 'MANUAL_ID';
+    } else if (statusLower.includes('return') || statusLower.includes('rto')) {
+      insight_type = 'STUCK_RETURN';
+    } else if (statusLower === 'booked' || statusLower === 'confirmed' || statusLower.includes('pickup') || statusLower.includes('insta-hub')) {
+      insight_type = 'PICKUP_PENDING';
+    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {
+      insight_type = 'ADVICE_REQUIRED';
+    }
+
+    stuckOrders.push({
       ...o,
       stuck_hours: Math.round(hours),
+      hours_stuck: Math.floor(hours),
+      days_stuck: Math.floor(hours / 24),
+      insight_type,
       tracking_history_changes: history
-    };
-  }).sort((a, b) => b.stuck_hours - a.stuck_hours);
+    });
+  });
 
+  stuckOrders.sort((a, b) => b.stuck_hours - a.stuck_hours);
   res.json(stuckOrders);
 });
 
