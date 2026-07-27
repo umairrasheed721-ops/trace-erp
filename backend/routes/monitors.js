@@ -129,21 +129,51 @@ router.get('/advice', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status
+    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
   `).all(store_id);
 
-  const adviceOrders = orders.filter(o => {
+  const adviceOrders = [];
+
+  orders.forEach(o => {
+    if (blacklistSet.has(o.tracking_number)) return;
+
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase();
-    if (IGNORE_STATUSES.includes(deliveryStatusLower)) return false;
-    if (deliveryStatusLower.includes('reattempt requested') || deliveryStatusLower.includes('return initiated')) return false;
+    const courierStatusLower = (o.courier_status || '').toLowerCase();
+    const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
 
-    if (isExcludedFromAdvice(o.courier_status)) return false;
+    if (IGNORE_STATUSES.includes(deliveryStatusLower)) return;
+    if (deliveryStatusLower.includes('reattempt requested')) return;
 
-    const st = (o.courier_status || o.delivery_status || '').toLowerCase();
-    if (blacklistSet.has(o.tracking_number)) return false;
-    return ADVICE_KEYWORDS.some(k => st.includes(k));
+    const failedCount = parseInt(o.failed_attempts || 0, 10);
+    const isReturnStatus = deliveryStatusLower.includes('return initiated') ||
+                          deliveryStatusLower.includes('return process') ||
+                          courierStatusLower.includes('return initiated') ||
+                          courierStatusLower.includes('return process') ||
+                          courierStatusLower.includes('return to') ||
+                          courierStatusLower.includes('out for return') ||
+                          courierStatusLower.includes('waiting for return');
+
+    // 🚨 1st Attempt Immediate Return: Courier marked return on 1st attempt failure!
+    if (isReturnStatus && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
+      o.advice_category = 'immediate_return';
+      adviceOrders.push(o);
+      return;
+    }
+
+    // Exclude general returns if not 1st attempt
+    if (isReturnStatus) return;
+    if (isExcludedFromAdvice(o.courier_status)) return;
+
+    if (ADVICE_KEYWORDS.some(k => combinedStatus.includes(k)) || deliveryStatusLower.includes('refused') || deliveryStatusLower.includes('undelivered') || deliveryStatusLower.includes('failed')) {
+      if (failedCount > 1) {
+        o.advice_category = 'multi_attempt';
+      } else {
+        o.advice_category = 'first_attempt';
+      }
+      adviceOrders.push(o);
+    }
   });
 
   res.json(adviceOrders);

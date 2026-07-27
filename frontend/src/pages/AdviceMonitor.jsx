@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 
 export default function AdviceMonitor() {
   const { activeStoreId, addToast, setBadgeCounts } = useApp()
-  const [activeTab, setActiveTab] = useState('advice') // 'advice' | 'reattempts'
+  const [activeTab, setActiveTab] = useState('first_attempt') // 'first_attempt' | 'immediate_return' | 'multi_attempt' | 'reattempts'
   const [orders, setOrders] = useState([])
   const [reattemptOrders, setReattemptOrders] = useState([])
   const [loading, setLoading] = useState(false)
@@ -113,14 +113,23 @@ export default function AdviceMonitor() {
     return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
   }
 
-  const displayOrders = activeTab === 'advice' ? orders : reattemptOrders
+  // Categorize advice orders by failed attempts & immediate return status
+  const firstAttemptOrders = orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1))
+  const immediateReturnOrders = orders.filter(o => o.advice_category === 'immediate_return')
+  const multiAttemptOrders = orders.filter(o => o.advice_category === 'multi_attempt')
+
+  let displayOrders = []
+  if (activeTab === 'first_attempt') displayOrders = firstAttemptOrders
+  else if (activeTab === 'immediate_return') displayOrders = immediateReturnOrders
+  else if (activeTab === 'multi_attempt') displayOrders = multiAttemptOrders
+  else if (activeTab === 'reattempts') displayOrders = reattemptOrders
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h2>🧠 Advice Monitor</h2>
-          <p>Orders requiring shipper action & tracked reattempt requests</p>
+          <p>Real-time Shipper Advice tracking & 1st attempt failure alerts</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
           {loading ? <span className="loading-spinner"></span> : '🔄'} Refresh
@@ -128,18 +137,46 @@ export default function AdviceMonitor() {
       </div>
 
       {/* Tabs Switcher */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' }}>
         <button
-          className={`btn ${activeTab === 'advice' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setActiveTab('advice')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 8, padding: '8px 16px', fontWeight: 600 }}
+          className={`btn ${activeTab === 'first_attempt' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('first_attempt')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
         >
-          🚨 Action Required ({orders.length})
+          🔴 1st Attempt Failed ({firstAttemptOrders.length})
         </button>
+
+        <button
+          className={`btn ${activeTab === 'immediate_return' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('immediate_return')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            borderRadius: 8,
+            padding: '8px 14px',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            background: activeTab === 'immediate_return' ? '#ef4444' : 'rgba(239,68,68,0.12)',
+            color: activeTab === 'immediate_return' ? '#fff' : '#ef4444',
+            border: '1px solid rgba(239,68,68,0.3)'
+          }}
+        >
+          🚨 1st Attempt Immediate Return ({immediateReturnOrders.length})
+        </button>
+
+        <button
+          className={`btn ${activeTab === 'multi_attempt' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('multi_attempt')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
+        >
+          ⚠️ Multi-Attempt Failed ({multiAttemptOrders.length})
+        </button>
+
         <button
           className={`btn ${activeTab === 'reattempts' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('reattempts')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 8, padding: '8px 16px', fontWeight: 600 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
         >
           🔁 Reattempts Sent ({reattemptOrders.length})
         </button>
