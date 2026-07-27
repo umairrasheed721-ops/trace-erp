@@ -438,5 +438,30 @@ module.exports = [
     } catch (e) {
       console.error('Failed to execute tracking_slug DB migration:', e.message);
     }
+  },
+
+  // 19. Auto-heal delivery_status for orders with Return courier statuses
+  (db) => {
+    try {
+      console.log('🩹 Running database migration to update delivery_status for orders with Return courier statuses...');
+      const result = db.prepare(`
+        UPDATE orders 
+        SET delivery_status = 'Return Initiated'
+        WHERE LOWER(delivery_status) IN ('in transit', 'in-transit', 'booked', 'attempted')
+        AND (
+          LOWER(courier_status) LIKE 'return to %' OR
+          LOWER(courier_status) LIKE '%return to %' OR
+          LOWER(courier_status) LIKE '%return process%' OR
+          LOWER(courier_status) LIKE '%return initiated%' OR
+          LOWER(courier_status) LIKE '%return in transit%' OR
+          LOWER(courier_status) LIKE '%return received at insta hub%'
+        )
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration] Auto-healed ${result.changes} orders from 'In Transit' to 'Return Initiated'.`);
+      }
+    } catch (e) {
+      console.error('Failed to auto-heal return status orders in migration:', e.message);
+    }
   }
 ];

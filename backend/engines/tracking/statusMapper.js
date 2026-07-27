@@ -39,11 +39,11 @@ function applyMap(statusMap, courier, rawStatus) {
 
   // 2. Standard ERP Hardcoded Rules Fallback
   if (raw === 'delivered' || raw === 'delivered to customer') return 'Delivered';
-  if (raw === 'return received') return 'Return Received';
+  if (raw === 'return received' || raw.includes('return received')) return 'Return Received';
   if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
   if (raw.includes('delivery under review') || raw.includes('shipper advice')) return 'Shipper Advice';
-  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper') || raw.includes('return to origin')) return 'Returned';
-  if (raw.includes('out for return')) return 'Return Initiated';
+  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper')) return 'Returned';
+  if (raw.includes('out for return') || raw.includes('return to') || raw.includes('return process') || raw.includes('return initiated') || raw.includes('return in transit')) return 'Return Initiated';
   if (raw.includes('attempted')) return 'Attempted';
   if (raw.includes('refused')) return 'Refused';
 
