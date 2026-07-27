@@ -627,6 +627,7 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/', label: 'Dashboard', icon: '🏠' },
     { id: '/search', label: 'Command Center', icon: '🔍' },
     { id: '/returns', label: 'Unified Returns', icon: '↩️' },
+    { id: '/whatsapp-templates', label: 'WA Templates', icon: '✍️' },
     { id: '/finance', label: 'Finance Engine', icon: '💰' },
     { id: '/payout-reconciler', label: 'Payout Reconciler', icon: '💸' },
     { id: '/costing', label: 'Master Costing', icon: '💎' },
