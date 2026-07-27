@@ -166,28 +166,35 @@ router.get('/advice', (req, res) => {
     if (isReturnStatus) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
-    if (ADVICE_KEYWORDS.some(k => combinedStatus.includes(k)) || deliveryStatusLower.includes('refused') || deliveryStatusLower.includes('undelivered') || deliveryStatusLower.includes('failed')) {
-      if (failedCount > 1) {
-        o.advice_category = 'multi_attempt';
-      } else {
-        o.advice_category = 'first_attempt';
-      }
+    // 🎯 Explicit Shipper Advice Keyword Match
+    if (ADVICE_KEYWORDS.some(k => combinedStatus.includes(k))) {
+      o.advice_category = 'advice_required';
       adviceOrders.push(o);
+      return;
+    }
+
+    // 🔴 1st Attempt Failed
+    if (deliveryStatusLower.includes('refused') || deliveryStatusLower.includes('undelivered') || deliveryStatusLower.includes('failed')) {
+      if (failedCount <= 1) {
+        o.advice_category = 'first_attempt';
+        adviceOrders.push(o);
+      }
     }
   });
 
   res.json(adviceOrders);
 });
 
-// GET /api/monitors/reattempts?store_id=1
+// GET /api/monitors/reattempts?store_id=1 (Restricted to Last 60 Days / 2 Months)
 router.get('/reattempts', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, status_date
+    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, status_date, order_date
     FROM orders WHERE store_id = ?
     AND (LOWER(delivery_status) IN ('reattempt requested', 'return initiated') OR notes LIKE '%[Shipper Advice%')
+    AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-60 days')
     ORDER BY COALESCE(status_date, order_date) DESC
   `).all(store_id);
 

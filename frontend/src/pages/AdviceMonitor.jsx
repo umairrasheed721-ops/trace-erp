@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 
 export default function AdviceMonitor() {
   const { activeStoreId, addToast, setBadgeCounts } = useApp()
-  const [activeTab, setActiveTab] = useState('first_attempt') // 'first_attempt' | 'immediate_return' | 'multi_attempt' | 'reattempts'
+  const [activeTab, setActiveTab] = useState('advice_required') // 'advice_required' | 'first_attempt' | 'immediate_return' | 'reattempts'
   const [orders, setOrders] = useState([])
   const [reattemptOrders, setReattemptOrders] = useState([])
   const [loading, setLoading] = useState(false)
@@ -114,14 +114,14 @@ export default function AdviceMonitor() {
   }
 
   // Categorize advice orders by failed attempts & immediate return status
+  const adviceRequiredOrders = orders.filter(o => o.advice_category === 'advice_required')
   const firstAttemptOrders = orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1))
   const immediateReturnOrders = orders.filter(o => o.advice_category === 'immediate_return')
-  const multiAttemptOrders = orders.filter(o => o.advice_category === 'multi_attempt')
 
   let displayOrders = []
-  if (activeTab === 'first_attempt') displayOrders = firstAttemptOrders
+  if (activeTab === 'advice_required') displayOrders = adviceRequiredOrders
+  else if (activeTab === 'first_attempt') displayOrders = firstAttemptOrders
   else if (activeTab === 'immediate_return') displayOrders = immediateReturnOrders
-  else if (activeTab === 'multi_attempt') displayOrders = multiAttemptOrders
   else if (activeTab === 'reattempts') displayOrders = reattemptOrders
 
   return (
@@ -138,6 +138,14 @@ export default function AdviceMonitor() {
 
       {/* Tabs Switcher */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' }}>
+        <button
+          className={`btn ${activeTab === 'advice_required' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('advice_required')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
+        >
+          🚨 Shipper Advice Required ({adviceRequiredOrders.length})
+        </button>
+
         <button
           className={`btn ${activeTab === 'first_attempt' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('first_attempt')}
@@ -162,15 +170,7 @@ export default function AdviceMonitor() {
             border: '1px solid rgba(239,68,68,0.3)'
           }}
         >
-          🚨 1st Attempt Immediate Return ({immediateReturnOrders.length})
-        </button>
-
-        <button
-          className={`btn ${activeTab === 'multi_attempt' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setActiveTab('multi_attempt')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
-        >
-          ⚠️ Multi-Attempt Failed ({multiAttemptOrders.length})
+          ⚡ 1st Attempt Immediate Return ({immediateReturnOrders.length})
         </button>
 
         <button
@@ -178,7 +178,7 @@ export default function AdviceMonitor() {
           onClick={() => setActiveTab('reattempts')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
         >
-          🔁 Reattempts Sent ({reattemptOrders.length})
+          🔁 Reattempts Sent (Last 60 Days) ({reattemptOrders.length})
         </button>
       </div>
 
