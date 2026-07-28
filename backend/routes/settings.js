@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { db, DB_DIR, DB_PATH } = require('../db');
-const botModule = require('../engines/whatsapp_bot');
+let botModule = { getBot: () => null, sessions: new Map() };
+try { botModule = require('../engines/whatsapp_bot'); } catch (_) {}
 
 const getAbsoluteFilePath = (mediaUrl) => {
   if (!mediaUrl) return null;

@@ -437,14 +437,18 @@ module.exports = function schedulerInit() {
     }
   });
 
+  const getBotSafe = () => {
+    try { return require('./engines/whatsapp_bot'); }
+    catch (_) { return { sendMessage: () => null, getBot: () => null }; }
+  };
+
   // 14. Every 30 minutes: 24-Hour COD Verification Follow-up reminder
   cron.schedule('*/30 * * * *', async () => {
     console.log('⏰ [CRON] 24-Hour COD Verification Follow-up reminder scan starting...');
     await runMultiTenant('cod_followups_30m', async (tenantId) => {
       try {
         const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
-        const bot = require('./engines/whatsapp_bot');
-        await checkAndSendCODFollowUps(db, bot);
+        await checkAndSendCODFollowUps(db, getBotSafe());
       } catch (e) {
         console.error(`[Follow-up Cron Error] (Tenant: ${tenantId}):`, e.message);
       }
@@ -457,8 +461,7 @@ module.exports = function schedulerInit() {
     await runMultiTenant('post_delivery_feedback_30m', async (tenantId) => {
       try {
         const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
-        const bot = require('./engines/whatsapp_bot');
-        await checkAndSendPostDeliveryFeedback(db, bot);
+        await checkAndSendPostDeliveryFeedback(db, getBotSafe());
       } catch (e) {
         console.error(`[Feedback Cron Error] (Tenant: ${tenantId}):`, e.message);
       }
@@ -472,13 +475,11 @@ module.exports = function schedulerInit() {
       try { await runSniperScan(); } catch(e) {}
       try {
         const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
-        const bot = require('./engines/whatsapp_bot');
-        await checkAndSendCODFollowUps(db, bot);
+        await checkAndSendCODFollowUps(db, getBotSafe());
       } catch(e) {}
       try {
         const { checkAndSendPostDeliveryFeedback } = require('./engines/post_delivery_feedback');
-        const bot = require('./engines/whatsapp_bot');
-        await checkAndSendPostDeliveryFeedback(db, bot);
+        await checkAndSendPostDeliveryFeedback(db, getBotSafe());
       } catch(e) {}
     });
   }, 5000);

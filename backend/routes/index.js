@@ -225,10 +225,11 @@ router.get('/api/media/:filename', async (req, res) => {
 
 // Indestructible Health Check
 router.get('/api/health', (req, res) => {
-  let waBotStatus = 'UNKNOWN';
+  let waBotStatus = 'DECOUPLED';
   try {
-    const waBot = require.cache[require.resolve('../engines/whatsapp_bot')]?.exports;
-    waBotStatus = waBot ? waBot.getStatus().status : 'NOT_LOADED';
+    const botPath = require.resolve('../engines/whatsapp_bot');
+    const waBot = require.cache[botPath]?.exports;
+    if (waBot) waBotStatus = waBot.getStatus().status;
   } catch (_) {}
 
   res.json({

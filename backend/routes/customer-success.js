@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { db, prepare, logAction } = require('../db');
-const crypto = require('crypto');
-const bot = require('../engines/whatsapp_bot');
+let bot = { sendMessage: () => null, getBot: () => null };
+try { bot = require('../engines/whatsapp_bot'); } catch (_) {}
 
 // Helper to generate a secure tracking slug
 function generateTrackingSlug() {
