@@ -5,13 +5,6 @@ const fs = require('fs');
 const tenantContext = require('./tenant-context');
 const { execSync } = require('child_process');
 
-// Import domain migrations
-const ordersMigrations = require('./db/migrations/orders');
-const whatsappMigrations = require('./db/migrations/whatsapp');
-const financeMigrations = require('./db/migrations/finance');
-const trackingMigrations = require('./db/migrations/tracking');
-const reviewsMigrations = require('./db/migrations/reviews');
-
 const isProduction = process.env.NODE_ENV === 'production' || 
                      process.env.RAILWAY_ENVIRONMENT !== undefined ||
                      process.env.BOT_ENABLED === 'true';
@@ -111,11 +104,11 @@ function initDb(db) {
 
     // Run domain-specific migrations sequentially
     const migrationBatches = [
-      ordersMigrations,
-      whatsappMigrations,
-      financeMigrations,
-      trackingMigrations,
-      reviewsMigrations
+      require('./db/migrations/orders'),
+      require('./db/migrations/whatsapp'),
+      require('./db/migrations/finance'),
+      require('./db/migrations/tracking'),
+      require('./db/migrations/reviews')
     ];
 
     for (const batch of migrationBatches) {
