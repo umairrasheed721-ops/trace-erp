@@ -17,6 +17,7 @@ export default function AdviceMonitor() {
   // History Timeline Modal State
   const [historyModalOrder, setHistoryModalOrder] = useState(null)
   const [historyData, setHistoryData] = useState([])
+  const [historyMeta, setHistoryMeta] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
   const load = () => {
