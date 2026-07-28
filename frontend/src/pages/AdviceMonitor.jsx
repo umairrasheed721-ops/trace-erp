@@ -238,7 +238,15 @@ export default function AdviceMonitor() {
   const formatCleanNote = (notes) => {
     if (!notes) return null;
     let cleaned = notes.replace(/Order has been shipped via [^.]+\.?/gi, '').trim();
-    return cleaned || notes.trim();
+    cleaned = cleaned.replace(/\[Shipper Advice - [^\]]+\]/g, '').trim();
+    cleaned = cleaned.replace(/^\|+|\|+$/g, '').trim();
+    return cleaned || null;
+  };
+
+  const getAdviceRemark = (notes) => {
+    if (!notes) return null;
+    const match = notes.match(/\[Shipper Advice - ([^\]]+)\]/);
+    return match ? match[1] : null;
   };
 
   return (
@@ -395,23 +403,36 @@ export default function AdviceMonitor() {
                         {getSlaBadge(o)}
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '0.72rem' }}>
-                          {o.courier_status || '—'}
-                        </span>
-                        <button
-                          className="btn btn-secondary btn-xs"
-                          title="View Full Courier Milestone History"
-                          onClick={() => handleOpenHistory(o)}
-                          style={{ padding: '2px 7px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                        >
-                          📜 History
-                        </button>
+                    <td style={{ minWidth: 210 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span className="badge" style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '0.74rem', fontWeight: 600 }}>
+                            {o.courier_status || '—'}
+                          </span>
+                          <button
+                            className="btn btn-secondary btn-xs"
+                            title="Click to view full PostEx remarks & milestone timeline"
+                            onClick={() => handleOpenHistory(o)}
+                            style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, fontWeight: 600, background: 'rgba(99,102,241,0.12)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 6, cursor: 'pointer' }}
+                          >
+                            📜 History
+                          </button>
+                        </div>
+                        {getAdviceRemark(o.notes) && (
+                          <div style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 7px', borderRadius: 6, border: '1px solid rgba(16, 185, 129, 0.2)', width: '100%', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                            💬 <strong>CS Remark:</strong> {getAdviceRemark(o.notes)}
+                          </div>
+                        )}
                       </div>
                     </td>
-                    <td style={{ color: 'var(--text-primary)', fontSize: '0.78rem', maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                      {o.notes ? <span style={{ background: 'rgba(99,102,241,0.1)', padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(99,102,241,0.2)' }}>{o.notes}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    <td style={{ color: 'var(--text-primary)', fontSize: '0.78rem', minWidth: 160, maxWidth: 220, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.4 }}>
+                      {formatCleanNote(o.notes) ? (
+                        <span style={{ background: 'rgba(99,102,241,0.08)', padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(99,102,241,0.2)', display: 'inline-block' }}>
+                          📝 {formatCleanNote(o.notes)}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
                     </td>
                     <td style={{ fontWeight: 600 }}>Rs {parseInt(o.price || 0).toLocaleString()}</td>
                     <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 160 }} className="truncate">{o.product_titles || '—'}</td>
