@@ -1,3 +1,7 @@
+const DEAD_STATUSES = ['return received', 'delivered', 'cancelled'];
+const EARLY_STATUSES = ['pending', 'confirmed', 'booked', 'picked up', 'unassigned'];
+const ATTEMPT_FAILURE_STATUSES = ['attempted', 'shipper advice', 'refused', 'delivery under review', 'failed'];
+
 function getDbSafe() {
   try {
     const dbModule = require('../../db');
