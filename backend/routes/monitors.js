@@ -155,22 +155,27 @@ router.get('/advice', (req, res) => {
     if (deliveryStatusLower.includes('reattempt requested')) return;
 
     const failedCount = parseInt(o.failed_attempts || 0, 10);
-    const isReturnStatus = deliveryStatusLower.includes('return initiated') ||
-                          deliveryStatusLower.includes('return process') ||
-                          courierStatusLower.includes('return initiated') ||
-                          courierStatusLower.includes('return process') ||
-                          courierStatusLower.includes('return to') ||
-                          courierStatusLower.includes('out for return') ||
-                          courierStatusLower.includes('waiting for return');
+    const isPastReturnProcess = courierStatusLower.includes('return to') ||
+                               courierStatusLower.includes('return in transit') ||
+                               courierStatusLower.includes('returned') ||
+                               courierStatusLower.includes('at origin') ||
+                               deliveryStatusLower.includes('returned');
+
+    const isInitialReturnInitiated = (deliveryStatusLower.includes('return initiated') ||
+                                      deliveryStatusLower.includes('return process') ||
+                                      courierStatusLower.includes('return initiated') ||
+                                      courierStatusLower.includes('return process')) &&
+                                     !isPastReturnProcess;
 
     // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt without asking for Shipper Advice!)
-    if (isReturnStatus && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
+    // Strictly ONLY fresh return initiations on 1st attempt where return hasn't already moved to transit back to origin city!
+    if (isInitialReturnInitiated && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
       return;
     }
 
-    if (isReturnStatus) return;
+    if (isInitialReturnInitiated || isPastReturnProcess) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
     // 🚨 Tab 1: Shipper Advice Required (Courier explicitly asked for Shipper Advice / Delivery Under Review!)
