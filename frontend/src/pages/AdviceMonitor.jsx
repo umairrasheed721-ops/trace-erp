@@ -107,18 +107,30 @@ export default function AdviceMonitor() {
     load()
   }
 
-  const getWhatsAppLink = (order) => {
-    const msg = `🚨 *${order.courier || 'PostEx'}~TRACE ERP*\n📦 Tracking: ${order.tracking_number}\n🛍️ Customer: ${order.customer_name}\n💬 Status: ${order.delivery_status}\n💰 Price: Rs ${parseInt(order.price || 0).toLocaleString()}`
-    
+  const getCustomerWaLink = (order) => {
     let phone = (order.phone || '').trim().replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) {
       phone = '92' + phone.substring(1);
     } else if (phone.length === 10 && !phone.startsWith('92')) {
       phone = '92' + phone;
     }
+    const msg = `Assalam-o-Alaikum ${order.customer_name || 'Customer'}, aap ke order #${order.tracking_number} (${order.courier || 'PostEx'}) ke hawale se delivery update ke liye contact kar rahe hain. Kya aap delivery re-attempt confirm karna chahte hain? Shukriya!`;
     
-    return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(msg)}`
-  }
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+    const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+    return `${baseUrl}?phone=${phone}&text=${encodeURIComponent(msg)}`;
+  };
+
+  const getGroupWaLink = (order) => {
+    const rawStatus = order.courier_status || order.delivery_status || 'Shipper Advice Required';
+    const cleanNote = order.notes ? order.notes.replace(/Order has been shipped via [^.]+\.?/gi, '').replace(/\[Shipper Advice - [^\]]+\]/g, '').trim() : '';
+
+    const msg = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Tracking:* ${order.tracking_number}\n🛍️ *Customer:* ${order.customer_name || 'N/A'} (${order.phone || 'N/A'})\n💬 *Status:* ${rawStatus}\n💰 *Price:* Rs ${parseInt(order.price || 0).toLocaleString()}\n🚚 *Courier:* ${order.courier || 'PostEx'}${cleanNote ? `\n📝 *Note:* ${cleanNote}` : ''}`;
+    
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+    const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+    return `${baseUrl}?text=${encodeURIComponent(msg)}`;
+  };
 
   // State to toggle SLA Expired (>48h) orders
   const [showExpired, setShowExpired] = useState(false)
@@ -457,10 +469,29 @@ export default function AdviceMonitor() {
                         </div>
                       )}
                     </td>
-                    <td>
-                      <a href={getWhatsAppLink(o)} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
-                        📱 WA
-                      </a>
+                    <td style={{ minWidth: 150 }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <a
+                          href={getCustomerWaLink(o)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary btn-xs"
+                          title="Direct 1-on-1 Chat with Customer via WhatsApp"
+                          style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
+                        >
+                          📱 Customer
+                        </a>
+                        <a
+                          href={getGroupWaLink(o)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary btn-xs"
+                          title="Share Formatted Alert to Team / Courier WhatsApp Group"
+                          style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
+                        >
+                          👥 Group
+                        </a>
+                      </div>
                     </td>
                     <td>
                       <button className="btn btn-secondary btn-sm" onClick={() => handleIgnore(o)}>🚫</button>
