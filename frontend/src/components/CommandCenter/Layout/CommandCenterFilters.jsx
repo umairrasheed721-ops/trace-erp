@@ -287,13 +287,23 @@ export default function CommandCenterFilters({
         </div>
 
         {/* ⚡ Quick Preset Chips */}
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
           <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>⚡ Quick Presets:</span>
           <button
             type="button"
             onClick={() => { setPreset('Today'); setStatus(''); }}
             className="btn btn-xs"
-            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: preset === 'Today' && !status ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.7rem',
+              borderRadius: 12,
+              background: preset === 'Today' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
+              color: preset === 'Today' && !status ? '#ffffff' : 'var(--text-primary)',
+              border: preset === 'Today' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.15s ease'
+            }}
           >
             🔥 Today's Orders
           </button>
@@ -301,7 +311,17 @@ export default function CommandCenterFilters({
             type="button"
             onClick={() => { setStatus('Shipper Advice'); }}
             className="btn btn-xs"
-            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Shipper Advice' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.7rem',
+              borderRadius: 12,
+              background: status === 'Shipper Advice' ? 'var(--brand)' : 'var(--bg-elevated)',
+              color: status === 'Shipper Advice' ? '#ffffff' : 'var(--text-primary)',
+              border: status === 'Shipper Advice' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.15s ease'
+            }}
           >
             ⚠️ Advice Required
           </button>
@@ -309,7 +329,17 @@ export default function CommandCenterFilters({
             type="button"
             onClick={() => { setStatus('In Transit'); }}
             className="btn btn-xs"
-            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'In Transit' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.7rem',
+              borderRadius: 12,
+              background: status === 'In Transit' ? 'var(--brand)' : 'var(--bg-elevated)',
+              color: status === 'In Transit' ? '#ffffff' : 'var(--text-primary)',
+              border: status === 'In Transit' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.15s ease'
+            }}
           >
             🚚 In Transit
           </button>
@@ -317,7 +347,17 @@ export default function CommandCenterFilters({
             type="button"
             onClick={() => { setStatus('Return In Transit'); }}
             className="btn btn-xs"
-            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Return In Transit' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.7rem',
+              borderRadius: 12,
+              background: status === 'Return In Transit' ? 'var(--brand)' : 'var(--bg-elevated)',
+              color: status === 'Return In Transit' ? '#ffffff' : 'var(--text-primary)',
+              border: status === 'Return In Transit' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.15s ease'
+            }}
           >
             ↩️ Returns
           </button>
@@ -325,7 +365,17 @@ export default function CommandCenterFilters({
             type="button"
             onClick={() => { setStatus('Pending'); }}
             className="btn btn-xs"
-            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Pending' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+            style={{
+              padding: '3px 10px',
+              fontSize: '0.7rem',
+              borderRadius: 12,
+              background: status === 'Pending' ? 'var(--brand)' : 'var(--bg-elevated)',
+              color: status === 'Pending' ? '#ffffff' : 'var(--text-primary)',
+              border: status === 'Pending' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              transition: 'all 0.15s ease'
+            }}
           >
             📦 Pending
           </button>
