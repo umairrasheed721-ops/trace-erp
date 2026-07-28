@@ -10,23 +10,110 @@ import React from 'react'
  * Props:
  *   compactMode {boolean} — toggles compact typography sizes
  */
-export default function CommandCenterHeader({ compactMode }) {
+export default function CommandCenterHeader({ compactMode, preset, setPreset, status, setStatus }) {
   return (
     <>
       {/* Title row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compactMode ? 10 : 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: compactMode ? 10 : 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: compactMode ? '1.1rem' : '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
             🔍 Command Center
-            <span style={{ fontSize: '0.65rem', padding: '3px 8px', background: 'var(--brand-glow)', color: 'var(--brand)', borderRadius: '12px', border: '1px solid var(--brand)', letterSpacing: '0.05em' }}>
-              v1.8.0: SKU &amp; TOOLTIP LIVE
-            </span>
           </h2>
-          {!compactMode && (
-            <p style={{ margin: '4px 0 0', opacity: 0.6 }}>
-              Advanced search, filter, and logistics management
-            </p>
-          )}
+
+          {/* ⚡ Quick Preset Chips */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', marginLeft: 4 }}>⚡ Quick Presets:</span>
+            <button
+              type="button"
+              onClick={() => { setPreset && setPreset('Today'); setStatus && setStatus(''); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: preset === 'Today' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'Today' && !status ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'Today' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              🔥 Today's Orders
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatus && setStatus('Shipper Advice'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === 'Shipper Advice' ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: status === 'Shipper Advice' ? '#ffffff' : 'var(--text-primary)',
+                border: status === 'Shipper Advice' ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              ⚠️ Advice Required
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatus && setStatus('In Transit'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === 'In Transit' ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: status === 'In Transit' ? '#ffffff' : 'var(--text-primary)',
+                border: status === 'In Transit' ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              🚚 In Transit
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatus && setStatus('Return In Transit'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === 'Return In Transit' ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: status === 'Return In Transit' ? '#ffffff' : 'var(--text-primary)',
+                border: status === 'Return In Transit' ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              ↩️ Returns
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStatus && setStatus('Pending'); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: status === 'Pending' ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: status === 'Pending' ? '#ffffff' : 'var(--text-primary)',
+                border: status === 'Pending' ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              📦 Pending
+            </button>
+          </div>
         </div>
       </div>
     </>

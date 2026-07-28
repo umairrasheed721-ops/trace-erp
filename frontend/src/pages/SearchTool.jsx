@@ -1580,7 +1580,11 @@ export default function SearchTool() {
       {/* Main Page Header + Filters */}
       {!isFocusMode && (
         <div className="sticky-controls">
-          <CommandCenterHeader compactMode={compactMode} />
+          <CommandCenterHeader
+            compactMode={compactMode}
+            preset={preset} setPreset={setPreset}
+            status={status} setStatus={setStatus}
+          />
 
           <CommandCenterFilters
             preset={preset} setPreset={setPreset}
