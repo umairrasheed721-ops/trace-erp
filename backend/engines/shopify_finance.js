@@ -163,7 +163,7 @@ async function appendShopifyNote(store, orderId, fullNoteText) {
       console.error(`[ShopifyNote] PUT failed for ${orderId}: ${errText}`);
     } else {
       try {
-        const db = require('./db');
+        const { db } = require('../db');
         db.prepare('UPDATE orders SET notes = ? WHERE shopify_order_id = ? OR id = ?').run(newNote, String(orderId), String(orderId));
       } catch (err) {
         console.error(`[ShopifyNote] Failed to sync note to local DB for order ${orderId}:`, err.message);

@@ -1,4 +1,9 @@
-const { normalizePhone } = require('./whatsapp_message_processor');
+function normalizePhone(phone) {
+  if (!phone) return '';
+  let cleaned = String(phone).replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('03')) cleaned = '92' + cleaned.substring(1);
+  return cleaned;
+}
 
 async function checkAndSendPostDeliveryFeedback(activeDb, activeBot) {
   try {

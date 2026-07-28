@@ -4,7 +4,13 @@ const db = require('../db');
 const { authenticateToken } = require('./auth');
 const { runWatchdog } = require('../engines/watchdog');
 const { syncPostEx } = require('../engines/tracking/postex');
-const whatsappService = require('../services/whatsappService');
+let whatsappService = {
+  getBotForTenant: () => null,
+  sendText: async () => ({ messageId: null })
+};
+try {
+  whatsappService = require('../services/whatsappService');
+} catch (_) {}
 
 // GET /api/watchdog?store_id=1
 router.get('/', authenticateToken, (req, res) => {

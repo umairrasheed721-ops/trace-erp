@@ -4,7 +4,8 @@ const { fetchShopifyOrders, refreshShopifyUpdates } = require('./engines/shopify
 const { syncPostEx, syncInstaworld } = require('./engines/tracking');
 const { runWatchdog } = require('./engines/watchdog');
 const { getShopifyInventoryCosts } = require('./engines/shopify_finance');
-const { runSniperScan } = require('./engines/sniper');
+let runSniperScan = async () => {};
+try { ({ runSniperScan } = require('./engines/sniper')); } catch (_) {}
 const tenantContext = require('./tenant-context');
 const fs = require('fs');
 const { sendReviewRequestEmail } = require('./services/reviewEmailService');
@@ -447,7 +448,8 @@ module.exports = function schedulerInit() {
     console.log('⏰ [CRON] 24-Hour COD Verification Follow-up reminder scan starting...');
     await runMultiTenant('cod_followups_30m', async (tenantId) => {
       try {
-        const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+        let checkAndSendCODFollowUps = async () => {};
+        try { ({ checkAndSendCODFollowUps } = require('./engines/cod_verifier')); } catch (_) {}
         await checkAndSendCODFollowUps(db, getBotSafe());
       } catch (e) {
         console.error(`[Follow-up Cron Error] (Tenant: ${tenantId}):`, e.message);
@@ -474,7 +476,8 @@ module.exports = function schedulerInit() {
       try { console.log('🚚 [BOOT] Running initial tracking sync on startup...'); await runDynamicScheduler(); } catch(e) { console.error('Boot tracking sync error:', e.message); }
       try { await runSniperScan(); } catch(e) {}
       try {
-        const { checkAndSendCODFollowUps } = require('./engines/cod_verifier');
+        let checkAndSendCODFollowUps = async () => {};
+        try { ({ checkAndSendCODFollowUps } = require('./engines/cod_verifier')); } catch (_) {}
         await checkAndSendCODFollowUps(db, getBotSafe());
       } catch(e) {}
       try {

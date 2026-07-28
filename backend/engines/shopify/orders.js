@@ -272,9 +272,9 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           try {
             const settings = db.prepare('SELECT cod_verification_enabled FROM whatsapp_settings ORDER BY id DESC LIMIT 1').get() || {};
             if (settings.cod_verification_enabled !== 0) {
-              const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
               if (insertedOrder) {
-                const { dispatchCODVerification } = require('../cod_verifier');
+                let dispatchCODVerification = async () => {};
+                try { ({ dispatchCODVerification } = require('../cod_verifier')); } catch (_) {}
                 const tenantId = require('../../tenant-context').getStore() || 'default';
                 setImmediate(() => {
                   require('../../tenant-context').run(tenantId, () => {
@@ -813,7 +813,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           if (settings.cod_verification_enabled !== 0) {
             const insertedOrder = db.prepare('SELECT id, phone, customer_name, ref_number FROM orders WHERE shopify_order_id = ? LIMIT 1').get(String(order.id));
             if (insertedOrder) {
-              const { dispatchCODVerification } = require('../cod_verifier');
+              let dispatchCODVerification = async () => {};
+              try { ({ dispatchCODVerification } = require('../cod_verifier')); } catch (_) {}
               const tenantId = require('../../tenant-context').getStore() || 'default';
               setImmediate(() => {
                 require('../../tenant-context').run(tenantId, () => {
