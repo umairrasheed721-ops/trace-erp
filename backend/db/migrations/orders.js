@@ -477,5 +477,60 @@ module.exports = [
     } catch (e) {
       console.error('Failed to update instaworld_track_url in migration:', e.message);
     }
+  },
+
+  // 21. Synchronous Live auto-heal for Instaworld orders with missing courier_status or stuck on Booked
+  (db) => {
+    try {
+      console.log('🩹 [Migration #21] Running live auto-heal for Instaworld orders with missing courier_status...');
+      const orders = db.prepare(`
+        SELECT id, tracking_number, courier_status, delivery_status 
+        FROM orders 
+        WHERE tracking_number IS NOT NULL AND tracking_number != ''
+        AND (
+          LOWER(delivery_status) IN ('booked', 'pending', 'in transit', 'in-transit')
+          OR courier_status IS NULL OR courier_status = '' OR courier_status = '—'
+        )
+        AND (
+          tracking_number LIKE '173%' OR tracking_number LIKE '170%' OR tracking_number LIKE '171%' OR tracking_number LIKE '172%'
+          OR LOWER(courier) LIKE '%insta%' OR LOWER(courier) LIKE '%tcs%'
+        )
+      `).all();
+
+      if (orders.length > 0) {
+        console.log(`✅ [Migration #21] Found ${orders.length} candidate orders for Instaworld auto-heal.`);
+        const { loadStatusMaps, applyMap } = require('../../engines/tracking/statusMapper');
+        const statusMap = loadStatusMaps();
+        const apiKey = 'juehwqkpycnowff4spoh';
+        const trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+
+        for (const o of orders) {
+          try {
+            fetch(trackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tracking_number: o.tracking_number, api_key: apiKey })
+            }).then(async res => {
+              if (res.ok) {
+                const data = await res.json();
+                const history = data?.tracking_history || data?.data || (Array.isArray(data) ? data : []);
+                if (history.length > 0) {
+                  const last = history[history.length - 1];
+                  const rawStatus = last.status || last.statusDescription || last.status_description;
+                  if (rawStatus) {
+                    const erpStatus = applyMap(statusMap, 'TCS', String(rawStatus).toLowerCase()) || 'In Transit';
+                    db.prepare('UPDATE orders SET courier_status = ?, delivery_status = ? WHERE id = ?')
+                      .run(rawStatus, erpStatus, o.id);
+                    console.log(`✅ [Migration #21] Updated Order #${o.id} (${o.tracking_number}): Raw='${rawStatus}', ERP='${erpStatus}'`);
+                  }
+                }
+              }
+            }).catch(() => {});
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #21:', e.message);
+    }
   }
 ];

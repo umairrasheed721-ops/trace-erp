@@ -29,11 +29,18 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
   if (instaworld_track_url && !instaworld_track_url.includes('app.instaworld.pk') && !instaworld_track_url.includes('one.instaworld.pk/track')) {
     trackUrl = instaworld_track_url;
   }
-  const apiKeys = [instaworld_key, instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
+  const apiKeys = Array.from(new Set([
+    instaworld_key, 
+    instaworld_key_backup, 
+    store.instaworld_key_3, 
+    'juehwqkpycnowff4spoh', 
+    'qxdpk08t2mhrf2ed1sym'
+  ].filter(Boolean)));
 
   const orders = db.prepare(`
     SELECT id, ref_number, tracking_number, delivery_status FROM orders
-    WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
+    WHERE (store_id = ? OR store_id IS NULL OR store_id = 0) 
+    AND tracking_number IS NOT NULL AND tracking_number != ''
     AND (
       TRIM(LOWER(courier)) IN ('instaworld', 'insta world', 'instalogistics', 'insta logistics', 'leopards', 'lcs', 'tcs', 'private rider')
       OR courier LIKE '%Insta%' 
@@ -41,6 +48,10 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       OR courier LIKE '%TCS%'
       OR courier IS NULL 
       OR courier = ''
+      OR tracking_number LIKE '173%'
+      OR tracking_number LIKE '170%'
+      OR tracking_number LIKE '171%'
+      OR tracking_number LIKE '172%'
     )
   `).all(storeId);
 
