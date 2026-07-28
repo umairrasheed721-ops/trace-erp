@@ -1,12 +1,19 @@
-const { db } = require('../../db');
-
-const DEAD_STATUSES = ['delivered', 'return received', 'cancelled'];
-const EARLY_STATUSES = ['booked', 'unassigned', 'picked up'];
-const ATTEMPT_FAILURE_STATUSES = ['attempted', 'refused', 'not available', 'delivery unsuccessful', 'shipper advice'];
+function getDbSafe() {
+  try {
+    const dbModule = require('../../db');
+    return dbModule.db || dbModule;
+  } catch (_) {
+    return null;
+  }
+}
 
 function loadStatusMaps() {
   try {
-    const rows = db.prepare(`SELECT id, courier, courier_status, erp_status, matching_type FROM status_mappings WHERE is_active = 1`).all();
+    const activeDb = getDbSafe();
+    if (!activeDb || typeof activeDb.prepare !== 'function') {
+      return { exact: {}, wildcard: [], regex: [], rawRows: [] };
+    }
+    const rows = activeDb.prepare(`SELECT id, courier, courier_status, erp_status, matching_type FROM status_mappings WHERE is_active = 1`).all();
     const exact = {};
 
     rows.forEach(r => {
@@ -39,6 +46,7 @@ function applyMap(statusMap, courier, rawStatus) {
 
   // 2. Standard ERP Hardcoded Rules Fallback
   if (raw === 'delivered' || raw === 'delivered to customer') return 'Delivered';
+  if (raw.includes('out for delivery')) return 'Out for Delivery';
   if (raw === 'return received' || raw.includes('return received')) return 'Return Received';
   if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
   if (raw.includes('delivery under review') || raw.includes('shipper advice')) return 'Shipper Advice';

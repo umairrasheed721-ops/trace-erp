@@ -482,7 +482,18 @@ module.exports = [
   // 21. Synchronous Live auto-heal for Instaworld orders with missing courier_status or stuck on Booked
   (db) => {
     try {
-      console.log('🩹 [Migration #21] Running live auto-heal for Instaworld orders with missing courier_status...');
+      console.log('🩹 [Migration #21] Running live auto-heal for Instaworld orders...');
+      // Direct instant fix for Out for Delivery orders
+      const outForDeliveryFix = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Out for Delivery'
+        WHERE LOWER(courier_status) LIKE '%out for delivery%'
+          AND LOWER(delivery_status) != 'out for delivery'
+          AND LOWER(delivery_status) NOT IN ('delivered', 'returned', 'cancelled', 'return received')
+      `).run();
+      if (outForDeliveryFix.changes > 0) {
+        console.log(`✅ [Migration #21] Auto-updated ${outForDeliveryFix.changes} orders with 'Out for delivery' courier status to 'Out for Delivery' ERP status.`);
+      }
       const orders = db.prepare(`
         SELECT id, tracking_number, courier_status, delivery_status 
         FROM orders 
