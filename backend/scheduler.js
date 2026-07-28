@@ -241,10 +241,10 @@ module.exports = function schedulerInit() {
   // 1. Every 1 minute: Check for due dynamic syncs
   cron.schedule('* * * * *', runDynamicScheduler);
 
-  // 1b. Every 10 minutes: Automated background Shopify order ingestion (Hybrid Engine Recovery)
-  cron.schedule('*/10 * * * *', async () => {
-    console.log('🔄 [CRON] 10-minute Shopify order ingestion polling starting...');
-    await runMultiTenant('shopify_poll_10m', async (tenantId) => {
+  // 1b. Every 5 minutes: Automated background Shopify order ingestion (Hybrid Engine Recovery)
+  cron.schedule('*/5 * * * *', async () => {
+    console.log('🔄 [CRON] 5-minute Shopify order ingestion polling starting...');
+    await runMultiTenant('shopify_poll_5m', async (tenantId) => {
       try {
         const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
