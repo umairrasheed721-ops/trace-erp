@@ -416,6 +416,7 @@ router.get('/tracking-history', async (req, res) => {
         courier: 'PostEx',
         trackingNumber: tracking_number,
         currentStatus: data?.dist?.transactionStatusMessage || data?.transactionStatusMessage || null,
+        transactionNotes: data?.dist?.transactionNotes || data?.transactionNotes || null,
         history: formattedHistory
       });
     } catch (e) {

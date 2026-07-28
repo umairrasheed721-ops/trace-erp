@@ -74,12 +74,18 @@ export default function AdviceMonitor() {
   const handleOpenHistory = async (order) => {
     setHistoryModalOrder(order)
     setHistoryData([])
+    setHistoryMeta(null)
     setHistoryLoading(true)
     try {
       const res = await fetch(`/api/monitors/tracking-history?store_id=${activeStoreId}&tracking_number=${order.tracking_number}`)
       const data = await res.json()
       if (data.success && Array.isArray(data.history)) {
         setHistoryData(data.history)
+        setHistoryMeta({
+          transactionNotes: data.transactionNotes,
+          currentStatus: data.currentStatus,
+          orderNotes: order.notes
+        })
       } else {
         addToast('No tracking history available', 'info')
       }
@@ -572,6 +578,22 @@ export default function AdviceMonitor() {
               <button className="btn btn-secondary btn-sm" onClick={() => setHistoryModalOrder(null)}>✕</button>
             </div>
 
+            {/* Remarks & Instructions Banner inside Modal */}
+            {historyMeta && (historyMeta.transactionNotes || historyMeta.orderNotes) && (
+              <div style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 10, padding: '12px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {historyMeta.transactionNotes && (
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                    📌 <strong>PostEx Delivery Instructions:</strong> {historyMeta.transactionNotes}
+                  </div>
+                )}
+                {historyMeta.orderNotes && (
+                  <div style={{ fontSize: '0.82rem', color: '#10b981' }}>
+                    💬 <strong>CS Remarks & Notes:</strong> {historyMeta.orderNotes}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ overflowY: 'auto', flex: 1, paddingRight: 6 }}>
               {historyLoading ? (
                 <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
@@ -587,12 +609,14 @@ export default function AdviceMonitor() {
                   <div style={{ position: 'absolute', left: 8, top: 10, bottom: 10, width: 2, background: 'var(--border)' }} />
 
                   {historyData.map((item, idx) => {
-                    const msgLower = (item.message || '').toLowerCase();
-                    const isAttempt = msgLower.includes('attempt') || msgLower.includes('hcr') || msgLower.includes('cna') || msgLower.includes('ica');
+                    const msg = item.message || '';
+                    const msgLower = msg.toLowerCase();
+                    const isAttempt = msgLower.includes('attempt') || msgLower.includes('rfd') || msgLower.includes('refused');
                     const isReview = msgLower.includes('review') || msgLower.includes('advice');
+                    const isReattempt = msgLower.includes('reattempt') || msgLower.includes('merchant request');
                     const isLatest = idx === historyData.length - 1;
 
-                    let dotBg = isLatest ? '#6366f1' : isReview ? '#f59e0b' : isAttempt ? '#ef4444' : '#10b981';
+                    let dotBg = isReattempt ? '#3b82f6' : isLatest ? '#6366f1' : isReview ? '#f59e0b' : isAttempt ? '#ef4444' : '#10b981';
 
                     return (
                       <div key={idx} style={{ position: 'relative', marginBottom: 18 }}>
