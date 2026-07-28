@@ -4,7 +4,7 @@ const db = require('../db');
 const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
 const { cancelInstaworldOrder } = require('../engines/instaworld');
 
-const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'void', 'voided'];
+const IGNORE_STATUSES = ['delivered', 'return received', 'paid', 'pending', 'cancelled', 'returned', 'return in transit', 'void', 'voided'];
 const ADVICE_KEYWORDS = [
   'shipper advice', 
   'delivery under review',

@@ -543,5 +543,30 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #21:', e.message);
     }
+  },
+
+  // 22. Auto-heal 3-Phase Return Status: Migrate transit returns to 'Return In Transit'
+  (db) => {
+    try {
+      console.log('佳 Running database migration for 3-Phase Return Architecture (Return In Transit)...');
+      const result = db.prepare(`
+        UPDATE orders 
+        SET delivery_status = 'Return In Transit'
+        WHERE (
+          LOWER(courier_status) LIKE '%return to %' OR
+          LOWER(courier_status) LIKE '%arrived at transit hub%' OR
+          LOWER(courier_status) LIKE '%departed to %' OR
+          LOWER(courier_status) LIKE '%return in transit%' OR
+          LOWER(courier_status) LIKE '%out for return%' OR
+          LOWER(courier_status) LIKE '%enroute to merchant%'
+        )
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #22] Auto-healed ${result.changes} return orders to 'Return In Transit'.`);
+      }
+    } catch (e) {
+      console.error('Failed to auto-heal Return In Transit orders:', e.message);
+    }
   }
 ];
