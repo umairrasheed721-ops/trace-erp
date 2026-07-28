@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import SyncProgressCapsule from './SyncProgressCapsule'
 
@@ -14,6 +14,36 @@ export default function Topbar() {
   
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationRef = useRef(null)
+
+  const [adviceCount, setAdviceCount] = useState(0)
+  const [stuckCount, setStuckCount] = useState(0)
+
+  // 🔔 Live Monitor Alert Counters Engine
+  useEffect(() => {
+    if (!activeStoreId) return;
+    const fetchCounts = async () => {
+      try {
+        const [advRes, stuckRes] = await Promise.all([
+          fetch(`/api/monitors/advice?store_id=${activeStoreId}`),
+          fetch(`/api/monitors/stuck?store_id=${activeStoreId}`)
+        ]);
+        if (advRes.ok) {
+          const advData = await advRes.json();
+          setAdviceCount(Array.isArray(advData) ? advData.length : (advData.total || 0));
+        }
+        if (stuckRes.ok) {
+          const stuckData = await stuckRes.json();
+          setStuckCount(Array.isArray(stuckData) ? stuckData.length : (stuckData.total || 0));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch monitor alert counts:', e.message);
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 60000);
+    return () => clearInterval(interval);
+  }, [activeStoreId]);
 
   // Close notifications on outside click
   useEffect(() => {
@@ -56,8 +86,55 @@ export default function Topbar() {
           </div>
           
           {/* 💊 SYNC CAPSULE (Global Progress) */}
-          {/* 💊 SYNC CAPSULE (Global Progress) */}
           <SyncProgressCapsule />
+
+          {/* 🔔 LIVE ALERT BADGES */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 6 }}>
+            {adviceCount > 0 && (
+              <Link
+                to="/advice"
+                className="btn btn-xs"
+                style={{
+                  padding: '3px 10px',
+                  fontSize: '0.72rem',
+                  borderRadius: 12,
+                  background: 'rgba(249,115,22,0.15)',
+                  color: '#f97316',
+                  border: '1px solid rgba(249,115,22,0.4)',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+                title="Orders requiring Shipper Advice"
+              >
+                ⚡ Advice ({adviceCount})
+              </Link>
+            )}
+            {stuckCount > 0 && (
+              <Link
+                to="/stuck"
+                className="btn btn-xs"
+                style={{
+                  padding: '3px 10px',
+                  fontSize: '0.72rem',
+                  borderRadius: 12,
+                  background: 'rgba(239,68,68,0.15)',
+                  color: '#ef4444',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+                title="Stuck Parcels Monitor"
+              >
+                🚨 Stuck ({stuckCount})
+              </Link>
+            )}
+          </div>
         </div>
 
         <div className="topbar-actions" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>

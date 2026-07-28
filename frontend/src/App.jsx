@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import ToastContainer from './components/ToastContainer'
 import ErrorBoundary from './components/ErrorBoundary'
+import { copyWithTooltip } from './utils/orderUtils'
 
 const lazyWithRetry = (componentImport, componentName) =>
   lazy(async () => {
@@ -86,8 +87,24 @@ function AppContent() {
       }
     };
 
+    // 🎯 Double-Click Quick Copy on Any Table Cell
+    const handleDblClick = (e) => {
+      const td = e.target.closest('td');
+      if (!td) return;
+      if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+      const text = (td.innerText || td.textContent || '').trim();
+      if (!text || text === '—' || text === 'No Notes') return;
+
+      copyWithTooltip(text, e);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('dblclick', handleDblClick);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('dblclick', handleDblClick);
+    };
   }, []);
 
   // 🔄 Automated Cache-Buster Engine

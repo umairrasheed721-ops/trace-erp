@@ -39,7 +39,43 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
                 transition: 'all 0.15s ease'
               }}
             >
-              🔥 Today's Orders
+              🔥 Today
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPreset && setPreset('This Week'); setStatus && setStatus(''); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: preset === 'This Week' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'This Week' && !status ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'This Week' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              📅 This Week
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPreset && setPreset('This Month'); setStatus && setStatus(''); }}
+              className="btn btn-xs"
+              style={{
+                padding: '3px 10px',
+                fontSize: '0.7rem',
+                borderRadius: 12,
+                background: preset === 'This Month' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'This Month' && !status ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'This Month' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease'
+              }}
+            >
+              🗓️ This Month
             </button>
             <button
               type="button"
