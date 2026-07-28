@@ -17,7 +17,7 @@ import useCommandCenterModals from '../hooks/useCommandCenterModals'
 import useCommandCenterBulkActions from '../hooks/useCommandCenterBulkActions'
 import usePersistentState from '../hooks/usePersistentState'
 
-const DATE_PRESETS = ['Today','Yesterday','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
+const DATE_PRESETS = ['Today','Yesterday','This Week','Last 7 Days','Last 30 Days','This Month','Last Month','This Year','Last Year','2025','2024','2023','All Time','Custom Range']
 const SORT_OPTIONS = ['Default','Newest First','Oldest First','Highest Price','Lowest Price']
 const SPECIAL_MODES = ['[ACTIVE PIPELINE]','[STUCK PIPELINE]','[RETURNED]','[PAID]','[READY TO BOOK]','[GHOST PIPELINE]','[NEEDS ADJUSTMENT]','[MISSING COST]','[AUDIT: MISSING CHARGES]','[WATCHDOG FRAUD]','[NO TRACKING]','[UNPAID DELIVERED]']
 const STATUS_OPTIONS = ['All Statuses',...SPECIAL_MODES,'Pending','Delivered','Return Received','Cancelled','Returned','Booked','Shipper Advice','Undelivered','Refused','Attempted']

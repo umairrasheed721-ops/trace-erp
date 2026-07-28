@@ -79,6 +79,13 @@ export function getDateRange(preset, customStart, customEnd) {
     const e = new Date(d); e.setHours(23,59,59,999)
     return { start: d, end: e }
   }
+  if (preset === 'This Week') {
+    const s = new Date(now);
+    const day = s.getDay();
+    const diff = s.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    s.setDate(diff);
+    return { start: s, end };
+  }
   if (preset === 'Last 7 Days') { const s = new Date(now); s.setDate(s.getDate()-7); return { start: s, end } }
   if (preset === 'Last 30 Days') { const s = new Date(now); s.setDate(s.getDate()-30); return { start: s, end } }
   if (preset === 'This Month') { const s = new Date(now); s.setDate(1); return { start: s, end } }
