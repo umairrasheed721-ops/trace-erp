@@ -223,7 +223,7 @@ export default function CommandCenterFilters({
             </div>
           </div>
 
-          {/* Clear / Refresh */}
+          {/* Clear / Refresh / Sync Shopify */}
           <button
             className="btn btn-secondary"
             onClick={onClear}
@@ -237,6 +237,49 @@ export default function CommandCenterFilters({
             style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, height: '36px' }}
           >
             🔄 Refresh
+          </button>
+          <button
+            className="btn"
+            onClick={async () => {
+              try {
+                addToast && addToast('🛒 Fetching latest orders from Shopify...', 'info');
+                const res = await fetch('/api/sync/start', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
+                  },
+                  body: JSON.stringify({ type: 'Shopify Sync' })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  addToast && addToast(data.message || 'Shopify sync started!', 'success');
+                  setTimeout(() => runSearch(), 1500);
+                } else {
+                  throw new Error(data.error || 'Sync failed');
+                }
+              } catch (err) {
+                addToast && addToast(`❌ Sync Error: ${err.message}`, 'error');
+              }
+            }}
+            style={{
+              padding: '8px 14px',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              height: '36px',
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+            }}
+            title="Fetch all new and updated orders directly from Shopify API"
+          >
+            <span>🛒 Sync Shopify</span>
           </button>
         </div>
       </div>

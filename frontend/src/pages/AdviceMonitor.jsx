@@ -235,6 +235,12 @@ export default function AdviceMonitor() {
     addToast(`📄 Exported ${listToExport.length} violation orders to CSV`, 'success')
   }
 
+  const formatCleanNote = (notes) => {
+    if (!notes) return null;
+    let cleaned = notes.replace(/Order has been shipped via [^.]+\.?/gi, '').trim();
+    return cleaned || notes.trim();
+  };
+
   return (
     <div>
       <div className="page-header">

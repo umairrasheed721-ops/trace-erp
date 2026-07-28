@@ -156,6 +156,53 @@ router.post('/save-log', (req, res) => {
 
 
 
+// POST /api/sync/start - Trigger manual Shopify or Courier sync
+router.post('/start', async (req, res) => {
+  try {
+    const { type, mode, days, order_number } = req.body;
+    let storeId = req.body.store_id || req.body.storeId;
+    
+    let store;
+    if (storeId) {
+      store = db.prepare('SELECT * FROM stores WHERE id = ?').get(storeId);
+    }
+    if (!store) {
+      store = db.prepare('SELECT * FROM stores ORDER BY id ASC LIMIT 1').get();
+    }
+    if (!store) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const { fetchShopifyOrders, syncOrderByNumber } = require('../engines/shopify');
+    const { syncPostEx, syncInstaworld } = require('../engines/tracking');
+
+    if (type === 'Shopify Sync' || (type && type.toLowerCase().includes('shopify'))) {
+      if (order_number) {
+        await syncOrderByNumber(store, order_number);
+        return res.json({ success: true, message: `Synced Shopify order ${order_number}` });
+      }
+      
+      // Run sync in background and notify frontend via SSE upon completion
+      fetchShopifyOrders(store, null, { forceDeepSync: mode === 'full' }).then(result => {
+        console.log(`[SyncRoute] Shopify order sync complete for ${store.shop_domain}:`, result);
+        try { broadcast('order_updated', { storeId: store.id }); } catch (e) {}
+      }).catch(err => {
+        console.error(`[SyncRoute] Shopify order sync error:`, err.message);
+      });
+
+      return res.json({ success: true, message: '🛒 Shopify Order Sync initiated! Fetching latest orders...' });
+    } else {
+      // Courier Sync
+      syncPostEx(store).catch(e => console.error('PostEx sync err:', e.message));
+      syncInstaworld(store).catch(e => console.error('Instaworld sync err:', e.message));
+      return res.json({ success: true, message: '🚚 Courier tracking sync initiated in background!' });
+    }
+  } catch (error) {
+    console.error('Error starting sync:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/sync/abort
 router.post('/abort', (req, res) => {
   const storeId = req.body.store_id || req.body.storeId;
