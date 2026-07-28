@@ -29,10 +29,14 @@ function isExcludedFromAdvice(courierStatus) {
   if (
     statusLower.includes('return process') ||
     statusLower.includes('waiting for return') ||
-    statusLower.includes('return to ') ||
+    statusLower.includes('return to') ||
     statusLower.includes('returned') ||
     statusLower.includes('out for return') ||
-    statusLower.includes('return received')
+    statusLower.includes('return received') ||
+    statusLower.includes('en route') ||
+    statusLower.includes('enroute') ||
+    statusLower.includes('transit hub') ||
+    statusLower.includes('merchant warehouse')
   ) {
     return true;
   }
@@ -164,7 +168,13 @@ router.get('/advice', (req, res) => {
                                courierStatusLower.includes('return in transit') ||
                                courierStatusLower.includes('returned') ||
                                courierStatusLower.includes('at origin') ||
-                               deliveryStatusLower.includes('returned');
+                               courierStatusLower.includes('en route') ||
+                               courierStatusLower.includes('enroute') ||
+                               courierStatusLower.includes('transit hub') ||
+                               courierStatusLower.includes('departed') ||
+                               courierStatusLower.includes('merchant warehouse') ||
+                               deliveryStatusLower.includes('returned') ||
+                               deliveryStatusLower.includes('return in transit');
 
     const isInitialReturnInitiated = (deliveryStatusLower.includes('return initiated') ||
                                       deliveryStatusLower.includes('return process') ||

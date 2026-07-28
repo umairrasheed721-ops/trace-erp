@@ -558,7 +558,9 @@ module.exports = [
           LOWER(courier_status) LIKE '%departed to %' OR
           LOWER(courier_status) LIKE '%return in transit%' OR
           LOWER(courier_status) LIKE '%out for return%' OR
-          LOWER(courier_status) LIKE '%enroute to merchant%'
+          LOWER(courier_status) LIKE '%enroute%' OR
+          LOWER(courier_status) LIKE '%en route%' OR
+          LOWER(courier_status) LIKE '%merchant warehouse%'
         )
         AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled')
       `).run();
