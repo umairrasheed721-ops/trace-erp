@@ -43,20 +43,6 @@ const PaymentSummary = React.memo(({
           <span>{formatCurrency(liveTotal)}</span>
         </div>
 
-        {/* True Net Profit Display */}
-        <div style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-          <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
-            <span>Master Inventory Cost</span>
-            <span style={{ color: '#f43f5e', fontWeight: 700 }}>-{formatCurrency(totalOrderCost)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyItems: 'space-between', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8' }}>
-            <span>Estimated Net Profit</span>
-            <span style={{ color: netProfit > 0 ? '#10b981' : '#f43f5e', fontWeight: 800, fontSize: '0.9rem' }}>
-              {formatCurrency(netProfit)} ({profitMargin}%)
-            </span>
-          </div>
-        </div>
-
         {/* CS Internal Notes via CSUpdateForm */}
         <CSUpdateForm 
           mode="notes"
