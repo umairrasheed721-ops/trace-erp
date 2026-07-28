@@ -5,6 +5,43 @@ export const ERP_STATUSES = [
   'Returned', 'Return Received', 'Cancelled'
 ];
 
+export function formatCustomerName(name) {
+  if (!name) return 'Customer'
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
+export function copyWithTooltip(text, event, label = 'Copied! ✓') {
+  if (!text) return;
+  try {
+    navigator.clipboard.writeText(text);
+  } catch (e) {
+    console.warn('Clipboard write failed:', e.message);
+  }
+
+  const el = document.createElement('div');
+  el.className = 'micro-copy-tooltip';
+  el.innerText = label;
+
+  const x = event && (event.clientX || event.pageX) ? event.clientX : window.innerWidth / 2;
+  const y = event && (event.clientY || event.pageY) ? event.clientY : window.innerHeight / 2;
+
+  el.style.left = `${x - 30}px`;
+  el.style.top = `${y - 32}px`;
+
+  document.body.appendChild(el);
+
+  setTimeout(() => {
+    el.classList.add('micro-copy-fadeout');
+    setTimeout(() => {
+      if (document.body.contains(el)) el.remove();
+    }, 250);
+  }, 900);
+}
+
 export function getStatusColor(status) {
   const s = (status || '').toLowerCase()
   // ✅ Success / Revenue

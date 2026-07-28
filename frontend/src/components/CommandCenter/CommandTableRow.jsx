@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AddressCell, PaidAmountCell, CourierFeeCell, CostCell, NoteCell, CityCell } from './CommandEditableCell'
 import { useApp } from '../../context/AppContext'
+import { copyWithTooltip } from '../../utils/orderUtils'
 
 const formatPhone = (phoneVal) => {
   if (!phoneVal) return '';
@@ -131,7 +132,7 @@ const CommandTableRow = React.memo(({
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      navigator.clipboard.writeText(o.ref_number || o.shopify_order_id);
+                      copyWithTooltip(o.ref_number || o.shopify_order_id, e);
                       addToast('Order reference copied!', 'success');
                     }}
                     style={{
@@ -571,7 +572,7 @@ const CommandTableRow = React.memo(({
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          navigator.clipboard.writeText(phone);
+                          copyWithTooltip(phone, e);
                           addToast('Phone number copied!', 'success');
                         }}
                         style={{
@@ -763,7 +764,7 @@ const CommandTableRow = React.memo(({
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        navigator.clipboard.writeText(o.tracking_number);
+                        copyWithTooltip(o.tracking_number, e);
                         addToast('Tracking number copied!', 'success');
                       }}
                       style={{

@@ -1,9 +1,30 @@
-/* ============================================
-   TRACE ERP — Global Design System
-   Dark Premium Theme
-   ============================================ */
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Micro Copy Tooltip */
+.micro-copy-tooltip {
+  position: fixed;
+  z-index: 999999;
+  background: #10b981;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+  pointer-events: none;
+  animation: floatUpCopy 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes floatUpCopy {
+  0% { opacity: 0; transform: translateY(6px) scale(0.85); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.micro-copy-fadeout {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.92);
+  transition: all 0.22s ease-out;
+}
 
 :root {
   /* Layout */

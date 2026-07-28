@@ -55,10 +55,13 @@ export default function CommandCenterFilters({
         }}>
           {/* Keyword Search */}
           <div className="w-80" style={{ width: '320px', minWidth: '320px' }}>
-            <label className="form-label">🔑 Keyword</label>
+            <label className="form-label">
+              🔑 Keyword <span style={{ fontSize: '0.6rem', color: 'var(--brand)', background: 'rgba(168,85,247,0.15)', padding: '1px 5px', borderRadius: 4, marginLeft: 4, fontWeight: 700 }}>⌘K</span>
+            </label>
             <div style={{ position: 'relative' }}>
               <input
                 ref={searchInputRef}
+                id="cmd-center-keyword-input"
                 className="form-input"
                 placeholder="Search Order, Name, Phone..."
                 value={keyword}
@@ -280,6 +283,51 @@ export default function CommandCenterFilters({
             title="Fetch all new and updated orders directly from Shopify API"
           >
             <span>🛒 Sync Shopify</span>
+          </button>
+        </div>
+
+        {/* ⚡ Quick Preset Chips */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>⚡ Quick Presets:</span>
+          <button
+            type="button"
+            onClick={() => { setPreset('Today'); setStatus(''); }}
+            className="btn btn-xs"
+            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: preset === 'Today' && !status ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+          >
+            🔥 Today's Orders
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStatus('Shipper Advice'); }}
+            className="btn btn-xs"
+            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Shipper Advice' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+          >
+            ⚠️ Advice Required
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStatus('In Transit'); }}
+            className="btn btn-xs"
+            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'In Transit' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+          >
+            🚚 In Transit
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStatus('Return In Transit'); }}
+            className="btn btn-xs"
+            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Return In Transit' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+          >
+            ↩️ Returns
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStatus('Pending'); }}
+            className="btn btn-xs"
+            style={{ padding: '3px 10px', fontSize: '0.7rem', borderRadius: 12, background: status === 'Pending' ? 'var(--brand)' : 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: 600 }}
+          >
+            📦 Pending
           </button>
         </div>
       </div>

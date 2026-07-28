@@ -62,6 +62,34 @@ const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'Re
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
 
+  // ⌨️ Global Keyboard Hotkeys Engine (Cmd + K / Ctrl + K & Esc)
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector('#cmd-center-keyword-input') || 
+                            document.querySelector('input[placeholder*="Keyword"]') ||
+                            document.querySelector('input[placeholder*="Search"]');
+        if (searchInput) {
+          searchInput.focus();
+          if (typeof searchInput.select === 'function') searchInput.select();
+        } else {
+          window.location.href = '/search';
+        }
+      } else if (e.key === 'Escape') {
+        const closeBtn = document.querySelector('.modal-overlay button.btn-close') ||
+                         document.querySelector('.modal-content button') ||
+                         document.querySelector('[data-close-modal="true"]');
+        if (closeBtn && typeof closeBtn.click === 'function') {
+          closeBtn.click();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // 🔄 Automated Cache-Buster Engine
   React.useEffect(() => {
     let currentBuildId = null;
