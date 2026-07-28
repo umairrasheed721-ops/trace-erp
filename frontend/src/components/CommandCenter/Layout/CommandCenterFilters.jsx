@@ -200,13 +200,7 @@ export default function CommandCenterFilters({
             </select>
           </div>
 
-          {/* Sort */}
-          <div style={{ width: '140px', minWidth: '140px' }}>
-            <label className="form-label">🗂️ Sort</label>
-            <select className="form-select" value={sort} onChange={e => setSort(e.target.value)}>
-              {SORT_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+
 
           {/* Saved Views */}
           <div style={{ width: '180px', minWidth: '180px' }}>
