@@ -151,8 +151,13 @@ router.get('/advice', (req, res) => {
     const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
     const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
 
+    const isReattemptRequested = deliveryStatusLower.includes('reattempt requested') ||
+                                 courierStatusLower.includes('merchant request') ||
+                                 courierStatusLower.includes('reattempt') ||
+                                 courierStatusLower.includes('re-attempt');
+
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return;
-    if (deliveryStatusLower.includes('reattempt requested')) return;
+    if (isReattemptRequested) return;
 
     const failedCount = parseInt(o.failed_attempts || 0, 10);
     const isPastReturnProcess = courierStatusLower.includes('return to') ||
@@ -222,7 +227,13 @@ router.get('/reattempts', (req, res) => {
   const orders = db.prepare(`
     SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, status_date, order_date
     FROM orders WHERE store_id = ?
-    AND (LOWER(delivery_status) IN ('reattempt requested', 'return initiated') OR notes LIKE '%[Shipper Advice%')
+    AND (
+      LOWER(delivery_status) IN ('reattempt requested', 'return initiated') 
+      OR LOWER(courier_status) LIKE '%merchant request%'
+      OR LOWER(courier_status) LIKE '%reattempt%'
+      OR LOWER(courier_status) LIKE '%re-attempt%'
+      OR notes LIKE '%[Shipper Advice%'
+    )
     AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-60 days')
     ORDER BY COALESCE(status_date, order_date) DESC
   `).all(store_id);
