@@ -143,7 +143,7 @@ async function runDynamicScheduler() {
           db.prepare('UPDATE sync_schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?')
             .run(now.toISOString(), newNextRun.toISOString(), s.id);
 
-          const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+          const stores = db.prepare("SELECT * FROM stores").all();
           for (const store of stores) {
             try {
               if (s.courier === 'PostEx') {
@@ -246,7 +246,7 @@ module.exports = function schedulerInit() {
     console.log('🔄 [CRON] 10-minute Shopify order ingestion polling starting...');
     await runMultiTenant('shopify_poll_10m', async (tenantId) => {
       try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
           try {
             console.log(`[Shopify Poll] Fetching orders for store ${store.shop_domain} (Tenant: ${tenantId})...`);
@@ -265,7 +265,7 @@ module.exports = function schedulerInit() {
     console.log('🔄 [CRON] Shopify refresh starting...');
     await runMultiTenant('shopify_refresh_2h', async (tenantId) => {
       try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
           try { await refreshShopifyUpdates(store); } catch (e) { console.error(`[CRON] Refresh error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
         }
@@ -278,7 +278,7 @@ module.exports = function schedulerInit() {
     console.log('🐕 [CRON] Watchdog audit starting...');
     await runMultiTenant('watchdog_audit_30m', async (tenantId) => {
       try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
           try { await runWatchdog(store); } catch (e) { console.error(`[CRON] Watchdog error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
         }
@@ -291,7 +291,7 @@ module.exports = function schedulerInit() {
     console.log('📦 [CRON] Automated 12-hour inventory & cost sync starting...');
     await runMultiTenant('inventory_sync_12h', async (tenantId) => {
       try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
           try { await syncStoreInventoryAndCosts(store); } catch (e) { console.error(`[CRON] Catalog sync error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
         }
@@ -355,7 +355,7 @@ module.exports = function schedulerInit() {
     const { syncFullProductCatalog } = require('./engines/shopify');
     await runMultiTenant('full_catalog_sync_daily', async (tenantId) => {
       try {
-        const stores = db.prepare("SELECT * FROM stores WHERE access_token != 'PENDING'").all();
+        const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
           try { await syncFullProductCatalog(store); } catch (e) { console.error(`Full catalog sync cron error for store ${store.shop_domain} (Tenant: ${tenantId}):`, e.message); }
         }
