@@ -421,23 +421,11 @@ router.get('/tracking-history', async (req, res) => {
         dateTime: h.dateTime || h.date || h.timestamp || h.updatedAt || null
       }));
 
-      const latestStatus = data?.dist?.transactionStatusMessage || data?.transactionStatusMessage || (formattedHistory[0] ? formattedHistory[0].message : null);
-      if (latestStatus) {
-        try {
-          const { loadStatusMaps, applyMap } = require('../engines/tracking/statusMapper');
-          const statusMap = loadStatusMaps();
-          const mappedStatus = applyMap(statusMap, 'PostEx', latestStatus);
-          db.prepare('UPDATE orders SET courier_status = ?, delivery_status = ?, status_date = CURRENT_TIMESTAMP WHERE store_id = ? AND tracking_number = ?').run(latestStatus, mappedStatus, store_id, tracking_number);
-        } catch (e) {
-          console.warn('Failed to auto-heal order status on tracking history fetch:', e.message);
-        }
-      }
-
       return res.json({
         success: true,
         courier: 'PostEx',
         trackingNumber: tracking_number,
-        currentStatus: latestStatus,
+        currentStatus: data?.dist?.transactionStatusMessage || data?.transactionStatusMessage || null,
         transactionNotes: data?.dist?.transactionNotes || data?.transactionNotes || null,
         history: formattedHistory
       });

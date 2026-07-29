@@ -87,7 +87,6 @@ export default function AdviceMonitor() {
           currentStatus: data.currentStatus,
           orderNotes: order.notes
         })
-        load() // 🔄 Auto-refresh table to reflect live synced status
       } else {
         addToast('No tracking history available', 'info')
       }
