@@ -412,6 +412,40 @@ export default function ReturnsManager() {
           <button
             type="button"
             className="btn btn-xs"
+            onClick={() => setDatePreset('this_year')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'this_year' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'this_year' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'this_year' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            ✨ This Year
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('last_year')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'last_year' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'last_year' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'last_year' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            🏛️ Last Year
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
             onClick={() => setDatePreset('all')}
             style={{
               padding: '4px 12px',

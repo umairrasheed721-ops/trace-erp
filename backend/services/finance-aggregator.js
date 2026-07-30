@@ -232,6 +232,10 @@ class FinanceAggregator {
       whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
       whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+    } else if (d === 'this_year') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
+    } else if (d === 'last_year') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
       whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
@@ -262,6 +266,10 @@ class FinanceAggregator {
       whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
       whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+    } else if (d === 'this_year') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
+    } else if (d === 'last_year') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
       whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
