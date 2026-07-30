@@ -231,14 +231,16 @@ const CommandTableRow = React.memo(({
                 <select
                   className="btn btn-sm"
                   style={{ 
-                    padding: '2px 4px', 
-                    fontSize: '0.65rem', 
+                    padding: '3px 8px', 
+                    fontSize: '0.74rem', 
+                    fontWeight: 600,
                     flexShrink: 0,
-                    width: '115px',
+                    width: '100%',
+                    maxWidth: '120px',
                     background: s === 'confirmed' ? 'var(--brand)' : 'var(--bg-elevated)',
-                    color: s === 'confirmed' ? '#fff' : 'var(--text-muted)',
+                    color: s === 'confirmed' ? '#fff' : 'var(--text-primary)',
                     border: '1px solid var(--border)',
-                    borderRadius: 4,
+                    borderRadius: 6,
                     cursor: 'pointer',
                     opacity: 1
                   }}
@@ -770,15 +772,16 @@ const CommandTableRow = React.memo(({
                       style={{
                         background: 'transparent',
                         border: 'none',
-                        padding: '2px',
+                        padding: '2px 4px',
                         cursor: 'pointer',
                         color: 'var(--text-secondary)',
-                        opacity: 0,
-                        transition: 'opacity 0.15s ease, transform 0.15s ease',
+                        opacity: 0.7,
+                        transition: 'all 0.15s ease',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         borderRadius: '4px',
+                        flexShrink: 0
                       }}
                       className="track-copy-btn"
                       title="Copy tracking number"

@@ -20,7 +20,7 @@ const COLUMN_WIDTHS = {
   address: 240,
   city: 90,
   items: 220,
-  tracking_number: 130,
+  tracking_number: 180,
   courier: 90,
   courier_status: 120,
   delivery_status: 160,
@@ -34,7 +34,7 @@ const COLUMN_WIDTHS = {
   payment_ref: 140,
   payment_date: 110,
   postex_weight: 90,
-  edit: 80,
+  edit: 130,
   notes: 180,
   wa_erp_status: 140
 }
@@ -393,24 +393,21 @@ export default function CommandTable({
   return (
     <>
       <style>{`
+        .phone-copy-btn,
+        .ref-copy-btn,
+        .track-copy-btn {
+          opacity: 0.65 !important;
+        }
         .phone-container-wrap:hover .phone-copy-btn,
         .ref-container-wrap:hover .ref-copy-btn,
         .track-container-wrap:hover .track-copy-btn {
-          opacity: 0.5 !important;
+          opacity: 0.9 !important;
         }
-        .phone-copy-btn:hover {
-          opacity: 1 !important;
-          color: var(--blue) !important;
-          transform: scale(1.15);
-        }
-        .ref-copy-btn:hover {
-          opacity: 1 !important;
-          color: var(--brand) !important;
-          transform: scale(1.15);
-        }
+        .phone-copy-btn:hover,
+        .ref-copy-btn:hover,
         .track-copy-btn:hover {
           opacity: 1 !important;
-          color: var(--blue) !important;
+          color: var(--brand) !important;
           transform: scale(1.15);
         }
       `}</style>
