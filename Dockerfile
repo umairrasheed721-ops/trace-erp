@@ -1,6 +1,6 @@
 FROM node:22-slim
 
-# Install Puppeteer/Chromium system dependencies (cached)
+# 1. Install system dependencies (Cached by Docker layer)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 \
     libatk1.0-0 \
@@ -17,24 +17,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Puppeteer environment variables
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV NODE_ENV=production
+# 2. Set environment variables
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    NODE_ENV=production
 
 WORKDIR /app
 
-# Copy dependency manifests
+# 3. Copy dependency manifests & install (Cached unless package.json changes)
 COPY package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# Install ONLY production dependencies
-RUN npm ci --omit=dev
-
-# Copy backend files directly (already built locally)
+# 4. Copy pre-built production backend & public bundle
 COPY backend ./backend
 
-# Expose the application port
 EXPOSE 3001
 
-# Start the application
 CMD ["node", "--experimental-sqlite", "backend/index.js"]
