@@ -192,51 +192,34 @@ router.post('/sync-couriers', async (req, res) => {
   const { runCourierSyncWithJournal } = require('../engines/courier_sync');
   const tenantId = req.tenantId || 'default';
 
-  try {
-    const syncPromise = new Promise(async (resolve, reject) => {
-      // Set active sync state at start of execution
-      global.activeSyncs = global.activeSyncs || {};
-      global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
-      global.activeSyncs[tenantId].courier = true;
-      global.syncProgress = global.syncProgress || {};
-      global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
+  // Respond immediately — sync runs in background (avoids Railway 30s gateway timeout)
+  res.json({ success: true, message: 'Courier sync started in background', store_id });
 
-      try {
-        const tenantContext = require('../tenant-context');
-        await tenantContext.run(tenantId, async () => {
-          const result = await runCourierSyncWithJournal(store);
-          resolve(result);
-        });
-      } catch (err) {
-        reject(err);
-      } finally {
-        // Only clear sync status when the actual sync background job finishes!
-        setTimeout(() => {
-          if (global.syncProgress) delete global.syncProgress[store_id];
-        }, 5000);
-        if (global.activeSyncs[tenantId]) {
-          global.activeSyncs[tenantId].courier = false;
-        }
+  // Fire-and-forget background execution
+  setImmediate(async () => {
+    global.activeSyncs = global.activeSyncs || {};
+    global.activeSyncs[tenantId] = global.activeSyncs[tenantId] || { shopify: false, courier: false };
+    global.activeSyncs[tenantId].courier = true;
+    global.syncProgress = global.syncProgress || {};
+    global.syncProgress[store_id] = { status: 'Starting Courier Sync...', processed: 0, total: 0, abort: false };
+
+    try {
+      const tenantContext = require('../tenant-context');
+      await tenantContext.run(tenantId, async () => {
+        const result = await runCourierSyncWithJournal(store);
+        console.log(`✅ [Courier Sync BG] Store ${store.shop_domain}: success=${result.successCount}, failed=${result.failedCount}`);
+      });
+    } catch (err) {
+      console.error(`[Courier Sync BG Error] ${store.shop_domain}: ${err.message}`);
+    } finally {
+      setTimeout(() => {
+        if (global.syncProgress) delete global.syncProgress[store_id];
+      }, 5000);
+      if (global.activeSyncs?.[tenantId]) {
+        global.activeSyncs[tenantId].courier = false;
       }
-    });
-
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Courier sync request timed out')), 300000)
-    );
-
-    const result = await Promise.race([syncPromise, timeoutPromise]);
-    res.json({ success: true, ...result });
-  } catch (e) {
-    console.error(`Courier sync error for ${store.shop_domain}: ${e.message}`);
-    // Force-reset stuck state on any error/timeout
-    if (global.activeSyncs && global.activeSyncs[tenantId]) {
-      global.activeSyncs[tenantId].courier = false;
     }
-    if (global.syncProgress && global.syncProgress[store_id]) {
-      delete global.syncProgress[store_id];
-    }
-    res.status(500).json({ error: e.message || 'Sync failed' });
-  }
+  });
 });
 
 // POST /api/tracking/sync-all - Full sync for a store (Shopify fetch + both couriers)
