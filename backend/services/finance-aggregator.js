@@ -203,17 +203,41 @@ class FinanceAggregator {
     };
   }
 
-  static async getReturnsPending(storeId) {
+  static async getReturnsPending(storeId, days = 7, startDate = null, endDate = null) {
+    const d = String(days || '7').toLowerCase();
+    let whereClause = `WHERE store_id = ? 
+      AND LOWER(delivery_status) IN ('returned', 'rto')
+      AND LOWER(delivery_status) NOT IN ('return received', 'delivered', 'cancelled', 'paid')
+      AND NOT (LOWER(courier) = 'instaworld' AND LOWER(courier_status) = 'return received at insta hub')`;
+    const params = [Number(storeId)];
+
+    if (startDate && endDate) {
+      whereClause += ` AND order_date >= ? AND order_date <= ?`;
+      params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+    } else if (d === 'today') {
+      whereClause += ` AND order_date >= date('now', 'start of day')`;
+    } else if (d === 'yesterday') {
+      whereClause += ` AND order_date >= date('now', '-1 day', 'start of day') AND order_date < date('now', 'start of day')`;
+    } else if (d === 'this_month') {
+      whereClause += ` AND order_date >= date('now', 'start of month')`;
+    } else if (d === 'last_month') {
+      whereClause += ` AND order_date >= date('now', '-1 month', 'start of month') AND order_date < date('now', 'start of month')`;
+    } else if (d === 'this_year') {
+      whereClause += ` AND order_date >= date('now', 'start of year')`;
+    } else if (d === 'last_year') {
+      whereClause += ` AND order_date >= date('now', '-1 year', 'start of year') AND order_date < date('now', 'start of year')`;
+    } else if (d !== 'all' && d !== '9999') {
+      const numDays = parseInt(d, 10) || 7;
+      whereClause += ` AND order_date >= datetime('now', '-${numDays} days')`;
+    }
+
     return db.prepare(`
       SELECT id, shopify_order_id, ref_number, customer_name, tracking_number, courier, delivery_status, order_date, status_date, price, notes, line_items, product_titles, courier_status
       FROM orders 
-      WHERE store_id = ? 
-      AND LOWER(delivery_status) IN ('returned', 'rto')
-      AND LOWER(delivery_status) NOT IN ('return received', 'delivered', 'cancelled', 'paid')
-      AND NOT (LOWER(courier) = 'instaworld' AND LOWER(courier_status) = 'return received at insta hub')
+      ${whereClause}
       ORDER BY order_date DESC
       LIMIT 1000
-    `).all(Number(storeId));
+    `).all(...params);
   }
 
   static async getReturnsHistory(storeId, days = 7, startDate = null, endDate = null) {
@@ -222,31 +246,31 @@ class FinanceAggregator {
     const params = [Number(storeId)];
 
     if (startDate && endDate) {
-      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
+      whereClause += ` AND o.order_date >= ? AND o.order_date <= ?`;
       params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
     } else if (d === 'today') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of day')`;
     } else if (d === 'yesterday') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 day', 'start of day') AND o.order_date < date('now', 'start of day')`;
     } else if (d === 'this_month') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 month', 'start of month') AND o.order_date < date('now', 'start of month')`;
     } else if (d === 'this_year') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of year')`;
     } else if (d === 'last_year') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 year', 'start of year') AND o.order_date < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
-      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
+      whereClause += ` AND o.order_date >= datetime('now', '-${numDays} days')`;
     }
 
     return db.prepare(`
-      SELECT rl.*, o.ref_number, o.customer_name, o.courier, o.notes, o.price, o.line_items, o.product_titles
+      SELECT rl.*, o.ref_number, o.customer_name, o.courier, o.notes, o.price, o.line_items, o.product_titles, o.order_date
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
       ${whereClause}
-      ORDER BY rl.created_at DESC
+      ORDER BY o.order_date DESC
     `).all(...params);
   }
 
@@ -256,32 +280,32 @@ class FinanceAggregator {
     const params = [Number(storeId)];
 
     if (startDate && endDate) {
-      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
+      whereClause += ` AND o.order_date >= ? AND o.order_date <= ?`;
       params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
     } else if (d === 'today') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of day')`;
     } else if (d === 'yesterday') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 day', 'start of day') AND o.order_date < date('now', 'start of day')`;
     } else if (d === 'this_month') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 month', 'start of month') AND o.order_date < date('now', 'start of month')`;
     } else if (d === 'this_year') {
-      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
+      whereClause += ` AND o.order_date >= date('now', 'start of year')`;
     } else if (d === 'last_year') {
-      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
+      whereClause += ` AND o.order_date >= date('now', '-1 year', 'start of year') AND o.order_date < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
-      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
+      whereClause += ` AND o.order_date >= datetime('now', '-${numDays} days')`;
     }
 
     return db.prepare(`
-      SELECT rl.created_at as verified_at, o.ref_number, o.shopify_order_id, o.customer_name, rl.tracking_number, o.courier, rl.processed_by, 
+      SELECT rl.created_at as verified_at, o.order_date, o.ref_number, o.shopify_order_id, o.customer_name, rl.tracking_number, o.courier, rl.processed_by, 
              CASE WHEN rl.restocked_shopify = 1 THEN 'Yes' ELSE 'No' END as restocked
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
       ${whereClause}
-      ORDER BY rl.created_at DESC
+      ORDER BY o.order_date DESC
     `).all(...params);
   }
 }

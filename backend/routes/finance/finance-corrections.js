@@ -26,9 +26,9 @@ router.get('/missing-product-list', asyncHandler(async (req, res) => {
 
 // GET /api/finance/returns/pending?store_id=1
 router.get('/returns/pending', asyncHandler(async (req, res) => {
-  const { store_id } = req.query;
+  const { store_id, days = 7, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  const result = await FinanceAggregator.getReturnsPending(store_id);
+  const result = await FinanceAggregator.getReturnsPending(store_id, days, start_date, end_date);
   res.json(result);
 }));
 

@@ -44,7 +44,11 @@ export default function ReturnsManager() {
   const fetchPending = async () => {
     if (!activeStoreId) return
     try {
-      const res = await fetch(`/api/finance/returns/pending?store_id=${activeStoreId}`, {
+      let url = `/api/finance/returns/pending?store_id=${activeStoreId}&days=${datePreset}`
+      if (datePreset === 'custom' && customStart && customEnd) {
+        url += `&start_date=${customStart}&end_date=${customEnd}`
+      }
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
       const data = await res.json()
@@ -77,21 +81,25 @@ export default function ReturnsManager() {
     inputRef.current?.focus()
   }, [activeStoreId, datePreset, customStart, customEnd])
 
-  // Filtered lists
+  // Filtered lists (sorted by Order Date DESC)
   const filteredPending = useMemo(() => {
-    return pendingReturns.filter(r => 
-      r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.tracking_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.ref_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    return pendingReturns
+      .filter(r => 
+        r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.tracking_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.ref_number?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => new Date(b.order_date || b.created_at || 0) - new Date(a.order_date || a.created_at || 0))
   }, [pendingReturns, searchTerm])
 
   const filteredHistory = useMemo(() => {
-    return returnHistory.filter(r => 
-      r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.tracking_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.ref_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    return returnHistory
+      .filter(r => 
+        r.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.tracking_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.ref_number?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => new Date(b.order_date || b.created_at || 0) - new Date(a.order_date || a.created_at || 0))
   }, [returnHistory, searchTerm])
 
   const handleBulkVerify = async (idsToVerify) => {
@@ -721,7 +729,7 @@ export default function ReturnsManager() {
                   fontWeight: 700, cursor: 'pointer'
                 }}
               >
-                Returns History (7d)
+                Returns History ({returnHistory.length})
               </button>
             </div>
             <div style={{ padding: '10px 0', display: 'flex', gap: 10 }}>
