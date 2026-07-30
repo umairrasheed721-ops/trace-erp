@@ -81,6 +81,29 @@ function detectOrderSource(order) {
   return order.source_name || 'Direct / Web';
 }
 
+function extractTrackingFromOrder(order) {
+  const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
+  const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
+  let tracking = (ful?.tracking_number || '').trim();
+
+  if (!tracking && order.note_attributes && Array.isArray(order.note_attributes)) {
+    const attr = order.note_attributes.find(a => 
+      a.name && (a.name.toLowerCase().includes('tracking') || a.name.toLowerCase().includes('hxs_courier_tracking'))
+    );
+    if (attr && attr.value) tracking = String(attr.value).trim();
+  }
+
+  if (!tracking && order.note) {
+    const match = order.note.match(/Tracking\s*[:#-]?\s*([A-Za-z0-9]+)/i) ||
+                  order.note.match(/\b(2\d{13})\b/);
+    if (match && match[1]) {
+      tracking = match[1].trim();
+    }
+  }
+
+  return tracking;
+}
+
 const registryLookupStmt = db.prepare(`
   SELECT landed_cost, shopify_cost FROM product_master_costs 
   WHERE store_id = ? 
@@ -231,7 +254,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
         const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
-        const tracking = ful?.tracking_number || '';
+        const tracking = extractTrackingFromOrder(order);
         const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
         const source = detectOrderSource(order);
         const status = mapShopifyStatus(order);
@@ -692,7 +715,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
     const fulfillments = (order.fulfillments || []).filter(f => f.status !== 'cancelled');
     const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
-    const tracking = ful?.tracking_number || '';
+    const tracking = extractTrackingFromOrder(order);
     const courier = detectCourier(tracking, order.tags, ful?.tracking_company);
     const source = detectOrderSource(order);
 
