@@ -17,6 +17,53 @@ function formatDate(dStr) {
   return isNaN(d) ? dStr : d.toISOString().split('T')[0];
 }
 
+function getOrderMatchingCandidates(rawId) {
+  if (!rawId) return [];
+  const str = String(rawId).trim();
+  if (!str) return [];
+
+  const upper = str.toUpperCase();
+  const candidates = new Set();
+
+  candidates.add(str);
+  candidates.add(upper);
+
+  if (upper.startsWith('#')) {
+    const withoutHash = upper.substring(1);
+    candidates.add(withoutHash);
+    if (/^\d+$/.test(withoutHash)) {
+      candidates.add('TR' + withoutHash);
+    }
+  }
+
+  if (upper.startsWith('TR')) {
+    const withoutTR = upper.replace(/^TR[-_\s]*/, '');
+    if (withoutTR && /^\d+$/.test(withoutTR)) {
+      candidates.add(withoutTR);
+      candidates.add('#' + withoutTR);
+      candidates.add('TR' + withoutTR);
+    }
+  }
+
+  if (/^\d+$/.test(str)) {
+    candidates.add(str);
+    candidates.add('#' + str);
+    candidates.add('TR' + str);
+  }
+
+  const prefixMatch = upper.match(/^([A-Z]{2,4})[-_\s]*(\d+)$/);
+  if (prefixMatch) {
+    const prefix = prefixMatch[1];
+    const digits = prefixMatch[2];
+    candidates.add(`${prefix}${digits}`);
+    candidates.add(`${prefix}-${digits}`);
+    candidates.add(`#${prefix}${digits}`);
+    candidates.add(`#${prefix}-${digits}`);
+  }
+
+  return Array.from(candidates).filter(Boolean);
+}
+
 // GET /api/finance/couriers?store_id=1
 router.get('/couriers', async (req, res) => {
   try {
@@ -101,23 +148,17 @@ router.post('/bulk-update', async (req, res) => {
 
     const ordersToProcess = {};
     for (const row of rows) {
-      const inputId = String(row.orderId || '').replace(/\D/g, '');
+      const rawOrderVal = String(row.orderId || '').trim();
       const inputTrack = String(row.trackingNumber || '').toLowerCase().replace(/\s+/g, '');
-      if (!inputId && !inputTrack) continue;
+      if (!rawOrderVal && !inputTrack) continue;
 
       let order = null;
       if (masterKey === "Match by Tracking Number") {
-        order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
-        if (!order && (row.orderId || row.trackingNumber)) {
-          const rawId = String(row.orderId || '').trim();
-          const cleanDigits = rawId.replace(/\D/g, '');
-          const candidates = Array.from(new Set([
-            rawId,
-            cleanDigits,
-            cleanDigits ? 'TR' + cleanDigits : null,
-            cleanDigits ? '#' + cleanDigits : null
-          ].filter(Boolean)));
-
+        if (inputTrack) {
+          order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
+        }
+        if (!order && rawOrderVal) {
+          const candidates = getOrderMatchingCandidates(rawOrderVal);
           if (candidates.length > 0) {
             const placeholders = candidates.map(() => '?').join(',');
             order = db.prepare(`
@@ -129,15 +170,7 @@ router.post('/bulk-update', async (req, res) => {
           }
         }
       } else {
-        const rawId = String(row.orderId || '').trim();
-        const cleanDigits = rawId.replace(/\D/g, '');
-        const candidates = Array.from(new Set([
-          rawId,
-          cleanDigits,
-          cleanDigits ? 'TR' + cleanDigits : null,
-          cleanDigits ? '#' + cleanDigits : null
-        ].filter(Boolean)));
-
+        const candidates = getOrderMatchingCandidates(rawOrderVal);
         if (candidates.length > 0) {
           const placeholders = candidates.map(() => '?').join(',');
           order = db.prepare(`
