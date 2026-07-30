@@ -141,7 +141,7 @@ router.get('/advice', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
+    SELECT id, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
   `).all(store_id);

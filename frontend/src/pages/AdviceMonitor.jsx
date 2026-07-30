@@ -415,7 +415,36 @@ export default function AdviceMonitor() {
                         ⚡ Command Center ↗
                       </Link>
                     </td>
-                    <td>{o.customer_name}</td>
+                    <td style={{ minWidth: 160, maxWidth: 220 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                          {o.customer_name || '—'}
+                        </div>
+                        {o.phone && (
+                          <div style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            📞 {o.phone}
+                          </div>
+                        )}
+                        {(o.address || o.city) && (
+                          <div 
+                            style={{ 
+                              fontSize: '0.7rem', 
+                              color: 'var(--text-muted)', 
+                              lineHeight: 1.25,
+                              marginTop: 2,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                            title={[o.address, o.city].filter(Boolean).join(', ')}
+                          >
+                            📍 {[o.address, o.city].filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                         <span className="badge badge-advice">{o.delivery_status}</span>
@@ -469,15 +498,23 @@ export default function AdviceMonitor() {
                         </div>
                       )}
                     </td>
-                    <td style={{ minWidth: 150 }}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <td style={{ minWidth: 200 }}>
+                      <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'nowrap' }}>
+                        <a
+                          href={`tel:${(o.phone || '').replace(/[^0-9+]/g, '')}`}
+                          className="btn btn-secondary btn-xs"
+                          title="Direct SIM / Network Phone Call (Phone Link / FaceTime)"
+                          style={{ padding: '3px 7px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 3, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none', fontWeight: 600 }}
+                        >
+                          📞 Call
+                        </a>
                         <a
                           href={getCustomerWaLink(o)}
                           target="_blank"
                           rel="noreferrer"
                           className="btn btn-secondary btn-xs"
                           title="Direct 1-on-1 Chat with Customer via WhatsApp"
-                          style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
+                          style={{ padding: '3px 7px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 3, background: 'rgba(37,211,102,0.12)', color: '#25D366', border: '1px solid rgba(37,211,102,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
                         >
                           📱 Customer
                         </a>
@@ -487,7 +524,7 @@ export default function AdviceMonitor() {
                           rel="noreferrer"
                           className="btn btn-secondary btn-xs"
                           title="Share Formatted Alert to Team / Courier WhatsApp Group"
-                          style={{ padding: '3px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
+                          style={{ padding: '3px 7px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 3, background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 6, cursor: 'pointer', textDecoration: 'none' }}
                         >
                           👥 Group
                         </a>
