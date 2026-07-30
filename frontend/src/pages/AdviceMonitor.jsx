@@ -572,6 +572,46 @@ export default function AdviceMonitor() {
               <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                 Instructions / Remarks for Courier:
               </label>
+
+              {/* ⚡ 1-Click Quick Remark Presets */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                  ⚡ Quick Remark Presets (Click to Insert):
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    '📞 Customer Confirmed Delivery',
+                    '📍 Address Updated / Clarified',
+                    '⏰ Reattempt Tomorrow Morning',
+                    '💬 Customer Requested Weekend Delivery',
+                    '📱 Customer Available at Home',
+                    '☎️ Call Customer Before Delivery'
+                  ].map((chipText, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="btn btn-xs"
+                      onClick={() => setRetryNote(prev => prev ? `${prev} | ${chipText}` : chipText)}
+                      style={{
+                        padding: '4px 9px',
+                        fontSize: '0.73rem',
+                        borderRadius: 12,
+                        background: 'rgba(99, 102, 241, 0.1)',
+                        color: 'var(--brand)',
+                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.25)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'}
+                    >
+                      {chipText}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <textarea
                 className="input"
                 rows={3}
