@@ -93,7 +93,16 @@ function AppContent() {
       if (!td) return;
       if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      const text = (td.innerText || td.textContent || '').trim();
+      // Clone cell and remove interactive buttons/links
+      const clone = td.cloneNode(true);
+      clone.querySelectorAll('button, a, .btn, script, style').forEach(el => el.remove());
+
+      let text = (clone.innerText || clone.textContent || '').trim();
+      text = text.replace(/⚡\s*Command Center\s*↗?/gi, '')
+                 .replace(/⚡\s*Action\s*↗?/gi, '')
+                 .replace(/\s+/g, ' ')
+                 .trim();
+
       if (!text || text === '—' || text === 'No Notes') return;
 
       copyWithTooltip(text, e);
