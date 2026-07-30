@@ -6,11 +6,11 @@ const FinanceAggregator = require('../../services/finance-aggregator');
 
 // GET /api/finance/returns/export-csv
 router.get('/returns/export-csv', authenticateToken, asyncHandler(async (req, res) => {
-  const { store_id, days = 30 } = req.query;
+  const { store_id, days = 30, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
-    const logs = await FinanceAggregator.getReturnsExportData(store_id, days);
+    const logs = await FinanceAggregator.getReturnsExportData(store_id, days, start_date, end_date);
 
     const headers = ['Date', 'Order Ref', 'Shopify ID', 'Customer', 'Tracking', 'Courier', 'Verified By', 'Restocked'];
     const rows = logs.map(l => [

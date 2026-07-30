@@ -34,9 +34,9 @@ router.get('/returns/pending', asyncHandler(async (req, res) => {
 
 // GET /api/finance/returns/history
 router.get('/returns/history', authenticateToken, asyncHandler(async (req, res) => {
-  const { store_id, days = 7 } = req.query;
+  const { store_id, days = 7, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  const result = await FinanceAggregator.getReturnsHistory(store_id, days);
+  const result = await FinanceAggregator.getReturnsHistory(store_id, days, start_date, end_date);
   res.json(result);
 }));
 

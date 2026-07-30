@@ -216,27 +216,65 @@ class FinanceAggregator {
     `).all(Number(storeId));
   }
 
-  static async getReturnsHistory(storeId, days) {
+  static async getReturnsHistory(storeId, days = 7, startDate = null, endDate = null) {
+    const d = String(days || '7').toLowerCase();
+    let whereClause = `WHERE rl.store_id = ?`;
+    const params = [Number(storeId)];
+
+    if (startDate && endDate) {
+      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
+      params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+    } else if (d === 'today') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
+    } else if (d === 'yesterday') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
+    } else if (d === 'this_month') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
+    } else if (d === 'last_month') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+    } else if (d !== 'all' && d !== '9999') {
+      const numDays = parseInt(d, 10) || 7;
+      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
+    }
+
     return db.prepare(`
       SELECT rl.*, o.ref_number, o.customer_name, o.courier, o.notes, o.price, o.line_items, o.product_titles
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
-      WHERE rl.store_id = ?
-      AND rl.created_at >= datetime('now', '-${days} days')
+      ${whereClause}
       ORDER BY rl.created_at DESC
-    `).all(Number(storeId));
+    `).all(...params);
   }
 
-  static async getReturnsExportData(storeId, days) {
+  static async getReturnsExportData(storeId, days = 7, startDate = null, endDate = null) {
+    const d = String(days || '7').toLowerCase();
+    let whereClause = `WHERE rl.store_id = ?`;
+    const params = [Number(storeId)];
+
+    if (startDate && endDate) {
+      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
+      params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+    } else if (d === 'today') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
+    } else if (d === 'yesterday') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
+    } else if (d === 'this_month') {
+      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
+    } else if (d === 'last_month') {
+      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
+    } else if (d !== 'all' && d !== '9999') {
+      const numDays = parseInt(d, 10) || 7;
+      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
+    }
+
     return db.prepare(`
       SELECT rl.created_at as verified_at, o.ref_number, o.shopify_order_id, o.customer_name, rl.tracking_number, o.courier, rl.processed_by, 
              CASE WHEN rl.restocked_shopify = 1 THEN 'Yes' ELSE 'No' END as restocked
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
-      WHERE rl.store_id = ?
-      AND rl.created_at >= datetime('now', '-${days} days')
+      ${whereClause}
       ORDER BY rl.created_at DESC
-    `).all(Number(storeId));
+    `).all(...params);
   }
 }
 

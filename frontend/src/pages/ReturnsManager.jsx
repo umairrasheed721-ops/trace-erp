@@ -36,6 +36,10 @@ export default function ReturnsManager() {
   const inputRef = useRef(null)
   const lastScanRef = useRef({ code: '', time: 0 })
 
+  const [datePreset, setDatePreset] = useState('7')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
+
   // Load data
   const fetchPending = async () => {
     if (!activeStoreId) return
@@ -53,7 +57,11 @@ export default function ReturnsManager() {
   const fetchHistory = async () => {
     if (!activeStoreId) return
     try {
-      const res = await fetch(`/api/finance/returns/history?store_id=${activeStoreId}&days=7`, {
+      let url = `/api/finance/returns/history?store_id=${activeStoreId}&days=${datePreset}`
+      if (datePreset === 'custom' && customStart && customEnd) {
+        url += `&start_date=${customStart}&end_date=${customEnd}`
+      }
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` }
       })
       const data = await res.json()
@@ -67,7 +75,7 @@ export default function ReturnsManager() {
     fetchPending()
     fetchHistory()
     inputRef.current?.focus()
-  }, [activeStoreId])
+  }, [activeStoreId, datePreset, customStart, customEnd])
 
   // Filtered lists
   const filteredPending = useMemo(() => {
@@ -123,7 +131,10 @@ export default function ReturnsManager() {
   }
 
   const handleExport = () => {
-    const url = `/api/finance/returns/export-csv?store_id=${activeStoreId}&days=7`
+    let url = `/api/finance/returns/export-csv?store_id=${activeStoreId}&days=${datePreset}`
+    if (datePreset === 'custom' && customStart && customEnd) {
+      url += `&start_date=${customStart}&end_date=${customEnd}`
+    }
     window.open(url, '_blank')
   }
 
@@ -292,9 +303,168 @@ export default function ReturnsManager() {
             <input type="checkbox" checked={restockShopify} onChange={e => setRestockShopify(e.target.checked)} />
             <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Restock & Refund in Shopify</span>
           </label>
-          <button className="btn btn-secondary" onClick={handleExport}>📊 Export History (7d)</button>
+          <button className="btn btn-secondary" onClick={handleExport}>📊 Export History CSV</button>
         </div>
       </header>
+
+      {/* 📅 Date Filter Control Bar */}
+      <div style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 14,
+        padding: '12px 18px',
+        marginBottom: 20,
+        display: 'flex',
+        justify: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 4 }}>
+            📅 Verified Date Filter:
+          </span>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('today')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'today' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'today' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'today' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            🔥 Today
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('yesterday')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'yesterday' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'yesterday' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'yesterday' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            📅 Yesterday
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('7')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === '7' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === '7' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === '7' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            ⚡ Last 7 Days
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('30')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === '30' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === '30' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === '30' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            🗓️ Last 30 Days
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('this_month')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'this_month' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'this_month' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'this_month' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            🏆 This Month
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('all')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'all' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'all' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'all' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            📦 All Time
+          </button>
+          <button
+            type="button"
+            className="btn btn-xs"
+            onClick={() => setDatePreset('custom')}
+            style={{
+              padding: '4px 12px',
+              fontSize: '0.75rem',
+              borderRadius: 12,
+              background: datePreset === 'custom' ? 'var(--brand)' : 'rgba(255,255,255,0.05)',
+              color: datePreset === 'custom' ? '#ffffff' : 'var(--text-primary)',
+              border: datePreset === 'custom' ? '1px solid var(--brand)' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            📆 Custom Range
+          </button>
+        </div>
+
+        {datePreset === 'custom' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="date"
+              className="form-input"
+              style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 8 }}
+              value={customStart}
+              onChange={e => setCustomStart(e.target.value)}
+            />
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>to</span>
+            <input
+              type="date"
+              className="form-input"
+              style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 8 }}
+              value={customEnd}
+              onChange={e => setCustomEnd(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: 24, alignItems: 'start' }}>
         
