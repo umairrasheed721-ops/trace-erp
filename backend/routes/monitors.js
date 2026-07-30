@@ -111,9 +111,10 @@ router.get('/stuck', (req, res) => {
       insight_type = 'MANUAL_ID';
     } else if (statusLower.includes('return') || statusLower.includes('rto')) {
       insight_type = 'STUCK_RETURN';
-    } else if (statusLower === 'booked' || statusLower === 'confirmed' || statusLower.includes('pickup') || statusLower.includes('insta-hub')) {
+    } else if ((statusLower === 'booked' || statusLower === 'confirmed' || statusLower.includes('pickup') || statusLower.includes('insta-hub')) && hours <= 72) {
+      // Only show as PICKUP_PENDING if stuck < 3 days — beyond that, escalate to ADVICE_REQUIRED
       insight_type = 'PICKUP_PENDING';
-    } else if (ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {
+    } else if (statusLower === 'booked' || statusLower === 'confirmed' || statusLower.includes('pickup') || ADVICE_KEYWORDS.some(k => statusLower.includes(k)) && !isExcludedFromAdvice(o.courier_status)) {
       insight_type = 'ADVICE_REQUIRED';
     }
 
