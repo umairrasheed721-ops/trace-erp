@@ -649,13 +649,43 @@ const CommandTableRow = React.memo(({
             <AddressCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} />
           </td>
         )
-        if (col.id === 'items') return (
-          <td key={col.id} title={o.product_titles}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {o.product_titles || '—'}
-            </div>
-          </td>
-        )
+        if (col.id === 'items') {
+          let itemsList = [];
+          if (o.line_items) {
+            try {
+              const parsed = typeof o.line_items === 'string' ? JSON.parse(o.line_items) : o.line_items;
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                itemsList = parsed.map(i => {
+                  const title = i.title || i.name || i.product_title || 'Item';
+                  const variant = i.variant_title ? ` - ${i.variant_title}` : '';
+                  const qty = i.quantity ? ` (x${i.quantity})` : '';
+                  return `${title}${variant}${qty}`;
+                });
+              }
+            } catch (_) {}
+          }
+
+          if (itemsList.length === 0 && o.product_titles) {
+            itemsList = o.product_titles.split(/,|\n|\|/).map(s => s.trim()).filter(Boolean);
+          }
+
+          return (
+            <td key={col.id} title={o.product_titles}>
+              {itemsList.length === 0 ? (
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>—</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--text-primary)', lineHeight: 1.3, maxWidth: 240 }}>
+                  {itemsList.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--brand)', flexShrink: 0 }}>{idx + 1}.</span>
+                      <span style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </td>
+          );
+        }
         if (col.id === 'price') return <td key={col.id} style={{ fontWeight: 700 }}>Rs {Math.round(parseFloat(o.price)||0).toLocaleString()}</td>
         if (col.id === 'paid_amount') return <td key={col.id}><PaidAmountCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'diff') return (

@@ -19,7 +19,7 @@ const COLUMN_WIDTHS = {
   phone: 200,
   address: 240,
   city: 90,
-  items: 220,
+  items: 240,
   tracking_number: 180,
   courier: 90,
   courier_status: 120,
