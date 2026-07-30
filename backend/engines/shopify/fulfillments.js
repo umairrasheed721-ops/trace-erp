@@ -5,7 +5,7 @@ async function registerShopifyWebhooks(store, appUrl) {
   const { shop_domain, access_token } = store;
   if (!access_token || access_token === 'PENDING') throw new Error('No valid token');
   
-  const topics = ['orders/create', 'orders/updated', 'orders/cancelled'];
+  const topics = ['orders/create', 'orders/updated', 'orders/fulfilled', 'orders/paid', 'orders/cancelled', 'fulfillments/create', 'fulfillments/update'];
   let successCount = 0;
 
   for (const topic of topics) {

@@ -668,19 +668,18 @@ export default function CostManager() {
           >
             {isDiagnosing ? '⏳ Diagnosing...' : '🔬 Diagnose'}
           </button>
-          <button
-            onClick={handleSyncShopify}
-            disabled={isSyncing}
+          <div
             style={{
-              padding: '9px 18px', borderRadius: 10, border: '1px solid rgba(99,102,241,0.35)',
-              background: 'rgba(99,102,241,0.1)', color: '#818cf8',
-              fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all 0.2s ease', opacity: isSyncing ? 0.6 : 1
+              padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(16, 185, 129, 0.3)',
+              background: 'rgba(16, 185, 129, 0.1)', color: '#10b981',
+              fontWeight: 700, fontSize: '0.8rem',
+              display: 'flex', alignItems: 'center', gap: 6
             }}
+            title="Automated catalog cost & inventory sync active"
           >
-            {isSyncing ? '⌛ Syncing...' : '🔄 Sync Shopify'}
-          </button>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }}></span>
+            <span>⚡ Auto Catalog Sync</span>
+          </div>
           <button
             onClick={() => { setEditingItem(null); setForm({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 }); setShowModal(true); }}
             style={{

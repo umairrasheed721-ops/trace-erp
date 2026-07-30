@@ -241,10 +241,10 @@ module.exports = function schedulerInit() {
   // 1. Every 1 minute: Check for due dynamic syncs
   cron.schedule('* * * * *', runDynamicScheduler);
 
-  // 1b. Every 5 minutes: Automated background Shopify order ingestion (Hybrid Engine Recovery)
-  cron.schedule('*/5 * * * *', async () => {
-    console.log('🔄 [CRON] 5-minute Shopify order ingestion polling starting...');
-    await runMultiTenant('shopify_poll_5m', async (tenantId) => {
+  // 1b. Every 2 minutes: Automated background Shopify order ingestion (Zero-Miss Polling)
+  cron.schedule('*/2 * * * *', async () => {
+    console.log('🔄 [CRON] 2-minute Shopify order ingestion polling starting...');
+    await runMultiTenant('shopify_poll_2m', async (tenantId) => {
       try {
         const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
@@ -260,10 +260,10 @@ module.exports = function schedulerInit() {
   });
 
 
-  // 3. Every 2 hours: Refresh recent Shopify updates
-  cron.schedule('0 */2 * * *', async () => {
-    console.log('🔄 [CRON] Shopify refresh starting...');
-    await runMultiTenant('shopify_refresh_2h', async (tenantId) => {
+  // 3. Every 3 minutes: Refresh recent Shopify updates (Fulfillments, notes, status changes)
+  cron.schedule('*/3 * * * *', async () => {
+    console.log('🔄 [CRON] 3-minute Shopify updates refresh starting...');
+    await runMultiTenant('shopify_refresh_3m', async (tenantId) => {
       try {
         const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {
@@ -273,10 +273,10 @@ module.exports = function schedulerInit() {
     });
   });
 
-  // 4. Every 30 minutes: Watchdog audit
-  cron.schedule('*/30 * * * *', async () => {
+  // 4. Every 5 minutes: Watchdog & Courier audit
+  cron.schedule('*/5 * * * *', async () => {
     console.log('🐕 [CRON] Watchdog audit starting...');
-    await runMultiTenant('watchdog_audit_30m', async (tenantId) => {
+    await runMultiTenant('watchdog_audit_5m', async (tenantId) => {
       try {
         const stores = db.prepare("SELECT * FROM stores").all();
         for (const store of stores) {

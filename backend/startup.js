@@ -252,6 +252,21 @@ function initPostListen(server) {
     console.error('⚠️ Failed to initialize scheduler:', err.message);
   }
 
+  // Auto-register Shopify webhooks for active stores on boot
+  try {
+    const { db } = require('./db');
+    const { registerShopifyWebhooks } = require('./engines/shopify');
+    const appUrl = process.env.APP_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://trace-erp-production.up.railway.app');
+    const stores = db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all();
+    for (const store of stores) {
+      registerShopifyWebhooks(store, appUrl).then(ok => {
+        if (ok) console.log(`⚓ [Webhook Boot] Auto-registered webhooks for ${store.shop_domain}`);
+      }).catch(e => console.error(`⚠️ Webhook auto-registration warning for ${store.shop_domain}:`, e.message));
+    }
+  } catch (err) {
+    console.error('⚠️ Webhook startup check failed:', err.message);
+  }
+
   // Startup Storage Audit
   try {
     const { runStorageAudit } = require('./scripts/storage_audit');

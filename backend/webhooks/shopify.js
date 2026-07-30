@@ -132,14 +132,17 @@ module.exports = async function handleShopifyWebhook(req, res) {
         }
       } else if (topic === 'orders/cancelled' || payload.cancelled_at !== null) {
         // Immediate cancellation state invalidation
-        console.log(`🛑 [Shopify Webhook] Immediate cancellation detected for Shopify Order ID: ${payload.id}`);
-        markOrderAsCancelled(store.id, payload.id);
+        const targetOrderId = payload.order_id || payload.id;
+        console.log(`🛑 [Shopify Webhook] Immediate cancellation detected for Shopify Order ID: ${targetOrderId}`);
+        markOrderAsCancelled(store.id, targetOrderId);
       } else {
-        // Normal single order sync for other updates
+        // Normal single order sync for other updates (e.g. orders/updated, orders/fulfilled, fulfillments/create)
+        const targetOrderId = payload.order_id || payload.id;
+        console.log(`📦 [Shopify Webhook] Syncing single order ID: ${targetOrderId} (Topic: ${topic})`);
         const { syncSingleShopifyOrder } = require('../engines/shopify');
-        const success = await syncSingleShopifyOrder(store, payload.id);
+        const success = await syncSingleShopifyOrder(store, targetOrderId);
         if (!success) {
-          throw new Error(`Single order sync failed for order ${payload.id}`);
+          throw new Error(`Single order sync failed for order ${targetOrderId}`);
         }
       }
     });

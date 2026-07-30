@@ -235,49 +235,25 @@ export default function CommandCenterFilters({
           >
             🔄 Refresh
           </button>
-          <button
-            className="btn"
-            onClick={async () => {
-              try {
-                addToast && addToast('🛒 Fetching latest orders from Shopify...', 'info');
-                const res = await fetch('/api/sync/start', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
-                  },
-                  body: JSON.stringify({ type: 'Shopify Sync' })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                  addToast && addToast(data.message || 'Shopify sync started!', 'success');
-                  setTimeout(() => runSearch(), 1500);
-                } else {
-                  throw new Error(data.error || 'Sync failed');
-                }
-              } catch (err) {
-                addToast && addToast(`❌ Sync Error: ${err.message}`, 'error');
-              }
-            }}
+          <div
             style={{
-              padding: '8px 14px',
-              fontSize: '0.75rem',
+              padding: '6px 12px',
+              fontSize: '0.72rem',
               fontWeight: 700,
               height: '36px',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
-              color: '#fff',
-              border: 'none',
+              background: 'rgba(16, 185, 129, 0.1)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
               borderRadius: '8px',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+              gap: '6px'
             }}
-            title="Fetch all new and updated orders directly from Shopify API"
+            title="Real-Time Webhooks + Automated Background Sync Active"
           >
-            <span>🛒 Sync Shopify</span>
-          </button>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }}></span>
+            <span>⚡ Automated Live Sync</span>
+          </div>
         </div>
       </div>
 
