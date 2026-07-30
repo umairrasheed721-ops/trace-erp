@@ -268,6 +268,40 @@ export default function AdviceMonitor() {
     return match ? match[1] : null;
   };
 
+  const renderProductList = (order) => {
+    let items = [];
+    if (order.line_items) {
+      try {
+        const parsed = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          items = parsed.map(i => {
+            const title = i.title || i.name || i.product_title || 'Item';
+            const variant = i.variant_title ? ` (${i.variant_title})` : '';
+            const qty = i.quantity ? ` x${i.quantity}` : '';
+            return `${title}${variant}${qty}`;
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (items.length === 0 && order.product_titles) {
+      items = order.product_titles.split(/,|\n|\|/).map(s => s.trim()).filter(Boolean);
+    }
+
+    if (items.length === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--text-primary)', lineHeight: 1.35 }}>
+        {items.map((item, idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+            <span style={{ fontWeight: 700, color: 'var(--brand)', flexShrink: 0 }}>{idx + 1}.</span>
+            <span style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{item}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -483,7 +517,7 @@ export default function AdviceMonitor() {
                       )}
                     </td>
                     <td style={{ fontWeight: 600 }}>Rs {parseInt(o.price || 0).toLocaleString()}</td>
-                    <td style={{ fontSize: '0.72rem', color: 'var(--text-muted)', maxWidth: 160 }} className="truncate">{o.product_titles || '—'}</td>
+                    <td style={{ minWidth: 180, maxWidth: 260 }}>{renderProductList(o)}</td>
                     <td>
                       {isDone ? (
                         <span className="text-success" style={{ fontSize: '0.8rem', fontWeight: 600 }}>✅ Sent</span>
