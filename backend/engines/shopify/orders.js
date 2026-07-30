@@ -432,11 +432,14 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     let dateMin;
     if (options.forceDeepSync) {
       dateMin = storeDb?.sync_start_date ? storeDb.sync_start_date + 'T00:00:00Z' : getDaysAgo(730);
+    } else if (options.deepReconcile) {
+      // Daily deep reconcile (scheduled once per night) — looks back 7 days
+      dateMin = getDaysAgo(7);
     } else if (storeDb?.last_synced_at) {
       const lastSyncedStr = storeDb.last_synced_at.includes('Z') ? storeDb.last_synced_at : storeDb.last_synced_at.replace(' ', 'T') + 'Z';
       const lastSynced = new Date(lastSyncedStr);
-      // Safety buffer: Look back 14 days to capture any delayed status/fulfillment updates
-      const safetyBufferTime = new Date(lastSynced.getTime() - 14 * 24 * 60 * 60 * 1000);
+      // Normal safety buffer: 30 minutes overlap to cover missed webhook gaps
+      const safetyBufferTime = new Date(lastSynced.getTime() - 30 * 60 * 1000);
       dateMin = safetyBufferTime.toISOString();
     } else {
       dateMin = getDaysAgo(60);

@@ -273,6 +273,19 @@ module.exports = function schedulerInit() {
     });
   });
 
+  // 3b. Every night at 2am: Deep reconcile — scan last 7 days to catch any missed webhook updates
+  cron.schedule('0 2 * * *', async () => {
+    console.log('🌙 [CRON] Nightly deep reconcile starting (7-day lookback)...');
+    await runMultiTenant('shopify_deep_reconcile_nightly', async (tenantId) => {
+      try {
+        const stores = db.prepare("SELECT * FROM stores").all();
+        for (const store of stores) {
+          try { await refreshShopifyUpdates(store, null, { deepReconcile: true }); } catch (e) { console.error(`[CRON] Deep reconcile error for store ${store.shop_domain}:`, e.message); }
+        }
+      } catch (err) {}
+    });
+  });
+
   // 4. Every 5 minutes: Watchdog & Courier audit
   cron.schedule('*/5 * * * *', async () => {
     console.log('🐕 [CRON] Watchdog audit starting...');
