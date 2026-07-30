@@ -1487,8 +1487,10 @@ export default function SearchTool() {
       else if (s.includes('return')||s.includes('cancel')) returned++
       else pending++
     })
-    return { total: totalCount, sum, delivered, returned, pending }
-  }, [filteredOrders, totalCount])
+    const isFiltered = Boolean(activeAgingBucket) || (filteredOrders.length < displayedOrders.length)
+    const total = isFiltered ? filteredOrders.length : totalCount
+    return { total, sum, delivered, returned, pending }
+  }, [filteredOrders, totalCount, activeAgingBucket, displayedOrders.length])
 
   const saveView = async () => {
     if (!viewName.trim()) return

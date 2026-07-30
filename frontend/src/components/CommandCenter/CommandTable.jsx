@@ -428,7 +428,7 @@ export default function CommandTable({
           zIndex: 10
         }}>
           <span>
-            💡 <b>Showing {allOrders.length.toLocaleString()} of {totalCount.toLocaleString()} matching orders.</b>
+            💡 <b>Showing {filteredOrders.length.toLocaleString()} of {(filteredOrders.length < allOrders.length || filteredOrders.length < totalCount) ? `${filteredOrders.length.toLocaleString()} (Filtered from ${totalCount.toLocaleString()})` : totalCount.toLocaleString()} matching orders.</b>
           </span>
           {(parentKeyword || parentStatus !== 'All Statuses') && (
             <button 
