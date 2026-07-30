@@ -435,7 +435,8 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     } else if (storeDb?.last_synced_at) {
       const lastSyncedStr = storeDb.last_synced_at.includes('Z') ? storeDb.last_synced_at : storeDb.last_synced_at.replace(' ', 'T') + 'Z';
       const lastSynced = new Date(lastSyncedStr);
-      const safetyBufferTime = new Date(lastSynced.getTime() - 15 * 60 * 1000);
+      // Safety buffer: Look back 14 days to capture any delayed status/fulfillment updates
+      const safetyBufferTime = new Date(lastSynced.getTime() - 14 * 24 * 60 * 60 * 1000);
       dateMin = safetyBufferTime.toISOString();
     } else {
       dateMin = getDaysAgo(60);
@@ -585,7 +586,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
 
         const fulfillments = (fresh.fulfillments || []).filter(f => f.status !== 'cancelled');
         const ful = fulfillments.length ? fulfillments[fulfillments.length - 1] : null;
-        const tracking = ful?.tracking_number || '';
+        const tracking = extractTrackingFromOrder(fresh);
         const courier = detectCourier(tracking, fresh.tags, ful?.tracking_company);
 
         let newDeliveryStatus = row.delivery_status;
@@ -595,8 +596,10 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           // Stay protected
         } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
           newDeliveryStatus = mappedStatus;
-        } else if (fresh.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
-          newDeliveryStatus = 'Booked';
+        } else if (fresh.fulfillment_status === 'fulfilled' || tracking) {
+          if (!newDeliveryStatus || newDeliveryStatus.toLowerCase() === 'pending') {
+            newDeliveryStatus = 'Booked';
+          }
         }
 
         const oldTracking = row.tracking_number || '';
@@ -635,6 +638,33 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     });
 
     updateMany(sheetOrders);
+
+    // Direct reconciliation for all pending/unfulfilled orders in local database
+    try {
+      const pendingOrders = db.prepare(`
+        SELECT shopify_order_id, ref_number FROM orders 
+        WHERE store_id = ? 
+        AND (LOWER(delivery_status) IN ('pending', 'processing', 'unfulfilled') OR delivery_status IS NULL OR delivery_status = '')
+        AND (tracking_number IS NULL OR tracking_number = '')
+        LIMIT 50
+      `).all(storeId);
+      
+      if (pendingOrders.length > 0) {
+        console.log(`🔍 [Reconcile] Direct single-order sync for ${pendingOrders.length} pending orders...`);
+        for (const pOrder of pendingOrders) {
+          if (pOrder.shopify_order_id) {
+            try {
+              await syncSingleShopifyOrder(store, pOrder.shopify_order_id);
+            } catch (pErr) {
+              console.warn(`[Reconcile] Failed for ${pOrder.ref_number || pOrder.shopify_order_id}:`, pErr.message);
+            }
+          }
+        }
+      }
+    } catch (recErr) {
+      console.error('[Reconcile Error]:', recErr.message);
+    }
+
     db.prepare("UPDATE stores SET last_synced_at = datetime('now') WHERE id = ?").run(storeId);
     console.log(`✅ Shopify Refresh [${shop_domain}]: Synced ${count} orders`);
     updateStatus('idle', `Finished. Refreshed ${count} orders.`);
