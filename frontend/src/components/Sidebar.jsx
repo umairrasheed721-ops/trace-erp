@@ -31,6 +31,7 @@ export default function Sidebar() {
     { to: '/costing', icon: '🛡️', label: 'Costing & Watchdog', permission: 'admin_only' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },
     { to: '/reviews', icon: '⭐', label: 'Reviews Manager', permission: 'admin_only' },
+    { to: '/abandoned', icon: '🛒', label: 'Abandoned Checkouts' },
     { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },

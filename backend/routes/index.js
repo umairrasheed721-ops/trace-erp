@@ -51,6 +51,7 @@ const citiesRoutes      = require('./cities');
 const bulkRoutes        = require('./bulk_booking');
 const postexRoutes      = safeRequire('./postex',       'PostEx');
 const reviewsRoutes     = safeRequire('./reviews',      'Reviews');
+const abandonedRoutes   = safeRequire('./abandoned',    'Abandoned');
 
 // Register routes
 router.use('/api/auth', authRoutes);
@@ -75,6 +76,7 @@ router.use('/api/cities', citiesRoutes);
 router.use('/api/bulk', bulkRoutes);
 router.use('/api/postex', postexRoutes);
 router.use('/api/reviews', reviewsRoutes);
+router.use('/api/abandoned', abandonedRoutes);
 
 // --- 🔄 AUTO-RETRY FAILED MODULES (every 90s) ---
 const ROUTE_MAP = {

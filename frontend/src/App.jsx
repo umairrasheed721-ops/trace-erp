@@ -59,6 +59,7 @@ const TemplateManager = lazyWithRetry(() => import('./pages/TemplateManager'), '
 const PayoutReconciler = lazyWithRetry(() => import('./pages/PayoutReconciler'), 'PayoutReconciler')
 const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'TrackingPortal')
 const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'ReviewsManager')
+const AbandonedCheckouts = lazyWithRetry(() => import('./pages/AbandonedCheckouts'), 'AbandonedCheckouts')
 
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
@@ -205,6 +206,7 @@ function AppContent() {
                   <Route path="/costing" element={<CostManager />} />
                   <Route path="/prevention" element={<CostManager />} />
                   <Route path="/reviews" element={<ReviewsManager />} />
+                  <Route path="/abandoned" element={<AbandonedCheckouts />} />
                 </Routes>
               </ErrorBoundary>
             </Suspense>
