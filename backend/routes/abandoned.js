@@ -8,10 +8,10 @@ function getStore(storeId) {
   return db.prepare('SELECT * FROM stores WHERE id = ?').get(storeId);
 }
 
-// GET /api/abandoned?store_id=12&limit=250&status_filter=ALL
+// GET /api/abandoned?store_id=12&limit=250&status_filter=ALL&start_date=2026-07-01&end_date=2026-07-31
 router.get('/', async (req, res) => {
   try {
-    const { store_id, limit = 250, status_filter = 'ALL' } = req.query;
+    const { store_id, limit = 250, status_filter = 'ALL', start_date, end_date } = req.query;
     if (!store_id) {
       return res.status(400).json({ error: 'store_id parameter is required' });
     }
@@ -21,8 +21,15 @@ router.get('/', async (req, res) => {
       return res.status(404).json({ error: 'Store not found or missing Shopify credentials' });
     }
 
-    // 1. Fetch abandoned checkouts from Shopify REST API
-    const shopifyUrl = `https://${store.shop_domain}/admin/api/2024-10/checkouts.json?limit=${Math.min(parseInt(limit) || 250, 250)}&status=any`;
+    // 1. Build Shopify REST API URL with date filtering
+    let shopifyUrl = `https://${store.shop_domain}/admin/api/2024-10/checkouts.json?limit=${Math.min(parseInt(limit) || 250, 250)}&status=any`;
+    if (start_date) {
+      shopifyUrl += `&created_at_min=${encodeURIComponent(start_date.includes('T') ? start_date : start_date + 'T00:00:00Z')}`;
+    }
+    if (end_date) {
+      shopifyUrl += `&created_at_max=${encodeURIComponent(end_date.includes('T') ? end_date : end_date + 'T23:59:59Z')}`;
+    }
+
     const response = await fetch(shopifyUrl, {
       headers: {
         'X-Shopify-Access-Token': store.access_token,

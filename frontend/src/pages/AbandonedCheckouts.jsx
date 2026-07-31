@@ -7,12 +7,60 @@ export default function AbandonedCheckouts() {
   const [data, setData] = useState({ stats: {}, checkouts: [] })
   const [activeTab, setActiveTab] = useState('ALL')
   const [searchQuery, setSearchQuery] = useState('')
+  const [datePreset, setDatePreset] = useState('LAST_30_DAYS')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+
+  // Compute dates based on preset
+  const handlePresetChange = (preset) => {
+    setDatePreset(preset)
+    const now = new Date()
+    const formatDateStr = (d) => d.toISOString().split('T')[0]
+
+    if (preset === 'TODAY') {
+      const todayStr = formatDateStr(now)
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+    } else if (preset === 'YESTERDAY') {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      const yStr = formatDateStr(y)
+      setStartDate(yStr)
+      setEndDate(yStr)
+    } else if (preset === 'LAST_7_DAYS') {
+      const past = new Date(now)
+      past.setDate(past.getDate() - 7)
+      setStartDate(formatDateStr(past))
+      setEndDate(formatDateStr(now))
+    } else if (preset === 'LAST_30_DAYS') {
+      const past = new Date(now)
+      past.setDate(past.getDate() - 30)
+      setStartDate(formatDateStr(past))
+      setEndDate(formatDateStr(now))
+    } else if (preset === 'THIS_MONTH') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      setStartDate(formatDateStr(firstDay))
+      setEndDate(formatDateStr(now))
+    } else if (preset === 'ALL_TIME') {
+      setStartDate('')
+      setEndDate('')
+    }
+  }
+
+  // Set default preset to LAST_30_DAYS on initial mount
+  useEffect(() => {
+    handlePresetChange('LAST_30_DAYS')
+  }, [])
 
   const fetchAbandoned = async () => {
     if (!activeStoreId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/abandoned?store_id=${activeStoreId}&limit=250`)
+      let url = `/api/abandoned?store_id=${activeStoreId}&limit=250`
+      if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`
+      if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`
+
+      const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch abandoned checkouts')
       const json = await res.json()
       setData({
@@ -28,7 +76,7 @@ export default function AbandonedCheckouts() {
 
   useEffect(() => {
     fetchAbandoned()
-  }, [activeStoreId])
+  }, [activeStoreId, startDate, endDate])
 
   const stats = data.stats || {}
   const allCheckouts = data.checkouts || []
@@ -94,7 +142,52 @@ export default function AbandonedCheckouts() {
             Smart reconciled Shopify checkouts to prevent contacting customers who already placed an order.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Date Filter Preset Dropdown */}
+          <select
+            value={datePreset}
+            onChange={(e) => handlePresetChange(e.target.value)}
+            className="form-select"
+            style={{
+              height: 36,
+              fontSize: '0.8rem',
+              padding: '0 10px',
+              borderRadius: 8,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              fontWeight: 600
+            }}
+          >
+            <option value="TODAY">📅 Today</option>
+            <option value="YESTERDAY">📅 Yesterday</option>
+            <option value="LAST_7_DAYS">📅 Last 7 Days</option>
+            <option value="LAST_30_DAYS">📅 Last 30 Days (Default)</option>
+            <option value="THIS_MONTH">📅 This Month</option>
+            <option value="ALL_TIME">📅 All Time</option>
+            <option value="CUSTOM">📅 Custom Range</option>
+          </select>
+
+          {/* Custom Date Inputs */}
+          {datePreset === 'CUSTOM' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="form-control"
+                style={{ height: 36, fontSize: '0.8rem', padding: '0 8px', borderRadius: 8 }}
+              />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="form-control"
+                style={{ height: 36, fontSize: '0.8rem', padding: '0 8px', borderRadius: 8 }}
+              />
+            </div>
+          )}
+
           <button
             className="btn btn-secondary btn-sm"
             onClick={fetchAbandoned}
