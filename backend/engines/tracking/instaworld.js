@@ -247,11 +247,24 @@ async function syncInstaworld(store, syncType = 'FULL', onProgress) {
       if (r.status === 200 && r.rawStatus) {
         const isProtected = DEAD_STATUSES.includes((r.order.delivery_status||'').toLowerCase());
         const isAttemptFailure = r.newStatus && ATTEMPT_FAILURE_STATUSES.includes(r.newStatus.toLowerCase());
-        
+
+        // Context-aware Return In Transit: same logic as PostEx
+        const RETURN_STATES = ['return initiated', 'return in transit', 'shipper advice', 'refused', 'attempted', 'rto'];
+        const isInReturnState = RETURN_STATES.includes((r.order.delivery_status||'').toLowerCase().trim());
+        const rawLower = (r.rawStatus||'').toLowerCase();
+        const isAmbiguousTransit = rawLower.includes('en route') || rawLower.includes('enroute') ||
+                                    rawLower.includes('departed to') || rawLower.includes('arrived at transit hub') ||
+                                    rawLower.includes('return to');
+
+        let finalStatus = r.newStatus;
+        if (isAmbiguousTransit) {
+          finalStatus = isInReturnState ? 'Return In Transit' : null;
+        }
+
         updatesToApply.push({
           id: r.order.id,
           courier_status: r.rawStatus,
-          erp_status: (!isProtected && r.newStatus) ? r.newStatus : null,
+          erp_status: (!isProtected && finalStatus) ? finalStatus : null,
           courier: r.courierName || 'Instaworld',
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
           status_date: r.statusDate,
