@@ -5,11 +5,48 @@ export default function AbandonedCheckouts() {
   const { activeStoreId, addToast } = useApp()
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({ stats: {}, checkouts: [] })
-  const [activeTab, setActiveTab] = useState('ALL')
+  const [activeTab, setActiveTab] = useState('TRUE_ABANDONED') // Default directly to True Abandoned for maximum ease!
   const [searchQuery, setSearchQuery] = useState('')
   const [datePreset, setDatePreset] = useState('LAST_30_DAYS')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  
+  // Custom message template option
+  const [msgTemplate, setMsgTemplate] = useState('REMINDER') // REMINDER | DISCOUNT | LINK
+  const [useWaWeb, setUseWaWeb] = useState(localStorage.getItem('trace_use_wa_web') === 'true')
+
+  // Dismissed/Handled checkouts set stored in localStorage
+  const [dismissedIds, setDismissedIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('trace_dismissed_abandoned') || '[]')
+    } catch (_) {
+      return []
+    }
+  })
+
+  // Toggle WA Web setting
+  const toggleWaWeb = () => {
+    const newVal = !useWaWeb
+    setUseWaWeb(newVal)
+    localStorage.setItem('trace_use_wa_web', String(newVal))
+    addToast(`Switched to WhatsApp ${newVal ? 'Web' : 'App'}`, 'info')
+  }
+
+  // Dismiss a checkout (hide/mark handled)
+  const handleDismiss = (id) => {
+    const updated = Array.from(new Set([...dismissedIds, String(id)]))
+    setDismissedIds(updated)
+    localStorage.setItem('trace_dismissed_abandoned', JSON.stringify(updated))
+    addToast('Marked as handled / dismissed', 'success')
+  }
+
+  // Restore a dismissed checkout
+  const handleRestore = (id) => {
+    const updated = dismissedIds.filter(dId => dId !== String(id))
+    setDismissedIds(updated)
+    localStorage.setItem('trace_dismissed_abandoned', JSON.stringify(updated))
+    addToast('Restored to active list', 'info')
+  }
 
   // Compute dates based on preset
   const handlePresetChange = (preset) => {
@@ -47,7 +84,7 @@ export default function AbandonedCheckouts() {
     }
   }
 
-  // Set default preset to LAST_30_DAYS on initial mount
+  // Initial mount: set preset
   useEffect(() => {
     handlePresetChange('LAST_30_DAYS')
   }, [])
@@ -81,8 +118,13 @@ export default function AbandonedCheckouts() {
   const stats = data.stats || {}
   const allCheckouts = data.checkouts || []
 
-  // Filter checkouts by active tab & search query
+  // Filter checkouts by active tab, dismissed state, & search query
   const filteredCheckouts = allCheckouts.filter(c => {
+    // Dismissed filter (unless viewing ALL or DISMISSED)
+    const isDismissed = dismissedIds.includes(String(c.id))
+    if (activeTab === 'DISMISSED') return isDismissed
+    if (isDismissed && activeTab !== 'ALL') return false
+
     // Tab filter
     if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
     if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
@@ -115,7 +157,7 @@ export default function AbandonedCheckouts() {
     })
   }
 
-  // Open WhatsApp
+  // Open WhatsApp with selected Template
   const handleWhatsApp = (c) => {
     const name = (c.customer_name || 'Customer').trim()
     const cleanPhone = (c.phone || '').replace(/\D/g, '').replace(/^0/, '92')
@@ -124,10 +166,27 @@ export default function AbandonedCheckouts() {
       return
     }
 
-    const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
-    const msg = `Assalam-o-Alaikum ${name}, aapka TRACE cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai?`
+    const checkoutLink = c.abandoned_checkout_url || ''
+
+    let msg = ''
+    if (msgTemplate === 'DISCOUNT') {
+      msg = `Assalam-o-Alaikum ${name}! Aap ke TRACE cart par 10% Special Discount activate kar diya gaya hai. Complete karne ke liye click karein: ${checkoutLink}`
+    } else if (msgTemplate === 'LINK') {
+      msg = `Assalam-o-Alaikum ${name}, yeh aapke TRACE order ka direct checkout link hai: ${checkoutLink}`
+    } else {
+      // REMINDER (Default)
+      msg = `Assalam-o-Alaikum ${name}, aapka TRACE cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai? Link: ${checkoutLink}`
+    }
+
     window.open(`${baseUrl}?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
+  // Copy Phone / Text helper
+  const copyText = (text, label) => {
+    if (!text) return
+    navigator.clipboard.writeText(text)
+    addToast(`Copied ${label}!`, 'success')
   }
 
   return (
@@ -139,10 +198,51 @@ export default function AbandonedCheckouts() {
             🛒 Abandoned Checkouts
           </h2>
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Smart reconciled Shopify checkouts to prevent contacting customers who already placed an order.
+            Reconciled Shopify checkouts. 1-click WhatsApp / Call, template presets, and zero-confusion matching.
           </p>
         </div>
+
+        {/* Top Controls */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* WhatsApp Web Mode Toggle Button */}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={toggleWaWeb}
+            title="Click to toggle between WhatsApp Web browser tab vs WhatsApp App"
+            style={{
+              height: 36,
+              padding: '0 12px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              background: useWaWeb ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-surface)',
+              color: useWaWeb ? '#4ade80' : 'var(--text-primary)',
+              border: useWaWeb ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid var(--border)'
+            }}
+          >
+            {useWaWeb ? '💻 WA Web' : '📱 WA App'}
+          </button>
+
+          {/* WhatsApp Message Template Preset */}
+          <select
+            value={msgTemplate}
+            onChange={(e) => setMsgTemplate(e.target.value)}
+            className="form-select"
+            title="Choose template message for WhatsApp"
+            style={{
+              height: 36,
+              fontSize: '0.8rem',
+              padding: '0 10px',
+              borderRadius: 8,
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              fontWeight: 600
+            }}
+          >
+            <option value="REMINDER">💬 Gentle Reminder</option>
+            <option value="DISCOUNT">🏷️ 10% Discount Offer</option>
+            <option value="LINK">🔗 Direct Cart Link</option>
+          </select>
+
           {/* Date Filter Preset Dropdown */}
           <select
             value={datePreset}
@@ -202,67 +302,67 @@ export default function AbandonedCheckouts() {
       {/* Stat Cards Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         gap: 16,
         marginBottom: 24
       }}>
-        <div className="stat-card" style={{ padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             Total Value (Abandoned)
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 6 }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
             {formatRs(stats.total_abandoned_value)}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-            Unrecovered Checkouts Value
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            Unrecovered Value
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: '#f87171', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: '#f87171', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🔴 True Abandoned
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f87171', marginTop: 6 }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f87171', marginTop: 4 }}>
             {stats.true_abandoned || 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-            No order created yet (Needs Contact)
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            Needs Contact
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: '#4ade80', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: '#4ade80', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🟢 Recovered / Placed
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#4ade80', marginTop: 6 }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#4ade80', marginTop: 4 }}>
             {stats.recovered || 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
             Order placed afterwards
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🟡 Existing Customers
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#fbbf24', marginTop: 6 }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fbbf24', marginTop: 4 }}>
             {stats.existing_customer || 0}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-            Has active/previous orders
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            Has previous orders
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 20, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--brand)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--brand)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             Recovery Rate
           </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--brand)', marginTop: 6 }}>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--brand)', marginTop: 4 }}>
             {stats.recovery_rate_pct || 0}%
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-            Natural Conversion Rate
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            Natural Conversion
           </div>
         </div>
       </div>
@@ -270,25 +370,26 @@ export default function AbandonedCheckouts() {
       {/* Filter Tabs & Search Control */}
       <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
+        justify: 'space-between',
         alignItems: 'center',
         borderBottom: '1px solid var(--border)',
         marginBottom: 20,
         flexWrap: 'wrap',
         gap: 12
       }}>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {[
+            { key: 'TRUE_ABANDONED', label: '🔴 True Abandoned (Actionable)', badge: stats.true_abandoned || 0 },
             { key: 'ALL', label: 'All Checkouts', badge: stats.total || 0 },
-            { key: 'TRUE_ABANDONED', label: '🛒 True Abandoned', badge: stats.true_abandoned || 0 },
             { key: 'RECOVERED', label: '🟢 Recovered / Placed', badge: stats.recovered || 0 },
             { key: 'EXISTING_CUSTOMER', label: '🟡 Existing Customer', badge: stats.existing_customer || 0 },
+            { key: 'DISMISSED', label: '🚫 Handled / Dismissed', badge: dismissedIds.length },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               style={{
-                padding: '12px 18px',
+                padding: '12px 16px',
                 background: 'none',
                 border: 'none',
                 borderBottom: activeTab === tab.key ? '2px solid var(--brand)' : '2px solid transparent',
@@ -361,20 +462,22 @@ export default function AbandonedCheckouts() {
                 <th style={{ padding: '12px 16px' }}>Total Price</th>
                 <th style={{ padding: '12px 16px' }}>Reconciliation Status</th>
                 <th style={{ padding: '12px 16px' }}>Abandoned Date</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
+                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Quick Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCheckouts.map(c => {
                 const isRecovered = c.reconciliation_status === 'RECOVERED'
                 const isExisting = c.reconciliation_status === 'EXISTING_CUSTOMER'
+                const isDismissed = dismissedIds.includes(String(c.id))
 
                 return (
                   <tr
                     key={c.id}
                     style={{
                       borderBottom: '1px solid var(--border)',
-                      background: isRecovered ? 'rgba(74, 222, 128, 0.03)' : 'transparent'
+                      background: isRecovered ? 'rgba(74, 222, 128, 0.03)' : isDismissed ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
+                      opacity: isDismissed ? 0.6 : 1
                     }}
                   >
                     {/* Customer Name & City */}
@@ -392,8 +495,17 @@ export default function AbandonedCheckouts() {
                     {/* Contact Info (Phone & Email) */}
                     <td style={{ padding: '12px 16px' }}>
                       {c.phone ? (
-                        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 600, color: 'var(--brand)' }}>
-                          📞 {c.phone}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', fontWeight: 600, color: 'var(--brand)' }}>
+                            📞 {c.phone}
+                          </span>
+                          <button
+                            onClick={() => copyText(c.phone, 'Phone number')}
+                            title="Copy Phone Number"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: '0.75rem', opacity: 0.7 }}
+                          >
+                            📋
+                          </button>
                         </div>
                       ) : (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No Phone</div>
@@ -497,7 +609,7 @@ export default function AbandonedCheckouts() {
                           className="btn btn-secondary btn-sm"
                           onClick={() => handleWhatsApp(c)}
                           disabled={isRecovered || !c.phone}
-                          title={isRecovered ? 'Customer already placed an order - WhatsApp disabled' : 'Open WhatsApp Manual Chat'}
+                          title={isRecovered ? 'Customer already placed an order - WhatsApp disabled' : 'Open WhatsApp Chat'}
                           style={{
                             padding: '4px 10px',
                             fontSize: '0.75rem',
@@ -533,6 +645,27 @@ export default function AbandonedCheckouts() {
                             🔗 Link
                           </a>
                         ) : null}
+
+                        {/* Dismiss / Restore Button */}
+                        {isDismissed ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleRestore(c.id)}
+                            title="Restore checkout"
+                            style={{ padding: '4px 8px', fontSize: '0.72rem' }}
+                          >
+                            ↩️ Restore
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleDismiss(c.id)}
+                            title="Mark as handled / dismiss"
+                            style={{ padding: '4px 8px', fontSize: '0.72rem', opacity: 0.7 }}
+                          >
+                            ✕ Dismiss
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
