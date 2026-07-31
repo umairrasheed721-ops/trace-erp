@@ -201,10 +201,26 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
         if (!rawStatus) continue;
         const isProtected = DEAD_STATUSES.includes((oldStatus||'').toLowerCase());
         const isAttemptFailure = ATTEMPT_FAILURE_STATUSES.includes((rawStatus||'').toLowerCase());
+
+        // Context-aware Return In Transit:
+        // Ambiguous PostEx raw statuses appear both during normal delivery AND return journey.
+        // Only map to 'Return In Transit' if order is ALREADY in a return state.
+        const RETURN_STATES = ['return initiated', 'return in transit', 'shipper advice', 'refused', 'attempted', 'rto'];
+        const isInReturnState = RETURN_STATES.includes((oldStatus||'').toLowerCase().trim());
+        const rawLower = (rawStatus||'').toLowerCase();
+        const isAmbiguousTransit = rawLower.includes('en route') || rawLower.includes('enroute') ||
+                                    rawLower.includes('departed to') || rawLower.includes('arrived at transit hub') ||
+                                    rawLower.includes('return to');
+
+        let finalMappedStatus = mappedStatus;
+        if (isAmbiguousTransit) {
+          finalMappedStatus = isInReturnState ? 'Return In Transit' : null;
+        }
+
         updatesToApply.push({
           id,
           courier_status: rawStatus,
-          erp_status: (!isProtected && mappedStatus) ? mappedStatus : null,
+          erp_status: (!isProtected && finalMappedStatus) ? finalMappedStatus : null,
           failed_attempt_increment: (!isProtected && isAttemptFailure) ? 1 : 0,
           status_date: statusDate,
           tracking_history: trackingHistoryJson,
