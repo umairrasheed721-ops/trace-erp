@@ -486,6 +486,13 @@ export default function AdviceMonitor() {
             All Reattempts ({reattemptOrders.length})
           </button>
           <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'return_initiated' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('return_initiated')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 700, color: reattemptOutcomeFilter === 'return_initiated' ? '#fff' : '#ef4444', background: reattemptOutcomeFilter === 'return_initiated' ? '#ef4444' : 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+          >
+            🚨 Advice Ignored / Return Initiated ({reattemptStats?.returnInitiatedCount || 0})
+          </button>
+          <button
             className={`btn btn-xs ${reattemptOutcomeFilter === 'delivered_post_advice' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setReattemptOutcomeFilter('delivered_post_advice')}
             style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'delivered_post_advice' ? '#fff' : '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
@@ -509,9 +516,9 @@ export default function AdviceMonitor() {
           <button
             className={`btn btn-xs ${reattemptOutcomeFilter === 'failed_rto' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setReattemptOutcomeFilter('failed_rto')}
-            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'failed_rto' ? '#fff' : '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'failed_rto' ? '#fff' : '#9ca3af', borderColor: 'rgba(156, 163, 175, 0.4)' }}
           >
-            🔴 Failed / RTO ({reattemptStats?.failedCount || 0})
+            🔴 Returned ({reattemptStats?.failedCount || 0})
           </button>
         </div>
       )}
@@ -662,7 +669,27 @@ export default function AdviceMonitor() {
                         o.outcome === 'delivered_post_advice' ? (
                           <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.82rem' }}>🟢 Delivered</span>
                         ) : o.outcome === 'failed_rto' ? (
-                          <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.82rem' }}>🔴 Returned</span>
+                          <span style={{ color: '#9ca3af', fontWeight: 700, fontSize: '0.82rem' }}>🔴 Returned</span>
+                        ) : o.outcome === 'return_initiated' ? (
+                          <button
+                            className="btn btn-sm"
+                            disabled={isLoading}
+                            onClick={() => handleOpenRetryModal(o)}
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '4px 9px',
+                              background: '#ef4444',
+                              color: '#fff',
+                              border: 'none',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                            title="Courier ignored Shipper Advice and initiated return. Click to re-send urgent Shipper Advice remark!"
+                          >
+                            {isLoading ? <span className="loading-spinner"></span> : '⚡ Stop Return'}
+                          </button>
                         ) : (
                           <button className="btn btn-warning btn-sm" disabled={isLoading} onClick={() => handleOpenRetryModal(o)} style={{ fontSize: '0.75rem', padding: '4px 8px' }}>
                             {isLoading ? <span className="loading-spinner"></span> : '💬 Follow-up'}

@@ -252,10 +252,14 @@ router.get('/reattempts', (req, res) => {
   let deliveredCount = 0;
   let pendingCount = 0;
   let failedCount = 0;
+  let returnInitiatedCount = 0;
   let outForReattemptCount = 0;
 
   const orders = rawOrders.map(o => {
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
+    const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
+    const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
+
     const rawDate = o.status_date || o.order_date;
     let hoursAgo = 0;
     if (rawDate) {
@@ -275,10 +279,14 @@ router.get('/reattempts', (req, res) => {
       outcome = 'delivered_post_advice';
       outcomeLabel = '🟢 Delivered Post-Advice';
       deliveredCount++;
-    } else if (deliveryStatusLower.includes('returned') || deliveryStatusLower.includes('return received') || deliveryStatusLower.includes('rto')) {
+    } else if (deliveryStatusLower === 'returned' || deliveryStatusLower.includes('return received')) {
       outcome = 'failed_rto';
-      outcomeLabel = '🔴 2nd Attempt Failed / RTO';
+      outcomeLabel = '🔴 Returned / RTO';
       failedCount++;
+    } else if (combinedStatus.includes('return') || combinedStatus.includes('rto')) {
+      outcome = 'return_initiated';
+      outcomeLabel = '🚨 Advice Ignored -> Return Initiated';
+      returnInitiatedCount++;
     } else if (hoursAgo >= 24 && (deliveryStatusLower.includes('reattempt requested') || deliveryStatusLower.includes('under review') || deliveryStatusLower.includes('shipper advice'))) {
       outcome = 'pending_courier_action';
       outcomeLabel = '⚠️ Pending Courier (>24h)';
@@ -305,6 +313,7 @@ router.get('/reattempts', (req, res) => {
       deliveredCount,
       pendingCount,
       failedCount,
+      returnInitiatedCount,
       outForReattemptCount,
       successRate
     }
