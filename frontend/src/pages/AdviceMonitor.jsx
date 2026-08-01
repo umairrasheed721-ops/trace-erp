@@ -20,6 +20,12 @@ export default function AdviceMonitor() {
   const [historyMeta, setHistoryMeta] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  // After-Advice KPI & Filtering State
+  const [reattemptStats, setReattemptStats] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCourier, setSelectedCourier] = useState('all')
+  const [reattemptOutcomeFilter, setReattemptOutcomeFilter] = useState('all')
+
   const load = () => {
     if (!activeStoreId) return
     setLoading(true)
@@ -28,7 +34,9 @@ export default function AdviceMonitor() {
       fetch(`/api/monitors/reattempts?store_id=${activeStoreId}`).then(r => r.json())
     ]).then(([adviceData, reattemptData]) => {
       setOrders(Array.isArray(adviceData) ? adviceData : [])
-      setReattemptOrders(Array.isArray(reattemptData) ? reattemptData : [])
+      const rOrders = Array.isArray(reattemptData) ? reattemptData : (reattemptData?.orders || [])
+      setReattemptOrders(rOrders)
+      setReattemptStats(reattemptData?.stats || null)
       setBadgeCounts(prev => ({ ...prev, advice: Array.isArray(adviceData) ? adviceData.length : 0 }))
       setLoading(false)
     }).catch(() => { addToast('Failed to load advice orders', 'error'); setLoading(false) })
@@ -157,11 +165,32 @@ export default function AdviceMonitor() {
   const firstAttemptOrders = filterBySla(orders.filter(o => o.advice_category === 'first_attempt' || (!o.advice_category && parseInt(o.failed_attempts || 0, 10) <= 1)))
   const immediateReturnOrders = filterBySla(orders.filter(o => o.advice_category === 'immediate_return'))
 
-  let displayOrders = []
-  if (activeTab === 'advice_required') displayOrders = adviceRequiredOrders
-  else if (activeTab === 'first_attempt') displayOrders = firstAttemptOrders
-  else if (activeTab === 'immediate_return') displayOrders = immediateReturnOrders
-  else if (activeTab === 'reattempts') displayOrders = reattemptOrders
+  let baseOrders = []
+  if (activeTab === 'advice_required') baseOrders = adviceRequiredOrders
+  else if (activeTab === 'first_attempt') baseOrders = firstAttemptOrders
+  else if (activeTab === 'immediate_return') baseOrders = immediateReturnOrders
+  else if (activeTab === 'reattempts') {
+    baseOrders = reattemptOrders
+    if (reattemptOutcomeFilter !== 'all') {
+      baseOrders = baseOrders.filter(o => o.outcome === reattemptOutcomeFilter)
+    }
+  }
+
+  const displayOrders = baseOrders.filter(o => {
+    if (selectedCourier !== 'all') {
+      const c = (o.courier || '').toLowerCase()
+      if (!c.includes(selectedCourier.toLowerCase())) return false
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      const matchTracking = (o.tracking_number || '').toLowerCase().includes(q)
+      const matchName = (o.customer_name || '').toLowerCase().includes(q)
+      const matchPhone = (o.phone || '').toLowerCase().includes(q)
+      const matchRef = (o.ref_number || '').toLowerCase().includes(q)
+      return matchTracking || matchName || matchPhone || matchRef
+    }
+    return true
+  })
 
   // Bulk WhatsApp Modal State
   const [showBulkWaModal, setShowBulkWaModal] = useState(false)
@@ -347,8 +376,61 @@ export default function AdviceMonitor() {
         </div>
       </div>
 
+      {/* KPI Summary Bar */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <div className="card" style={{ padding: '12px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>🚨 Pending Advice</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--brand)', marginTop: 2 }}>
+            {adviceRequiredOrders.length} <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>parcels</span>
+          </div>
+        </div>
+        <div className="card" style={{ padding: '12px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>🔁 60-Day Reattempts</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#3b82f6', marginTop: 2 }}>
+            {reattemptStats?.total || reattemptOrders.length} <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>sent</span>
+          </div>
+        </div>
+        <div className="card" style={{ padding: '12px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>🟢 Advice Conversion Rate</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981', marginTop: 2 }}>
+            {reattemptStats?.successRate || 0}% <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>({reattemptStats?.deliveredCount || 0} Delivered)</span>
+          </div>
+        </div>
+        <div className="card" style={{ padding: '12px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>⚠️ Pending Courier (&gt;24h)</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b', marginTop: 2 }}>
+            {reattemptStats?.pendingCount || 0} <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>needs follow-up</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Search & Courier Filter Row */}
+      <div className="card" style={{ padding: '10px 14px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="🔍 Search Tracking #, Customer Name, Phone..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ width: '100%', fontSize: '0.82rem', padding: '6px 12px' }}
+          />
+        </div>
+        <div style={{ width: 170 }}>
+          <select className="form-select" value={selectedCourier} onChange={e => setSelectedCourier(e.target.value)} style={{ fontSize: '0.82rem', padding: '6px 12px' }}>
+            <option value="all">🚚 All Couriers</option>
+            <option value="postex">PostEx</option>
+            <option value="instaworld">Instaworld</option>
+            <option value="leopards">Leopards</option>
+            <option value="tcs">TCS</option>
+            <option value="trax">Trax</option>
+            <option value="call courier">Call Courier</option>
+          </select>
+        </div>
+      </div>
+
       {/* Tabs Switcher */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' }}>
         <button
           className={`btn ${activeTab === 'advice_required' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('advice_required')}
@@ -389,9 +471,50 @@ export default function AdviceMonitor() {
           onClick={() => setActiveTab('reattempts')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8, padding: '8px 14px', fontWeight: 600, fontSize: '0.88rem' }}
         >
-          🔁 Reattempts Sent (Last 60 Days) ({reattemptOrders.length})
+          🔁 Reattempts Sent ({reattemptOrders.length})
         </button>
       </div>
+
+      {/* Reattempt Outcome Sub-Filter Pills */}
+      {activeTab === 'reattempts' && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('all')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600 }}
+          >
+            All Reattempts ({reattemptOrders.length})
+          </button>
+          <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'delivered_post_advice' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('delivered_post_advice')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'delivered_post_advice' ? '#fff' : '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+          >
+            🟢 Delivered ({reattemptStats?.deliveredCount || 0})
+          </button>
+          <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'out_for_reattempt' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('out_for_reattempt')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'out_for_reattempt' ? '#fff' : '#3b82f6', borderColor: 'rgba(59, 130, 246, 0.4)' }}
+          >
+            🚚 In Progress ({reattemptStats?.outForReattemptCount || 0})
+          </button>
+          <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'pending_courier_action' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('pending_courier_action')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'pending_courier_action' ? '#fff' : '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+          >
+            ⚠️ Pending Courier &gt;24h ({reattemptStats?.pendingCount || 0})
+          </button>
+          <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'failed_rto' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('failed_rto')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'failed_rto' ? '#fff' : '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+          >
+            🔴 Failed / RTO ({reattemptStats?.failedCount || 0})
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading-overlay"><span className="loading-spinner"></span> Scanning...</div>
@@ -480,9 +603,23 @@ export default function AdviceMonitor() {
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
                         <span className="badge badge-advice">{o.delivery_status}</span>
-                        {getSlaBadge(o)}
+                        {activeTab === 'reattempts' && o.outcomeLabel && (
+                          <span
+                            className="badge"
+                            style={{
+                              background: o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.15)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.15)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color: o.outcome === 'delivered_post_advice' ? '#10b981' : o.outcome === 'failed_rto' ? '#ef4444' : o.outcome === 'pending_courier_action' ? '#f59e0b' : '#3b82f6',
+                              border: `1px solid ${o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.3)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.3)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                              fontSize: '0.68rem',
+                              fontWeight: 700
+                            }}
+                          >
+                            {o.outcomeLabel}
+                          </span>
+                        )}
+                        {activeTab !== 'reattempts' && getSlaBadge(o)}
                       </div>
                     </td>
                     <td style={{ minWidth: 210 }}>
@@ -521,6 +658,16 @@ export default function AdviceMonitor() {
                     <td>
                       {isDone ? (
                         <span className="text-success" style={{ fontSize: '0.8rem', fontWeight: 600 }}>✅ Sent</span>
+                      ) : activeTab === 'reattempts' ? (
+                        o.outcome === 'delivered_post_advice' ? (
+                          <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.82rem' }}>🟢 Delivered</span>
+                        ) : o.outcome === 'failed_rto' ? (
+                          <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.82rem' }}>🔴 Returned</span>
+                        ) : (
+                          <button className="btn btn-warning btn-sm" disabled={isLoading} onClick={() => handleOpenRetryModal(o)} style={{ fontSize: '0.75rem', padding: '4px 8px' }}>
+                            {isLoading ? <span className="loading-spinner"></span> : '💬 Follow-up'}
+                          </button>
+                        )
                       ) : (
                         <div className="flex gap-2">
                           <button className="btn btn-success btn-sm" disabled={isLoading} onClick={() => handleOpenRetryModal(o)}>

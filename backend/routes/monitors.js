@@ -235,8 +235,8 @@ router.get('/reattempts', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
-  const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, delivery_status, notes, price, product_titles, courier, courier_status, status_date, order_date
+  const rawOrders = db.prepare(`
+    SELECT id, ref_number, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, line_items, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
     AND (
       LOWER(delivery_status) IN ('reattempt requested', 'return initiated') 
@@ -249,7 +249,66 @@ router.get('/reattempts', (req, res) => {
     ORDER BY COALESCE(status_date, order_date) DESC
   `).all(store_id);
 
-  res.json(orders);
+  let deliveredCount = 0;
+  let pendingCount = 0;
+  let failedCount = 0;
+  let outForReattemptCount = 0;
+
+  const orders = rawOrders.map(o => {
+    const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
+    const rawDate = o.status_date || o.order_date;
+    let hoursAgo = 0;
+    if (rawDate) {
+      try {
+        const dateStr = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T') + '+05:00';
+        const parsedMs = Date.parse(dateStr);
+        if (!isNaN(parsedMs)) {
+          hoursAgo = Math.round((Date.now() - parsedMs) / 3600000);
+        }
+      } catch (_) {}
+    }
+
+    let outcome = 'out_for_reattempt';
+    let outcomeLabel = '🚚 Reattempt In Progress';
+
+    if (deliveryStatusLower.includes('delivered') || deliveryStatusLower.includes('paid')) {
+      outcome = 'delivered_post_advice';
+      outcomeLabel = '🟢 Delivered Post-Advice';
+      deliveredCount++;
+    } else if (deliveryStatusLower.includes('returned') || deliveryStatusLower.includes('return received') || deliveryStatusLower.includes('rto')) {
+      outcome = 'failed_rto';
+      outcomeLabel = '🔴 2nd Attempt Failed / RTO';
+      failedCount++;
+    } else if (hoursAgo >= 24 && (deliveryStatusLower.includes('reattempt requested') || deliveryStatusLower.includes('under review') || deliveryStatusLower.includes('shipper advice'))) {
+      outcome = 'pending_courier_action';
+      outcomeLabel = '⚠️ Pending Courier (>24h)';
+      pendingCount++;
+    } else {
+      outForReattemptCount++;
+    }
+
+    return {
+      ...o,
+      outcome,
+      outcomeLabel,
+      hoursAgo
+    };
+  });
+
+  const total = orders.length;
+  const successRate = total > 0 ? Math.round((deliveredCount / total) * 100) : 0;
+
+  res.json({
+    orders,
+    stats: {
+      total,
+      deliveredCount,
+      pendingCount,
+      failedCount,
+      outForReattemptCount,
+      successRate
+    }
+  });
 });
 
 // GET /api/monitors/blacklist - Get blacklisted tracking numbers with metadata
