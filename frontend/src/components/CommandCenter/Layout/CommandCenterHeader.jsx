@@ -25,15 +25,15 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', marginLeft: 4 }}>⚡ Quick Presets:</span>
             <button
               type="button"
-              onClick={() => { setPreset && setPreset('Today'); setStatus && setStatus(''); }}
+              onClick={() => { setPreset && setPreset('Today'); setStatus && setStatus('All Statuses'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
                 fontSize: '0.7rem',
                 borderRadius: 12,
-                background: preset === 'Today' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
-                color: preset === 'Today' && !status ? '#ffffff' : 'var(--text-primary)',
-                border: preset === 'Today' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                background: preset === 'Today' && (status === 'All Statuses' || !status) ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'Today' && (status === 'All Statuses' || !status) ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'Today' && (status === 'All Statuses' || !status) ? '1px solid var(--brand)' : '1px solid var(--border)',
                 cursor: 'pointer',
                 fontWeight: 600,
                 transition: 'all 0.15s ease'
@@ -43,15 +43,15 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setPreset && setPreset('This Week'); setStatus && setStatus(''); }}
+              onClick={() => { setPreset && setPreset('This Week'); setStatus && setStatus('All Statuses'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
                 fontSize: '0.7rem',
                 borderRadius: 12,
-                background: preset === 'This Week' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
-                color: preset === 'This Week' && !status ? '#ffffff' : 'var(--text-primary)',
-                border: preset === 'This Week' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                background: preset === 'This Week' && (status === 'All Statuses' || !status) ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'This Week' && (status === 'All Statuses' || !status) ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'This Week' && (status === 'All Statuses' || !status) ? '1px solid var(--brand)' : '1px solid var(--border)',
                 cursor: 'pointer',
                 fontWeight: 600,
                 transition: 'all 0.15s ease'
@@ -61,15 +61,15 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setPreset && setPreset('This Month'); setStatus && setStatus(''); }}
+              onClick={() => { setPreset && setPreset('This Month'); setStatus && setStatus('All Statuses'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
                 fontSize: '0.7rem',
                 borderRadius: 12,
-                background: preset === 'This Month' && !status ? 'var(--brand)' : 'var(--bg-elevated)',
-                color: preset === 'This Month' && !status ? '#ffffff' : 'var(--text-primary)',
-                border: preset === 'This Month' && !status ? '1px solid var(--brand)' : '1px solid var(--border)',
+                background: preset === 'This Month' && (status === 'All Statuses' || !status) ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: preset === 'This Month' && (status === 'All Statuses' || !status) ? '#ffffff' : 'var(--text-primary)',
+                border: preset === 'This Month' && (status === 'All Statuses' || !status) ? '1px solid var(--brand)' : '1px solid var(--border)',
                 cursor: 'pointer',
                 fontWeight: 600,
                 transition: 'all 0.15s ease'
@@ -79,7 +79,7 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setStatus && setStatus('Shipper Advice'); }}
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('Shipper Advice'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
@@ -97,7 +97,7 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setStatus && setStatus('In Transit'); }}
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('In Transit'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
@@ -115,7 +115,7 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setStatus && setStatus('Return In Transit'); }}
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('Return In Transit'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',
@@ -133,7 +133,7 @@ export default function CommandCenterHeader({ compactMode, preset, setPreset, st
             </button>
             <button
               type="button"
-              onClick={() => { setStatus && setStatus('Pending'); }}
+              onClick={() => { setPreset && setPreset('All Time'); setStatus && setStatus('Pending'); }}
               className="btn btn-xs"
               style={{
                 padding: '3px 10px',

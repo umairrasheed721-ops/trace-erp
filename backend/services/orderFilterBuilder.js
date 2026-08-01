@@ -60,8 +60,8 @@ function getOrderFilters(req) {
   }
 
   if (courier) { whereClauses.push('LOWER(o.courier) = ?'); queryParams.push(courier.toLowerCase()); }
-  if (start_date) { whereClauses.push('date(o.order_date) >= ?'); queryParams.push(start_date); }
-  if (end_date) { whereClauses.push('date(o.order_date) <= ?'); queryParams.push(end_date); }
+  if (start_date) { whereClauses.push("date(COALESCE(NULLIF(o.order_date,''), o.created_timestamp)) >= ?"); queryParams.push(start_date); }
+  if (end_date) { whereClauses.push("date(COALESCE(NULLIF(o.order_date,''), o.created_timestamp)) <= ?"); queryParams.push(end_date); }
   
   if (search && search.trim()) {
     const kw = search.trim().toLowerCase().replace(/^#/, '');
