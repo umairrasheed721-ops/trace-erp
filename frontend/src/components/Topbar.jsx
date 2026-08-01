@@ -216,6 +216,28 @@ export default function Topbar() {
               <span style={{ fontSize: '1.2rem' }}>🎯</span>
             </button>
 
+          {/* ⌨️ KEYBOARD SHORTCUTS BUTTON */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('toggle-keyboard-shortcuts'))}
+            className="btn btn-secondary btn-sm"
+            title="Keyboard Shortcuts Cheatsheet (⌘/ or ?)"
+            style={{
+              height: 38,
+              borderRadius: 20,
+              padding: '0 12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            <span>⌨️</span> Shortcuts <kbd style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: 4, opacity: 0.8 }}>⌘/</kbd>
+          </button>
+
           <button 
             onClick={toggleTheme} 
             className="btn btn-secondary btn-sm" 

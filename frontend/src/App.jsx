@@ -61,12 +61,30 @@ const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'Tr
 const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'ReviewsManager')
 const AbandonedCheckouts = lazyWithRetry(() => import('./pages/AbandonedCheckouts'), 'AbandonedCheckouts')
 
+import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
+
 function AppContent() {
   const { token, sidebarCollapsed, toasts } = useApp()
+  const [showShortcutsModal, setShowShortcutsModal] = React.useState(false)
 
-  // ⌨️ Global Keyboard Hotkeys Engine (Cmd + K / Ctrl + K & Esc)
+  // ⌨️ Global Keyboard Hotkeys Engine
   React.useEffect(() => {
+    let lastKey = '';
+    let lastKeyTime = 0;
+
+    const handleToggleEvent = () => setShowShortcutsModal(prev => !prev);
+    window.addEventListener('toggle-keyboard-shortcuts', handleToggleEvent);
+
     const handleKeyDown = (e) => {
+      const activeElement = document.activeElement;
+      const isInput = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'SELECT' ||
+        activeElement.isContentEditable
+      );
+
+      // 1. Cmd + K / Ctrl + K (Global Search)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         const searchInput = document.querySelector('#cmd-center-keyword-input') || 
@@ -78,12 +96,78 @@ function AppContent() {
         } else {
           window.location.href = '/search';
         }
-      } else if (e.key === 'Escape') {
+        return;
+      }
+
+      // 2. Escape to close modals or shortcuts modal
+      if (e.key === 'Escape') {
+        setShowShortcutsModal(false);
         const closeBtn = document.querySelector('.modal-overlay button.btn-close') ||
                          document.querySelector('.modal-content button') ||
                          document.querySelector('[data-close-modal="true"]');
         if (closeBtn && typeof closeBtn.click === 'function') {
           closeBtn.click();
+        }
+        return;
+      }
+
+      // 3. Question mark (?) or Cmd+/ for Shortcuts Modal
+      if (!isInput && (e.key === '?' || (e.metaKey && e.key === '/'))) {
+        e.preventDefault();
+        setShowShortcutsModal(prev => !prev);
+        return;
+      }
+
+      // 4. Alt + B to toggle Sidebar
+      if (!isInput && e.altKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        const toggleBtn = document.querySelector('.sidebar-toggle-btn');
+        if (toggleBtn) toggleBtn.click();
+        return;
+      }
+
+      // 5. Shift + R for Refresh Page Data
+      if (!isInput && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        const refreshBtns = Array.from(document.querySelectorAll('button'));
+        const refBtn = refreshBtns.find(b => b.innerText && b.innerText.includes('Refresh'));
+        if (refBtn) refBtn.click();
+        return;
+      }
+
+      // 6. Number keys (1, 2, 3, 4) for Switching Page Tabs
+      if (!isInput && ['1', '2', '3', '4'].includes(e.key)) {
+        const tabBtns = Array.from(document.querySelectorAll('button'));
+        const filteredTabs = tabBtns.filter(b => b.style && b.style.borderRadius && b.innerText && (b.innerText.includes('(') || b.className.includes('btn-primary') || b.className.includes('btn-secondary')));
+        const targetIdx = parseInt(e.key) - 1;
+        if (filteredTabs[targetIdx]) {
+          e.preventDefault();
+          filteredTabs[targetIdx].click();
+        }
+        return;
+      }
+
+      // 7. Chording: G + [Key] for Rapid Navigation
+      if (!isInput) {
+        const now = Date.now();
+        const key = e.key.toLowerCase();
+
+        if (lastKey === 'g' && now - lastKeyTime < 1000) {
+          if (key === 'c') window.location.href = '/search';
+          else if (key === 'a') window.location.href = '/advice';
+          else if (key === 's') window.location.href = '/stuck';
+          else if (key === 'r') window.location.href = '/returns';
+          else if (key === 'f') window.location.href = '/finance';
+          else if (key === 'd') window.location.href = '/';
+          lastKey = '';
+          return;
+        }
+
+        if (key === 'g') {
+          lastKey = 'g';
+          lastKeyTime = now;
+        } else {
+          lastKey = '';
         }
       }
     };
@@ -94,7 +178,6 @@ function AppContent() {
       if (!td) return;
       if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      // Clone cell and remove interactive buttons/links
       const clone = td.cloneNode(true);
       clone.querySelectorAll('button, a, .btn, script, style').forEach(el => el.remove());
 
@@ -113,6 +196,7 @@ function AppContent() {
     document.addEventListener('dblclick', handleDblClick);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('toggle-keyboard-shortcuts', handleToggleEvent);
       document.removeEventListener('dblclick', handleDblClick);
     };
   }, []);
@@ -214,6 +298,7 @@ function AppContent() {
         </div>
       </div>
       <ToastContainer toasts={toasts} />
+      <KeyboardShortcutsModal isOpen={showShortcutsModal} onClose={() => setShowShortcutsModal(false)} />
     </BrowserRouter>
   )
 }
