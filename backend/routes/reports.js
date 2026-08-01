@@ -80,7 +80,7 @@ router.get('/daily', (req, res) => {
     fakeReturnsQuery += ' GROUP BY substr(o.order_date, 1, 10)';
     const fakeReturns = db.prepare(fakeReturnsQuery).all(...fakeParams);
 
-    // 3. Get manual metrics
+    // 3. Get manual metrics & itemized expenses
     let metricsQuery = `
       SELECT date_string, marketing_spend, tiktok_marketing, actual_exp, diff_correction
       FROM daily_metrics
@@ -97,6 +97,23 @@ router.get('/daily', (req, res) => {
     }
     const metrics = db.prepare(metricsQuery).all(...metricsParams);
 
+    const manualExpRows = db.prepare(`
+      SELECT expense_date, amount, frequency
+      FROM manual_expenses
+      WHERE store_id = ?
+    `).all(Number(store_id));
+
+    const manualExpMap = {};
+    manualExpRows.forEach(e => {
+      const amt = parseFloat(e.amount) || 0;
+      if (e.frequency === 'monthly') {
+        const yearMonth = (e.expense_date || '').substring(0, 7);
+        manualExpMap[`monthly_${yearMonth}`] = (manualExpMap[`monthly_${yearMonth}`] || 0) + (amt / 30);
+      } else {
+        manualExpMap[e.expense_date] = (manualExpMap[e.expense_date] || 0) + amt;
+      }
+    });
+
     // Map the supplemental data
     const metricsMap = {};
     metrics.forEach(m => metricsMap[m.date_string] = m);
@@ -109,6 +126,10 @@ router.get('/daily', (req, res) => {
       const dateStr = day.date_string;
       const m = metricsMap[dateStr] || { marketing_spend: 0, tiktok_marketing: 0, actual_exp: 0, diff_correction: 0 };
       const fakeRet = fakeMap[dateStr] || 0;
+
+      const yearMonth = dateStr.substring(0, 7);
+      const itemizedExp = (manualExpMap[dateStr] || 0) + (manualExpMap[`monthly_${yearMonth}`] || 0);
+      const actualExp = (m.actual_exp || 0) + itemizedExp;
 
       const landedOrders = day.landed_orders || 0;
       const cancelations = day.cancelations || 0;
@@ -126,7 +147,6 @@ router.get('/daily', (req, res) => {
 
       const marketingSpend = m.marketing_spend || 0;
       const tiktokMarketing = m.tiktok_marketing || 0;
-      const actualExp = m.actual_exp || 0;
       const diffCorrection = m.diff_correction || 0;
       const totalMarketing = marketingSpend + tiktokMarketing;
 

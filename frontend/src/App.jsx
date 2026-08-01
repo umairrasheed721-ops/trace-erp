@@ -60,6 +60,7 @@ const PayoutReconciler = lazyWithRetry(() => import('./pages/PayoutReconciler'),
 const TrackingPortal = lazyWithRetry(() => import('./pages/TrackingPortal'), 'TrackingPortal')
 const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'ReviewsManager')
 const AbandonedCheckouts = lazyWithRetry(() => import('./pages/AbandonedCheckouts'), 'AbandonedCheckouts')
+const ExpenseManager = lazyWithRetry(() => import('./pages/ExpenseManager'), 'ExpenseManager')
 
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
 
@@ -158,6 +159,7 @@ function AppContent() {
           else if (key === 's') window.location.href = '/stuck';
           else if (key === 'r') window.location.href = '/returns';
           else if (key === 'f') window.location.href = '/finance';
+          else if (key === 'e') window.location.href = '/expenses';
           else if (key === 'd') window.location.href = '/';
           lastKey = '';
           return;
@@ -291,6 +293,7 @@ function AppContent() {
                   <Route path="/prevention" element={<CostManager />} />
                   <Route path="/reviews" element={<ReviewsManager />} />
                   <Route path="/abandoned" element={<AbandonedCheckouts />} />
+                  <Route path="/expenses" element={<ExpenseManager />} />
                 </Routes>
               </ErrorBoundary>
             </Suspense>

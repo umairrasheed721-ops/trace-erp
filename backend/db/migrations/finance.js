@@ -93,5 +93,20 @@ module.exports = [
     changed_by TEXT NOT NULL, -- 'shopify_cron' | 'manual' | 'webhook' | 'bulk_accept' | 'inline_save'
     changed_at TEXT DEFAULT (datetime('now', '+5 hours'))
   );`,
-  `CREATE INDEX IF NOT EXISTS idx_cost_change_log_store ON cost_change_log(store_id, changed_at DESC);`
+  `CREATE INDEX IF NOT EXISTS idx_cost_change_log_store ON cost_change_log(store_id, changed_at DESC);`,
+
+  // 7. CREATE manual_expenses TABLE
+  `CREATE TABLE IF NOT EXISTS manual_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Other',
+    amount REAL NOT NULL DEFAULT 0,
+    frequency TEXT NOT NULL DEFAULT 'one_time',
+    expense_date TEXT NOT NULL,
+    payment_method TEXT DEFAULT 'Cash',
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_manual_expenses_store_date ON manual_expenses(store_id, expense_date);`
 ];

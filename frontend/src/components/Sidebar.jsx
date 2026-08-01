@@ -30,6 +30,7 @@ export default function Sidebar() {
     { to: '/payout-reconciler', icon: '💸', label: 'Payout Reconciler', permission: 'admin_only' },
     { to: '/costing', icon: '🛡️', label: 'Costing & Watchdog', permission: 'admin_only' },
     { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },
+    { to: '/expenses', icon: '📝', label: 'Expense Manager', permission: 'admin_only' },
     { to: '/reviews', icon: '⭐', label: 'Reviews Manager', permission: 'admin_only' },
     { to: '/abandoned', icon: '🛒', label: 'Abandoned Checkouts' },
     { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
