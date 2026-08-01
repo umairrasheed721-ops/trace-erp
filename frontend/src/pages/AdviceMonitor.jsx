@@ -493,6 +493,13 @@ export default function AdviceMonitor() {
             🚨 Advice Ignored / Return Initiated ({reattemptStats?.returnInitiatedCount || 0})
           </button>
           <button
+            className={`btn btn-xs ${reattemptOutcomeFilter === 'cs_requested_return' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setReattemptOutcomeFilter('cs_requested_return')}
+            style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'cs_requested_return' ? '#fff' : '#a855f7', borderColor: 'rgba(168, 85, 247, 0.4)' }}
+          >
+            📦 CS Confirmed Return ({reattemptStats?.csReturnCount || 0})
+          </button>
+          <button
             className={`btn btn-xs ${reattemptOutcomeFilter === 'delivered_post_advice' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setReattemptOutcomeFilter('delivered_post_advice')}
             style={{ borderRadius: 12, padding: '4px 10px', fontWeight: 600, color: reattemptOutcomeFilter === 'delivered_post_advice' ? '#fff' : '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
@@ -616,9 +623,9 @@ export default function AdviceMonitor() {
                           <span
                             className="badge"
                             style={{
-                              background: o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.15)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.15)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                              color: o.outcome === 'delivered_post_advice' ? '#10b981' : o.outcome === 'failed_rto' ? '#ef4444' : o.outcome === 'pending_courier_action' ? '#f59e0b' : '#3b82f6',
-                              border: `1px solid ${o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.3)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.3)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
+                              background: o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.15)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.15)' : o.outcome === 'cs_requested_return' ? 'rgba(168, 85, 247, 0.15)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                              color: o.outcome === 'delivered_post_advice' ? '#10b981' : o.outcome === 'failed_rto' ? '#ef4444' : o.outcome === 'cs_requested_return' ? '#a855f7' : o.outcome === 'pending_courier_action' ? '#f59e0b' : '#3b82f6',
+                              border: `1px solid ${o.outcome === 'delivered_post_advice' ? 'rgba(16, 185, 129, 0.3)' : o.outcome === 'failed_rto' ? 'rgba(239, 68, 68, 0.3)' : o.outcome === 'cs_requested_return' ? 'rgba(168, 85, 247, 0.3)' : o.outcome === 'pending_courier_action' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
                               fontSize: '0.68rem',
                               fontWeight: 700
                             }}
@@ -670,6 +677,8 @@ export default function AdviceMonitor() {
                           <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.82rem' }}>🟢 Delivered</span>
                         ) : o.outcome === 'failed_rto' ? (
                           <span style={{ color: '#9ca3af', fontWeight: 700, fontSize: '0.82rem' }}>🔴 Returned</span>
+                        ) : o.outcome === 'cs_requested_return' ? (
+                          <span style={{ color: '#a855f7', fontWeight: 700, fontSize: '0.82rem' }}>📦 CS Return Confirmed</span>
                         ) : o.outcome === 'return_initiated' ? (
                           <button
                             className="btn btn-sm"

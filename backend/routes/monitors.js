@@ -253,12 +253,17 @@ router.get('/reattempts', (req, res) => {
   let pendingCount = 0;
   let failedCount = 0;
   let returnInitiatedCount = 0;
+  let csReturnCount = 0;
   let outForReattemptCount = 0;
 
   const orders = rawOrders.map(o => {
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
     const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
+    const notesLower = (o.notes || '').toLowerCase().trim();
     const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
+
+    const isCsRequestedReturn = notesLower.includes('[shipper advice - return') || 
+                                courierStatusLower.includes('merchant request for return');
 
     const rawDate = o.status_date || o.order_date;
     let hoursAgo = 0;
@@ -283,6 +288,10 @@ router.get('/reattempts', (req, res) => {
       outcome = 'failed_rto';
       outcomeLabel = '🔴 Returned / RTO';
       failedCount++;
+    } else if (isCsRequestedReturn) {
+      outcome = 'cs_requested_return';
+      outcomeLabel = '📦 CS Confirmed Return';
+      csReturnCount++;
     } else if (combinedStatus.includes('return') || combinedStatus.includes('rto')) {
       outcome = 'return_initiated';
       outcomeLabel = '🚨 Advice Ignored -> Return Initiated';
@@ -314,6 +323,7 @@ router.get('/reattempts', (req, res) => {
       pendingCount,
       failedCount,
       returnInitiatedCount,
+      csReturnCount,
       outForReattemptCount,
       successRate
     }
