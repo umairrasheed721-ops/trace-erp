@@ -43,15 +43,18 @@ function applyMap(statusMap, courier, rawStatus) {
   // 1. Try DB EXACT match first (O(1) lookup)
   if (statusMap && statusMap.exact) {
     const exactKey = `${targetCourier}:${raw}`;
-    const exactAllKey = `all:${raw}`;
     if (statusMap.exact[exactKey]) return statusMap.exact[exactKey];
-    if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
+
     // Instaworld sub-courier fallback: Leopards/LCS/TCS dispatched via Instaworld network
+    // Check 'instaworld' mapping BEFORE global 'all' wildcard
     const INSTAWORLD_SUBCOURIERS = ['leopards', 'lcs', 'tcs', 'private rider', 'instalogistics'];
     if (INSTAWORLD_SUBCOURIERS.includes(targetCourier)) {
       const instaworldKey = `instaworld:${raw}`;
       if (statusMap.exact[instaworldKey]) return statusMap.exact[instaworldKey];
     }
+
+    const exactAllKey = `all:${raw}`;
+    if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
   }
 
   // 2. Standard ERP Hardcoded Rules Fallback
