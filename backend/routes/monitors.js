@@ -239,7 +239,7 @@ router.get('/reattempts', (req, res) => {
     SELECT id, ref_number, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, line_items, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
     AND (
-      LOWER(delivery_status) IN ('reattempt requested', 'return initiated') 
+      LOWER(delivery_status) = 'reattempt requested'
       OR LOWER(courier_status) LIKE '%merchant request%'
       OR LOWER(courier_status) LIKE '%reattempt%'
       OR LOWER(courier_status) LIKE '%re-attempt%'
