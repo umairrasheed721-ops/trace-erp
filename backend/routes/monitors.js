@@ -277,6 +277,15 @@ router.get('/reattempts', (req, res) => {
       } catch (_) {}
     }
 
+    const isReturnInTransitOrFinal = deliveryStatusLower === 'returned' || 
+                                     deliveryStatusLower.includes('return received') ||
+                                     deliveryStatusLower.includes('return in transit') ||
+                                     courierStatusLower.includes('return to ') ||
+                                     courierStatusLower.includes('waiting for return') ||
+                                     courierStatusLower.includes('arrived at transit hub');
+
+    const isFreshReturnInitiated = (deliveryStatusLower === 'return initiated' || courierStatusLower.includes('return process initiated') || courierStatusLower.includes('return initiated')) && !isReturnInTransitOrFinal;
+
     let outcome = 'out_for_reattempt';
     let outcomeLabel = '🚚 Reattempt In Progress';
 
@@ -284,18 +293,18 @@ router.get('/reattempts', (req, res) => {
       outcome = 'delivered_post_advice';
       outcomeLabel = '🟢 Delivered Post-Advice';
       deliveredCount++;
-    } else if (deliveryStatusLower === 'returned' || deliveryStatusLower.includes('return received')) {
-      outcome = 'failed_rto';
-      outcomeLabel = '🔴 Returned / RTO';
-      failedCount++;
     } else if (isCsRequestedReturn) {
       outcome = 'cs_requested_return';
       outcomeLabel = '📦 CS Confirmed Return';
       csReturnCount++;
-    } else if (combinedStatus.includes('return') || combinedStatus.includes('rto')) {
+    } else if (isFreshReturnInitiated) {
       outcome = 'return_initiated';
       outcomeLabel = '🚨 Advice Ignored -> Return Initiated';
       returnInitiatedCount++;
+    } else if (isReturnInTransitOrFinal || combinedStatus.includes('return') || combinedStatus.includes('rto')) {
+      outcome = 'failed_rto';
+      outcomeLabel = '🔴 Return In Transit / RTO';
+      failedCount++;
     } else if (hoursAgo >= 24 && (deliveryStatusLower.includes('reattempt requested') || deliveryStatusLower.includes('under review') || deliveryStatusLower.includes('shipper advice'))) {
       outcome = 'pending_courier_action';
       outcomeLabel = '⚠️ Pending Courier (>24h)';
