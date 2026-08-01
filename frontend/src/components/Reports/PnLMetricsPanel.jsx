@@ -53,9 +53,9 @@ const COLUMN_INFO = {
     example: "The total rupees spent on TikTok campaigns that day. You can manually edit this field directly in the table."
   },
   estCourier: {
-    description: "Estimated Courier Cost. Flat estimate calculated at Rs 200 per dispatched parcel.",
-    formula: "Dispatched Orders * 200",
-    example: "If 500 orders dispatched → Estimated Courier = Rs 1,00,000. This is a rough benchmark. Compare with Actual Courier to see if couriers are overbilling."
+    description: "Hybrid Courier Cost. Combination of actual courier bills for reconciled orders plus Rs 200 estimate for active unreconciled orders.",
+    formula: "Actual Courier Bills + (Unreconciled Dispatched × 200)",
+    example: "Uses true billed charges from courier payouts where available, and Rs 200 per parcel for active dispatches."
   },
   actualCourier: {
     description: "Actual Courier Cost. True courier bills reconciled from courier payouts.",

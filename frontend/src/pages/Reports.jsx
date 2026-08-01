@@ -125,7 +125,7 @@ export default function Reports() {
     { id: 'marPercent', label: 'Mar %', group: 'expense' },
     { id: 'marketingSpend', label: 'Meta Ads', group: 'expense' },
     { id: 'tiktokMarketing', label: 'Tiktok', group: 'expense' },
-    { id: 'estCourier', label: 'Est. Courier', group: 'expense' },
+    { id: 'estCourier', label: 'Est. Courier (Hybrid)', group: 'expense' },
     { id: 'actualCourier', label: 'Actual Courier', group: 'expense' },
     { id: 'courierDiff', label: 'Diff Correction', group: 'expense' },
     { id: 'actualExp', label: 'Manual Exp', group: 'expense' },

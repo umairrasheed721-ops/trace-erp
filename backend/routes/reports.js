@@ -184,7 +184,7 @@ router.get('/daily', (req, res) => {
         marPercent,
         marketingSpend,
         tiktokMarketing,
-        estCourier: estCourierFee,
+        estCourier: hybridCourierFee,
         actualCourier: actualCourierFee,
         courierDiff: courierDiff,
         hybridCourier: hybridCourierFee,
