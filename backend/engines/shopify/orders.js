@@ -488,7 +488,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       const oId = String(o.id);
       shopifyMap[oId] = o;
       const currentStatus = statusMap[oId] || 'Pending';
-      const isCancelled = o.cancelled_at !== null;
+      const isCancelled = Boolean(o.cancelled_at);
       const isReturned = currentStatus === 'Returned' || currentStatus === 'RTO' || currentStatus === 'Returned to Origin';
       if (!isCancelled && !isReturned) {
         o.line_items.forEach(i => { if (i.variant_id) allVariantIds.push(i.variant_id); });
@@ -540,7 +540,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
         let totalCost = 0, productTitles = [], activeCount = 0;
 
-        const isCancelled = fresh.cancelled_at !== null;
+        const isCancelled = Boolean(fresh.cancelled_at);
         const dbStatus = (row.delivery_status || '').trim().toLowerCase();
         const isReturned = dbStatus === 'returned' || dbStatus === 'rto' || dbStatus === 'returned to origin';
 
@@ -730,7 +730,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
     const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
 
     let totalCost = 0, productTitles = '', activeCount = 0;
-    const isCancelled = order.cancelled_at !== null;
+    const isCancelled = Boolean(order.cancelled_at);
     
     const existing = db.prepare('SELECT id, delivery_status, cost, courier_fee, cost_locked, tracking_number FROM orders WHERE store_id = ? AND shopify_order_id = ?').get(storeId, String(shopifyOrderId));
     const { isFinalStatus } = require('../tracking/statusMapper');

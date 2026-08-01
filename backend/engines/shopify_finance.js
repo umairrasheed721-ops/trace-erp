@@ -245,7 +245,7 @@ async function getShopifyOrderStatus(store, orderId) {
   return {
     fulfillment_status: order.fulfillment_status, // null, 'partial', 'fulfilled'
     financial_status: order.financial_status, // 'pending', 'paid', 'refunded', 'partially_refunded'
-    is_cancelled: order.cancelled_at !== null
+    is_cancelled: Boolean(order.cancelled_at)
   };
 }
 

@@ -130,7 +130,7 @@ module.exports = async function handleShopifyWebhook(req, res) {
           // 2. Update costing registry with new price/image (real-time R1)
           processProductUpdateForCosts(store.id, payload);
         }
-      } else if (topic === 'orders/cancelled' || payload.cancelled_at !== null) {
+      } else if (topic === 'orders/cancelled' || (payload.cancelled_at !== undefined && payload.cancelled_at !== null)) {
         // Immediate cancellation state invalidation
         const targetOrderId = payload.order_id || payload.id;
         console.log(`🛑 [Shopify Webhook] Immediate cancellation detected for Shopify Order ID: ${targetOrderId}`);
