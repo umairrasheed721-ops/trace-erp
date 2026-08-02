@@ -79,8 +79,8 @@ export function ColumnPickerModal({ show, onClose, cols, setCols, DEFAULT_COLS, 
       ids: ['ref_number', 'items', 'order_source', 'notes']
     },
     {
-      title: '👤 Customer Info',
-      ids: ['customer_name', 'phone', 'address', 'city']
+      title: '👤 Customer Info & Tags',
+      ids: ['customer_name', 'tags', 'phone', 'address', 'city']
     },
     {
       title: '🚚 Logistics & Status',
