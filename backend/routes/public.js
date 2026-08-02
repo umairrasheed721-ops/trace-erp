@@ -502,7 +502,7 @@ router.post('/create-cod-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   try {
-    const { name, phone, city, address, items, shipping_amount } = req.body;
+    const { name, phone, email, city, address, items, shipping_amount } = req.body;
 
     // Validate required fields
     if (!name || !phone || !city || !address || !items || !items.length) {
@@ -533,6 +533,7 @@ router.post('/create-cod-order', async (req, res) => {
     const cleanPhone = formatE164Phone((phone || '').trim()) || (phone || '').trim();
     const cleanCity = (city || '').trim();
     const cleanAddress = (address || '').trim();
+    const cleanEmail = (email || '').trim().toLowerCase() || `${cleanPhone.replace(/\D/g, '')}@tracepk.com`;
     const nameParts = (name || '').trim().split(/\s+/);
     const firstName = nameParts[0] || 'Customer';
     const lastName = nameParts.slice(1).join(' ') || '.';
@@ -542,13 +543,15 @@ router.post('/create-cod-order', async (req, res) => {
     // Build Shopify order payload (real order, COD)
     const orderPayload = {
       order: {
+        email: cleanEmail,
         line_items: items.map(item => ({
-          variant_id: item.variant_id,
+          variant_id: item.variant_id || item.id,
           quantity: item.quantity || 1
         })),
         customer: {
           first_name: firstName,
           last_name: lastName,
+          email: cleanEmail,
           phone: cleanPhone
         },
         shipping_address: {
@@ -558,6 +561,8 @@ router.post('/create-cod-order', async (req, res) => {
           city: cleanCity,
           country: 'Pakistan',
           country_code: 'PK',
+          phone: cleanPhone
+        },
           phone: cleanPhone
         },
         billing_address: {
