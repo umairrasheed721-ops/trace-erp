@@ -595,8 +595,8 @@ router.post('/create-cod-order', async (req, res) => {
           { name: 'Phone', value: cleanPhone },
           { name: 'Source', value: 'Trace-Custom-COD-Checkout' }
         ],
-        send_receipt: false,
-        send_fulfillment_receipt: false,
+        send_receipt: true,
+        send_fulfillment_receipt: true,
         inventory_behaviour: 'decrement_ignoring_policy'
       }
     };
