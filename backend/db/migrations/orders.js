@@ -82,7 +82,8 @@ module.exports = [
     fulfillment_status TEXT DEFAULT 'unfulfilled',
     total_price REAL DEFAULT 0,
     tenant_id TEXT DEFAULT 'default',
-    tracking_history TEXT DEFAULT NULL
+    tracking_history TEXT DEFAULT NULL,
+    tags TEXT
   );`,
 
   // 3. CREATE products TABLE
@@ -569,6 +570,16 @@ module.exports = [
       }
     } catch (e) {
       console.error('Failed to auto-heal Return In Transit orders:', e.message);
+    }
+  },
+
+  // 23. Ensure tags column exists on orders table
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE orders ADD COLUMN tags TEXT;`);
+      console.log('✅ [Migration #23] Added tags column to orders table.');
+    } catch (e) {
+      // Column already exists, ignore
     }
   }
 ];
