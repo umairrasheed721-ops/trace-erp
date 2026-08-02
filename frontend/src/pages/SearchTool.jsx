@@ -1091,6 +1091,14 @@ export default function SearchTool() {
     baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date' && c.id !== 'courier')
     baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
     baseCols = baseCols.map(c => c.id === 'tracking_number' ? { ...c, label: 'Tracking # / Courier' } : c)
+    if (!baseCols.some(c => c.id === 'tags')) {
+      const custIdx = baseCols.findIndex(c => c.id === 'customer_name');
+      if (custIdx !== -1) {
+        baseCols.splice(custIdx + 1, 0, { id: 'tags', label: 'Shopify Tags' });
+      } else {
+        baseCols.push({ id: 'tags', label: 'Shopify Tags' });
+      }
+    }
     if (user && user.role !== 'admin') {
       const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount']
       baseCols = baseCols.filter(c => !restricted.includes(c.id))
@@ -1115,20 +1123,28 @@ export default function SearchTool() {
     }
   }, [user, cols])
 
-  // Smart-inject missing essential locked columns without resetting the whole layout
+  // Smart-inject missing essential locked columns & tags column without resetting layout
   useEffect(() => {
     if (!user) return
     const currentIds = cols.map(c => c.id)
     
-    // Only force-inject columns that can NEVER be removed (locked columns)
-    const essentials = ['delivery_status', 'edit']
+    // Only force-inject columns that can NEVER be removed or new defaults
+    const essentials = ['delivery_status', 'edit', 'tags']
     const missing = essentials.filter(id => !currentIds.includes(id))
     
     if (missing.length > 0) {
       const newCols = [...cols]
       missing.forEach(id => {
         const colDef = DEFAULT_COLS.find(c => c.id === id)
-        if (colDef) newCols.push(colDef)
+        if (colDef) {
+          if (id === 'tags') {
+            const custIdx = newCols.findIndex(c => c.id === 'customer_name');
+            if (custIdx !== -1) newCols.splice(custIdx + 1, 0, colDef);
+            else newCols.push(colDef);
+          } else {
+            newCols.push(colDef);
+          }
+        }
       })
       setCols(newCols)
       localStorage.setItem('trace_search_cols', JSON.stringify(newCols))
