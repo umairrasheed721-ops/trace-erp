@@ -544,6 +544,7 @@ router.post('/create-cod-order', async (req, res) => {
     const orderPayload = {
       order: {
         email: cleanEmail,
+        phone: cleanPhone,
         line_items: items.map(item => ({
           variant_id: item.variant_id || item.id,
           quantity: item.quantity || 1
@@ -551,10 +552,18 @@ router.post('/create-cod-order', async (req, res) => {
         customer: {
           first_name: firstName,
           last_name: lastName,
-          email: cleanEmail,
-          phone: cleanPhone
+          email: cleanEmail
         },
         shipping_address: {
+          first_name: firstName,
+          last_name: lastName,
+          address1: cleanAddress,
+          city: cleanCity,
+          country: 'Pakistan',
+          country_code: 'PK',
+          phone: cleanPhone
+        },
+        billing_address: {
           first_name: firstName,
           last_name: lastName,
           address1: cleanAddress,
