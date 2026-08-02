@@ -108,7 +108,9 @@ router.get('/daily', (req, res) => {
       const amt = parseFloat(e.amount) || 0;
       if (e.frequency === 'monthly') {
         const yearMonth = (e.expense_date || '').substring(0, 7);
-        manualExpMap[`monthly_${yearMonth}`] = (manualExpMap[`monthly_${yearMonth}`] || 0) + (amt / 30);
+        const [yr, mo] = yearMonth.split('-').map(Number);
+        const daysInMonth = (yr && mo) ? new Date(yr, mo, 0).getDate() : 30;
+        manualExpMap[`monthly_${yearMonth}`] = (manualExpMap[`monthly_${yearMonth}`] || 0) + (amt / daysInMonth);
       } else {
         manualExpMap[e.expense_date] = (manualExpMap[e.expense_date] || 0) + amt;
       }
