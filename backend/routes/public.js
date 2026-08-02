@@ -478,4 +478,165 @@ router.post('/create-draft-order', async (req, res) => {
   }
 });
 
+
+// OPTIONS preflight for cod order
+router.options('/create-cod-order', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
+
+/**
+ * POST /api/public/create-cod-order
+ * 
+ * Creates a real Shopify Order (not draft) for Cash on Delivery.
+ * Called from the custom 1-page COD checkout modal in theme.
+ * 
+ * Body: { name, phone, city, address, items: [{variant_id, quantity}], shipping_amount }
+ * Returns: { success, order_id, order_name, order_number }
+ */
+router.post('/create-cod-order', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  try {
+    const { name, phone, city, address, items, shipping_amount } = req.body;
+
+    // Validate required fields
+    if (!name || !phone || !city || !address || !items || !items.length) {
+      return res.status(400).json({ success: false, error: 'Missing required fields: name, phone, city, address, items' });
+    }
+
+    // Resolve store from origin
+    const origin = req.get('origin') || '';
+    let store = null;
+    if (origin) {
+      try {
+        const hostname = new URL(origin).hostname;
+        store = db.prepare(
+          'SELECT id, shop_domain, access_token FROM stores WHERE shop_domain = ? OR shop_domain LIKE ? LIMIT 1'
+        ).get(hostname, `%${hostname}%`);
+      } catch (_) {}
+    }
+    if (!store) {
+      store = db.prepare('SELECT id, shop_domain, access_token FROM stores LIMIT 1').get();
+    }
+    if (!store) {
+      return res.status(500).json({ success: false, error: 'No active store configuration found.' });
+    }
+
+    const { shop_domain: shopDomain, access_token: accessToken } = store;
+
+    // Format & clean fields
+    const cleanPhone = formatE164Phone((phone || '').trim()) || (phone || '').trim();
+    const cleanCity = (city || '').trim();
+    const cleanAddress = (address || '').trim();
+    const nameParts = (name || '').trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Customer';
+    const lastName = nameParts.slice(1).join(' ') || '.';
+
+    const shippingPrice = typeof shipping_amount === 'number' ? shipping_amount : 299;
+
+    // Build Shopify order payload (real order, COD)
+    const orderPayload = {
+      order: {
+        line_items: items.map(item => ({
+          variant_id: item.variant_id,
+          quantity: item.quantity || 1
+        })),
+        customer: {
+          first_name: firstName,
+          last_name: lastName,
+          phone: cleanPhone
+        },
+        shipping_address: {
+          first_name: firstName,
+          last_name: lastName,
+          address1: cleanAddress,
+          city: cleanCity,
+          country: 'Pakistan',
+          country_code: 'PK',
+          phone: cleanPhone
+        },
+        billing_address: {
+          first_name: firstName,
+          last_name: lastName,
+          address1: cleanAddress,
+          city: cleanCity,
+          country: 'Pakistan',
+          country_code: 'PK',
+          phone: cleanPhone
+        },
+        shipping_lines: [
+          {
+            title: shippingPrice === 0 ? 'Free Shipping' : 'Standard Shipping',
+            price: String(shippingPrice.toFixed(2)),
+            code: shippingPrice === 0 ? 'FREE' : 'COD_STANDARD'
+          }
+        ],
+        financial_status: 'pending',
+        gateway: 'Cash on Delivery (COD)',
+        payment_gateway_names: ['Cash on Delivery (COD)'],
+        tags: 'COD, Trace-Custom-Checkout',
+        note: `City: ${cleanCity} | Phone: ${cleanPhone} | Custom COD Checkout`,
+        note_attributes: [
+          { name: 'City', value: cleanCity },
+          { name: 'Phone', value: cleanPhone },
+          { name: 'Source', value: 'Trace-Custom-COD-Checkout' }
+        ],
+        send_receipt: false,
+        send_fulfillment_receipt: false,
+        inventory_behaviour: 'decrement_ignoring_policy'
+      }
+    };
+
+    // POST to Shopify Admin API with 10-second timeout
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 10000);
+
+    let response;
+    try {
+      response = await fetch(
+        `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/orders.json`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(orderPayload),
+          signal: controller.signal
+        }
+      );
+    } finally {
+      clearTimeout(abortTimer);
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('[COD Order Error] Shopify API:', response.status, errText);
+      throw new Error(`Shopify API ${response.status}: ${errText}`);
+    }
+
+    const { order } = await response.json();
+    if (!order) throw new Error('Empty order in Shopify response');
+
+    console.log(`[COD Order] Created: ${order.name} (#${order.id}) for ${cleanPhone}`);
+
+    res.json({
+      success: true,
+      order_id: order.id,
+      order_name: order.name,
+      order_number: order.order_number,
+      total_price: order.total_price
+    });
+
+  } catch (err) {
+    console.error('[COD Order Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
