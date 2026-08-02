@@ -129,7 +129,7 @@ export default function SearchTool() {
   }, [allOrders, sortKey, sortDir, sortMode]);
 
   const [colFilters, setColFilters] = useState({
-    ref_number: '', customer_name: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    ref_number: '', customer_name: '', tags: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
   })
   const debouncedColFilters = useDebounce(colFilters, 500)
 
@@ -1062,6 +1062,7 @@ export default function SearchTool() {
   const DEFAULT_COLS = [
     { id: 'ref_number', label: 'Ref # / Date' },
     { id: 'customer_name', label: 'Customer' },
+    { id: 'tags', label: 'Shopify Tags' },
     { id: 'phone', label: 'Phone' },
     { id: 'address', label: 'Shipping Address' },
     { id: 'city', label: 'City' },

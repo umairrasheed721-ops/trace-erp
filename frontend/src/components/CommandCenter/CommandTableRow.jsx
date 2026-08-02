@@ -903,6 +903,36 @@ const CommandTableRow = React.memo(({
         if (col.id === 'status_date') return <td key={col.id} style={{ fontSize: '0.7rem', opacity: 0.7 }}>{o.status_date ? new Date(o.status_date).toLocaleDateString() : '—'}</td>
         if (col.id === 'payment_ref') return <td key={col.id} style={{ fontSize: '0.7rem' }}>{o.payment_ref || '—'}</td>
         if (col.id === 'payment_date') return <td key={col.id} style={{ fontSize: '0.7rem', color: 'var(--green)' }}>{o.payment_date || '—'}</td>
+        if (col.id === 'tags') {
+          const rawTags = o.tags || '';
+          const tagList = rawTags.split(',').map(t => t.trim()).filter(Boolean);
+          if (tagList.length === 0) return <td key={col.id} style={{ fontSize: '0.75rem', opacity: 0.4 }}>—</td>;
+          return (
+            <td key={col.id}>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                {tagList.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="badge"
+                    style={{
+                      background: 'rgba(168, 85, 247, 0.12)',
+                      color: 'var(--brand)',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      borderRadius: 6,
+                      whiteSpace: 'nowrap'
+                    }}
+                    title={`Shopify Tag: ${tag} (Read-Only)`}
+                  >
+                    🏷️ {tag}
+                  </span>
+                ))}
+              </div>
+            </td>
+          );
+        }
         if (col.id === 'notes') return <td key={col.id}><NoteCell order={o} onSave={updateOrderField} onInteraction={() => setActiveRowId(o.id)} /></td>
         if (col.id === 'wa_erp_status') {
           const status = o.wa_status || o.wa_erp_status;

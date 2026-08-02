@@ -5,6 +5,33 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : requir
 const { broadcast } = require('../../sse');
 const { getOrderFilters } = require('../../services/orderFilterBuilder');
 
+// GET /api/orders/tags - Fetch unique Shopify tags for active store
+router.get('/tags', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const rows = db.prepare(`
+      SELECT tags FROM orders 
+      WHERE store_id = ? AND tags IS NOT NULL AND tags != ''
+    `).all(Number(store_id));
+
+    const tagSet = new Set();
+    rows.forEach(r => {
+      if (r.tags) {
+        r.tags.split(',').forEach(t => {
+          const cleaned = t.trim();
+          if (cleaned) tagSet.add(cleaned);
+        });
+      }
+    });
+
+    res.json(Array.from(tagSet).sort());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/orders/bulk-update-status - Set delivery_status for tracking numbers
 router.post('/bulk-update-status', (req, res) => {
   const { tracking_numbers, status } = req.body;

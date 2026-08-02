@@ -188,7 +188,7 @@ export default function TableHeader({
       <tr className="header-search-row">
         <th style={{ width: 40, minWidth: 40, maxWidth: 40, padding: '4px 8px' }}></th>
         {cols.map(col => {
-          const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes'].includes(col.id);
+          const isFiltered = ['ref_number','customer_name','phone','city','courier','tracking_number','notes','tags'].includes(col.id);
           return (
             <th 
               key={col.id} 
@@ -201,7 +201,7 @@ export default function TableHeader({
               }}
             >
               {isFiltered && (
-                ['ref_number', 'customer_name', 'phone', 'city', 'tracking_number', 'notes'].includes(col.id) ? (
+                ['ref_number', 'customer_name', 'phone', 'city', 'tracking_number', 'notes', 'tags'].includes(col.id) ? (
                   <input 
                     className="header-search-input"
                     placeholder="Search..."

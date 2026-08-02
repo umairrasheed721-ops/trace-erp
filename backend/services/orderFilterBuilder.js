@@ -86,13 +86,14 @@ function getOrderFilters(req) {
         let clause = '';
         if (actualToken.includes(':')) {
           const [field, value] = actualToken.split(':');
-          const target = ['city','phone','email','courier','ref','status','note'].includes(field) ? field : null;
+          const target = ['city','phone','email','courier','ref','status','note','tag','tags'].includes(field) ? field : null;
           if (target === 'city') clause = 'o.city LIKE ?';
           else if (target === 'phone') clause = 'o.phone LIKE ?';
           else if (target === 'email') clause = 'o.email LIKE ?';
           else if (target === 'courier') clause = 'o.courier LIKE ?';
           else if (target === 'status') clause = 'o.delivery_status LIKE ?';
           else if (target === 'note') clause = 'o.notes LIKE ?';
+          else if (target === 'tag' || target === 'tags') clause = 'o.tags LIKE ?';
           else if (target === 'ref') clause = '(o.ref_number LIKE ? OR o.shopify_order_id LIKE ?)';
           
           if (clause) {
@@ -108,7 +109,7 @@ function getOrderFilters(req) {
             }
           }
         } else {
-          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\') LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ?)';
+          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\') LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ? OR o.tags LIKE ?)';
           whereClauses.push(isNegated ? `NOT (${clause})` : clause);
           const searchVal = `%${actualToken}%`;
           
@@ -124,14 +125,19 @@ function getOrderFilters(req) {
               cleanPhoneDigits = `%${digits}%`;
             }
           }
-          queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, cleanPhoneDigits, searchVal, searchVal);
+          queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, cleanPhoneDigits, searchVal, searchVal, searchVal);
         }
       });
     }
   }
 
+  if (req.query.tag && req.query.tag.trim()) {
+    whereClauses.push("LOWER(o.tags) LIKE ?");
+    queryParams.push(`%${req.query.tag.trim().toLowerCase()}%`);
+  }
+
   // Column-specific filters
-  ['ref_number', 'customer_name', 'city', 'phone', 'email', 'courier', 'tracking_number', 'notes'].forEach(field => {
+  ['ref_number', 'customer_name', 'city', 'phone', 'email', 'courier', 'tracking_number', 'notes', 'tags'].forEach(field => {
     if (req.query[field]) {
       const val = req.query[field].toLowerCase().trim();
       const terms = val.split(/[\s,]+/).filter(Boolean);

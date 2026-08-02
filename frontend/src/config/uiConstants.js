@@ -38,6 +38,7 @@ export const TABLE_CONSTANTS = {
     postex_weight: 90,
     edit: 80,
     notes: 180,
+    tags: 150,
     wa_erp_status: 140
   },
 
