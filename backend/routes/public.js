@@ -545,25 +545,22 @@ router.post('/create-cod-order', async (req, res) => {
       order: {
         email: cleanEmail,
         phone: cleanPhone,
-        line_items: items.map(item => ({
-          variant_id: item.variant_id || item.id,
-          quantity: item.quantity || 1
-        })),
+        line_items: items.map(item => {
+          const li = {
+            variant_id: item.variant_id || item.id,
+            quantity: item.quantity || 1
+          };
+          if (item.price !== undefined && item.price !== null && item.price !== '') {
+            li.price = String(item.price);
+          }
+          return li;
+        }),
         customer: {
           first_name: firstName,
           last_name: lastName,
           email: cleanEmail
         },
         shipping_address: {
-          first_name: firstName,
-          last_name: lastName,
-          address1: cleanAddress,
-          city: cleanCity,
-          country: 'Pakistan',
-          country_code: 'PK',
-          phone: cleanPhone
-        },
-        billing_address: {
           first_name: firstName,
           last_name: lastName,
           address1: cleanAddress,
