@@ -518,6 +518,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
         cost = ?,
         tracking_number = ?,
         courier = ?,
+        tags = ?,
         delivery_status = CASE 
           WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
           WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
@@ -629,6 +630,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           row.cost_locked ? row.cost : (totalCost > 0 ? totalCost : (row.cost || 0)),
           tracking, 
           row.courier_fee_locked ? row.courier_fee : courier, 
+          fresh.tags || '',
           newDeliveryStatus, 
           shopifyShipping,
           shopifyDiscount,
@@ -806,6 +808,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           cost = ?,
           tracking_number = ?,
           courier = ?,
+          tags = ?,
           delivery_status = CASE 
             WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
             WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN delivery_status
@@ -821,7 +824,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         finalPrice, activeCount, order.note || '', productTitles,
         mapShopifyFinancialStatus(order.financial_status),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
-        tracking, courier, newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount,
+        tracking, courier, order.tags || '', newDeliveryStatus, lineItemsJson, shopifyShipping, shopifyDiscount,
         order.email || order.contact_email || customer.email || addr.email || '',
         existing.id
       );
