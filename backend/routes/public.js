@@ -502,7 +502,7 @@ router.post('/create-cod-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   try {
-    const { name, phone, email, city, address, items, shipping_amount } = req.body;
+    const { name, phone, email, city, address, items, shipping_amount, landing_site, referring_site } = req.body;
 
     // Validate required fields
     if (!name || !phone || !city || !address || !items || !items.length) {
@@ -543,12 +543,16 @@ router.post('/create-cod-order', async (req, res) => {
     // Build Shopify order payload (real order, COD)
     const orderPayload = {
       order: {
+        source_name: 'web',
+        landing_site: (landing_site || '').trim() || null,
+        referring_site: (referring_site || '').trim() || null,
         email: cleanEmail,
         phone: cleanPhone,
         line_items: items.map(item => {
           const li = {
             variant_id: item.variant_id || item.id,
-            quantity: item.quantity || 1
+            quantity: item.quantity || 1,
+            title: item.title || item.name || item.product_title || 'Product Item'
           };
           if (item.price !== undefined && item.price !== null && item.price !== '') {
             li.price = String(item.price);
