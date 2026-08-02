@@ -563,8 +563,6 @@ router.post('/create-cod-order', async (req, res) => {
           country_code: 'PK',
           phone: cleanPhone
         },
-          phone: cleanPhone
-        },
         billing_address: {
           first_name: firstName,
           last_name: lastName,
