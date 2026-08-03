@@ -543,7 +543,6 @@ router.post('/create-cod-order', async (req, res) => {
     // Build Shopify order payload (real order, COD)
     const orderPayload = {
       order: {
-        source_name: 'web',
         landing_site: (landing_site || '').trim() || null,
         referring_site: (referring_site || '').trim() || null,
         email: cleanEmail,
