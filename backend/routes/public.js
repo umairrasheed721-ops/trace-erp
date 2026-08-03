@@ -554,8 +554,9 @@ router.post('/create-cod-order', async (req, res) => {
             quantity: item.quantity || 1,
             title: item.title || item.name || item.product_title || 'Product Item'
           };
-          if (item.price !== undefined && item.price !== null && item.price !== '') {
-            li.price = String(item.price);
+          const parsedPrice = parseFloat(item.price);
+          if (!isNaN(parsedPrice) && parsedPrice > 0) {
+            li.price = String(parsedPrice.toFixed(2));
           }
           return li;
         }),
@@ -593,12 +594,8 @@ router.post('/create-cod-order', async (req, res) => {
         gateway: 'Cash on Delivery (COD)',
         payment_gateway_names: ['Cash on Delivery (COD)'],
         tags: 'COD, Trace-Custom-Checkout',
-        note: `City: ${cleanCity} | Phone: ${cleanPhone} | Custom COD Checkout`,
-        note_attributes: [
-          { name: 'City', value: cleanCity },
-          { name: 'Phone', value: cleanPhone },
-          { name: 'Source', value: 'Trace-Custom-COD-Checkout' }
-        ],
+        note: '',
+        note_attributes: [],
         send_receipt: true,
         send_fulfillment_receipt: true,
         inventory_behaviour: 'decrement_ignoring_policy'
