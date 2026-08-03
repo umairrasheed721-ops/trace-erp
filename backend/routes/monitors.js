@@ -154,6 +154,7 @@ router.get('/advice', (req, res) => {
 
     const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
     const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
+    const notesLower = (o.notes || '').toLowerCase().trim();
     const combinedStatus = `${deliveryStatusLower} ${courierStatusLower}`;
 
     const isReattemptRequested = deliveryStatusLower.includes('reattempt requested') ||
@@ -162,10 +163,9 @@ router.get('/advice', (req, res) => {
                                  courierStatusLower.includes('re-attempt');
 
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return;
-    if (isReattemptRequested) return;
 
     const failedCount = parseInt(o.failed_attempts || 0, 10);
-    const isPastReturnProcess = courierStatusLower.includes('return to') ||
+    const isPastReturnProcess = courierStatusLower.includes('return to ') ||
                                courierStatusLower.includes('return in transit') ||
                                courierStatusLower.includes('returned') ||
                                courierStatusLower.includes('at origin') ||
@@ -183,14 +183,14 @@ router.get('/advice', (req, res) => {
                                       courierStatusLower.includes('return process')) &&
                                      !isPastReturnProcess;
 
-    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt without asking for Shipper Advice!)
-    // Strictly ONLY fresh return initiations on 1st attempt where return hasn't already moved to transit back to origin city!
-    if (isInitialReturnInitiated && (failedCount <= 1 || combinedStatus.includes('1st') || combinedStatus.includes('first'))) {
+    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt without CS reattempt advice sent yet!)
+    if (isInitialReturnInitiated && !isReattemptRequested && !notesLower.includes('[shipper advice')) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
       return;
     }
 
+    if (isReattemptRequested) return;
     if (isInitialReturnInitiated || isPastReturnProcess) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
 
@@ -240,13 +240,9 @@ router.get('/reattempts', (req, res) => {
     FROM orders WHERE store_id = ?
     AND (
       LOWER(delivery_status) = 'reattempt requested'
-      OR LOWER(delivery_status) LIKE '%return initiated%'
-      OR LOWER(delivery_status) LIKE '%advice ignored%'
       OR LOWER(courier_status) LIKE '%merchant request%'
       OR LOWER(courier_status) LIKE '%reattempt%'
       OR LOWER(courier_status) LIKE '%re-attempt%'
-      OR LOWER(courier_status) LIKE '%return process%'
-      OR LOWER(courier_status) LIKE '%return initiated%'
       OR notes LIKE '%[Shipper Advice%'
     )
     AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-60 days')
