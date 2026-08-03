@@ -61,9 +61,8 @@ module.exports = [
       ['Instaworld', 'pickup done', 'Booked'],
       ['Instaworld', 'arrival at insta-hub', 'Booked'],
       ['Instaworld', 'handover to courier', 'In Transit'],
-      ['Instaworld', 'in transit', 'In Transit'],
       ['Instaworld', 'returned to shipper', 'Returned'],
-      ['Instaworld', 'return received at insta hub', 'Returned'],
+      ['Instaworld', 'return received at insta hub', 'Return In Transit'],
       ['Instaworld', 'delivery unsuccessful', 'Shipper Advice'],
       ['Instaworld', 'shipper advice', 'Shipper Advice'],
       ['Instaworld', 'uncollected', 'Pending'],
@@ -74,7 +73,7 @@ module.exports = [
       ['all', 'returned to merchant', 'Returned'],
       ['all', 'returned at merchant warehouse', 'Returned'],
       ['all', 'returned to shipper', 'Returned'],
-      ['all', 'return received at insta hub', 'Returned'],
+      ['all', 'return received at insta hub', 'Return In Transit'],
       ['all', 'return to origin', 'Returned'],
       ['all', 'at origin warehouse', 'In Transit'],
       ['all', 'at destination warehouse', 'In Transit'],
@@ -163,6 +162,26 @@ module.exports = [
       console.log('✅ Migration: Updated default final status locks in status_mappings');
     } catch (e) {
       console.warn('Failed to update status_mappings is_final defaults:', e.message);
+    }
+  },
+  // 8. Update 'return received at insta hub' mapping from 'Returned' to 'Return In Transit'
+  (db) => {
+    try {
+      db.prepare(`
+        UPDATE status_mappings 
+        SET erp_status = 'Return In Transit', is_final = 0
+        WHERE LOWER(courier_status) = 'return received at insta hub'
+      `).run();
+
+      const res = db.prepare(`
+        UPDATE orders 
+        SET delivery_status = 'Return In Transit' 
+        WHERE LOWER(courier_status) LIKE '%return received at insta hub%'
+        AND LOWER(delivery_status) = 'returned'
+      `).run();
+      console.log(`✅ Migration #8: Updated 'return received at insta hub' mapping to 'Return In Transit' (auto-healed ${res.changes} orders)`);
+    } catch (e) {
+      console.warn('Migration warning on status map update:', e.message);
     }
   }
 ];
