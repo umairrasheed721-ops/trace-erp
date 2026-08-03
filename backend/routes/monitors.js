@@ -240,9 +240,13 @@ router.get('/reattempts', (req, res) => {
     FROM orders WHERE store_id = ?
     AND (
       LOWER(delivery_status) = 'reattempt requested'
+      OR LOWER(delivery_status) LIKE '%return initiated%'
+      OR LOWER(delivery_status) LIKE '%advice ignored%'
       OR LOWER(courier_status) LIKE '%merchant request%'
       OR LOWER(courier_status) LIKE '%reattempt%'
       OR LOWER(courier_status) LIKE '%re-attempt%'
+      OR LOWER(courier_status) LIKE '%return process%'
+      OR LOWER(courier_status) LIKE '%return initiated%'
       OR notes LIKE '%[Shipper Advice%'
     )
     AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-60 days')

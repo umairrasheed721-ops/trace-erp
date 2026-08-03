@@ -66,6 +66,12 @@ async function main() {
   // 3b. Upload snippets/card-product.liquid
   await uploadAsset('snippets/card-product.liquid', path.join(themeDir, 'snippets/card-product.liquid'));
 
+  // 3c. Upload assets/trace-whatsapp-community.js
+  await uploadAsset('assets/trace-whatsapp-community.js', path.join(themeDir, 'assets/trace-whatsapp-community.js'));
+
+  // 3d. Upload snippets/trace-cod-checkout.liquid
+  await uploadAsset('snippets/trace-cod-checkout.liquid', path.join(themeDir, 'snippets/trace-cod-checkout.liquid'));
+
   // 4. Upload sections/custom-hero-slider.liquid
   await uploadAsset('sections/custom-hero-slider.liquid', path.join(themeDir, 'sections/custom-hero-slider.liquid'));
 
@@ -95,6 +101,12 @@ async function main() {
   // 6. Upload trace-reviews section and snippet
   await uploadAsset('sections/trace-reviews.liquid', path.join(themeDir, 'sections/trace-reviews.liquid'));
   await uploadAsset('snippets/trace-reviews.liquid', path.join(themeDir, 'snippets/trace-reviews.liquid'));
+
+  // 7. Upload COD checkout-intercepted cart files
+  await uploadAsset('snippets/cart-drawer.liquid', path.join(themeDir, 'snippets/cart-drawer.liquid'));
+  await uploadAsset('snippets/cart-notification.liquid', path.join(themeDir, 'snippets/cart-notification.liquid'));
+  await uploadAsset('sections/main-cart-footer.liquid', path.join(themeDir, 'sections/main-cart-footer.liquid'));
+  await uploadAsset('snippets/buy-buttons.liquid', path.join(themeDir, 'snippets/buy-buttons.liquid'));
 
   console.log('All theme uploads completed!');
 }
