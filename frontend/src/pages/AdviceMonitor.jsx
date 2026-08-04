@@ -149,7 +149,22 @@ export default function AdviceMonitor() {
     let phone = (order.phone || '').trim().replace(/[^0-9]/g, '')
     if (phone.startsWith('0')) phone = '92' + phone.substring(1)
     else if (phone.length === 10 && !phone.startsWith('92')) phone = '92' + phone
-    const msg = `Assalam-o-Alaikum ${order.customer_name || 'Customer'}, aap ke order #${order.tracking_number} (${order.courier || 'PostEx'}) ke hawale se delivery update ke liye contact kar rahe hain. Kya aap delivery re-attempt confirm karna chahte hain? Shukriya!`
+
+    let productText = order.product_titles || ''
+    if (!productText && order.line_items) {
+      try {
+        const parsed = typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items
+        if (Array.isArray(parsed)) {
+          productText = parsed.map(li => `${li.title || li.name} x${li.quantity || 1}`).join(', ')
+        }
+      } catch (_) {}
+    }
+
+    const priceText = parseInt(order.price || 0).toLocaleString()
+    const fullAddress = [order.address, order.city].filter(Boolean).join(', ')
+
+    const msg = `Assalam-o-Alaikum ${order.customer_name || 'Customer'},\n\nAap ke order ke hawale se delivery update ke liye contact kar rahe hain:\n📦 *Order / Tracking #:* ${order.tracking_number}${order.ref_number ? ` (Ref: #${order.ref_number})` : ''}\n🛍️ *Items:* ${productText || 'Product Items'}\n💰 *Total Amount (COD):* Rs ${priceText}\n📍 *Delivery Address:* ${fullAddress || 'N/A'}\n🚚 *Courier:* ${order.courier || 'PostEx'}\n\nKya aap is order ki delivery re-attempt confirm karna chahte hain? Please reply kar ke confirm kar dein taake hum courier ko instruction bhej sakein. Shukriya!`
+
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     return `${baseUrl}?phone=${phone}&text=${encodeURIComponent(msg)}`
