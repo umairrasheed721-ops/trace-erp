@@ -188,9 +188,9 @@ const COLUMN_INFO = {
     example: "Any manual corrections, reconciliation differences, or one-off adjustments you want reflected in the PNL. Useful for end-of-month true-up entries."
   },
   deliveredPaymentPending: {
-    description: "Delivered shipments unpaid by couriers.",
-    formula: "COUNT(id) WHERE status = 'Delivered' AND (paid_amount IS NULL OR paid_amount < 1)",
-    example: "Orders marked delivered but courier hasn't paid you yet. This is money owed to you. If this number is high and old, chase your courier for overdue COD remittances."
+    description: "Delivered shipments with pending ERP balance (regardless of Shopify status or tracking ID).",
+    formula: "COUNT(id) WHERE status = 'Delivered' AND ABS(price - paid_amount) > 0.9",
+    example: "Delivered orders where ERP received cash balance is pending (with >0.9 PKR variance). As soon as ERP balance is cleared, it auto-removes from Unpaid Delivered."
   },
   costGaps: {
     description: "Active/dispatched orders missing product cost registry mapping.",
