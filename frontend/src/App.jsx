@@ -44,7 +44,6 @@ const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'Dashboard')
 const SearchTool = lazyWithRetry(() => import('./pages/SearchTool'), 'SearchTool')
 const StuckMonitor = lazyWithRetry(() => import('./pages/StuckMonitor'), 'StuckMonitor')
 const AdviceMonitor = lazyWithRetry(() => import('./pages/AdviceMonitor'), 'AdviceMonitor')
-const Watchdog = lazyWithRetry(() => import('./pages/Watchdog'), 'Watchdog')
 const ReturnsManager = lazyWithRetry(() => import('./pages/ReturnsManager'), 'ReturnsManager')
 const FinanceManager = lazyWithRetry(() => import('./pages/FinanceManager'), 'FinanceManager')
 const Reports = lazyWithRetry(() => import('./pages/Reports'), 'Reports')
@@ -285,7 +284,6 @@ function AppContent() {
                   <Route path="/intelligence" element={<CourierIntelligence />} />
                   <Route path="/stuck" element={<StuckMonitor />} />
                   <Route path="/advice" element={<AdviceMonitor />} />
-                  <Route path="/watchdog" element={<Watchdog />} />
                   <Route path="/connect" element={<Connect />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />

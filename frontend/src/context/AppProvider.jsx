@@ -157,15 +157,10 @@ export default function AppProvider({ children }) {
       fetch(`/api/monitors/advice?store_id=${activeStoreId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       }).then(r => r.json()),
-      fetch(`/api/watchdog?store_id=${activeStoreId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      }).then(r => r.json()),
-    ]).then(([stuck, advice, watchdog]) => {
-      const fakeCount = Array.isArray(watchdog) ? watchdog.filter(w => w.verdict?.includes('FAKE')).length : 0
+    ]).then(([stuck, advice]) => {
       setBadgeCounts({
         stuck: Array.isArray(stuck) ? stuck.length : 0,
         advice: Array.isArray(advice) ? advice.length : 0,
-        watchdog: fakeCount,
       })
     }).catch(() => {})
   }, [activeStoreId, token])

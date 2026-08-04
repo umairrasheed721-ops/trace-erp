@@ -36,7 +36,6 @@ export default function Sidebar() {
     { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
     { to: '/stuck', icon: '⏳', label: 'Stuck Monitor', badge: badgeCounts.stuck },
     { to: '/advice', icon: '🧠', label: 'Advice Monitor', badge: badgeCounts.advice },
-    { to: '/watchdog', icon: '🐕', label: 'Watchdog', badge: badgeCounts.watchdog },
     { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'admin_only' },
     { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
     { to: '/profile', icon: '👤', label: 'My Profile' },

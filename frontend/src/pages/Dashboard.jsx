@@ -17,7 +17,6 @@ const QUICK_ACTIONS = [
   { href: '/search',   icon: '🔍', label: 'Command Center',     desc: 'Advanced search, bulk status & sync',      accent: '#6366f1' },
   { href: '/stuck',    icon: '⏳', label: 'Stuck Orders',        desc: 'Orders with no movement > 48h',            accent: '#f59e0b' },
   { href: '/advice',   icon: '🧠', label: 'Shipper Advice',      desc: 'Take action on problem deliveries',         accent: '#a855f7' },
-  { href: '/watchdog', icon: '🐕', label: 'Watchdog Report',     desc: 'PostEx rider fraud detection',             accent: '#ef4444' },
 ]
 
 export default function Dashboard() {

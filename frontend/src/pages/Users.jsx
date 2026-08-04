@@ -637,7 +637,6 @@ function RoleAuthorityMatrix({ addToast, token }) {
     { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚' },
     { id: '/stuck', label: 'Stuck Monitor', icon: '⏳' },
     { id: '/advice', label: 'Advice Monitor', icon: '🧠' },
-    { id: '/watchdog', label: 'Watchdog', icon: '🐕' },
     { id: '/connect', label: 'Connect Store', icon: '🔌' },
     { id: '/users', label: 'User Management', icon: '👥' },
     { id: '/profile', label: 'My Profile', icon: '👤' },
