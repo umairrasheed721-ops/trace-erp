@@ -644,5 +644,33 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #25:', e.message);
     }
+  },
+
+  // 26. Auto-heal booked/shipped orders that were mistakenly locked as Cancelled (e.g. TR33368)
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Shipper Advice',
+            courier_status = COALESCE(NULLIF(courier_status, ''), 'Delivery Under Review')
+        WHERE tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
+        AND (
+          LOWER(notes) LIKE '%shipper advice%' OR
+          LOWER(notes) LIKE '%reattempt%' OR
+          LOWER(courier_status) LIKE '%delivery under review%' OR
+          LOWER(courier_status) LIKE '%shipper advice%' OR
+          LOWER(courier_status) LIKE '%attempt made%' OR
+          LOWER(notes) LIKE '%confirm order has been shipped%' OR
+          ref_number = 'TR33368' OR
+          tracking_number = '27120050025608'
+        )
+        AND LOWER(delivery_status) = 'cancelled'
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #26] Auto-healed ${result.changes} cancelled orders with active tracking numbers to 'Shipper Advice'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #26:', e.message);
+    }
   }
 ];

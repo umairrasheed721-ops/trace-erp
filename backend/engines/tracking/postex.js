@@ -244,7 +244,8 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
     UPDATE orders
     SET courier_status = ?,
         delivery_status = CASE 
-          WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status
+          WHEN LOWER(delivery_status) IN ('return received', 'delivered') THEN delivery_status
+          WHEN LOWER(delivery_status) = 'cancelled' AND (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—') THEN delivery_status
           WHEN EXISTS (SELECT 1 FROM status_mappings WHERE is_final = 1 AND LOWER(erp_status) = LOWER(orders.delivery_status)) THEN orders.delivery_status
           WHEN ? IS NOT NULL THEN ? 
           ELSE delivery_status 

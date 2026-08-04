@@ -193,7 +193,10 @@ router.get('/advice', (req, res) => {
         LOWER(courier_status) LIKE '%attempt made%' OR
         LOWER(courier_status) LIKE '%cna%'
       )
-      AND LOWER(delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned')
+      AND (
+        LOWER(delivery_status) NOT IN ('delivered', 'return received', 'returned') 
+        OR (LOWER(delivery_status) = 'cancelled' AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—')
+      )
     `).run(store_id);
   } catch (_) {}
 
