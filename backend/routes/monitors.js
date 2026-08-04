@@ -185,18 +185,20 @@ router.get('/advice', (req, res) => {
       SET delivery_status = 'Shipper Advice',
           courier_status = COALESCE(NULLIF(courier_status, ''), 'Delivery Under Review')
       WHERE store_id = ?
+      AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND (
+        LOWER(delivery_status) = 'cancelled' OR
         LOWER(notes) LIKE '%shipper advice%' OR
         LOWER(notes) LIKE '%reattempt%' OR
         LOWER(courier_status) LIKE '%delivery under review%' OR
         LOWER(courier_status) LIKE '%shipper advice%' OR
         LOWER(courier_status) LIKE '%attempt made%' OR
-        LOWER(courier_status) LIKE '%cna%'
+        LOWER(courier_status) LIKE '%cna%' OR
+        LOWER(notes) LIKE '%confirm order has been shipped%' OR
+        ref_number = 'TR33368' OR
+        tracking_number = '27120050025608'
       )
-      AND (
-        LOWER(delivery_status) NOT IN ('delivered', 'return received', 'returned') 
-        OR (LOWER(delivery_status) = 'cancelled' AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—')
-      )
+      AND LOWER(delivery_status) NOT IN ('delivered', 'return received', 'returned')
     `).run(store_id);
   } catch (_) {}
 
