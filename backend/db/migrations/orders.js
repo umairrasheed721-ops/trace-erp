@@ -581,5 +581,44 @@ module.exports = [
     } catch (e) {
       // Column already exists, ignore
     }
+  },
+
+  // 24. Auto-heal stuck Pending orders that have tracking numbers or courier statuses (Attempt Made, Shipper Advice, etc.)
+  (db) => {
+    try {
+      // Step A: Extract tracking numbers from notes if tracking_number is empty/null
+      db.prepare(`
+        UPDATE orders
+        SET tracking_number = TRIM(SUBSTR(notes, INSTR(notes, 'Tracking ') + 9, 14))
+        WHERE (tracking_number IS NULL OR tracking_number = '' OR tracking_number = '—')
+        AND notes LIKE '%Tracking 2%'
+      `).run();
+
+      // Step B: Auto-heal delivery_status for orders with attempt made / shipper advice
+      const resultAttempt = db.prepare(`
+        UPDATE orders 
+        SET delivery_status = 'Shipper Advice'
+        WHERE (LOWER(delivery_status) = 'pending' OR delivery_status IS NULL)
+        AND (
+          LOWER(courier_status) LIKE '%attempt%' OR
+          LOWER(notes) LIKE '%shipper advice%' OR
+          LOWER(notes) LIKE '%reattempt%'
+        )
+      `).run();
+
+      // Step C: Auto-heal delivery_status for all remaining booked orders with tracking numbers
+      const resultBooked = db.prepare(`
+        UPDATE orders 
+        SET delivery_status = 'Booked'
+        WHERE (LOWER(delivery_status) = 'pending' OR delivery_status IS NULL)
+        AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
+      `).run();
+
+      if (resultAttempt.changes > 0 || resultBooked.changes > 0) {
+        console.log(`✅ [Migration #24] Auto-healed ${resultAttempt.changes} orders to 'Shipper Advice' and ${resultBooked.changes} orders to 'Booked'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #24:', e.message);
+    }
   }
 ];

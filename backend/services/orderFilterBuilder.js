@@ -48,7 +48,7 @@ function getOrderFilters(req) {
     } else if (s.includes('MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else if (s.includes('[IN TRANSIT]') || s === 'transit' || s.includes('in transit')) {
-      whereClauses.push("o.tracking_number IS NOT NULL AND o.tracking_number != '' AND LOWER(o.delivery_status) NOT IN ('pending', 'confirmed', 'booked', 'picked up', 'unassigned') AND LOWER(o.delivery_status) IN ('shipped', 'out for delivery', 'in transit', 'attempted', 'shipper advice', 'return initiated', 'return in transit', 'reattempt requested', 'undelivered', 'dispatched', 'refused', 'delivery under review', 'failed', 'rto')");
+      whereClauses.push("o.tracking_number IS NOT NULL AND o.tracking_number != '' AND LOWER(o.delivery_status) IN ('shipped', 'out for delivery', 'in transit', 'attempted', 'shipper advice', 'return initiated', 'return in transit', 'reattempt requested', 'undelivered', 'dispatched', 'refused', 'delivery under review', 'failed', 'rto')");
     } else {
       const statuses = status.split(',').map(st => st.trim().toLowerCase());
       if (statuses.length > 1) {

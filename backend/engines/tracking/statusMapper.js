@@ -68,7 +68,7 @@ function applyMap(statusMap, courier, rawStatus) {
   // NOTE: 'return to', 'arrived at transit hub', 'departed to', 'en route', 'enroute' are NOT mapped here
   // because they appear during NORMAL delivery transit too. These are handled context-aware in the sync engine.
   if (raw.includes('return process') || raw.includes('return initiated') || raw.includes('return request')) return 'Return Initiated';
-  if (raw.includes('attempted')) return 'Attempted';
+  if (raw.includes('attempted') || raw.includes('attempt made') || raw.includes('attempt')) return 'Shipper Advice';
   if (raw.includes('refused')) return 'Refused';
 
   return null;
