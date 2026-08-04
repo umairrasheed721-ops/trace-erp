@@ -15,8 +15,6 @@ const KPI_CONFIG = {
 
 const QUICK_ACTIONS = [
   { href: '/search',   icon: '🔍', label: 'Command Center',     desc: 'Advanced search, bulk status & sync',      accent: '#6366f1' },
-  { href: '/stuck',    icon: '⏳', label: 'Stuck Orders',        desc: 'Orders with no movement > 48h',            accent: '#f59e0b' },
-  { href: '/advice',   icon: '🧠', label: 'Shipper Advice',      desc: 'Take action on problem deliveries',         accent: '#a855f7' },
 ]
 
 export default function Dashboard() {
@@ -82,7 +80,6 @@ export default function Dashboard() {
     { label: 'Returned (RTO)', value: (stats.returned || 0).toLocaleString(),     icon: '↩️', sub: `${stats.rto_rate || 0}% rate` },
     { label: 'Unbooked',       value: (stats.unbooked || 0).toLocaleString(),     icon: '📝', sub: 'No tracking ID' },
     { label: 'In Transit',     value: (stats.pending || 0).toLocaleString(),      icon: '🚚', sub: 'Active pipeline' },
-    { label: 'Stuck Orders',   value: (stats.stuck || 0).toLocaleString(),        icon: '⏳', sub: '> 48 hours' },
     ...(user?.role === 'admin' ? [{ label: 'Revenue (Paid)', value: `Rs ${parseInt(stats.revenue || 0).toLocaleString()}`, icon: '💰', sub: 'Confirmed only' }] : []),
   ] : []
 

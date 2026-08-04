@@ -32,7 +32,6 @@ function safeRequire(modulePath, label) {
 const { router: authRoutes } = require('./auth');
 const ordersRoutes      = safeRequire('./orders',       'Orders');
 const trackingRoutes    = safeRequire('./tracking',     'Tracking');
-const monitorsRoutes    = safeRequire('./monitors',     'Monitors');
 const storesRoutes      = safeRequire('./stores',       'Stores');
 const financeRoutes     = safeRequire('./finance',      'Finance');
 const reportsRoutes     = safeRequire('./reports',      'Reports');
@@ -58,7 +57,6 @@ router.use('/api/auth', authRoutes);
 router.use('/api/stores', storesRoutes);
 router.use('/api/orders', ordersRoutes);
 router.use('/api/tracking', trackingRoutes);
-router.use('/api/monitors', monitorsRoutes);
 router.use('/api/finance', financeRoutes);
 router.use('/api/reports', reportsRoutes);
 router.use('/api/users', usersRoutes);
@@ -82,7 +80,6 @@ router.use('/api/expenses', expensesRoutes);
 const ROUTE_MAP = {
   'Orders':      ['/api/orders',      './orders'],
   'Tracking':    ['/api/tracking',    './tracking'],
-  'Monitors':    ['/api/monitors',    './monitors'],
   'Stores':      ['/api/stores',      './stores'],
   'Finance':     ['/api/finance',     './finance'],
   'Reports':     ['/api/reports',     './reports'],
