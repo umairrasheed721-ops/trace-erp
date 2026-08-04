@@ -31,6 +31,9 @@ export default function AdviceMonitor() {
   const [historyData, setHistoryData] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  // Product Images Lightbox Modal State
+  const [imageModalOrder, setImageModalOrder] = useState(null)
+
   // Toggle SLA Expired (>48h)
   const [showExpired, setShowExpired] = useState(false)
 
@@ -628,11 +631,32 @@ export default function AdviceMonitor() {
                         Rs {parseInt(order.price || 0).toLocaleString()}
                       </td>
 
-                      {/* Product Titles */}
-                      <td style={{ padding: '12px 14px', maxWidth: 180, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={productText}>
+                      {/* Product Titles & Image Lightbox Trigger */}
+                      <td style={{ padding: '12px 14px', maxWidth: 200, fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }} title={productText}>
                           🛍️ {productText || 'Product Item'}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setImageModalOrder(order)}
+                          className="btn btn-xs btn-secondary"
+                          style={{
+                            borderRadius: 6,
+                            fontSize: '0.68rem',
+                            padding: '3px 8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            marginTop: 4,
+                            background: 'rgba(99,102,241,0.12)',
+                            color: 'var(--brand)',
+                            border: '1px solid rgba(99,102,241,0.3)',
+                            fontWeight: 700
+                          }}
+                          title="Click to view product images and variant details"
+                        >
+                          <span>🖼️ View Images</span>
+                        </button>
                       </td>
 
                       {/* Courier Actions (Reattempt / Return) */}
@@ -856,6 +880,114 @@ export default function AdviceMonitor() {
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', textAlign: 'right' }}>
               <button onClick={() => setHistoryOrder(null)} className="btn btn-secondary btn-sm" style={{ borderRadius: 8 }}>
                 Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 🖼️ Product Images Lightbox Modal */}
+      {imageModalOrder && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, maxWidth: 640, width: '100%', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-elevated)' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>🖼️ Product Images & Variant Details</span>
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2, display: 'block' }}>
+                  Ref: <strong style={{ color: 'var(--text-primary)' }}>#{imageModalOrder.ref_number || 'N/A'}</strong> | Tracking: <strong style={{ color: 'var(--brand)' }}>{imageModalOrder.tracking_number}</strong> ({imageModalOrder.customer_name})
+                </span>
+              </div>
+              <button 
+                onClick={() => setImageModalOrder(null)} 
+                className="btn btn-sm btn-secondary"
+                style={{ borderRadius: '50%', width: 32, height: 32, padding: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: 20, overflowY: 'auto', flex: 1, display: 'grid', gap: 16 }}>
+              {(() => {
+                let items = imageModalOrder.line_items_parsed || [];
+                if (items.length === 0 && imageModalOrder.line_items) {
+                  try {
+                    items = typeof imageModalOrder.line_items === 'string' ? JSON.parse(imageModalOrder.line_items) : imageModalOrder.line_items;
+                  } catch (_) {}
+                }
+                if (!Array.isArray(items) || items.length === 0) {
+                  items = [{ title: imageModalOrder.product_titles || 'Product Item', quantity: 1, price: imageModalOrder.price }];
+                }
+
+                return items.map((it, idx) => {
+                  const imgUrl = it.image || it.image_url || it.src || it.variant_image_url || null;
+                  return (
+                    <div key={idx} style={{ display: 'flex', gap: 16, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, alignItems: 'center' }}>
+                      {/* Image Thumbnail */}
+                      <div style={{ width: 90, height: 90, borderRadius: 10, overflow: 'hidden', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {imgUrl ? (
+                          <img 
+                            src={imgUrl} 
+                            alt={it.title || it.name} 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<span style="font-size:1.8rem">🛍️</span>'; }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '2rem' }}>🛍️</span>
+                        )}
+                      </div>
+
+                      {/* Product Info */}
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: '0 0 4px 0', fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {it.title || it.name || 'Product Item'}
+                        </h4>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                          Quantity: <strong style={{ color: 'var(--brand)' }}>x{it.quantity || 1}</strong>
+                          {it.price && <span style={{ marginLeft: 12 }}>Price: <strong style={{ color: 'var(--green)' }}>Rs {parseInt(it.price).toLocaleString()}</strong></span>}
+                        </div>
+
+                        {/* Image Actions */}
+                        {imgUrl && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(imgUrl);
+                                addToast('Image URL copied to clipboard!', 'success');
+                              }}
+                              className="btn btn-xs btn-secondary"
+                              style={{ borderRadius: 6, fontSize: '0.72rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              📋 Copy Image Link
+                            </button>
+                            <a
+                              href={imgUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-xs btn-secondary"
+                              style={{ borderRadius: 6, fontSize: '0.72rem', padding: '3px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              🔍 Open Full Image
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', textAlign: 'right', background: 'var(--bg-elevated)' }}>
+              <button onClick={() => setImageModalOrder(null)} className="btn btn-primary btn-sm" style={{ borderRadius: 8 }}>
+                Done
               </button>
             </div>
 

@@ -38,6 +38,48 @@ function isExcludedFromAdvice(courierStatus) {
   return false;
 }
 
+function enrichOrderImages(dbModule, storeId, orders) {
+  if (!Array.isArray(orders) || orders.length === 0) return;
+  const costMap = {};
+  try {
+    const activeDb = dbModule.db || dbModule;
+    const costs = activeDb.prepare('SELECT shopify_variant_id, parent_title, variant_title, variant_image_url FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+    costs.forEach(c => {
+      if (c.variant_image_url) {
+        if (c.shopify_variant_id) costMap[String(c.shopify_variant_id)] = c.variant_image_url;
+        const fullTitle = `${c.parent_title || ''} ${c.variant_title || ''}`.trim().toLowerCase();
+        if (fullTitle) costMap[fullTitle] = c.variant_image_url;
+        if (c.parent_title) costMap[c.parent_title.toLowerCase().trim()] = c.variant_image_url;
+      }
+    });
+  } catch (_) {}
+
+  orders.forEach(o => {
+    let items = [];
+    if (o.line_items) {
+      try {
+        items = typeof o.line_items === 'string' ? JSON.parse(o.line_items) : o.line_items;
+      } catch (_) {}
+    }
+    if (Array.isArray(items)) {
+      o.line_items_parsed = items.map(it => {
+        let img = it.image || it.image_url || it.src || it.variant_image_url || null;
+        if (!img && it.variant_id && costMap[String(it.variant_id)]) {
+          img = costMap[String(it.variant_id)];
+        }
+        if (!img && (it.title || it.name)) {
+          const key = (it.title || it.name).toLowerCase().trim();
+          if (costMap[key]) img = costMap[key];
+        }
+        return {
+          ...it,
+          image: img
+        };
+      });
+    }
+  });
+}
+
 // GET /api/monitors/stuck?store_id=1
 router.get('/stuck', (req, res) => {
   const { store_id } = req.query;
@@ -254,6 +296,7 @@ router.get('/advice', (req, res) => {
     }
   });
 
+  enrichOrderImages(db, store_id, adviceOrders);
   res.json(adviceOrders);
 });
 
@@ -356,6 +399,8 @@ router.get('/reattempts', (req, res) => {
 
   const total = orders.length;
   const successRate = total > 0 ? Math.round((deliveredCount / total) * 100) : 0;
+
+  enrichOrderImages(db, store_id, orders);
 
   res.json({
     orders,
