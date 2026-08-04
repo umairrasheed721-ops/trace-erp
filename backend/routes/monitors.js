@@ -183,21 +183,26 @@ router.get('/advice', (req, res) => {
                                       courierStatusLower.includes('return process')) &&
                                      !isPastReturnProcess;
 
-    // ⚡ Check if order has EVER had Shipper Advice asked by courier or Reattempt sent by CS
-    const hasEverHadAdviceOrReattempt = deliveryStatusLower.includes('delivery under review') ||
-                                        deliveryStatusLower.includes('shipper advice') ||
-                                        deliveryStatusLower.includes('under review') ||
-                                        courierStatusLower.includes('delivery under review') ||
-                                        courierStatusLower.includes('shipper advice') ||
-                                        courierStatusLower.includes('under review') ||
-                                        courierStatusLower.includes('merchant request') ||
-                                        courierStatusLower.includes('reattempt') ||
-                                        courierStatusLower.includes('re-attempt') ||
-                                        notesLower.includes('[shipper advice') ||
-                                        notesLower.includes('merchant request');
+    const cleanNoteText = notesLower
+      .replace(/confirm order has been shipped via [^.]+\.?/gi, '')
+      .replace(/\[shipper advice - [^\]]+\]/g, '')
+      .trim();
 
-    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt WITHOUT EVER asking for Shipper Advice & without CS reattempt!)
-    if (isInitialReturnInitiated && !hasEverHadAdviceOrReattempt && !isReattemptRequested) {
+    const hasCsNoteOrAdvice = cleanNoteText.length > 0 ||
+                              notesLower.includes('[shipper advice') ||
+                              notesLower.includes('merchant request') ||
+                              deliveryStatusLower.includes('delivery under review') ||
+                              deliveryStatusLower.includes('shipper advice') ||
+                              deliveryStatusLower.includes('under review') ||
+                              courierStatusLower.includes('delivery under review') ||
+                              courierStatusLower.includes('shipper advice') ||
+                              courierStatusLower.includes('under review') ||
+                              courierStatusLower.includes('merchant request') ||
+                              courierStatusLower.includes('reattempt') ||
+                              courierStatusLower.includes('re-attempt');
+
+    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt WITHOUT EVER asking for Shipper Advice & without CS notes/reattempts!)
+    if (isInitialReturnInitiated && !hasCsNoteOrAdvice && !isReattemptRequested) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
       return;
@@ -257,6 +262,12 @@ router.get('/reattempts', (req, res) => {
       OR LOWER(courier_status) LIKE '%reattempt%'
       OR LOWER(courier_status) LIKE '%re-attempt%'
       OR notes LIKE '%[Shipper Advice%'
+      OR (
+        (LOWER(delivery_status) LIKE '%return initiated%' OR LOWER(courier_status) LIKE '%return process%' OR LOWER(courier_status) LIKE '%return initiated%')
+        AND notes IS NOT NULL 
+        AND TRIM(notes) != '' 
+        AND LOWER(notes) NOT LIKE 'confirm order has been shipped%'
+      )
     )
     AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-60 days')
     ORDER BY COALESCE(status_date, order_date) DESC
