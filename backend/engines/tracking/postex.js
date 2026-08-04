@@ -118,10 +118,10 @@ async function syncPostEx(store, syncType = 'FULL', onProgress) {
               latestHistoryStatus = latest?.transactionStatusMessage || latest?.statusMessage || latest?.message || latest?.status || null;
             }
 
-            let rawStatus = latestHistoryStatus
-              || distData?.transactionStatus
+            let rawStatus = distData?.transactionStatus
               || data?.transactionStatus
               || data?.data?.transactionStatus
+              || latestHistoryStatus
               || data?.statusDescription
               || null;
    

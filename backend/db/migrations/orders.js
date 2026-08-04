@@ -620,5 +620,29 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #24:', e.message);
     }
+  },
+
+  // 25. Auto-heal Delivery Under Review and Attempt Made orders in DB
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Shipper Advice',
+            courier_status = COALESCE(NULLIF(courier_status, ''), 'Delivery Under Review')
+        WHERE (
+          LOWER(notes) LIKE '%shipper advice%' OR
+          LOWER(notes) LIKE '%reattempt%' OR
+          LOWER(courier_status) LIKE '%delivery under review%' OR
+          LOWER(courier_status) LIKE '%shipper advice%' OR
+          LOWER(courier_status) LIKE '%attempt made%'
+        )
+        AND LOWER(delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #25] Auto-healed ${result.changes} Shipper Advice / Delivery Under Review orders.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #25:', e.message);
+    }
   }
 ];
