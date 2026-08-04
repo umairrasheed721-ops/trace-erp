@@ -27,16 +27,11 @@ function isExcludedFromAdvice(courierStatus) {
   if (!courierStatus) return false;
   const statusLower = courierStatus.toLowerCase();
   if (
-    statusLower.includes('return process') ||
     statusLower.includes('waiting for return') ||
-    statusLower.includes('return to') ||
-    statusLower.includes('returned') ||
+    statusLower.includes('return to merchant') ||
+    statusLower.includes('returned to shipper') ||
     statusLower.includes('out for return') ||
-    statusLower.includes('return received') ||
-    statusLower.includes('en route') ||
-    statusLower.includes('enroute') ||
-    statusLower.includes('transit hub') ||
-    statusLower.includes('merchant warehouse')
+    statusLower.includes('return received')
   ) {
     return true;
   }
@@ -142,7 +137,7 @@ router.get('/advice', (req, res) => {
   );
 
   const orders = db.prepare(`
-    SELECT id, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, line_items, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
+    SELECT id, ref_number, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, line_items, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
     AND tracking_number IS NOT NULL AND tracking_number != ''
   `).all(store_id);
@@ -165,17 +160,27 @@ router.get('/advice', (req, res) => {
     if (IGNORE_STATUSES.includes(deliveryStatusLower)) return;
 
     const failedCount = parseInt(o.failed_attempts || 0, 10);
-    const isPastReturnProcess = courierStatusLower.includes('return to ') ||
-                               courierStatusLower.includes('return in transit') ||
-                               courierStatusLower.includes('returned') ||
-                               courierStatusLower.includes('at origin') ||
-                               courierStatusLower.includes('en route') ||
-                               courierStatusLower.includes('enroute') ||
-                               courierStatusLower.includes('transit hub') ||
-                               courierStatusLower.includes('departed') ||
-                               courierStatusLower.includes('merchant warehouse') ||
-                               deliveryStatusLower.includes('returned') ||
+    const isPastReturnProcess = courierStatusLower.includes('return to merchant') ||
+                               courierStatusLower.includes('returned to shipper') ||
+                               courierStatusLower.includes('out for return') ||
+                               deliveryStatusLower === 'returned' ||
+                               deliveryStatusLower === 'return received' ||
                                deliveryStatusLower.includes('return in transit');
+
+    // 🚨 Tab 1: Shipper Advice Required (Courier explicitly asked for Shipper Advice / Delivery Under Review!)
+    const isExplicitAdviceRequired = deliveryStatusLower.includes('delivery under review') ||
+                                     deliveryStatusLower.includes('shipper advice') ||
+                                     deliveryStatusLower.includes('under review') ||
+                                     courierStatusLower.includes('delivery under review') ||
+                                     courierStatusLower.includes('shipper advice') ||
+                                     courierStatusLower.includes('under review') ||
+                                     courierStatusLower.includes('postex advice');
+
+    if (isExplicitAdviceRequired && !isReattemptRequested && !isPastReturnProcess) {
+      o.advice_category = 'advice_required';
+      adviceOrders.push(o);
+      return;
+    }
 
     const isInitialReturnInitiated = (deliveryStatusLower.includes('return initiated') ||
                                       deliveryStatusLower.includes('return process') ||
@@ -211,21 +216,6 @@ router.get('/advice', (req, res) => {
     if (isReattemptRequested) return;
     if (isInitialReturnInitiated || isPastReturnProcess) return;
     if (isExcludedFromAdvice(o.courier_status)) return;
-
-    // 🚨 Tab 1: Shipper Advice Required (Courier explicitly asked for Shipper Advice / Delivery Under Review!)
-    const isExplicitAdviceRequired = deliveryStatusLower.includes('delivery under review') ||
-                                     deliveryStatusLower.includes('shipper advice') ||
-                                     deliveryStatusLower.includes('under review') ||
-                                     courierStatusLower.includes('delivery under review') ||
-                                     courierStatusLower.includes('shipper advice') ||
-                                     courierStatusLower.includes('under review') ||
-                                     courierStatusLower.includes('postex advice');
-
-    if (isExplicitAdviceRequired) {
-      o.advice_category = 'advice_required';
-      adviceOrders.push(o);
-      return;
-    }
 
     // 🔴 Tab 2: 1st Attempt Failed (1st attempt failed, but courier has NOT asked for Shipper Advice yet)
     const isFailureReason = combinedStatus.includes('refused') ||
