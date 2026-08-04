@@ -158,14 +158,14 @@ const COLUMN_INFO = {
     example: "Courier says 'Return' but you haven't received the parcel yet. If this number stays high for weeks, couriers may have lost your stock. Chase them immediately."
   },
   intransit: {
-    description: "Shipments currently in transit with couriers.",
-    formula: "COUNT(id) WHERE status IN ('Shipped', 'Out for Delivery', 'In Transit')",
-    example: "Orders that left your warehouse and are on their way to customers. Normal for recent orders, but old orders (7+ days) stuck here indicate delivery issues."
+    description: "Shipments currently in transit with couriers (including Shipper Advice, Return Initiated, Return In Transit & Reattempts).",
+    formula: "COUNT(id) WHERE status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Return Initiated', 'Return In Transit', 'Reattempt Requested')",
+    example: "Orders that left your warehouse and are on their way to customers or under advice/return transit. Excludes delivered, restocked, and returned parcels."
   },
   cashInTransit: {
     description: "Floating cash value of orders currently in transit — money not yet collected.",
-    formula: "SUM(price) WHERE status IN ('Shipped', 'Out for Delivery', 'In Transit')",
-    example: "500 in-transit orders × avg Rs 2,500 = Rs 12.5 lakh floating. This cash is 'locked' with couriers until delivered. Monitor to understand your cash flow gaps."
+    formula: "SUM(price) WHERE status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Return Initiated', 'Return In Transit', 'Reattempt Requested')",
+    example: "Floating COD value of all active in-transit shipments locked with couriers until delivered."
   },
   fakeReturns: {
     description: "Watchdog-detected fake RTO attempts by couriers.",

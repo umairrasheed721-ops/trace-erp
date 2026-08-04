@@ -47,6 +47,8 @@ function getOrderFilters(req) {
       whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND (o.payment_status != 'Paid' AND o.payment_status != 'Payment Posted' OR o.payment_status IS NULL) AND (julianday('now') - julianday(datetime(COALESCE(o.status_date, o.order_date)))) > 10");
     } else if (s.includes('MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
+    } else if (s.includes('[IN TRANSIT]') || s === 'transit' || s.includes('in transit')) {
+      whereClauses.push("o.tracking_number IS NOT NULL AND o.tracking_number != '' AND LOWER(o.delivery_status) IN ('shipped', 'out for delivery', 'in transit', 'attempted', 'shipper advice', 'return initiated', 'return in transit', 'reattempt requested', 'undelivered', 'dispatched')");
     } else {
       const statuses = status.split(',').map(st => st.trim().toLowerCase());
       if (statuses.length > 1) {
