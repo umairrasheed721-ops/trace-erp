@@ -136,6 +136,25 @@ router.get('/advice', (req, res) => {
     db.prepare('SELECT tracking_number FROM blacklist WHERE store_id = ?').all(store_id).map(r => r.tracking_number)
   );
 
+  // ⚡ Real-Time Auto-Heal Guard: Instant self-healing whenever Advice Monitor is loaded
+  try {
+    db.prepare(`
+      UPDATE orders
+      SET delivery_status = 'Shipper Advice',
+          courier_status = COALESCE(NULLIF(courier_status, ''), 'Delivery Under Review')
+      WHERE store_id = ?
+      AND (
+        LOWER(notes) LIKE '%shipper advice%' OR
+        LOWER(notes) LIKE '%reattempt%' OR
+        LOWER(courier_status) LIKE '%delivery under review%' OR
+        LOWER(courier_status) LIKE '%shipper advice%' OR
+        LOWER(courier_status) LIKE '%attempt made%' OR
+        LOWER(courier_status) LIKE '%cna%'
+      )
+      AND LOWER(delivery_status) NOT IN ('delivered', 'return received', 'cancelled', 'returned')
+    `).run(store_id);
+  } catch (_) {}
+
   const orders = db.prepare(`
     SELECT id, ref_number, tracking_number, customer_name, phone, address, city, delivery_status, notes, price, product_titles, line_items, courier, courier_status, COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
     FROM orders WHERE store_id = ?
