@@ -98,12 +98,12 @@ export default function Reports() {
     else if (colId === 'cancelations') filters.status = 'Cancelled';
     else if (colId === 'pending') filters.status = 'Pending';
     else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';
-    else if (colId === 'totalDispatched') filters.status = 'In Transit,Out for Delivery,Shipped';
+    else if (colId === 'totalDispatched') filters.status = '[IN TRANSIT]';
     else if (colId === 'delivered') filters.status = 'Delivered';
     else if (colId === 'restock') filters.status = 'Return Received';
     else if (colId === 'missingParcel') filters.status = 'Returned';
-    else if (colId === 'intransit') filters.status = 'In Transit';
-    else if (colId === 'cashInTransit') filters.status = 'In Transit,Out for Delivery,Shipped';
+    else if (colId === 'intransit') filters.status = '[IN TRANSIT]';
+    else if (colId === 'cashInTransit') filters.status = '[IN TRANSIT]';
     else if (colId === 'fakeReturns') filters.status = '[WATCHDOG FRAUD]';
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
