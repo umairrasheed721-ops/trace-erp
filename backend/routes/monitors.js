@@ -183,8 +183,21 @@ router.get('/advice', (req, res) => {
                                       courierStatusLower.includes('return process')) &&
                                      !isPastReturnProcess;
 
-    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt without CS reattempt advice sent yet!)
-    if (isInitialReturnInitiated && !isReattemptRequested && !notesLower.includes('[shipper advice')) {
+    // ⚡ Check if order has EVER had Shipper Advice asked by courier or Reattempt sent by CS
+    const hasEverHadAdviceOrReattempt = deliveryStatusLower.includes('delivery under review') ||
+                                        deliveryStatusLower.includes('shipper advice') ||
+                                        deliveryStatusLower.includes('under review') ||
+                                        courierStatusLower.includes('delivery under review') ||
+                                        courierStatusLower.includes('shipper advice') ||
+                                        courierStatusLower.includes('under review') ||
+                                        courierStatusLower.includes('merchant request') ||
+                                        courierStatusLower.includes('reattempt') ||
+                                        courierStatusLower.includes('re-attempt') ||
+                                        notesLower.includes('[shipper advice') ||
+                                        notesLower.includes('merchant request');
+
+    // ⚡ Tab 3: 1st Attempt Immediate Return (Courier marked return on 1st attempt WITHOUT EVER asking for Shipper Advice & without CS reattempt!)
+    if (isInitialReturnInitiated && !hasEverHadAdviceOrReattempt && !isReattemptRequested) {
       o.advice_category = 'immediate_return';
       adviceOrders.push(o);
       return;
