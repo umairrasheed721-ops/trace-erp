@@ -172,11 +172,6 @@ const COLUMN_INFO = {
     formula: "SUM(price) WHERE status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Return Initiated', 'Return In Transit', 'Reattempt Requested')",
     example: "Floating COD value of all active in-transit shipments locked with couriers until delivered."
   },
-  fakeReturns: {
-    description: "Watchdog-detected fake RTO attempts by couriers.",
-    formula: "COUNT(watchdog_results) WHERE verdict = 'FAKE RTO'",
-    example: "Courier marks an order 'Returned' but delivery was never attempted. Watchdog catches these. Each fake return = lost sale + courier fee paid for nothing. Dispute these."
-  },
   withoutTrackingId: {
     description: "Dispatched orders missing tracking numbers.",
     formula: "COUNT(id) WHERE status != 'Cancelled' AND (tracking_number IS NULL OR tracking_number = '')",
@@ -227,7 +222,7 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CLICKABLE_IDS = new Set(['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount']);
 const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit']);
 const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);

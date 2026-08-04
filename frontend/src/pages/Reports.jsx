@@ -105,7 +105,6 @@ export default function Reports() {
     else if (colId === 'intransit') filters.status = '[IN TRANSIT]';
     else if (colId === 'mathCounter') filters.status = 'All Statuses';
     else if (colId === 'cashInTransit') filters.status = '[IN TRANSIT]';
-    else if (colId === 'fakeReturns') filters.status = '[WATCHDOG FRAUD]';
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
     else if (colId === 'costGaps') filters.status = '[MISSING COST]';
@@ -150,7 +149,6 @@ export default function Reports() {
     { id: 'intransit', label: 'Transit', group: 'kpi' },
     { id: 'mathCounter', label: 'Math Counter', group: 'kpi' },
     { id: 'cashInTransit', label: 'Cash In Transit', group: 'kpi' },
-    { id: 'fakeReturns', label: 'Fake Attempt', group: 'kpi' },
     { id: 'withoutTrackingId', label: 'No Tracking', group: 'kpi' },
     { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },
     { id: 'diffCorrection', label: 'Correction', group: 'kpi' },

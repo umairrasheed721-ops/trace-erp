@@ -59,28 +59,7 @@ router.get('/daily', (req, res) => {
     `;
     const dailyOrders = db.prepare(ordersQuery).all(...params);
 
-    // 2. Get Fake Returns from Watchdog
-    let fakeReturnsQuery = `
-      SELECT 
-        substr(o.order_date, 1, 10) as date_string,
-        COUNT(w.id) as fake_returns
-      FROM watchdog_results w
-      JOIN orders o ON w.tracking_number = o.tracking_number AND w.store_id = o.store_id
-      WHERE w.store_id = ? AND w.verdict LIKE '%FAKE%'
-    `;
-    const fakeParams = [Number(store_id)];
-    if (start_date) {
-      fakeReturnsQuery += ' AND date(o.order_date) >= ?';
-      fakeParams.push(start_date);
-    }
-    if (end_date) {
-      fakeReturnsQuery += ' AND date(o.order_date) <= ?';
-      fakeParams.push(end_date);
-    }
-    fakeReturnsQuery += ' GROUP BY substr(o.order_date, 1, 10)';
-    const fakeReturns = db.prepare(fakeReturnsQuery).all(...fakeParams);
-
-    // 3. Get manual metrics & itemized expenses
+    // 2. Get manual metrics & itemized expenses
     let metricsQuery = `
       SELECT date_string, marketing_spend, tiktok_marketing, actual_exp, diff_correction
       FROM daily_metrics
@@ -120,14 +99,10 @@ router.get('/daily', (req, res) => {
     const metricsMap = {};
     metrics.forEach(m => metricsMap[m.date_string] = m);
 
-    const fakeMap = {};
-    fakeReturns.forEach(f => fakeMap[f.date_string] = f.fake_returns);
-
     // Calculate final rows
     const results = dailyOrders.map(day => {
       const dateStr = day.date_string;
       const m = metricsMap[dateStr] || { marketing_spend: 0, tiktok_marketing: 0, actual_exp: 0, diff_correction: 0 };
-      const fakeRet = fakeMap[dateStr] || 0;
 
       const yearMonth = dateStr.substring(0, 7);
       const itemizedExp = (manualExpMap[dateStr] || 0) + (manualExpMap[`monthly_${yearMonth}`] || 0);
@@ -232,7 +207,6 @@ router.get('/daily', (req, res) => {
         intransit: day.intransit || 0,
         mathCounter: (landedOrders || 0) - (cancelations + pending + booked + (day.delivered || 0) + (day.restock || 0) + (day.missing_parcel || 0)),
         cashInTransit: day.cash_in_transit || 0,
-        fakeReturns: fakeRet,
         withoutTrackingId: day.without_tracking_id || 0,
         paymentPaid,
         diffCorrection,
@@ -276,7 +250,7 @@ router.get('/daily', (req, res) => {
             actualPnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
-            intransit: 0, mathCounter: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
+            intransit: 0, mathCounter: 0, cashInTransit: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
             deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0
           });
         }
