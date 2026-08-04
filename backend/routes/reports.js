@@ -230,6 +230,7 @@ router.get('/daily', (req, res) => {
         restock: day.restock || 0,
         missingParcel: day.missing_parcel || 0,
         intransit: day.intransit || 0,
+        mathCounter: (landedOrders || 0) - (cancelations + pending + booked + (day.delivered || 0) + (day.restock || 0) + (day.missing_parcel || 0)),
         cashInTransit: day.cash_in_transit || 0,
         fakeReturns: fakeRet,
         withoutTrackingId: day.without_tracking_id || 0,
@@ -275,7 +276,7 @@ router.get('/daily', (req, res) => {
             actualPnl: -(totalMarketing + (m.actual_exp || 0)),
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
-            intransit: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
+            intransit: 0, mathCounter: 0, cashInTransit: 0, fakeReturns: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
             deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0
           });
         }

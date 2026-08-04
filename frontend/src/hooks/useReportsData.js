@@ -349,7 +349,8 @@ export default function useReportsData(activeStoreId, toast) {
         ndrRecoveryRate: m.ordersWithFailedAttempts > 0 ? (m.failedButDelivered / m.ordersWithFailedAttempts) * 100 : 0,
         cpaAvg: landedOrders > 0 ? (totalMarketing / landedOrders) : 0,
         netCpaAvg: netOrders > 0 ? (totalMarketing / netOrders) : 0,
-        courierDiff: m.actualCourier - m.estCourier
+        courierDiff: m.actualCourier - m.estCourier,
+        mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0))
       };
     });
     return sortData(rawMonthly, sortConfig);

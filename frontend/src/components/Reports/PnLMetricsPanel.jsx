@@ -162,6 +162,11 @@ const COLUMN_INFO = {
     formula: "COUNT(id) WHERE status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Return Initiated', 'Return In Transit', 'Reattempt Requested')",
     example: "Orders that left your warehouse and are on their way to customers or under advice/return transit. Excludes delivered, restocked, and returned parcels."
   },
+  mathCounter: {
+    description: "Pure mathematical calculation of transit orders (Landed minus all terminal/pending stages). Does NOT rely on status mappings.",
+    formula: "Landed - (Cancel + Pending + Booked + Delivered + Restock + Missing)",
+    example: "If Math Counter matches Transit count, status mappings are 100% accurate. If they differ (Red Alert), an order has an unmapped status in the DB!"
+  },
   cashInTransit: {
     description: "Floating cash value of orders currently in transit — money not yet collected.",
     formula: "SUM(price) WHERE status IN ('Shipped', 'In Transit', 'Out for Delivery', 'Attempted', 'Shipper Advice', 'Return Initiated', 'Return In Transit', 'Reattempt Requested')",
@@ -222,7 +227,7 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CLICKABLE_IDS = new Set(['landedOrders','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','fakeReturns','withoutTrackingId','deliveredPaymentPending','costGaps','overduePayoutCount','zeroExpenseCount']);
 const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit']);
 const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
@@ -411,12 +416,15 @@ export default function PnLMetricsPanel({
                     {dataset.map(row => {
                       const content = getCellContent(col, row);
                       const clickable = CLICKABLE_IDS.has(col.id);
+                      const isMathCounter = col.id === 'mathCounter';
+                      const isMathMismatch = isMathCounter && (row.mathCounter !== row.intransit);
                       const isAlert = (
                         (col.id === 'costGaps'          && row.costGaps > 0) ||
                         (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
-                        (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0)
+                        (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0) ||
+                        isMathMismatch
                       );
-                      const pnlColor = isPnl ? (row[col.id] >= 0 ? '#10b981' : '#ef4444') : undefined;
+                      const pnlColor = isPnl ? (row[col.id] >= 0 ? '#10b981' : '#ef4444') : (isMathCounter ? (isMathMismatch ? '#ef4444' : '#10b981') : undefined);
 
                       return (
                         <td
@@ -424,13 +432,13 @@ export default function PnLMetricsPanel({
                           className={`vt-cell${clickable ? ' clickable' : ''}`}
                           style={{
                             color:      pnlColor || (isAlert ? '#ef4444' : undefined),
-                            fontWeight: isPnl ? 800 : isAlert ? 700 : undefined,
+                            fontWeight: (isPnl || isMathMismatch) ? 800 : isAlert ? 700 : undefined,
                             borderLeft: `2px solid ${gs.border}`,
                           }}
                           onClick={() => clickable && handleDrilldown(row, col.id)}
                         >
                           {clickable
-                            ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span>
+                            ? <span style={{ borderBottom: isMathMismatch ? '2px dashed #ef4444' : '1px dashed var(--text-muted)' }}>{isMathMismatch ? `⚠️ ${content}` : content}</span>
                             : content
                           }
                         </td>
@@ -503,13 +511,19 @@ export default function PnLMetricsPanel({
                 if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
                 if (view === 'daily' && EDITABLE_IDS.has(col.id)) content = renderEditable(row, col.id);
 
+                const isMathCounter = col.id === 'mathCounter';
+                const isMathMismatch = isMathCounter && (row.mathCounter !== row.intransit);
+
                 if (col.id === 'pnl')      style = { color: row.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
                 if (col.id === 'actualPnl') style = { color: row.actualPnl >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 800 };
+                if (isMathCounter)          style = { color: isMathMismatch ? 'var(--red)' : 'var(--green)', fontWeight: isMathMismatch ? 800 : 700 };
+
                 const isClickable = CLICKABLE_IDS.has(col.id);
                 const isAlert = (
                   (col.id === 'costGaps'          && row.costGaps > 0) ||
                   (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
-                  (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0)
+                  (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0) ||
+                  isMathMismatch
                 );
 
                 return (
@@ -523,7 +537,7 @@ export default function PnLMetricsPanel({
                     }}
                     onClick={() => isClickable && handleDrilldown(row, col.id)}
                   >
-                    {isClickable ? <span style={{ borderBottom: '1px dashed var(--text-muted)' }}>{content}</span> : content}
+                    {isClickable ? <span style={{ borderBottom: isMathMismatch ? '2px dashed var(--red)' : '1px dashed var(--text-muted)' }}>{isMathMismatch ? `⚠️ ${content}` : content}</span> : content}
                   </td>
                 );
               })}
