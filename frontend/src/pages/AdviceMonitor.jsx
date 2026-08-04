@@ -205,12 +205,25 @@ export default function AdviceMonitor() {
   const firstAttemptOrders = filterBySla(adviceList.filter(o => o.advice_category === 'first_attempt'))
   const immediateReturnOrders = filterBySla(adviceList.filter(o => o.advice_category === 'immediate_return'))
 
-  // Select Current Tab Base Orders
+  // Combine all categorized orders for global search
+  const allCategorizedOrders = [
+    ...adviceRequiredOrders.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
+    ...firstAttemptOrders.map(o => ({ ...o, stage_badge: '🔴 1st Attempt Failed' })),
+    ...immediateReturnOrders.map(o => ({ ...o, stage_badge: '⚡ Immediate Return' })),
+    ...reattemptsData.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' }))
+  ]
+
+  // Select Current Tab Base Orders (or Global Search across all stages)
   let baseOrders = []
-  if (activeTab === 'advice_required') baseOrders = adviceRequiredOrders
-  else if (activeTab === 'first_attempt') baseOrders = firstAttemptOrders
-  else if (activeTab === 'immediate_return') baseOrders = immediateReturnOrders
-  else if (activeTab === 'reattempts') {
+  if (searchQuery.trim().length > 0) {
+    baseOrders = allCategorizedOrders
+  } else if (activeTab === 'advice_required') {
+    baseOrders = adviceRequiredOrders
+  } else if (activeTab === 'first_attempt') {
+    baseOrders = firstAttemptOrders
+  } else if (activeTab === 'immediate_return') {
+    baseOrders = immediateReturnOrders
+  } else if (activeTab === 'reattempts') {
     baseOrders = reattemptsData
     if (reattemptOutcomeFilter !== 'all') {
       baseOrders = baseOrders.filter(o => o.outcome === reattemptOutcomeFilter)
@@ -224,9 +237,11 @@ export default function AdviceMonitor() {
       if (!c.includes(selectedCourier.toLowerCase())) return false
     }
     if (!searchQuery.trim()) return true
-    const q = searchQuery.toLowerCase()
+    const q = searchQuery.toLowerCase().trim()
     return (
       (o.tracking_number || '').toLowerCase().includes(q) ||
+      (o.ref_number || '').toLowerCase().includes(q) ||
+      `#${o.ref_number || ''}`.toLowerCase().includes(q) ||
       (o.customer_name || '').toLowerCase().includes(q) ||
       (o.phone || '').toLowerCase().includes(q) ||
       (o.city || '').toLowerCase().includes(q)
@@ -572,6 +587,14 @@ export default function AdviceMonitor() {
                         }}>
                           {order.delivery_status || 'Advice Needed'}
                         </span>
+                        
+                        {searchQuery.trim().length > 0 && order.stage_badge && (
+                          <div style={{ marginTop: 2 }}>
+                            <span style={{ padding: '2px 6px', borderRadius: 8, fontSize: '0.66rem', fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                              {order.stage_badge}
+                            </span>
+                          </div>
+                        )}
                         
                         {/* Stage 4 Outcome Sub-Badge */}
                         {order.outcomeLabel && (
