@@ -21,12 +21,14 @@ export default function AdviceMonitor() {
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState({})
 
-  // Modal / Note States
-  const [selectedOrderForNote, setSelectedOrderForNote] = useState(null)
+  // Courier Action Remarks Modal States
+  const [actionModalOrder, setActionModalOrder] = useState(null)
+  const [actionModalType, setActionModalType] = useState('Reattempt') // 'Reattempt' or 'Return'
   const [actionNote, setActionNote] = useState('')
+
+  // Visual History Drawer Modal States
   const [historyOrder, setHistoryOrder] = useState(null)
   const [historyData, setHistoryData] = useState([])
-  const [historyExtra, setHistoryExtra] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
 
   // Toggle SLA Expired (>48h)
@@ -64,8 +66,19 @@ export default function AdviceMonitor() {
     loadData()
   }, [activeStoreId])
 
-  // Courier Actions (Reattempt / Return)
-  const handleCourierAction = async (order, action, note = '') => {
+  // Open Action Remarks Modal
+  const openActionModal = (order, type) => {
+    setActionModalOrder(order)
+    setActionModalType(type)
+    setActionNote(type === 'Reattempt' ? 'Customer confirmed order - Please reattempt delivery' : 'Customer refused / Return confirmed')
+  }
+
+  // Submit Courier Action with Remarks
+  const submitCourierAction = async () => {
+    if (!actionModalOrder) return
+    const order = actionModalOrder
+    const action = actionModalType
+
     setActionLoading(prev => ({ ...prev, [order.id]: 'loading' }))
     try {
       const res = await fetch('/api/monitors/courier-action', {
@@ -75,12 +88,12 @@ export default function AdviceMonitor() {
           store_id: activeStoreId,
           tracking_number: order.tracking_number,
           action,
-          note: note || ''
+          note: actionNote || ''
         })
       })
       const data = await res.json()
       if (data.success) {
-        addToast(data.message || `✅ ${action} instruction sent to ${order.courier || 'Courier'}`, 'success')
+        addToast(data.message || `✅ ${action} instruction sent to ${order.courier || 'Courier'} with remarks!`, 'success')
         setActionLoading(prev => ({ ...prev, [order.id]: 'done' }))
         loadData()
       } else {
@@ -91,7 +104,7 @@ export default function AdviceMonitor() {
       addToast('Network error while processing courier action', 'error')
       setActionLoading(prev => ({ ...prev, [order.id]: null }))
     } finally {
-      setSelectedOrderForNote(null)
+      setActionModalOrder(null)
       setActionNote('')
     }
   }
@@ -115,18 +128,12 @@ export default function AdviceMonitor() {
   const openTrackingHistory = async (order) => {
     setHistoryOrder(order)
     setHistoryData([])
-    setHistoryExtra(null)
     setHistoryLoading(true)
     try {
       const res = await fetch(`/api/monitors/tracking-history?store_id=${activeStoreId}&tracking_number=${order.tracking_number}`)
       const data = await res.json()
       if (data.success && Array.isArray(data.history)) {
         setHistoryData(data.history)
-        setHistoryExtra({
-          transactionNotes: data.transactionNotes,
-          currentStatus: data.currentStatus,
-          orderNotes: order.notes
-        })
       } else {
         addToast('No tracking history available', 'info')
       }
@@ -617,7 +624,7 @@ export default function AdviceMonitor() {
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           <button
-                            onClick={() => handleCourierAction(order, 'Reattempt')}
+                            onClick={() => openActionModal(order, 'Reattempt')}
                             disabled={isActioning}
                             className="btn btn-xs btn-primary"
                             style={{ borderRadius: 6, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 700 }}
@@ -626,7 +633,7 @@ export default function AdviceMonitor() {
                           </button>
 
                           <button
-                            onClick={() => handleCourierAction(order, 'Return')}
+                            onClick={() => openActionModal(order, 'Return')}
                             disabled={isActioning}
                             className="btn btn-xs"
                             style={{ borderRadius: 6, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 700, background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)' }}
@@ -680,6 +687,99 @@ export default function AdviceMonitor() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ Courier Action Remarks Modal (Sends Remarks to Courier Portal & Shopify Notes) */}
+      {actionModalOrder && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 16, maxWidth: 520, width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            
+            {/* Modal Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: actionModalType === 'Reattempt' ? 'var(--brand)' : '#ef4444' }}>
+                  {actionModalType === 'Reattempt' ? '⚡ Send Reattempt Advice to Courier' : '🔴 Send Return / Stop Instruction'}
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Tracking: <strong>{actionModalOrder.tracking_number}</strong> ({actionModalOrder.customer_name})
+                </span>
+              </div>
+              <button 
+                onClick={() => setActionModalOrder(null)} 
+                className="btn btn-sm btn-secondary"
+                style={{ borderRadius: '50%', width: 32, height: 32, padding: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: 20 }}>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Enter the remarks instruction below. This will be sent directly to <strong>{actionModalOrder.courier || 'PostEx'} API Portal</strong> and saved to <strong>Shopify Order Notes</strong>:
+              </div>
+
+              {/* Quick Template Chips */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setActionNote('Customer confirmed order - Please reattempt delivery')}
+                  className="btn btn-xs btn-secondary"
+                  style={{ borderRadius: 12, fontSize: '0.72rem', padding: '3px 8px' }}
+                >
+                  ⚡ Customer confirmed
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionNote('Call customer before delivery - Customer waiting')}
+                  className="btn btn-xs btn-secondary"
+                  style={{ borderRadius: 12, fontSize: '0.72rem', padding: '3px 8px' }}
+                >
+                  📞 Call before delivery
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActionNote('Address verified & confirmed by customer')}
+                  className="btn btn-xs btn-secondary"
+                  style={{ borderRadius: 12, fontSize: '0.72rem', padding: '3px 8px' }}
+                >
+                  📍 Address confirmed
+                </button>
+              </div>
+
+              <textarea
+                value={actionNote}
+                onChange={e => setActionNote(e.target.value)}
+                placeholder="Enter remarks for courier..."
+                rows={4}
+                className="input"
+                style={{ width: '100%', borderRadius: 10, padding: 12, fontSize: '0.85rem', resize: 'vertical' }}
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button 
+                onClick={() => setActionModalOrder(null)} 
+                className="btn btn-secondary btn-sm" 
+                style={{ borderRadius: 8 }}
+              >
+                Cancel
+              </button>
+
+              <button 
+                onClick={submitCourierAction} 
+                className={`btn btn-sm ${actionModalType === 'Reattempt' ? 'btn-primary' : 'btn-danger'}`} 
+                style={{ borderRadius: 8, fontWeight: 700, background: actionModalType === 'Return' ? '#ef4444' : undefined }}
+              >
+                🚀 Send to {actionModalOrder.courier || 'Courier'} & Sync Shopify
+              </button>
+            </div>
+
           </div>
         </div>
       )}
