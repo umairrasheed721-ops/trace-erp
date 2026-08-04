@@ -33,8 +33,11 @@ function processProductUpdateForCosts(storeId, payload) {
 
     for (const v of variants) {
       const variantTitle = v.title === 'Default Title' ? '' : (v.title || '');
+      const newSku = v.sku ? String(v.sku).trim() : '';
       const newPrice = parseFloat(v.price || 0);
+      const newQty = parseInt(v.inventory_quantity || 0, 10);
       const newImageId = v.image_id;
+      const gid = `gid://shopify/ProductVariant/${v.id}`;
 
       // Find image URL from payload.images
       let imageUrl = null;
@@ -55,21 +58,34 @@ function processProductUpdateForCosts(storeId, payload) {
           shopify_variant_id = ? OR shopify_variant_id = ? OR
           (parent_title = ? AND variant_title = ?)
         ) LIMIT 1
-      `).get(Number(storeId), String(v.id), `gid://shopify/ProductVariant/${v.id}`, parentTitle, variantTitle);
+      `).get(Number(storeId), String(v.id), gid, parentTitle, variantTitle);
 
       if (existing) {
-        // Update selling_price, image, status, and inventory_policy — but NOT unit_cost (user controls that)
+        // Update SKU, title, selling_price, image, status, policy, qty — but preserve unit_cost
         db.prepare(`
           UPDATE product_master_costs SET
+            shopify_variant_id = COALESCE(shopify_variant_id, ?),
+            sku = ?,
+            parent_title = ?,
+            variant_title = ?,
             selling_price = ?,
+            inventory_qty = ?,
             variant_image_url = COALESCE(?, variant_image_url),
             status = ?,
             inventory_policy = ?,
             updated_at = datetime('now')
           WHERE id = ?
-        `).run(newPrice, imageUrl || null, status, v.inventory_policy || 'deny', existing.id);
+        `).run(gid, newSku, parentTitle, variantTitle, newPrice, newQty, imageUrl || null, status, v.inventory_policy || 'deny', existing.id);
 
-        console.log(`🔔 [Webhook] Updated price/image/status/policy for "${parentTitle} - ${variantTitle}" (${status}/${v.inventory_policy || 'deny'}) → Rs ${newPrice}`);
+        console.log(`🔔 [Webhook] Updated SKU '${newSku}'/price/image/status for "${parentTitle} - ${variantTitle}" → Rs ${newPrice}`);
+      } else {
+        // Insert new variant into cost registry
+        db.prepare(`
+          INSERT INTO product_master_costs (store_id, shopify_variant_id, sku, parent_title, variant_title, shopify_cost, selling_price, inventory_qty, variant_image_url, inventory_policy, status)
+          VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+        `).run(Number(storeId), gid, newSku, parentTitle, variantTitle, newPrice, newQty, imageUrl || null, v.inventory_policy || 'deny', status);
+
+        console.log(`✨ [Webhook] Inserted new variant into cost registry: "${parentTitle} - ${variantTitle}" (SKU: '${newSku}')`);
       }
     }
   } catch (e) {

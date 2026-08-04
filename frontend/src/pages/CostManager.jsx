@@ -668,18 +668,24 @@ export default function CostManager() {
           >
             {isDiagnosing ? '⏳ Diagnosing...' : '🔬 Diagnose'}
           </button>
-          <div
+          <button
+            onClick={handleSyncShopify}
+            disabled={isSyncing}
             style={{
-              padding: '8px 14px', borderRadius: 10, border: '1px solid rgba(16, 185, 129, 0.3)',
-              background: 'rgba(16, 185, 129, 0.1)', color: '#10b981',
-              fontWeight: 700, fontSize: '0.8rem',
-              display: 'flex', alignItems: 'center', gap: 6
+              padding: '9px 18px', borderRadius: 10,
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.25))',
+              color: '#10b981', fontWeight: 700, fontSize: '0.83rem',
+              cursor: isSyncing ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: 7,
+              boxShadow: '0 4px 14px rgba(16,185,129,0.2)',
+              transition: 'all 0.2s ease', opacity: isSyncing ? 0.7 : 1
             }}
-            title="Automated catalog cost & inventory sync active"
+            title="Manually pull & sync all products, variants, SKUs, and costs directly from Shopify"
           >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }}></span>
-            <span>⚡ Auto Catalog Sync</span>
-          </div>
+            <span style={{ fontSize: '0.95rem', display: 'inline-block', transform: isSyncing ? 'rotate(180deg)' : 'none', transition: 'transform 0.5s' }}>🔄</span>
+            <span>{isSyncing ? 'Syncing...' : 'Manual Sync'}</span>
+          </button>
           <button
             onClick={() => { setEditingItem(null); setForm({ parent_title: '', variant_title: '', unit_cost: 0, packaging_cost: 0 }); setShowModal(true); }}
             style={{
