@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db');
+const { db } = require('../db');
 const { broadcast } = require('../sse');
 
 // Helper: Enrich product variant images from product_master_costs
@@ -86,13 +86,13 @@ router.get('/', (req, res) => {
     const orders = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
-             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, created_at
+             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND LOWER(COALESCE(courier_status, '')) NOT IN ('delivered', 'return received', 'returned', 'rto received')
       AND LOWER(COALESCE(delivery_status, '')) NOT IN ('delivered', 'return received', 'returned')
-      ORDER BY COALESCE(status_date, order_date, created_at) DESC
+      ORDER BY COALESCE(status_date, order_date) DESC
     `).all(store_id);
 
     const adviceRequired = [];
