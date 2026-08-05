@@ -40,6 +40,7 @@ const lazyWithRetry = (componentImport, componentName) =>
     }
   });
 
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'Dashboard')
 const SearchTool = lazyWithRetry(() => import('./pages/SearchTool'), 'SearchTool')
 const ReturnsManager = lazyWithRetry(() => import('./pages/ReturnsManager'), 'ReturnsManager')
 const FinanceManager = lazyWithRetry(() => import('./pages/FinanceManager'), 'FinanceManager')
@@ -270,7 +271,7 @@ function AppContent() {
             <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
               <ErrorBoundary>
                 <Routes>
-                  <Route path="/" element={<SearchTool />} />
+                  <Route path="/" element={<Dashboard />} />
                   <Route path="/search" element={<SearchTool />} />
                   <Route path="/returns" element={<ReturnsManager />} />
                   <Route path="/whatsapp-templates" element={<TemplateManager />} />

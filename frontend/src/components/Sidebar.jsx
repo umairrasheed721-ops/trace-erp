@@ -22,6 +22,7 @@ export default function Sidebar() {
   const isExpanded = !sidebarCollapsed || isHovered
 
   const navItems = [
+    { to: '/', icon: '🏠', label: 'Dashboard' },
     { to: '/search', icon: '🔍', label: 'Command Center' },
     { to: '/returns', icon: '↩️', label: 'Unified Returns' },
     { to: '/whatsapp-templates', icon: '✍️', label: 'WA Templates', permission: 'admin_only' },
