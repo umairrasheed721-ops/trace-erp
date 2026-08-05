@@ -54,18 +54,26 @@ export default function useCommandCenterBulkActions({
         setBulkActionLoading(true)
         try {
           const apiUrl = import.meta.env.VITE_API_URL || '';
+          const token = localStorage.getItem('trace_token') || '';
           const res = await fetch(`${apiUrl}/api/orders/bulk-update-status`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ ids: selectedIds, status: newStatus })
           })
-          if (res.ok) {
-            addToast(`✅ ${selectedIds.length} orders updated to ${newStatus}!`, 'success')
+          const data = await res.json()
+          if (res.ok && data.success) {
+            const count = data.count !== undefined ? data.count : selectedIds.length;
+            addToast(`✅ ${count} orders updated to ${newStatus}!`, 'success')
             setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: newStatus } : o))
             setSelectedIds([])
             if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
+          } else {
+            addToast(`❌ Update Failed: ${data.error || 'Unknown error'}`, 'error')
           }
-        } catch { addToast('Status update failed', 'error') }
+        } catch { addToast('Status update failed due to network error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
       }
     })
@@ -89,16 +97,23 @@ export default function useCommandCenterBulkActions({
         setBulkActionLoading(true)
         try {
           const apiUrl = import.meta.env.VITE_API_URL || '';
+          const token = localStorage.getItem('trace_token') || '';
           const res = await fetch(`${apiUrl}/api/orders/bulk-confirm`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ ids: selectedIds })
           })
+          const data = await res.json()
           if (res.ok) {
             addToast(`✅ ${selectedIds.length} orders confirmed!`, 'success')
             setAllOrders(prev => prev.map(o => selectedIds.includes(o.id) ? { ...o, delivery_status: 'Confirmed' } : o))
             setSelectedIds([])
             if (typeof fetchBacklogDates === 'function') fetchBacklogDates();
+          } else {
+            addToast(`❌ Confirm Failed: ${data.error || 'Unknown error'}`, 'error')
           }
         } catch { addToast('Bulk error', 'error') }
         finally { setBulkActionLoading(false); setConfirmDialog(prev => ({ ...prev, isOpen: false })) }
@@ -116,11 +131,12 @@ export default function useCommandCenterBulkActions({
         setBulkActionLoading(true)
         try {
           const apiUrl = import.meta.env.VITE_API_URL || '';
+          const token = localStorage.getItem('trace_token') || '';
           const res = await fetch(`${apiUrl}/api/bulk/revert`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ ids: selectedIds })
           })
@@ -141,9 +157,13 @@ export default function useCommandCenterBulkActions({
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('trace_token') || '';
       const res = await fetch(`${apiUrl}/api/orders/bulk-sync-courier`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ids: selectedIds })
       })
       const data = await res.json()
@@ -163,9 +183,13 @@ export default function useCommandCenterBulkActions({
     setBulkActionLoading(true)
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('trace_token') || '';
       const res = await fetch(`${apiUrl}/api/orders/bulk-sync-status`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ids: selectedIds })
       })
       const data = await res.json()

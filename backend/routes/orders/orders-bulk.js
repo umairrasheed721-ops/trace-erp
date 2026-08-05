@@ -26,8 +26,8 @@ router.post('/bulk-confirm', (req, res) => {
 
 // POST /api/orders/bulk-update-status - Generic bulk status update
 router.post('/bulk-update-status', (req, res) => {
-  const { ids, status } = req.body;
-  if (!ids || !Array.isArray(ids) || !status) return res.status(400).json({ error: 'ids and status required' });
+  const { ids, tracking_numbers, status } = req.body;
+  if ((!ids && !tracking_numbers) || !status) return res.status(400).json({ error: 'ids or tracking_numbers and status required' });
 
   // 🛡️ Final Status Permission Check
   const finalStatuses = ['delivered', 'return received'];
@@ -40,30 +40,48 @@ router.post('/bulk-update-status', (req, res) => {
   }
 
   try {
+    let targetIds = Array.isArray(ids) ? ids : [];
+    if (!targetIds.length && Array.isArray(tracking_numbers) && tracking_numbers.length > 0) {
+      const placeholders = tracking_numbers.map(() => '?').join(',');
+      const rows = db.prepare(`SELECT id FROM orders WHERE tracking_number IN (${placeholders})`).all(...tracking_numbers);
+      targetIds = rows.map(r => r.id);
+    }
+
+    if (!targetIds.length) {
+      return res.json({ success: true, count: 0 });
+    }
+
     const stmt = db.prepare("UPDATE orders SET delivery_status = ?, status_date = datetime('now') WHERE id = ?");
     const today = new Date().toISOString().split('T')[0];
     const updatePL = db.prepare("UPDATE orders SET payment_date = ? WHERE id = ?");
 
-    for (const id of ids) {
-      const order = db.prepare('SELECT store_id, shopify_order_id, cost FROM orders WHERE id = ?').get(id);
-      if (!order) continue;
+    const runBulkUpdate = db.transaction((idList) => {
+      let updatedCount = 0;
+      for (const id of idList) {
+        const order = db.prepare('SELECT store_id, shopify_order_id, cost FROM orders WHERE id = ?').get(id);
+        if (!order) continue;
 
-      if ((targetStatus === 'confirmed' || targetStatus === 'booked') && (!order.cost || order.cost <= 0)) {
-        continue; // Skip orders with missing costs during bulk updates to prevent leaks
+        if ((targetStatus === 'confirmed' || targetStatus === 'booked') && (!order.cost || order.cost <= 0)) {
+          continue; // Skip orders with missing costs during bulk updates to prevent leaks
+        }
+
+        stmt.run(status, id);
+        updatedCount++;
+        
+        const s = status.toLowerCase();
+        if (s.includes('delivered')) {
+          updatePL.run(today, id);
+        } else if (s.includes('return') || s.includes('cancel')) {
+          updatePL.run(null, id);
+        }
+
+        broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       }
+      return updatedCount;
+    });
 
-      stmt.run(status, id);
-      
-      const s = status.toLowerCase();
-      if (s.includes('delivered')) {
-        updatePL.run(today, id);
-      } else if (s.includes('return') || s.includes('cancel')) {
-        updatePL.run(null, id);
-      }
-
-      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-    }
-    res.json({ success: true, count: ids.length });
+    const updatedCount = runBulkUpdate(targetIds);
+    res.json({ success: true, count: updatedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
