@@ -15,35 +15,7 @@ export default function Topbar() {
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationRef = useRef(null)
 
-  const [adviceCount, setAdviceCount] = useState(0)
-  const [stuckCount, setStuckCount] = useState(0)
 
-  // 🔔 Live Monitor Alert Counters Engine
-  useEffect(() => {
-    if (!activeStoreId) return;
-    const fetchCounts = async () => {
-      try {
-        const [advRes, stuckRes] = await Promise.all([
-          fetch(`/api/monitors/advice?store_id=${activeStoreId}`),
-          fetch(`/api/monitors/stuck?store_id=${activeStoreId}`)
-        ]);
-        if (advRes.ok) {
-          const advData = await advRes.json();
-          setAdviceCount(Array.isArray(advData) ? advData.length : (advData.total || 0));
-        }
-        if (stuckRes.ok) {
-          const stuckData = await stuckRes.json();
-          setStuckCount(Array.isArray(stuckData) ? stuckData.length : (stuckData.total || 0));
-        }
-      } catch (e) {
-        console.warn('Failed to fetch monitor alert counts:', e.message);
-      }
-    };
-
-    fetchCounts();
-    const interval = setInterval(fetchCounts, 60000);
-    return () => clearInterval(interval);
-  }, [activeStoreId]);
 
   // Close notifications on outside click
   useEffect(() => {
