@@ -42,6 +42,7 @@ const lazyWithRetry = (componentImport, componentName) =>
 
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'), 'Dashboard')
 const SearchTool = lazyWithRetry(() => import('./pages/SearchTool'), 'SearchTool')
+const ShipperAdvice = lazyWithRetry(() => import('./pages/ShipperAdvice'), 'ShipperAdvice')
 const ReturnsManager = lazyWithRetry(() => import('./pages/ReturnsManager'), 'ReturnsManager')
 const FinanceManager = lazyWithRetry(() => import('./pages/FinanceManager'), 'FinanceManager')
 const Reports = lazyWithRetry(() => import('./pages/Reports'), 'Reports')
@@ -280,6 +281,7 @@ function AppContent() {
                   <Route path="/track/:slug" element={<TrackingPortal />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/intelligence" element={<CourierIntelligence />} />
+                  <Route path="/advice" element={<ShipperAdvice />} />
                   <Route path="/connect" element={<Connect />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/profile" element={<Profile />} />

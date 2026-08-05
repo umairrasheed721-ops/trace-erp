@@ -50,6 +50,7 @@ const bulkRoutes        = require('./bulk_booking');
 const postexRoutes      = safeRequire('./postex',       'PostEx');
 const reviewsRoutes     = safeRequire('./reviews',      'Reviews');
 const abandonedRoutes   = safeRequire('./abandoned',    'Abandoned');
+const shipperAdviceRoutes = safeRequire('./shipper-advice', 'ShipperAdvice');
 const expensesRoutes    = safeRequire('./expenses',     'Expenses');
 
 // Register routes
@@ -57,6 +58,7 @@ router.use('/api/auth', authRoutes);
 router.use('/api/stores', storesRoutes);
 router.use('/api/orders', ordersRoutes);
 router.use('/api/tracking', trackingRoutes);
+router.use('/api/shipper-advice', shipperAdviceRoutes);
 router.use('/api/finance', financeRoutes);
 router.use('/api/reports', reportsRoutes);
 router.use('/api/users', usersRoutes);
