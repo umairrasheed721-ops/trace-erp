@@ -190,7 +190,7 @@ export default function ShipperAdvice() {
 
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.05))', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', marginBottom: 6 }}>🔄 Reattempts Sent</div>
-          <div style={{ fontSize: '1.8rem', fontWeight 900, color: 'var(--text-primary)' }}>{counts.reattempts_sent} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>tracked</span></div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-primary)' }}>{counts.reattempts_sent} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>tracked</span></div>
         </div>
 
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(248, 113, 113, 0.05))', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
