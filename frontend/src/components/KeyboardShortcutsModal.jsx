@@ -17,8 +17,11 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
       category: '🚀 Quick Navigation (Press G then Key)',
       items: [
         { keys: ['G', 'C'], label: 'Go to Command Center' },
+        { keys: ['G', 'A'], label: 'Go to Advice Monitor' },
+        { keys: ['G', 'S'], label: 'Go to Stuck Monitor' },
         { keys: ['G', 'R'], label: 'Go to Returns Manager' },
         { keys: ['G', 'F'], label: 'Go to Finance Manager' },
+        { keys: ['G', 'D'], label: 'Go to Main Dashboard' },
       ]
     },
     {
