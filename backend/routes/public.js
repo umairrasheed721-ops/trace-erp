@@ -546,15 +546,19 @@ router.post('/create-cod-order', async (req, res) => {
     const resolvedBrowserWidth = Number(browser_width) || 390;
     const resolvedBrowserHeight = Number(browser_height) || 844;
 
+    const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '119.160.118.1';
+
     // Build Shopify order payload (real order, COD)
     const orderPayload = {
       order: {
         landing_site: resolvedLandingSite,
         referring_site: resolvedReferringSite,
+        browser_ip: clientIp,
         client_details: {
           accept_language: req.get('accept-language') || 'en-US,en;q=0.9',
           browser_height: resolvedBrowserHeight,
           browser_width: resolvedBrowserWidth,
+          browser_ip: clientIp,
           session_hash: null,
           user_agent: resolvedUserAgent
         },
