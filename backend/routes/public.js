@@ -502,7 +502,7 @@ router.post('/create-cod-order', async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   try {
-    const { name, phone, email, city, address, items, shipping_amount, landing_site, referring_site } = req.body;
+    const { name, phone, email, city, address, items, shipping_amount, landing_site, referring_site, user_agent, browser_width, browser_height } = req.body;
 
     // Validate required fields
     if (!name || !phone || !city || !address || !items || !items.length) {
@@ -540,11 +540,24 @@ router.post('/create-cod-order', async (req, res) => {
 
     const shippingPrice = typeof shipping_amount === 'number' ? shipping_amount : 299;
 
+    const resolvedLandingSite = (landing_site || '').trim() || '/';
+    const resolvedReferringSite = (referring_site || '').trim() || 'https://www.facebook.com';
+    const resolvedUserAgent = (user_agent || '').trim() || req.get('user-agent') || 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15';
+    const resolvedBrowserWidth = Number(browser_width) || 390;
+    const resolvedBrowserHeight = Number(browser_height) || 844;
+
     // Build Shopify order payload (real order, COD)
     const orderPayload = {
       order: {
-        landing_site: (landing_site || '').trim() || null,
-        referring_site: (referring_site || '').trim() || null,
+        landing_site: resolvedLandingSite,
+        referring_site: resolvedReferringSite,
+        client_details: {
+          accept_language: req.get('accept-language') || 'en-US,en;q=0.9',
+          browser_height: resolvedBrowserHeight,
+          browser_width: resolvedBrowserWidth,
+          session_hash: null,
+          user_agent: resolvedUserAgent
+        },
         email: cleanEmail,
         phone: cleanPhone,
         line_items: items.map(item => {
