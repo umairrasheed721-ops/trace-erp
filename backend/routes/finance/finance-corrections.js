@@ -1006,16 +1006,31 @@ router.post('/courier-credentials', (req, res) => {
  * 2. If mark_shopify_paid = true, calls Shopify API (captures/marks order paid on Shopify Admin).
  */
 router.post('/settle-payout-discrepancy', async (req, res) => {
-  const { order_id, store_id, cpr_reference, cpr_date, settled_amount, mark_shopify_paid = true } = req.body;
-  if (!order_id || !store_id) {
-    return res.status(400).json({ error: 'order_id and store_id required' });
+  const { order_id, tracking_number, store_id, cpr_reference, cpr_date, settled_amount, mark_shopify_paid = true } = req.body;
+  if (!store_id || (!order_id && !tracking_number)) {
+    return res.status(400).json({ error: 'store_id and order_id or tracking_number required' });
   }
 
   try {
     const database = db.db || db;
-    const order = database.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(order_id, store_id);
+    // Lookup by numeric id first, then fallback to ref_number (e.g. TR33520), then tracking_number
+    let order = null;
+    if (order_id) {
+      const numId = parseInt(order_id, 10);
+      if (!isNaN(numId)) {
+        order = database.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(numId, store_id);
+      }
+      if (!order) {
+        // Treat order_id as ref_number (e.g. "TR33520" or "#TR33520")
+        const cleanRef = String(order_id).replace(/^#/, '');
+        order = database.prepare('SELECT * FROM orders WHERE ref_number = ? AND store_id = ?').get(cleanRef, store_id);
+      }
+    }
+    if (!order && tracking_number) {
+      order = database.prepare('SELECT * FROM orders WHERE tracking_number = ? AND store_id = ?').get(tracking_number, store_id);
+    }
     if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: `Order not found for id/ref: ${order_id || ''} / tracking: ${tracking_number || ''}` });
     }
 
     const cprNote = `[CPR Settle: ${cpr_reference || 'Manual Settlement'} | Date: ${cpr_date || new Date().toISOString().split('T')[0]} | Settled: Rs ${settled_amount || order.price}]`;

@@ -120,11 +120,13 @@ export default function PayoutReconciler() {
     setSettlingLoading(true);
     try {
       const orderId = settleModalOrder.id || settleModalOrder['Order DB ID'] || settleModalOrder['ID'] || settleModalOrder['Order ID'];
+      const trackingNum = settleModalOrder['Tracking Number'] || settleModalOrder.tracking_number || settleModalOrder['CN Number'] || '';
       const res = await fetch('/api/finance/settle-payout-discrepancy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: orderId,
+          tracking_number: trackingNum,
           store_id: activeStoreId,
           cpr_reference: settleModalCprRef || cprReference || 'Manual Settlement',
           cpr_date: settleModalDate,
@@ -976,8 +978,9 @@ export default function PayoutReconciler() {
                                   <button
                                     onClick={() => {
                                       setSettleModalOrder(row);
-                                      setSettleModalCprRef(row['CPR Reference'] || cprReference || 'CPR-SETTLE');
-                                      setSettleModalAmount(row['Amount Collected'] || row.price || '0');
+                                      setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
+                                      const rawAmt = String(row['Amount Collected'] || row.price || '0').replace(/[^0-9.]/g, '');
+                                      setSettleModalAmount(rawAmt || '0');
                                     }}
                                     className="btn btn-sm btn-primary"
                                     style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
@@ -1089,8 +1092,9 @@ export default function PayoutReconciler() {
                                 <button
                                   onClick={() => {
                                     setSettleModalOrder(row);
-                                    setSettleModalCprRef(row['CPR Reference'] || cprReference || 'CPR-SETTLE');
-                                    setSettleModalAmount(row['Amount Collected'] || row.price || '0');
+                                    setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
+                                    const rawAmt = String(row['Amount Collected'] || row.price || '0').replace(/[^0-9.]/g, '');
+                                    setSettleModalAmount(rawAmt || '0');
                                   }}
                                   className="btn btn-sm btn-primary"
                                   style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
