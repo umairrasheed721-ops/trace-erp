@@ -1141,7 +1141,7 @@ export default function PayoutReconciler() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
                     📅 PAYOUT DATE
                   </label>
                   <input
