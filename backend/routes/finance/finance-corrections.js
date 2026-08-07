@@ -1051,7 +1051,8 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
 
     const finalPaidAmount = parseFloat(settled_amount) || parseFloat(order.price) || 0;
     const cprNote = `[CPR Settle: ${cpr_reference || 'Manual Settlement'} | Date: ${cpr_date || new Date().toISOString().split('T')[0]} | Settled: Rs ${finalPaidAmount}]`;
-    const updatedNotes = order.notes ? `${order.notes} | ${cprNote}` : cprNote;
+    const hasNoteAlready = order.notes && cpr_reference && order.notes.includes(cpr_reference);
+    const updatedNotes = hasNoteAlready ? order.notes : (order.notes ? `${order.notes} | ${cprNote}` : cprNote);
 
     database.prepare(`
       UPDATE orders 
