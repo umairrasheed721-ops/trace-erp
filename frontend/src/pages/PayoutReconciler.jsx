@@ -101,18 +101,34 @@ export default function PayoutReconciler() {
       domain = `${currentStore.name.toLowerCase().replace(/\s+/g, '')}.myshopify.com`;
     }
     const shopSubdomain = domain.replace(/^https?:\/\//, '').replace(/\.myshopify\.com.*$/, '');
-
-    const shopifyOrderId = row.shopify_order_id || row['Shopify Order ID'] || row.id;
-    const orderRef = (row['Order ID'] || row.ref_number || row.id || '').replace(/^#+/, '');
-
-    if (shopifyOrderId && shopSubdomain) {
-      window.open(`https://admin.shopify.com/store/${shopSubdomain}/orders/${shopifyOrderId}`, '_blank');
-    } else if (shopSubdomain) {
+    const orderRef = row['Order ID'] || row.ref_number || row.id;
+    if (!orderRef) return;
+    if (shopSubdomain) {
       window.open(`https://admin.shopify.com/store/${shopSubdomain}/orders?query=${encodeURIComponent(orderRef)}`, '_blank');
     } else {
       addToast('🛍️ Opening Shopify Admin...', 'info');
       window.open(`https://admin.shopify.com/`, '_blank');
     }
+  };
+
+  const getBestAmount = (row) => {
+    if (!row) return '0';
+    const candidates = [
+      row['Reserve Amount'],
+      row['Amount Collected'],
+      row['COD Amount'],
+      row.price,
+      row['Amount']
+    ];
+    for (const c of candidates) {
+      if (c !== undefined && c !== null) {
+        const cleaned = String(c).replace(/[^0-9.]/g, '');
+        if (cleaned && cleaned !== '0' && cleaned !== '0.00' && cleaned.length > 0) {
+          return cleaned;
+        }
+      }
+    }
+    return '0';
   };
 
   const handleDiscrepancySettlementSubmit = async () => {
@@ -986,15 +1002,7 @@ export default function PayoutReconciler() {
                                     onClick={() => {
                                       setSettleModalOrder(row);
                                       setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                      const rawAmt = String(
-                                        row['Amount Collected'] ||
-                                        row['Reserve Amount'] ||
-                                        row['COD Amount'] ||
-                                        row.price ||
-                                        row['Amount'] ||
-                                        '0'
-                                      ).replace(/[^0-9.]/g, '');
-                                      setSettleModalAmount(rawAmt || '0');
+                                      setSettleModalAmount(getBestAmount(row));
                                     }}
                                     className="btn btn-sm btn-primary"
                                     style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
@@ -1107,15 +1115,7 @@ export default function PayoutReconciler() {
                                   onClick={() => {
                                     setSettleModalOrder(row);
                                     setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                    const rawAmt = String(
-                                      row['Amount Collected'] ||
-                                      row['Reserve Amount'] ||
-                                      row['COD Amount'] ||
-                                      row.price ||
-                                      row['Amount'] ||
-                                      '0'
-                                    ).replace(/[^0-9.]/g, '');
-                                    setSettleModalAmount(rawAmt || '0');
+                                    setSettleModalAmount(getBestAmount(row));
                                   }}
                                   className="btn btn-sm btn-primary"
                                   style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}

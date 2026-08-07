@@ -1049,36 +1049,59 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
     let shopifyError = null;
 
     // Dual-Sync Shopify: Try 'sale' first (works for unpaid/COD), fallback to 'capture'
-    if (mark_shopify_paid && order.shopify_order_id) {
+    if (mark_shopify_paid) {
       try {
-        const store = database.prepare('SELECT shopify_domain, shopify_access_token FROM stores WHERE id = ?').get(store_id);
-        if (store && store.shopify_domain && store.shopify_access_token) {
+        const store = database.prepare('SELECT shop_domain, access_token FROM stores WHERE id = ?').get(store_id);
+        if (store && store.shop_domain && store.access_token) {
           const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
-          const cleanDomain = store.shopify_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-          const txUrl = `https://${cleanDomain}/admin/api/2024-01/orders/${order.shopify_order_id}/transactions.json`;
-          const txHeaders = { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': store.shopify_access_token };
-          const amountStr = String(settled_amount || order.price || '0');
+          const cleanDomain = store.shop_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+          const txHeaders = { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': store.access_token };
 
-          // Try 'sale' kind first (works for COD / manual payment orders)
-          let transactionResp = await fetch(txUrl, {
-            method: 'POST', headers: txHeaders,
-            body: JSON.stringify({ transaction: { kind: 'sale', status: 'success', amount: amountStr } })
-          });
-
-          // If sale fails, try 'capture' (works for pre-authorized orders)
-          if (!transactionResp.ok) {
-            transactionResp = await fetch(txUrl, {
-              method: 'POST', headers: txHeaders,
-              body: JSON.stringify({ transaction: { kind: 'capture', status: 'success', amount: amountStr } })
+          let targetShopifyId = order.shopify_order_id;
+          // Fallback: If shopify_order_id is missing, search Shopify API by ref_number
+          if (!targetShopifyId && order.ref_number) {
+            const cleanRef = String(order.ref_number).replace(/^#/, '');
+            const searchResp = await fetch(`https://${cleanDomain}/admin/api/2024-01/orders.json?name=${encodeURIComponent('#' + cleanRef)}`, {
+              headers: txHeaders
             });
+            if (searchResp.ok) {
+              const searchData = await searchResp.json();
+              if (searchData.orders && searchData.orders.length > 0) {
+                targetShopifyId = searchData.orders[0].id;
+                // Backfill local db
+                database.prepare('UPDATE orders SET shopify_order_id = ? WHERE id = ?').run(String(targetShopifyId), order.id);
+              }
+            }
           }
 
-          if (transactionResp.ok) {
-            shopifyStatus = 'success';
+          if (targetShopifyId) {
+            const txUrl = `https://${cleanDomain}/admin/api/2024-01/orders/${targetShopifyId}/transactions.json`;
+            const amountStr = String(settled_amount || order.price || '0');
+
+            // Try 'sale' kind first (works for COD / manual payment orders)
+            let transactionResp = await fetch(txUrl, {
+              method: 'POST', headers: txHeaders,
+              body: JSON.stringify({ transaction: { kind: 'sale', status: 'success', amount: amountStr } })
+            });
+
+            // If sale fails, try 'capture' (works for pre-authorized orders)
+            if (!transactionResp.ok) {
+              transactionResp = await fetch(txUrl, {
+                method: 'POST', headers: txHeaders,
+                body: JSON.stringify({ transaction: { kind: 'capture', status: 'success', amount: amountStr } })
+              });
+            }
+
+            if (transactionResp.ok) {
+              shopifyStatus = 'success';
+            } else {
+              const errJson = await transactionResp.json().catch(() => ({}));
+              shopifyError = errJson.errors || `Shopify HTTP ${transactionResp.status}`;
+              shopifyStatus = 'partial_success';
+            }
           } else {
-            const errJson = await transactionResp.json().catch(() => ({}));
-            shopifyError = errJson.errors || `Shopify HTTP ${transactionResp.status}`;
-            shopifyStatus = 'partial_success';
+            shopifyStatus = 'skipped_no_shopify_id';
+            shopifyError = 'No matching Shopify order ID found';
           }
         } else {
           shopifyStatus = 'skipped_no_credentials';
