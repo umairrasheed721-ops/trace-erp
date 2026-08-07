@@ -672,5 +672,22 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #26:', e.message);
     }
+  },
+
+  // 27. Clean up legacy 2024/2023 courier statuses from Shipper Advice feed
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET courier_status = 'Cancelled (Archived)'
+        WHERE (order_date LIKE '2024%' OR order_date LIKE '2023%' OR notes LIKE '%2024-%' OR notes LIKE '%2023-%')
+        AND LOWER(COALESCE(courier_status, '')) IN ('delivery under review', 'shipper advice', 'attempt made')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #27] Cleaned ${result.changes} legacy 2024/2023 orders from Shipper Advice feed.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #27:', e.message);
+    }
   }
 ];

@@ -105,9 +105,13 @@ router.get('/', (req, res) => {
 
       const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
       const notesLower = (o.notes || '').toLowerCase().trim();
+      const orderDateStr = (o.order_date || '').toLowerCase().trim();
 
-      // Skip old legacy cancel/return notes from 2024 or earlier
-      if (notesLower.includes('cancel: 2024') || notesLower.includes('return: 2024') || notesLower.includes('cancel: 2023') || notesLower.includes('return: 2023')) {
+      // 🛡️ Strict Legacy Filter: Skip all orders created in 2024/2023/2022 or containing 2024/2023 in notes
+      if (
+        orderDateStr.includes('2024') || orderDateStr.includes('2023') || orderDateStr.includes('2022') ||
+        notesLower.includes('2024') || notesLower.includes('2023') || notesLower.includes('2022')
+      ) {
         return;
       }
 
