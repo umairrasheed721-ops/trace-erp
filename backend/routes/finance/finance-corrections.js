@@ -1049,17 +1049,21 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
       return res.status(404).json({ error: `Order not found for id/ref: ${order_id || ''} / tracking: ${tracking_number || ''}` });
     }
 
-    const cprNote = `[CPR Settle: ${cpr_reference || 'Manual Settlement'} | Date: ${cpr_date || new Date().toISOString().split('T')[0]} | Settled: Rs ${settled_amount || order.price}]`;
+    const finalPaidAmount = parseFloat(settled_amount) || parseFloat(order.price) || 0;
+    const cprNote = `[CPR Settle: ${cpr_reference || 'Manual Settlement'} | Date: ${cpr_date || new Date().toISOString().split('T')[0]} | Settled: Rs ${finalPaidAmount}]`;
     const updatedNotes = order.notes ? `${order.notes} | ${cprNote}` : cprNote;
 
     database.prepare(`
       UPDATE orders 
       SET payment_status = 'paid',
           delivery_status = CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('delivered', 'return in transit', 'return received') THEN delivery_status ELSE 'Delivered' END,
+          paid_amount = ?,
+          payment_ref = COALESCE(NULLIF(?, ''), payment_ref),
+          payment_date = COALESCE(NULLIF(?, ''), payment_date, date('now')),
           notes = ?,
           status_date = datetime('now')
       WHERE id = ?
-    `).run(updatedNotes, order.id);
+    `).run(finalPaidAmount, cpr_reference || null, cpr_date || null, updatedNotes, order.id);
 
     let shopifyStatus = 'skipped';
     let shopifyError = null;
