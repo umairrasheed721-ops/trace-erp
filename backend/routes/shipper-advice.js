@@ -82,7 +82,7 @@ router.get('/', (req, res) => {
       db.prepare('SELECT tracking_number FROM blacklist WHERE store_id = ?').all(store_id).map(r => r.tracking_number)
     );
 
-    // Fetch all active tracked non-terminal parcels for store
+    // Fetch all active tracked non-terminal parcels for store (Last 45 days window)
     const orders = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
@@ -92,6 +92,7 @@ router.get('/', (req, res) => {
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND LOWER(COALESCE(courier_status, '')) NOT IN ('delivered', 'return received', 'returned', 'rto received')
       AND LOWER(COALESCE(delivery_status, '')) NOT IN ('delivered', 'return received', 'returned')
+      AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')
       ORDER BY COALESCE(status_date, order_date) DESC
     `).all(store_id);
 
@@ -104,6 +105,12 @@ router.get('/', (req, res) => {
 
       const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
       const notesLower = (o.notes || '').toLowerCase().trim();
+
+      // Skip old legacy cancel/return notes from 2024 or earlier
+      if (notesLower.includes('cancel: 2024') || notesLower.includes('return: 2024') || notesLower.includes('cancel: 2023') || notesLower.includes('return: 2023')) {
+        return;
+      }
+
       const combinedFeed = `${courierStatusLower} ${notesLower}`;
 
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 

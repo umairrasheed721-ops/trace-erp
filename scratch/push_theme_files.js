@@ -72,6 +72,9 @@ async function main() {
   // 3d. Upload snippets/trace-cod-checkout.liquid
   await uploadAsset('snippets/trace-cod-checkout.liquid', path.join(themeDir, 'snippets/trace-cod-checkout.liquid'));
 
+  // 3e. Upload snippets/trace-floating-video.liquid
+  await uploadAsset('snippets/trace-floating-video.liquid', path.join(themeDir, 'snippets/trace-floating-video.liquid'));
+
   // 4. Upload sections/custom-hero-slider.liquid
   await uploadAsset('sections/custom-hero-slider.liquid', path.join(themeDir, 'sections/custom-hero-slider.liquid'));
 
