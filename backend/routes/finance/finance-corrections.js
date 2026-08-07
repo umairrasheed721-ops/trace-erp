@@ -999,10 +999,26 @@ router.post('/courier-credentials', (req, res) => {
   }
 });
 
+// GET /api/finance/order-amount-lookup?ref=TR33520&store_id=1
+router.get('/order-amount-lookup', async (req, res) => {
+  const { ref, store_id } = req.query;
+  if (!ref || !store_id) return res.status(400).json({ error: 'ref and store_id required' });
+  try {
+    const database = db.db || db;
+    const cleanRef = String(ref).replace(/^#/, '');
+    const order = database.prepare('SELECT price, paid_amount FROM orders WHERE (ref_number = ? OR tracking_number = ? OR id = ?) AND store_id = ?').get(cleanRef, cleanRef, parseInt(cleanRef, 10) || 0, Number(store_id));
+    if (order && (order.price || order.paid_amount)) {
+      return res.json({ success: true, price: order.price || order.paid_amount || 0 });
+    }
+    res.status(404).json({ error: 'Order not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /**
- * POST /api/finance/settle-payout-discrepancy
- * Dual-Sync Settlement Engine:
- * 1. Updates order in ERP DB (payment_status = 'paid', delivery_status = 'Delivered', saves CPR ref/date/settled_amount).
+ * ⚡ Dual-Sync Settlement Endpoint
+ * 1. Updates ERP database: payment_status = 'paid', delivery_status = 'Delivered', appends CPR note.
  * 2. If mark_shopify_paid = true, calls Shopify API (captures/marks order paid on Shopify Admin).
  */
 router.post('/settle-payout-discrepancy', async (req, res) => {

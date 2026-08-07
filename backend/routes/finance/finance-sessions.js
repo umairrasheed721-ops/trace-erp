@@ -457,11 +457,15 @@ router.get('/fetch-live-payouts', async (req, res) => {
               const salesTax = parseFloat(row.whSalesTax || 0);
               const totalExpense = ship + gst + incomeTax + salesTax;
 
+              const rawCod = parseFloat(row.codAmount || row.invoicePayment || row.orderAmount || 0);
               return {
                 'Order ID': String(ref).trim(),
                 'Tracking Number': String(track).trim(),
                 'Status': status,
                 'Amount Collected': status === 'D' ? cod : 0,
+                'COD Amount': rawCod,
+                'Reserve Amount': parseFloat(row.reservePayment || row.reserveAmount || rawCod || 0),
+                'price': rawCod,
                 'Total Expense': totalExpense.toFixed(2),
                 'CPR Reference': cpr.trim(),
                 'Settlement Date': new Date().toISOString().split('T')[0]
@@ -493,11 +497,12 @@ router.get('/fetch-live-payouts', async (req, res) => {
 
       liveOrders = dbOrders.map(ord => {
         const status = ord.delivery_status === 'Returned' ? 'R' : 'D';
-        const cod = status === 'D' ? (parseFloat(ord.price) || 3500) : 0;
+        const ordPrice = parseFloat(ord.price) || 3500;
+        const cod = status === 'D' ? ordPrice : 0;
         const baseShip = parseFloat(ord.courier_fee) || 250;
         const gst = baseShip * 0.19;
-        const incomeTax = cod * 0.02;
-        const salesTax = cod * 0.02;
+        const incomeTax = ordPrice * 0.02;
+        const salesTax = ordPrice * 0.02;
         const totalExpense = baseShip + gst + incomeTax + salesTax;
 
         return {
@@ -505,6 +510,9 @@ router.get('/fetch-live-payouts', async (req, res) => {
           'Tracking Number': ord.tracking_number || 'PEX' + Math.floor(Math.random()*10000000),
           'Status': status,
           'Amount Collected': cod,
+          'COD Amount': ordPrice,
+          'Reserve Amount': ordPrice,
+          'price': ordPrice,
           'Total Expense': totalExpense.toFixed(2),
           'CPR Reference': cpr.trim(),
           'Settlement Date': new Date().toISOString().split('T')[0]

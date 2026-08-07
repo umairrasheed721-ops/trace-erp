@@ -131,6 +131,29 @@ export default function PayoutReconciler() {
     return '0';
   };
 
+  const openSettleModal = async (row) => {
+    setSettleModalOrder(row);
+    setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
+    const best = getBestAmount(row);
+    setSettleModalAmount(best);
+
+    const ref = row['Order ID'] || row.ref_number || row.id || row['Tracking Number'];
+    if ((best === '0' || !best) && ref && activeStoreId) {
+      try {
+        const res = await fetch(`/api/finance/order-amount-lookup?ref=${encodeURIComponent(ref)}&store_id=${activeStoreId}`);
+        const data = await res.json();
+        if (data.success && data.price) {
+          const cleanP = String(data.price).replace(/[^0-9.]/g, '');
+          if (cleanP && cleanP !== '0') {
+            setSettleModalAmount(cleanP);
+          }
+        }
+      } catch (e) {
+        console.warn('Amount lookup warning:', e);
+      }
+    }
+  };
+
   const handleDiscrepancySettlementSubmit = async () => {
     if (!settleModalOrder) return;
     setSettlingLoading(true);
@@ -999,11 +1022,7 @@ export default function PayoutReconciler() {
                                     🛍️ Shopify
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      setSettleModalOrder(row);
-                                      setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                      setSettleModalAmount(getBestAmount(row));
-                                    }}
+                                    onClick={() => openSettleModal(row)}
                                     className="btn btn-sm btn-primary"
                                     style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
                                   >
@@ -1112,11 +1131,7 @@ export default function PayoutReconciler() {
                                   🛍️ Shopify
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    setSettleModalOrder(row);
-                                    setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                    setSettleModalAmount(getBestAmount(row));
-                                  }}
+                                  onClick={() => openSettleModal(row)}
                                   className="btn btn-sm btn-primary"
                                   style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
                                 >
