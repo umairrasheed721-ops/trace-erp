@@ -979,7 +979,14 @@ export default function PayoutReconciler() {
                                     onClick={() => {
                                       setSettleModalOrder(row);
                                       setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                      const rawAmt = String(row['Amount Collected'] || row.price || '0').replace(/[^0-9.]/g, '');
+                                      const rawAmt = String(
+                                        row['Amount Collected'] ||
+                                        row['Reserve Amount'] ||
+                                        row['COD Amount'] ||
+                                        row.price ||
+                                        row['Amount'] ||
+                                        '0'
+                                      ).replace(/[^0-9.]/g, '');
                                       setSettleModalAmount(rawAmt || '0');
                                     }}
                                     className="btn btn-sm btn-primary"
@@ -1093,7 +1100,14 @@ export default function PayoutReconciler() {
                                   onClick={() => {
                                     setSettleModalOrder(row);
                                     setSettleModalCprRef(row['CPR Reference'] || cprReference || '');
-                                    const rawAmt = String(row['Amount Collected'] || row.price || '0').replace(/[^0-9.]/g, '');
+                                    const rawAmt = String(
+                                      row['Amount Collected'] ||
+                                      row['Reserve Amount'] ||
+                                      row['COD Amount'] ||
+                                      row.price ||
+                                      row['Amount'] ||
+                                      '0'
+                                    ).replace(/[^0-9.]/g, '');
                                     setSettleModalAmount(rawAmt || '0');
                                   }}
                                   className="btn btn-sm btn-primary"
