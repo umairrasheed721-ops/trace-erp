@@ -1191,8 +1191,6 @@ export default function PayoutReconciler() {
           </div>
         )}
 
-        </div>
-
         {/* --- RIGHT: INSTRUCTIONS & FORMULA --- */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div className="card" style={{ padding: 20 }}>
