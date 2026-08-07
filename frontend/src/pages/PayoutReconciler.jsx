@@ -138,6 +138,13 @@ export default function PayoutReconciler() {
       const data = await res.json();
       if (res.ok && data.success) {
         addToast(`⚡ ${data.message}`, 'success');
+        // Shopify partial success warning
+        if (data.shopify_status === 'partial_success') {
+          const errDetail = typeof data.shopify_error === 'object' ? JSON.stringify(data.shopify_error) : data.shopify_error;
+          addToast(`⚠️ ERP updated but Shopify sync failed: ${errDetail}`, 'warn');
+        } else if (data.shopify_status === 'skipped_no_credentials') {
+          addToast('ℹ️ ERP updated. Shopify skipped (no credentials stored).', 'info');
+        }
         setSettleModalOrder(null);
         if (Array.isArray(liveOrders)) {
           setLiveOrders(prev => prev.map(o => {
@@ -1181,6 +1188,27 @@ export default function PayoutReconciler() {
                     placeholder="0"
                     style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
                   />
+                  {/* Suggested amount chips */}
+                  {settleModalOrder && (() => {
+                    const suggestions = [
+                      { label: 'Amount Collected', val: settleModalOrder['Amount Collected'] },
+                      { label: 'Reserve Amt', val: settleModalOrder['Reserve Amount'] },
+                      { label: 'COD Amount', val: settleModalOrder['COD Amount'] },
+                      { label: 'Order Price', val: settleModalOrder.price },
+                    ].filter(s => s.val && String(s.val).replace(/[^0-9.]/g, '') !== '0' && String(s.val).replace(/[^0-9.]/g, '') !== '');
+                    if (!suggestions.length) return null;
+                    return (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                        <span style={{ fontSize: '0.72rem', opacity: 0.5, alignSelf: 'center' }}>💡 Suggested:</span>
+                        {suggestions.map(s => (
+                          <button key={s.label} onClick={() => setSettleModalAmount(String(s.val).replace(/[^0-9.]/g, ''))}
+                            style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: 'var(--brand)', cursor: 'pointer', fontWeight: 600 }}>
+                            {s.label}: Rs {String(s.val).replace(/[^0-9.]/g, '')}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
