@@ -999,4 +999,87 @@ router.post('/courier-credentials', (req, res) => {
   }
 });
 
+/**
+ * POST /api/finance/settle-payout-discrepancy
+ * Dual-Sync Settlement Engine:
+ * 1. Updates order in ERP DB (payment_status = 'paid', delivery_status = 'Delivered', saves CPR ref/date/settled_amount).
+ * 2. If mark_shopify_paid = true, calls Shopify API (captures/marks order paid on Shopify Admin).
+ */
+router.post('/settle-payout-discrepancy', async (req, res) => {
+  const { order_id, store_id, cpr_reference, cpr_date, settled_amount, mark_shopify_paid = true } = req.body;
+  if (!order_id || !store_id) {
+    return res.status(400).json({ error: 'order_id and store_id required' });
+  }
+
+  try {
+    const database = db.db || db;
+    const order = database.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(order_id, store_id);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const cprNote = `[CPR Settle: ${cpr_reference || 'Manual Settlement'} | Date: ${cpr_date || new Date().toISOString().split('T')[0]} | Settled: Rs ${settled_amount || order.price}]`;
+    const updatedNotes = order.notes ? `${order.notes} | ${cprNote}` : cprNote;
+
+    database.prepare(`
+      UPDATE orders 
+      SET payment_status = 'paid',
+          delivery_status = CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('delivered', 'return in transit', 'return received') THEN delivery_status ELSE 'Delivered' END,
+          notes = ?,
+          status_date = datetime('now')
+      WHERE id = ?
+    `).run(updatedNotes, order_id);
+
+    let shopifyStatus = 'skipped';
+    let shopifyError = null;
+
+    // Dual-Sync Shopify Capture / Mark Paid
+    if (mark_shopify_paid && order.shopify_order_id) {
+      try {
+        const store = database.prepare('SELECT shopify_domain, shopify_access_token FROM stores WHERE id = ?').get(store_id);
+        if (store && store.shopify_domain && store.shopify_access_token) {
+          const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+          const cleanDomain = store.shopify_domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+          
+          const transactionResp = await fetch(`https://${cleanDomain}/admin/api/2024-01/orders/${order.shopify_order_id}/transactions.json`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': store.shopify_access_token
+            },
+            body: JSON.stringify({
+              transaction: {
+                kind: 'capture',
+                status: 'success',
+                amount: String(settled_amount || order.price || '0')
+              }
+            })
+          });
+
+          if (transactionResp.ok) {
+            shopifyStatus = 'success';
+          } else {
+            const errJson = await transactionResp.json().catch(() => ({}));
+            shopifyError = errJson.errors || `Shopify HTTP ${transactionResp.status}`;
+            shopifyStatus = 'partial_success';
+          }
+        }
+      } catch (sErr) {
+        console.warn('Shopify Mark Paid Warning:', sErr.message);
+        shopifyError = sErr.message;
+        shopifyStatus = 'partial_success';
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Order #${order.ref_number || order.id} successfully settled & marked paid in ERP${shopifyStatus === 'success' ? ' & Shopify Admin!' : '.'}`,
+      shopify_status: shopifyStatus,
+      shopify_error: shopifyError
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

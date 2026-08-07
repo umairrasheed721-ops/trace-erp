@@ -82,10 +82,87 @@ function parseDateString(inputStr) {
 }
 
 export default function PayoutReconciler() {
-  const { addToast, activeStoreId } = useApp()
+  const { addToast, activeStoreId, activeStore, stores } = useApp()
   const { setPasteData, setMasterKey } = useFinance()
   const navigate = useNavigate()
   
+  // Dual-Sync Settlement Modal State
+  const [settleModalOrder, setSettleModalOrder] = useState(null)
+  const [settleModalCprRef, setSettleModalCprRef] = useState('')
+  const [settleModalDate, setSettleModalDate] = useState(new Date().toISOString().split('T')[0])
+  const [settleModalAmount, setSettleModalAmount] = useState('')
+  const [markShopifyPaid, setMarkShopifyPaid] = useState(true)
+  const [settlingLoading, setSettlingLoading] = useState(false)
+
+  const openShopifyAdminOrder = (row) => {
+    const currentStore = (stores || []).find(s => String(s.id) === String(activeStoreId)) || activeStore;
+    let domain = currentStore?.shopify_domain || '';
+    if (!domain && currentStore?.name) {
+      domain = `${currentStore.name.toLowerCase().replace(/\s+/g, '')}.myshopify.com`;
+    }
+    const shopSubdomain = domain.replace(/^https?:\/\//, '').replace(/\.myshopify\.com.*$/, '');
+
+    const shopifyOrderId = row.shopify_order_id || row['Shopify Order ID'] || row.id;
+    const orderRef = (row['Order ID'] || row.ref_number || row.id || '').replace(/^#+/, '');
+
+    if (shopifyOrderId && shopSubdomain) {
+      window.open(`https://admin.shopify.com/store/${shopSubdomain}/orders/${shopifyOrderId}`, '_blank');
+    } else if (shopSubdomain) {
+      window.open(`https://admin.shopify.com/store/${shopSubdomain}/orders?query=${encodeURIComponent(orderRef)}`, '_blank');
+    } else {
+      addToast('🛍️ Opening Shopify Admin...', 'info');
+      window.open(`https://admin.shopify.com/`, '_blank');
+    }
+  };
+
+  const handleDiscrepancySettlementSubmit = async () => {
+    if (!settleModalOrder) return;
+    setSettlingLoading(true);
+    try {
+      const orderId = settleModalOrder.id || settleModalOrder['Order DB ID'] || settleModalOrder['ID'] || settleModalOrder['Order ID'];
+      const res = await fetch('/api/finance/settle-payout-discrepancy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: orderId,
+          store_id: activeStoreId,
+          cpr_reference: settleModalCprRef || cprReference || 'Manual Settlement',
+          cpr_date: settleModalDate,
+          settled_amount: settleModalAmount,
+          mark_shopify_paid: markShopifyPaid
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        addToast(`⚡ ${data.message}`, 'success');
+        setSettleModalOrder(null);
+        if (Array.isArray(liveOrders)) {
+          setLiveOrders(prev => prev.map(o => {
+            if (o['Order ID'] === settleModalOrder['Order ID'] || o.id === settleModalOrder.id) {
+              return { ...o, is_settled: true, Status: 'D (Settled)', 'Amount Collected': settleModalAmount || o['Amount Collected'] };
+            }
+            return o;
+          }));
+        }
+        if (Array.isArray(normalizedData)) {
+          setNormalizedData(prev => prev.map(o => {
+            if (o['Order ID'] === settleModalOrder['Order ID']) {
+              return { ...o, is_settled: true, Status: 'D (Settled)', 'Amount Collected': settleModalAmount || o['Amount Collected'] };
+            }
+            return o;
+          }));
+        }
+      } else {
+        addToast(`❌ ${data.error || 'Failed to settle order'}`, 'error');
+      }
+    } catch (err) {
+      addToast(`Network error: ${err.message}`, 'error');
+    } finally {
+      setSettlingLoading(false);
+    }
+  };
+
   // Navigation & Modes
   const [activeTab, setActiveTab] = useState('manual') // 'manual' | 'api' | 'lookup'
 
@@ -860,6 +937,7 @@ export default function PayoutReconciler() {
                             <th>Amount</th>
                             <th>Expense</th>
                             <th>CPR</th>
+                            <th style={{ textAlign: 'right' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -869,10 +947,10 @@ export default function PayoutReconciler() {
                               <td style={{ fontFamily: 'monospace' }}>{row['Tracking Number']}</td>
                               <td>
                                 <span className="badge" style={{ 
-                                  background: row.Status === 'D' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                  color: row.Status === 'D' ? 'var(--green)' : 'var(--red)'
+                                  background: (row.Status === 'D' || row.is_settled) ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                  color: (row.Status === 'D' || row.is_settled) ? 'var(--green)' : 'var(--red)'
                                 }}>
-                                  {row.Status}
+                                  {row.is_settled ? '✅ Settled & Paid' : row.Status}
                                 </span>
                               </td>
                               <td>
@@ -885,6 +963,29 @@ export default function PayoutReconciler() {
                               </td>
                               <td>{row['Total Expense']}</td>
                               <td style={{ fontSize: '0.75rem', opacity: 0.7 }}>{row['CPR Reference']}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => openShopifyAdminOrder(row)}
+                                    className="btn btn-sm btn-secondary"
+                                    style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                                    title="Open Shopify Admin Order"
+                                  >
+                                    🛍️ Shopify
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSettleModalOrder(row);
+                                      setSettleModalCprRef(row['CPR Reference'] || cprReference || 'CPR-SETTLE');
+                                      setSettleModalAmount(row['Amount Collected'] || row.price || '0');
+                                    }}
+                                    className="btn btn-sm btn-primary"
+                                    style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
+                                  >
+                                    ⚡ Settle
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -949,6 +1050,7 @@ export default function PayoutReconciler() {
                           <th>Amount</th>
                           <th>Expense</th>
                           <th>CPR</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -958,10 +1060,10 @@ export default function PayoutReconciler() {
                             <td style={{ fontFamily: 'monospace' }}>{row['Tracking Number']}</td>
                             <td>
                               <span className="badge" style={{ 
-                                background: row.Status === 'D' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                color: row.Status === 'D' ? 'var(--green)' : 'var(--red)'
+                                background: (row.Status === 'D' || row.is_settled) ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                color: (row.Status === 'D' || row.is_settled) ? 'var(--green)' : 'var(--red)'
                               }}>
-                                {row.Status}
+                                {row.is_settled ? '✅ Settled & Paid' : row.Status}
                               </span>
                             </td>
                             <td>
@@ -974,6 +1076,29 @@ export default function PayoutReconciler() {
                             </td>
                             <td>{row['Total Expense']}</td>
                             <td style={{ fontSize: '0.75rem', opacity: 0.7 }}>{row['CPR Reference']}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                <button
+                                  onClick={() => openShopifyAdminOrder(row)}
+                                  className="btn btn-sm btn-secondary"
+                                  style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                                  title="Open Shopify Admin Order"
+                                >
+                                  🛍️ Shopify
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSettleModalOrder(row);
+                                    setSettleModalCprRef(row['CPR Reference'] || cprReference || 'CPR-SETTLE');
+                                    setSettleModalAmount(row['Amount Collected'] || row.price || '0');
+                                  }}
+                                  className="btn btn-sm btn-primary"
+                                  style={{ padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700 }}
+                                >
+                                  ⚡ Settle
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -983,6 +1108,88 @@ export default function PayoutReconciler() {
               )}
             </div>
           )}
+
+        </div>
+
+        {/* Dual-Sync Settlement & CPR Modal */}
+        {settleModalOrder && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 520, padding: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+                  ⚡ Settle & Mark Paid: Order #{settleModalOrder['Order ID'] || settleModalOrder.ref_number || settleModalOrder.id}
+                </h3>
+                <button onClick={() => setSettleModalOrder(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
+
+              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Tracking: <code style={{ color: 'var(--brand)' }}>{settleModalOrder['Tracking Number'] || settleModalOrder.tracking_number}</code>
+              </p>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  📄 CPR REFERENCE / PAYOUT SHEET #
+                </label>
+                <input
+                  type="text"
+                  value={settleModalCprRef}
+                  onChange={e => setSettleModalCprRef(e.target.value)}
+                  placeholder="e.g. CPR-POSTEX-88492"
+                  style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    📅 PAYOUT DATE
+                  </label>
+                  <input
+                    type="date"
+                    value={settleModalDate}
+                    onChange={e => setSettleModalDate(e.target.value)}
+                    style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    💰 SETTLED AMOUNT (RS)
+                  </label>
+                  <input
+                    type="text"
+                    value={settleModalAmount}
+                    onChange={e => setSettleModalAmount(e.target.value)}
+                    placeholder="0"
+                    style={{ width: '100%', padding: '10px', borderRadius: 10, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(16, 185, 129, 0.1)', padding: 12, borderRadius: 10, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <input
+                  type="checkbox"
+                  id="markShopifyPaidCb"
+                  checked={markShopifyPaid}
+                  onChange={e => setMarkShopifyPaid(e.target.checked)}
+                  style={{ width: 18, height: 18, cursor: 'pointer' }}
+                />
+                <label htmlFor="markShopifyPaidCb" style={{ fontSize: '0.85rem', color: '#10b981', cursor: 'pointer', fontWeight: 700 }}>
+                  🛍️ Auto-Mark Order as PAID on Shopify Admin (Live Sync)
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button onClick={() => setSettleModalOrder(null)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleDiscrepancySettlementSubmit} disabled={settlingLoading} className="btn btn-primary" style={{ fontWeight: 700 }}>
+                  {settlingLoading ? '⌛ Settling & Syncing...' : '⚡ Settle & Mark Paid →'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         </div>
 
