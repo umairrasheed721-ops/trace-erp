@@ -484,18 +484,7 @@ export default function ShipperAdvice() {
               />
             </div>
 
-            <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                type="checkbox"
-                id="allowOpenParcel"
-                checked={allowOpenParcel}
-                onChange={e => setAllowOpenParcel(e.target.checked)}
-                style={{ width: 18, height: 18, cursor: 'pointer' }}
-              />
-              <label htmlFor="allowOpenParcel" style={{ fontSize: '0.88rem', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600 }}>
-                📦 Allow Open Parcel Inspection (Recommended)
-              </label>
-            </div>
+
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button onClick={() => setReattemptModalOrder(null)} className="btn btn-secondary">
