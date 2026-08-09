@@ -95,6 +95,7 @@ export default function Reports() {
     };
 
     if (colId === 'landedOrders') filters.status = 'All Statuses';
+    else if (colId === 'prepaidOrders') { filters.status = 'All Statuses'; filters.searchQuery = 'prepaid'; }
     else if (colId === 'cancelations') filters.status = 'Cancelled';
     else if (colId === 'pending') filters.status = 'Pending';
     else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';
@@ -138,6 +139,7 @@ export default function Reports() {
     { id: 'cpaAvg', label: 'CPA AVG', group: 'kpi' },
     { id: 'netCpaAvg', label: 'Net CPA', group: 'kpi' },
     { id: 'landedOrders', label: 'Landed', group: 'kpi' },
+    { id: 'prepaidOrders', label: 'Prepaid', group: 'kpi' },
     { id: 'cancelations', label: 'Cancel', group: 'kpi' },
     { id: 'canPercent', label: 'Can %', group: 'kpi' },
     { id: 'pending', label: 'Pending', group: 'kpi' },
