@@ -85,11 +85,7 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        const tn = reattemptModalOrder.tracking_number
-        addToast(`Reattempt logged! Opening PostEx portal to trigger manually...`, 'success')
-        if (tn) {
-          window.open(`https://merchant.postex.pk`, '_blank')
-        }
+        addToast(`⚡ Reattempt instruction logged for #${reattemptModalOrder.ref_number || reattemptModalOrder.tracking_number} & synced to Shopify!`, 'success')
         setReattemptModalOrder(null)
         setReattemptRemark('')
         fetchAdviceFeed()
