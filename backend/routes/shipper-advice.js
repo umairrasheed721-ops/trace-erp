@@ -182,14 +182,15 @@ router.post('/reattempt', async (req, res) => {
     // Call PostEx Reattempt API if courier is PostEx
     if ((order.courier || '').toLowerCase().includes('postex') && order.tracking_number) {
       try {
-        const postexConfig = db.prepare('SELECT postex_api_token FROM stores WHERE id = ?').get(order.store_id);
-        if (postexConfig && postexConfig.postex_api_token) {
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        const postexToken = store?.postex_token || store?.postex_api_key || store?.postex_api_token || process.env.POSTEX_API_KEY;
+        if (postexToken) {
           const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
           await fetch('https://api.postex.pk/services/integration/api/order/v1/reattempt-order', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'token': postexConfig.postex_api_token
+              'token': postexToken
             },
             body: JSON.stringify({
               trackingNumber: order.tracking_number,
@@ -199,6 +200,19 @@ router.post('/reattempt', async (req, res) => {
         }
       } catch (postexErr) {
         console.warn('PostEx Reattempt API warning:', postexErr.message);
+      }
+    }
+
+    // Also sync note directly to Shopify Admin order notes
+    if (order.shopify_order_id && order.store_id) {
+      try {
+        const { appendShopifyNoteLines } = require('../engines/shopify_finance');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && (store.access_token || store.shopify_access_token)) {
+          await appendShopifyNoteLines(store, order.shopify_order_id, actionNote);
+        }
+      } catch (shErr) {
+        console.warn('Shopify note sync warning:', shErr.message);
       }
     }
 
