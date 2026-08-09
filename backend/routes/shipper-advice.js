@@ -256,4 +256,68 @@ router.post('/ignore', (req, res) => {
   }
 });
 
+/**
+ * GET /api/shipper-advice/live-tracking-history
+ * Live Fetch directly from Courier API (PostEx) — ZERO DATABASE USAGE!
+ */
+router.get('/live-tracking-history', async (req, res) => {
+  const { tracking_number, store_id } = req.query;
+  if (!tracking_number || !store_id) {
+    return res.status(400).json({ error: 'tracking_number and store_id required' });
+  }
+
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
+    const postexToken = store?.postex_token || store?.postex_api_key || process.env.POSTEX_API_KEY;
+
+    let rawUrl = store?.postex_track_url;
+    if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
+      rawUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+    }
+    const baseUrl = rawUrl.replace(/\/?$/, '/');
+
+    const response = await fetch(`${baseUrl}${encodeURIComponent(tracking_number.trim())}`, {
+      method: 'GET',
+      headers: {
+        'token': postexToken || '',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: `Courier API returned HTTP ${response.status}`,
+        tracking_history: []
+      });
+    }
+
+    const data = await response.json();
+    const distData = data?.dist || data;
+
+    const history = data?.dist?.transactionStatusHistory 
+      || data?.transactionStatusHistory 
+      || data?.data?.transactionStatusHistory 
+      || data?.dist?.trackingHistory 
+      || data?.trackingHistory 
+      || data?.data?.trackingHistory 
+      || [];
+
+    const rawCourierStatus = distData?.transactionStatus
+      || data?.transactionStatus
+      || data?.data?.transactionStatus
+      || data?.statusDescription
+      || null;
+
+    res.json({
+      success: true,
+      courier_status: rawCourierStatus,
+      tracking_history: history,
+      raw_dist: distData
+    });
+  } catch (err) {
+    console.error('Live tracking fetch error:', err.message);
+    res.status(500).json({ error: err.message, tracking_history: [] });
+  }
+});
+
 module.exports = router;

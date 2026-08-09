@@ -21,6 +21,28 @@ export default function ShipperAdvice() {
 
   const [imageModalOrder, setImageModalOrder] = useState(null)
   const [historyModalOrder, setHistoryModalOrder] = useState(null)
+  const [liveHistory, setLiveHistory] = useState([])
+  const [liveHistoryLoading, setLiveHistoryLoading] = useState(false)
+
+  const openHistoryModal = async (order) => {
+    setHistoryModalOrder(order)
+    setLiveHistory([])
+    setLiveHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/shipper-advice/live-tracking-history?tracking_number=${encodeURIComponent(order.tracking_number)}&store_id=${activeStoreId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setLiveHistory(Array.isArray(data.tracking_history) ? data.tracking_history : [])
+        if (data.courier_status) {
+          setHistoryModalOrder(prev => ({ ...prev, courier_status: data.courier_status }))
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch live tracking history:', err)
+    } finally {
+      setLiveHistoryLoading(false)
+    }
+  }
 
   // Fetch Shipper Advice Feed
   const fetchAdviceFeed = useCallback(async () => {
@@ -366,10 +388,10 @@ export default function ShipperAdvice() {
                           ↩️ Return
                         </button>
                         <button
-                          onClick={() => setHistoryModalOrder(order)}
+                          onClick={() => openHistoryModal(order)}
                           className="btn btn-sm btn-secondary"
                           style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: 'var(--brand)', fontWeight: 600 }}
-                          title="View live order status log & complete journey"
+                          title="Live fetch real-time courier status history log"
                         >
                           📜 History
                         </button>
@@ -498,7 +520,7 @@ export default function ShipperAdvice() {
               {/* Current Status Header Card */}
               <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-                  CURRENT LIVE COURIER REMARK
+                  CURRENT LIVE COURIER REMARK (API)
                 </div>
                 <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {historyModalOrder.courier_status || historyModalOrder.delivery_status || 'In Transit'}
@@ -510,50 +532,46 @@ export default function ShipperAdvice() {
                 )}
               </div>
 
-              {/* Parsed History Events Timeline */}
-              {(() => {
-                let parsedEvents = [];
-                if (historyModalOrder.tracking_history) {
-                  try {
-                    parsedEvents = typeof historyModalOrder.tracking_history === 'string' ? JSON.parse(historyModalOrder.tracking_history) : historyModalOrder.tracking_history;
-                  } catch (_) {}
-                }
-                if (!Array.isArray(parsedEvents)) parsedEvents = [];
+              {/* Real-time Live Tracking Timeline */}
+              {liveHistoryLoading ? (
+                <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  <span className="loading-spinner" style={{ marginRight: 8 }} /> Live fetching tracking logs directly from courier API...
+                </div>
+              ) : liveHistory.length === 0 ? (
+                <div style={{ padding: '20px 0', textAlign: 'center', opacity: 0.7, fontSize: '0.88rem' }}>
+                  ℹ️ No granular tracking logs returned by courier API for parcel <b>{historyModalOrder.tracking_number}</b>.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', paddingLeft: 14 }}>
+                  <div style={{ position: 'absolute', top: 10, bottom: 10, left: 4, width: 2, background: 'var(--border)' }} />
+                  {liveHistory.map((ev, i) => {
+                    const titleText = ev.transactionStatusMessage || ev.statusMessage || ev.message || ev.transactionStatus || ev.status || ev.activity || 'Courier Remark';
+                    const timeText = ev.dateTime || ev.date || ev.timestamp || ev.time || ev.createdAt || '';
+                    const descText = [ev.remarks, ev.comment, ev.city, ev.location].filter(Boolean).join(' • ');
 
-                if (parsedEvents.length === 0) {
-                  return (
-                    <div style={{ padding: '20px 0', textAlign: 'center', opacity: 0.7, fontSize: '0.88rem' }}>
-                      ℹ️ No granular tracking log history recorded yet for this parcel. Current Status: <b>{historyModalOrder.courier_status || historyModalOrder.delivery_status}</b>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', paddingLeft: 14 }}>
-                    <div style={{ position: 'absolute', top: 10, bottom: 10, left: 4, width: 2, background: 'var(--border)' }} />
-                    {parsedEvents.map((ev, i) => (
+                    return (
                       <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
                         <div style={{ width: 10, height: 10, borderRadius: '50%', background: i === 0 ? 'var(--brand)' : 'var(--text-muted)', marginTop: 4, flexShrink: 0, zIndex: 1 }} />
                         <div style={{ flex: 1, background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {ev.status || ev.courier_status || ev.activity || ev.remark || 'Status Update'}
+                              {titleText}
                             </span>
                             <span style={{ fontSize: '0.72rem', opacity: 0.6 }}>
-                              {ev.date || ev.datetime || ev.timestamp || ev.time || ''}
+                              {timeText}
                             </span>
                           </div>
-                          {(ev.message || ev.description || ev.location || ev.city) && (
+                          {descText && (
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                              {[ev.location, ev.city, ev.message || ev.description].filter(Boolean).join(' • ')}
+                              {descText}
                             </div>
                           )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                );
-              })()}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
