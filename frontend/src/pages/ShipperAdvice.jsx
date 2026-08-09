@@ -88,7 +88,7 @@ export default function ShipperAdvice() {
         const tn = reattemptModalOrder.tracking_number
         addToast(`Reattempt logged! Opening PostEx portal to trigger manually...`, 'success')
         if (tn) {
-          window.open(`https://merchant.postex.pk/orders?search=${encodeURIComponent(tn)}`, '_blank')
+          window.open(`https://merchant.postex.pk`, '_blank')
         }
         setReattemptModalOrder(null)
         setReattemptRemark('')
