@@ -1204,7 +1204,7 @@ export default function SearchTool() {
     const params = new URLSearchParams(location.search)
     const urlQuery = params.get('q') || params.get('search') || params.get('tracking') || params.get('order') || params.get('phone')
     const stateQuery = location.state?.keyword
-    const targetQuery = urlQuery || stateQuery
+    const targetQuery = urlQuery;
 
     if (targetQuery) {
       const cleanKw = targetQuery.trim();
@@ -1246,19 +1246,21 @@ export default function SearchTool() {
     } else {
       lastProcessedUrlQueryRef.current = '';
       if (location.state) {
-        const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: kw } = location.state;
+        const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: kw, colFilters: cf } = location.state;
         if (p) setPreset(p);
         if (cs !== undefined) setCustomStart(cs);
         if (ce !== undefined) setCustomEnd(ce);
         if (s) setStatus(s);
         if (kw !== undefined) setKeyword(kw);
+        if (cf !== undefined) setColFilters(cf);
 
         fetchOrders({
           preset: p,
           customStart: cs,
           customEnd: ce,
           status: s,
-          keyword: kw,
+          keyword: kw !== undefined ? kw : keyword,
+          colFilters: cf !== undefined ? cf : colFilters,
           isRefresh: true,
           wasProgrammatic: true
         });
