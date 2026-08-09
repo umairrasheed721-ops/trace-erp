@@ -1248,10 +1248,20 @@ export default function SearchTool() {
       if (location.state) {
         const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: kw } = location.state;
         if (p) setPreset(p);
-        if (cs) setCustomStart(cs);
-        if (ce) setCustomEnd(ce);
+        if (cs !== undefined) setCustomStart(cs);
+        if (ce !== undefined) setCustomEnd(ce);
         if (s) setStatus(s);
         if (kw !== undefined) setKeyword(kw);
+
+        fetchOrders({
+          preset: p,
+          customStart: cs,
+          customEnd: ce,
+          status: s,
+          keyword: kw,
+          isRefresh: true,
+          wasProgrammatic: true
+        });
       }
     }
   }, [location.state, location.search, fetchOrders]);
