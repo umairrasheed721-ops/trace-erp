@@ -95,7 +95,7 @@ export default function Reports() {
     };
 
     if (colId === 'landedOrders') filters.status = 'All Statuses';
-    else if (colId === 'prepaidOrders') { filters.status = 'All Statuses'; filters.searchQuery = 'prepaid'; }
+    else if (colId === 'prepaidOrders') { filters.status = 'All Statuses'; filters.keyword = 'prepaid'; }
     else if (colId === 'cancelations') filters.status = 'Cancelled';
     else if (colId === 'pending') filters.status = 'Pending';
     else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';

@@ -1246,11 +1246,12 @@ export default function SearchTool() {
     } else {
       lastProcessedUrlQueryRef.current = '';
       if (location.state) {
-        const { preset: p, customStart: cs, customEnd: ce, status: s } = location.state;
+        const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: kw } = location.state;
         if (p) setPreset(p);
         if (cs) setCustomStart(cs);
         if (ce) setCustomEnd(ce);
         if (s) setStatus(s);
+        if (kw !== undefined) setKeyword(kw);
       }
     }
   }, [location.state, location.search, fetchOrders]);
