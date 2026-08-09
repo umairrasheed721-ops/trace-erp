@@ -9,9 +9,10 @@ export default function ShipperAdvice() {
   const [selectedCourier, setSelectedCourier] = useState('all')
 
   const [adviceRequired, setAdviceRequired] = useState([])
+  const [stuckParcels, setStuckParcels] = useState([])
   const [reattemptsSent, setReattemptsSent] = useState([])
   const [returnsRequested, setReturnsRequested] = useState([])
-  const [counts, setCounts] = useState({ advice_required: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
+  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
 
   // Modal States
   const [reattemptModalOrder, setReattemptModalOrder] = useState(null)
@@ -54,9 +55,10 @@ export default function ShipperAdvice() {
       const data = await res.json()
 
       setAdviceRequired(data.advice_required || [])
+      setStuckParcels(data.stuck_parcels || [])
       setReattemptsSent(data.reattempts_sent || [])
       setReturnsRequested(data.returns_requested || [])
-      setCounts(data.counts || { advice_required: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
+      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
     } catch (err) {
       addToast(`❌ ${err.message}`, 'error')
     } finally {
@@ -150,6 +152,7 @@ export default function ShipperAdvice() {
   // Filter Logic: Global Cross-Stage Search across all tabs
   const allCategorizedOrders = [
     ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
+    ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
     ...reattemptsSent.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' })),
     ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' }))
   ]
@@ -159,6 +162,8 @@ export default function ShipperAdvice() {
     baseOrders = allCategorizedOrders
   } else if (activeTab === 'advice_required') {
     baseOrders = adviceRequired
+  } else if (activeTab === 'stuck_parcels') {
+    baseOrders = stuckParcels
   } else if (activeTab === 'reattempts') {
     baseOrders = reattemptsSent
   } else if (activeTab === 'returns') {
@@ -205,10 +210,15 @@ export default function ShipperAdvice() {
       </div>
 
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(251, 146, 60, 0.05))', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#fb923c', textTransform: 'uppercase', marginBottom: 6 }}>🚨 Advice Required</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-primary)' }}>{counts.advice_required} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>parcels</span></div>
+        </div>
+
+        <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(192, 132, 252, 0.05))', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#c084fc', textTransform: 'uppercase', marginBottom: 6 }}>📦 Stuck Parcels (≥ 2 Days)</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-primary)' }}>{counts.stuck_parcels || 0} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>parcels</span></div>
         </div>
 
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.05))', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
@@ -262,13 +272,20 @@ export default function ShipperAdvice() {
       </div>
 
       {/* Category Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12, flexWrap: 'wrap' }}>
         <button
           onClick={() => setActiveTab('advice_required')}
           className={`btn ${activeTab === 'advice_required' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
           style={{ borderRadius: 20, padding: '8px 18px', fontWeight: 700 }}
         >
           🚨 Shipper Advice Required ({counts.advice_required})
+        </button>
+        <button
+          onClick={() => setActiveTab('stuck_parcels')}
+          className={`btn ${activeTab === 'stuck_parcels' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ borderRadius: 20, padding: '8px 18px', fontWeight: 700, color: activeTab === 'stuck_parcels' ? '#fff' : '#c084fc' }}
+        >
+          📦 Stuck Parcels ({counts.stuck_parcels || 0})
         </button>
         <button
           onClick={() => setActiveTab('reattempts')}
@@ -347,10 +364,33 @@ export default function ShipperAdvice() {
                     </div>
                   </td>
 
-                  {/* Courier Remark Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top', maxWidth: 280 }}>
-                    <div style={{ padding: '6px 10px', borderRadius: 8, background: 'rgba(249, 115, 22, 0.12)', border: '1px solid rgba(249, 115, 22, 0.3)', color: '#fb923c', fontWeight: 700, fontSize: '0.8rem', marginBottom: 6 }}>
-                      ⚠️ {order.courier_status || 'Delivery Under Review'}
+                  {/* Raw Courier Remark Column */}
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: 8,
+                        background: 'rgba(249, 115, 22, 0.15)',
+                        color: '#fb923c',
+                        border: '1px solid rgba(249, 115, 22, 0.3)',
+                        fontSize: '0.78rem',
+                        fontWeight: 700
+                      }}>
+                        ⚠️ {order.courier_status || 'Delivery Under Review'}
+                      </span>
+                      {order.days_stuck >= 2 && (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          color: '#f87171',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          fontSize: '0.72rem',
+                          fontWeight: 700
+                        }} title="No status update movement from courier for >= 2 days">
+                          ⏳ Stuck {order.days_stuck} Days
+                        </span>
+                      )}
                     </div>
                     {order.notes && (
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: 6 }}>

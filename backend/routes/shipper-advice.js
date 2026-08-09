@@ -97,6 +97,7 @@ router.get('/', (req, res) => {
     `).all(store_id);
 
     const adviceRequired = [];
+    const stuckParcels = [];
     const reattemptsSent = [];
     const returnsRequested = [];
 
@@ -127,26 +128,40 @@ router.get('/', (req, res) => {
 
       const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => combinedFeed.includes(k));
 
+      // Calculate days stuck in current warehouse/status without movement
+      const lastDateStr = o.status_date || o.order_date;
+      const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
+      const isStuck = daysStuck >= 2;
+
+      const itemWithStuck = { ...o, days_stuck: daysStuck };
+
       if (isReattemptSent) {
-        reattemptsSent.push({ ...o, advice_category: 'reattempts' });
+        reattemptsSent.push({ ...itemWithStuck, advice_category: 'reattempts' });
       } else if (isReturnRequested) {
-        returnsRequested.push({ ...o, advice_category: 'returns' });
+        returnsRequested.push({ ...itemWithStuck, advice_category: 'returns' });
       } else if (matchesAdviceKeyword) {
-        adviceRequired.push({ ...o, advice_category: 'advice_required' });
+        adviceRequired.push({ ...itemWithStuck, advice_category: 'advice_required' });
+      } else if (isStuck) {
+        stuckParcels.push({ ...itemWithStuck, advice_category: 'stuck_parcels' });
       }
     });
 
-    enrichOrderImages([...adviceRequired, ...reattemptsSent, ...returnsRequested], store_id);
+    // Sort stuck parcels by days_stuck DESC
+    stuckParcels.sort((a, b) => (b.days_stuck || 0) - (a.days_stuck || 0));
+
+    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested], store_id);
 
     res.json({
       success: true,
       counts: {
         advice_required: adviceRequired.length,
+        stuck_parcels: stuckParcels.length,
         reattempts_sent: reattemptsSent.length,
         returns_requested: returnsRequested.length,
-        total: adviceRequired.length + reattemptsSent.length + returnsRequested.length
+        total: adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length
       },
       advice_required: adviceRequired,
+      stuck_parcels: stuckParcels,
       reattempts_sent: reattemptsSent,
       returns_requested: returnsRequested
     });
