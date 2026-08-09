@@ -209,7 +209,7 @@ router.post('/reattempt', async (req, res) => {
         if (postexToken) {
           const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
           const postexRes = await fetch('https://api.postex.pk/services/integration/api/order/v1/reattempt-order', {
-            method: 'POST',
+            method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
               'token': postexToken
