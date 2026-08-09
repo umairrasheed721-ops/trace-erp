@@ -586,23 +586,45 @@ export default function ShipperAdvice() {
                   <div style={{ position: 'absolute', top: 10, bottom: 10, left: 4, width: 2, background: 'var(--border)' }} />
                   {liveHistory.map((ev, i) => {
                     const titleText = ev.transactionStatusMessage || ev.statusMessage || ev.message || ev.transactionStatus || ev.status || ev.activity || 'Courier Remark';
-                    const timeText = ev.dateTime || ev.date || ev.timestamp || ev.time || ev.createdAt || '';
+                    const rawTime = ev.transactionStatusDate || ev.statusDate || ev.entryDate || ev.createdDate || ev.transactionDate || ev.dateTime || ev.date || ev.timestamp || ev.time || ev.createdAt || ev.updatedAt || '';
+                    
+                    let timeText = '';
+                    if (rawTime) {
+                      try {
+                        const d = new Date(rawTime);
+                        if (!isNaN(d.getTime())) {
+                          timeText = d.toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                          });
+                        } else {
+                          timeText = String(rawTime);
+                        }
+                      } catch (_) {
+                        timeText = String(rawTime);
+                      }
+                    }
+
                     const descText = [ev.remarks, ev.comment, ev.city, ev.location].filter(Boolean).join(' • ');
 
                     return (
                       <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
                         <div style={{ width: 10, height: 10, borderRadius: '50%', background: i === 0 ? 'var(--brand)' : 'var(--text-muted)', marginTop: 4, flexShrink: 0, zIndex: 1 }} />
                         <div style={{ flex: 1, background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 12 }}>
                             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                               {titleText}
                             </span>
-                            <span style={{ fontSize: '0.72rem', opacity: 0.6 }}>
-                              {timeText}
+                            <span style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: 6, color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.08)' }}>
+                              {timeText || 'Date N/A'}
                             </span>
                           </div>
                           {descText && (
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>
                               {descText}
                             </div>
                           )}
