@@ -20,6 +20,7 @@ export default function ShipperAdvice() {
   const [modalLoading, setModalLoading] = useState(false)
 
   const [imageModalOrder, setImageModalOrder] = useState(null)
+  const [historyModalOrder, setHistoryModalOrder] = useState(null)
 
   // Fetch Shipper Advice Feed
   const fetchAdviceFeed = useCallback(async () => {
@@ -365,6 +366,14 @@ export default function ShipperAdvice() {
                           ↩️ Return
                         </button>
                         <button
+                          onClick={() => setHistoryModalOrder(order)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: 'var(--brand)', fontWeight: 600 }}
+                          title="View live order status log & complete journey"
+                        >
+                          📜 History
+                        </button>
+                        <button
                           onClick={() => triggerWhatsAppAlert(order)}
                           className="btn btn-sm btn-secondary"
                           style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#25D366' }}
@@ -463,6 +472,88 @@ export default function ShipperAdvice() {
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Qty: {item.quantity || 1}</div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order Journey & Live Status History Log Modal */}
+      {historyModalOrder && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 650, padding: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: '0 0 4px', color: 'var(--text-primary)', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📜 Order Journey: #{historyModalOrder.ref_number || historyModalOrder.id}
+                </h3>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Tracking: <code style={{ color: 'var(--brand)', fontWeight: 700 }}>{historyModalOrder.tracking_number}</code> ({historyModalOrder.courier || 'Courier'}) | Customer: <b>{historyModalOrder.customer_name}</b> ({historyModalOrder.phone})
+                </div>
+              </div>
+              <button onClick={() => setHistoryModalOrder(null)} className="btn btn-secondary btn-sm">✕</button>
+            </div>
+
+            {/* Status Timeline Feed */}
+            <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingRight: 6 }}>
+              {/* Current Status Header Card */}
+              <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+                  CURRENT LIVE COURIER REMARK
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {historyModalOrder.courier_status || historyModalOrder.delivery_status || 'In Transit'}
+                </div>
+                {historyModalOrder.notes && (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8, background: 'var(--bg-surface)', padding: 8, borderRadius: 6, border: '1px solid var(--border)' }}>
+                    <b>System Notes:</b> {historyModalOrder.notes}
+                  </div>
+                )}
+              </div>
+
+              {/* Parsed History Events Timeline */}
+              {(() => {
+                let parsedEvents = [];
+                if (historyModalOrder.tracking_history) {
+                  try {
+                    parsedEvents = typeof historyModalOrder.tracking_history === 'string' ? JSON.parse(historyModalOrder.tracking_history) : historyModalOrder.tracking_history;
+                  } catch (_) {}
+                }
+                if (!Array.isArray(parsedEvents)) parsedEvents = [];
+
+                if (parsedEvents.length === 0) {
+                  return (
+                    <div style={{ padding: '20px 0', textAlign: 'center', opacity: 0.7, fontSize: '0.88rem' }}>
+                      ℹ️ No granular tracking log history recorded yet for this parcel. Current Status: <b>{historyModalOrder.courier_status || historyModalOrder.delivery_status}</b>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', paddingLeft: 14 }}>
+                    <div style={{ position: 'absolute', top: 10, bottom: 10, left: 4, width: 2, background: 'var(--border)' }} />
+                    {parsedEvents.map((ev, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', position: 'relative' }}>
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: i === 0 ? 'var(--brand)' : 'var(--text-muted)', marginTop: 4, flexShrink: 0, zIndex: 1 }} />
+                        <div style={{ flex: 1, background: 'var(--bg-surface)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {ev.status || ev.courier_status || ev.activity || ev.remark || 'Status Update'}
+                            </span>
+                            <span style={{ fontSize: '0.72rem', opacity: 0.6 }}>
+                              {ev.date || ev.datetime || ev.timestamp || ev.time || ''}
+                            </span>
+                          </div>
+                          {(ev.message || ev.description || ev.location || ev.city) && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                              {[ev.location, ev.city, ev.message || ev.description].filter(Boolean).join(' • ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

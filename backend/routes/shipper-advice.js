@@ -86,7 +86,7 @@ router.get('/', (req, res) => {
     const orders = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
-             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date
+             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
