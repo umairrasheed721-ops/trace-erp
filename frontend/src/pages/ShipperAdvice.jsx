@@ -136,7 +136,7 @@ export default function ShipperAdvice() {
     }
   }
 
-  // WhatsApp Alert Builder
+  // WhatsApp Alert Builder for Customer
   const triggerWhatsAppAlert = (order) => {
     const rawStatus = order.courier_status || 'Shipper Advice Required'
     const msg = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Order:* ${order.ref_number || 'N/A'}\n🚚 *Tracking:* ${order.tracking_number}\n🛍️ *Customer:* ${order.customer_name || 'N/A'} (${order.phone || 'N/A'})\n📍 *City:* ${order.city || 'N/A'}\n⚠️ *Courier Status:* ${rawStatus}\n💰 *Amount:* Rs ${parseInt(order.price || 0).toLocaleString()}`
@@ -146,6 +146,30 @@ export default function ShipperAdvice() {
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
     const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
     window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
+  // Share to Courier CS Support Group via WhatsApp (Group Search & Share)
+  const triggerGroupShare = (order) => {
+    const rawStatus = order.courier_status || 'Delivery Under Review'
+    const remarksText = order.notes ? `\n📝 *Notes/Remarks:* ${order.notes}` : ''
+    const itemsText = order.product_titles ? `\n🛍️ *Items:* ${order.product_titles}` : ''
+
+    const msg = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n` +
+      `🔖 *Order #:* ${order.ref_number || order.id}\n` +
+      `🚚 *Courier:* ${order.courier || 'PostEx'}\n` +
+      `🔢 *Tracking #:* ${order.tracking_number}\n` +
+      `👤 *Customer:* ${order.customer_name || 'N/A'}\n` +
+      `📞 *Phone:* ${order.phone || 'N/A'}\n` +
+      `📍 *Address/City:* ${order.address ? `${order.address}, ${order.city}` : order.city || 'N/A'}\n` +
+      `💰 *COD Price:* Rs ${parseInt(order.price || 0).toLocaleString()}\n` +
+      `⚠️ *Courier Status:* ${rawStatus}` +
+      `${remarksText}` +
+      `${itemsText}\n` +
+      `\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
+
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
+    const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
+    window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   // Filter Logic: Global Cross-Stage Search across all tabs
@@ -438,8 +462,17 @@ export default function ShipperAdvice() {
                           onClick={() => triggerWhatsAppAlert(order)}
                           className="btn btn-sm btn-secondary"
                           style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#25D366' }}
+                          title="Direct WhatsApp alert to customer phone number"
                         >
                           💬 WA Alert
+                        </button>
+                        <button
+                          onClick={() => triggerGroupShare(order)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700 }}
+                          title="Share full order & reattempt details to Courier CS Support Group on WhatsApp"
+                        >
+                          👥 Group
                         </button>
                         <button
                           onClick={() => handleIgnore(order)}
