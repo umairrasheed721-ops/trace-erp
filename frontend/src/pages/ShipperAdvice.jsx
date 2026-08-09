@@ -80,13 +80,16 @@ export default function ShipperAdvice() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: reattemptModalOrder.id,
-          remarks: reattemptRemark,
-          allow_open: allowOpenParcel
+          remarks: reattemptRemark
         })
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`⚡ Reattempt logged for ${reattemptModalOrder.ref_number || reattemptModalOrder.tracking_number}!`, 'success')
+        const tn = reattemptModalOrder.tracking_number
+        addToast(`Reattempt logged! Opening PostEx portal to trigger manually...`, 'success')
+        if (tn) {
+          window.open(`https://merchant.postex.pk/orders?search=${encodeURIComponent(tn)}`, '_blank')
+        }
         setReattemptModalOrder(null)
         setReattemptRemark('')
         fetchAdviceFeed()
