@@ -449,15 +449,17 @@ export default function ShipperAdvice() {
               <button onClick={() => setImageModalOrder(null)} className="btn btn-secondary btn-sm">✕</button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, maxHeight: '70vh', overflowY: 'auto' }}>
               {imageModalOrder.line_items_parsed.map((item, idx) => (
-                <div key={idx} style={{ background: 'var(--bg-surface)', padding: 12, borderRadius: 12, border: '1px solid var(--border)', textAlign: 'center' }}>
+                <div key={idx} style={{ background: 'var(--bg-surface)', padding: 12, borderRadius: 12, border: '1px solid var(--border)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   {item.image ? (
-                    <img src={item.image} alt={item.title} style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }} />
+                    <a href={item.image} target="_blank" rel="noopener noreferrer" title="Click to view full image in new tab" style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 6, marginBottom: 8 }}>
+                      <img src={item.image} alt={item.title} style={{ maxWidth: '100%', maxHeight: 260, objectFit: 'contain', borderRadius: 6 }} />
+                    </a>
                   ) : (
                     <div style={{ width: '100%', height: 160, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', marginBottom: 8 }}>🛍️</div>
                   )}
-                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{item.title || item.name}</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{item.title || item.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Qty: {item.quantity || 1}</div>
                 </div>
               ))}
