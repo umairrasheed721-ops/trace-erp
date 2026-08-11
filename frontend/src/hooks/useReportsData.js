@@ -330,7 +330,7 @@ export default function useReportsData(activeStoreId, toast) {
       const pnl = grossProfit - totalMarketing - m.hybridCourier - m.actualExp;
       
       const actualGrossProfit = m.paymentPaid - m.cgs;
-      const actualPnl = actualGrossProfit - totalMarketing - m.hybridCourier - m.actualExp;
+      const actualPnl = actualGrossProfit - totalMarketing - m.actualCourier - m.actualExp;
 
       const landedOrders = m.landedOrders || 0;
       const netOrders = landedOrders - m.cancelations;
