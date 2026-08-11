@@ -14,3 +14,12 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - High RAM/CPU leak hone se roko: Unbounded in-memory arrays, redundant background loops, ya fast unthrottled polling loops code me add na karo.
    - Database queries ko indexed, lightweight, aur memory-efficient banao.
    - Node.js garbage collection aur stream handling optimize rakho taake Railway RAM billing ($12+ RAM usage) minimum scale par rahe.
+10. **PNL Reports Module — Dual Calculation Architecture (CRITICAL)**:
+   - Reports module me PNL calculations **DO NOT** live in one place — they have TWO separate paths:
+     - **Daily PNL (📅 Daily PNL view)**: Calculated in `backend/routes/reports.js` (lines ~140-165). Any formula change MUST be applied here.
+     - **Monthly PNL (📊 Month Vise view)**: Calculated in `frontend/src/hooks/useReportsData.js` (lines ~279-356) via a `useMemo` monthly `reduce` aggregation. Any formula change MUST ALSO be applied here.
+   - **Rule**: Whenever ANY PNL metric formula is changed (e.g. `actualPnl`, `pnl`, `grossProfit`), ALWAYS grep both files for the variable and apply the fix in BOTH locations before building.
+   - **Key Metric Formulas**:
+     - `Final PNL` = `Gross Profit - Ad Spend - Hybrid Courier - Manual Exp` (uses estimated/hybrid courier)
+     - `Actual PNL (Cash)` = `(Payouts Received - CGS) - Ad Spend - Actual Courier - Manual Exp` (uses actual reconciled courier fees)
+
