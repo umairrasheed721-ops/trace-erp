@@ -78,9 +78,9 @@ const COLUMN_INFO = {
     example: "Gross Profit Rs 2,00,000 − Ads Rs 30,000 − Courier Rs 50,000 − Rent Rs 20,000 = PNL Rs 1,00,000. This is your estimated monthly take-home profit."
   },
   actualPnl: {
-    description: "Actual Cash Profit. Profit based on actual payout cash deposited in bank minus product costs, marketing, shipping, and manual expenses.",
-    formula: "(Payouts Received - CGS) - Ad Spend - Hybrid Courier Cost - Manual Expenses",
-    example: "Unlike Final PNL (which uses delivered sale), this uses bank deposits only. More conservative and accurate for cash-flow decisions."
+    description: "Actual Cash Profit. Profit based on actual payout cash deposited in bank minus product costs, marketing, actual courier fees, and manual expenses.",
+    formula: "(Payouts Received - CGS) - Ad Spend - Actual Courier Cost - Manual Expenses",
+    example: "Unlike Final PNL (which uses delivered sale + hybrid courier), this uses bank deposits + actual courier fees only. More conservative and accurate for real cash-flow decisions."
   },
   delPercent: {
     description: "Delivery Rate. The percentage of dispatched orders that have been successfully delivered.",

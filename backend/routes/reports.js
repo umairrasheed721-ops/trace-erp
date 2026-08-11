@@ -150,7 +150,7 @@ router.get('/daily', (req, res) => {
       const finalPnl = grossProfit - totalMarketing - hybridCourierFee - actualExp;
       
       const actualGrossProfit = paymentPaid - pureCgs - sunkPackaging;
-      const actualPnl = actualGrossProfit - totalMarketing - hybridCourierFee - actualExp;
+      const actualPnl = actualGrossProfit - totalMarketing - actualCourierFee - actualExp;
       
       const delPercent = totalDispatched > 0 ? (delivered / totalDispatched) * 100 : 0;
       const roasMeta = totalMarketing > 0 ? (totalSale / totalMarketing) : 0;
