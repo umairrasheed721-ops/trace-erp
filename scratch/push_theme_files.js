@@ -66,6 +66,9 @@ async function main() {
   // 3b. Upload snippets/card-product.liquid
   await uploadAsset('snippets/card-product.liquid', path.join(themeDir, 'snippets/card-product.liquid'));
 
+  // 3c. Upload assets/base.css
+  await uploadAsset('assets/base.css', path.join(themeDir, 'assets/base.css'));
+
   // 3c. Upload assets/trace-whatsapp-community.js
   await uploadAsset('assets/trace-whatsapp-community.js', path.join(themeDir, 'assets/trace-whatsapp-community.js'));
 

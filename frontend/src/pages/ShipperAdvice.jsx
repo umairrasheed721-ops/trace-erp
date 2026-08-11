@@ -136,11 +136,62 @@ export default function ShipperAdvice() {
     }
   }
 
+  // Template Defaults & States
+  const DEFAULT_CUSTOMER_TEMPLATE = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Order:* {order_ref}\n🚚 *Tracking:* {tracking}\n🛍️ *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n⚠️ *Courier Status:* {courier_status}\n💰 *Amount:* {price}`
+  const DEFAULT_GROUP_TEMPLATE = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n👤 *Customer:* {customer_name}\n📞 *Phone:* {phone}\n📍 *Address/City:* {address}\n💰 *COD Price:* {price}\n⚠️ *Courier Status:* {courier_status}\n📝 *Notes:* {notes}\n🛍️ *Items:* {items}\n\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
+  const DEFAULT_STUCK_TEMPLATE = `🚨 *STUCK PARCEL ESCALATION REPORT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Days Stuck:* {days_stuck} Days\n👤 *Customer:* {customer_name} ({phone})\n📍 *City/Address:* {address}\n💰 *COD Value:* {price}\n⚠️ *Last Courier Status:* {courier_status}\n📝 *Remarks:* {notes}\n🛍️ *Items:* {items}\n\n⚠️ *Urgent Action Requested:* This parcel has been stuck at hub for {days_stuck} days without movement. Please dispatch rider immediately or provide status update!`
+
+  const [customerTemplate, setCustomerTemplate] = useState(() => localStorage.getItem('shipper_template_customer') || DEFAULT_CUSTOMER_TEMPLATE)
+  const [groupTemplate, setGroupTemplate] = useState(() => localStorage.getItem('shipper_template_group') || DEFAULT_GROUP_TEMPLATE)
+  const [stuckTemplate, setStuckTemplate] = useState(() => localStorage.getItem('shipper_template_stuck') || DEFAULT_STUCK_TEMPLATE)
+
+  const [templateEditModalOpen, setTemplateEditModalOpen] = useState(false)
+  const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck'
+
+  // Apply Template Interpolation
+  const applyTemplate = (templateStr, order) => {
+    if (!templateStr || !order) return ''
+    const rawStatus = order.courier_status || order.delivery_status || 'Delivery Under Review'
+    const fullAddr = order.address ? `${order.address}, ${order.city || ''}` : (order.city || 'N/A')
+
+    return templateStr
+      .replace(/{order_ref}/g, order.ref_number || order.id || '')
+      .replace(/{tracking}/g, order.tracking_number || '')
+      .replace(/{courier}/g, order.courier || 'PostEx')
+      .replace(/{customer_name}/g, order.customer_name || 'N/A')
+      .replace(/{phone}/g, order.phone || 'N/A')
+      .replace(/{city}/g, order.city || 'N/A')
+      .replace(/{address}/g, fullAddr)
+      .replace(/{price}/g, `Rs ${parseInt(order.price || 0).toLocaleString()}`)
+      .replace(/{courier_status}/g, rawStatus)
+      .replace(/{days_stuck}/g, order.days_stuck || 0)
+      .replace(/{notes}/g, order.notes || 'None')
+      .replace(/{items}/g, order.product_titles || 'N/A')
+  }
+
+  // Save Templates Handler
+  const handleSaveTemplates = () => {
+    localStorage.setItem('shipper_template_customer', customerTemplate)
+    localStorage.setItem('shipper_template_group', groupTemplate)
+    localStorage.setItem('shipper_template_stuck', stuckTemplate)
+    addToast('✅ Shipper Message Templates saved successfully!', 'success')
+    setTemplateEditModalOpen(false)
+  }
+
+  // Reset Templates Handler
+  const handleResetTemplates = () => {
+    setCustomerTemplate(DEFAULT_CUSTOMER_TEMPLATE)
+    setGroupTemplate(DEFAULT_GROUP_TEMPLATE)
+    setStuckTemplate(DEFAULT_STUCK_TEMPLATE)
+    localStorage.removeItem('shipper_template_customer')
+    localStorage.removeItem('shipper_template_group')
+    localStorage.removeItem('shipper_template_stuck')
+    addToast('🔄 Message templates reset to default presets!', 'info')
+  }
+
   // WhatsApp Alert Builder for Customer
   const triggerWhatsAppAlert = (order) => {
-    const rawStatus = order.courier_status || 'Shipper Advice Required'
-    const msg = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Order:* ${order.ref_number || 'N/A'}\n🚚 *Tracking:* ${order.tracking_number}\n🛍️ *Customer:* ${order.customer_name || 'N/A'} (${order.phone || 'N/A'})\n📍 *City:* ${order.city || 'N/A'}\n⚠️ *Courier Status:* ${rawStatus}\n💰 *Amount:* Rs ${parseInt(order.price || 0).toLocaleString()}`
-    
+    const msg = applyTemplate(customerTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
@@ -150,23 +201,15 @@ export default function ShipperAdvice() {
 
   // Share to Courier CS Support Group via WhatsApp (Group Search & Share)
   const triggerGroupShare = (order) => {
-    const rawStatus = order.courier_status || 'Delivery Under Review'
-    const remarksText = order.notes ? `\n📝 *Notes/Remarks:* ${order.notes}` : ''
-    const itemsText = order.product_titles ? `\n🛍️ *Items:* ${order.product_titles}` : ''
+    const msg = applyTemplate(groupTemplate, order)
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
+    const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
+    window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
 
-    const msg = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n` +
-      `🔖 *Order #:* ${order.ref_number || order.id}\n` +
-      `🚚 *Courier:* ${order.courier || 'PostEx'}\n` +
-      `🔢 *Tracking #:* ${order.tracking_number}\n` +
-      `👤 *Customer:* ${order.customer_name || 'N/A'}\n` +
-      `📞 *Phone:* ${order.phone || 'N/A'}\n` +
-      `📍 *Address/City:* ${order.address ? `${order.address}, ${order.city}` : order.city || 'N/A'}\n` +
-      `💰 *COD Price:* Rs ${parseInt(order.price || 0).toLocaleString()}\n` +
-      `⚠️ *Courier Status:* ${rawStatus}` +
-      `${remarksText}` +
-      `${itemsText}\n` +
-      `\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
-
+  // Report Stuck Parcel via WhatsApp (Group / Contact Search & Share)
+  const triggerStuckShare = (order) => {
+    const msg = applyTemplate(stuckTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
     window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
@@ -226,6 +269,13 @@ export default function ShipperAdvice() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => setTemplateEditModalOpen(true)}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, borderColor: 'rgba(168,85,247,0.4)', color: '#c084fc', fontWeight: 600 }}
+          >
+            ⚙️ Edit Shipper Messages
+          </button>
           <button onClick={fetchAdviceFeed} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             🔄 Refresh Feed
           </button>
@@ -475,6 +525,14 @@ export default function ShipperAdvice() {
                           👥 Group
                         </button>
                         <button
+                          onClick={() => triggerStuckShare(order)}
+                          className="btn btn-sm btn-secondary"
+                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}
+                          title="Share stuck parcel escalation report to WhatsApp"
+                        >
+                          📦 Report Stuck
+                        </button>
+                        <button
                           onClick={() => handleIgnore(order)}
                           className="btn btn-sm btn-secondary"
                           style={{ padding: '4px 8px', borderRadius: 8, fontSize: '0.75rem' }}
@@ -655,6 +713,162 @@ export default function ShipperAdvice() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      {/* Edit Shipper Message Templates Modal */}
+      {templateEditModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 18, width: '100%', maxWidth: 780, padding: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+              <div>
+                <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📝 Edit Shipper Message Templates
+                </h3>
+                <p style={{ margin: '3px 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                  Customize message templates for Customer Alert, CS Group Escalation, and Stuck Parcel Reports.
+                </p>
+              </div>
+              <button onClick={() => setTemplateEditModalOpen(false)} className="btn btn-secondary btn-sm">✕</button>
+            </div>
+
+            {/* Template Type Tabs */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+              <button
+                onClick={() => setActiveTemplateTab('customer')}
+                className={`btn btn-sm ${activeTemplateTab === 'customer' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '6px 14px' }}
+              >
+                💬 Customer WA Alert
+              </button>
+              <button
+                onClick={() => setActiveTemplateTab('group')}
+                className={`btn btn-sm ${activeTemplateTab === 'group' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '6px 14px', color: activeTemplateTab === 'group' ? '#fff' : '#38bdf8' }}
+              >
+                👥 CS Group Escalation
+              </button>
+              <button
+                onClick={() => setActiveTemplateTab('stuck')}
+                className={`btn btn-sm ${activeTemplateTab === 'stuck' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '6px 14px', color: activeTemplateTab === 'stuck' ? '#fff' : '#f59e0b' }}
+              >
+                📦 Report Stuck Escalation
+              </button>
+            </div>
+
+            {/* Available Placeholders Chips */}
+            <div style={{ marginBottom: 14, background: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--brand)', textTransform: 'uppercase', marginBottom: 8 }}>
+                💡 Click to insert dynamic placeholders into active template:
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  '{order_ref}', '{tracking}', '{courier}', '{customer_name}',
+                  '{phone}', '{city}', '{address}', '{price}',
+                  '{courier_status}', '{days_stuck}', '{notes}', '{items}'
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => {
+                      if (activeTemplateTab === 'customer') setCustomerTemplate(prev => `${prev} ${chip}`)
+                      else if (activeTemplateTab === 'group') setGroupTemplate(prev => `${prev} ${chip}`)
+                      else if (activeTemplateTab === 'stuck') setStuckTemplate(prev => `${prev} ${chip}`)
+                    }}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontFamily: 'monospace',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      background: 'rgba(168, 85, 247, 0.12)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.25)',
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                    title={`Click to add ${chip}`}
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Textarea Editor */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                {activeTemplateTab === 'customer' && '💬 CUSTOMER WA ALERT TEMPLATE:'}
+                {activeTemplateTab === 'group' && '👥 CS GROUP ESCALATION TEMPLATE:'}
+                {activeTemplateTab === 'stuck' && '📦 REPORT STUCK PARCEL TEMPLATE:'}
+              </label>
+              <textarea
+                rows={7}
+                value={
+                  activeTemplateTab === 'customer' ? customerTemplate :
+                  activeTemplateTab === 'group' ? groupTemplate : stuckTemplate
+                }
+                onChange={(e) => {
+                  const val = e.target.value
+                  if (activeTemplateTab === 'customer') setCustomerTemplate(val)
+                  else if (activeTemplateTab === 'group') setGroupTemplate(val)
+                  else if (activeTemplateTab === 'stuck') setStuckTemplate(val)
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: 12,
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.88rem',
+                  fontFamily: 'monospace',
+                  lineHeight: 1.5,
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Live Sample Preview */}
+            <div style={{ marginBottom: 18, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', marginBottom: 6 }}>
+                👁️ Live Message Preview (Sample Order #TR33353):
+              </div>
+              <div style={{ fontSize: '0.82rem', whiteSpace: 'pre-wrap', color: 'var(--text-primary)', lineHeight: 1.4, fontFamily: 'sans-serif' }}>
+                {applyTemplate(
+                  activeTemplateTab === 'customer' ? customerTemplate :
+                  activeTemplateTab === 'group' ? groupTemplate : stuckTemplate,
+                  {
+                    ref_number: 'TR33353',
+                    tracking_number: '24120050025611',
+                    courier: 'PostEx',
+                    customer_name: 'Hazrat Shah',
+                    phone: '03072060150',
+                    city: 'Karachi',
+                    address: 'Flat #2, Block B, North Nazimabad, Karachi',
+                    price: 2098,
+                    courier_status: 'Attempted',
+                    days_stuck: 4,
+                    notes: 'confirm Order has been shipped via PostEx',
+                    product_titles: 'Multi ref Pro-active - 4XL / White (x1)'
+                  }
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button onClick={handleResetTemplates} className="btn btn-secondary btn-sm" style={{ color: '#f87171' }}>
+                🔄 Reset to Defaults
+              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setTemplateEditModalOpen(false)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleSaveTemplates} className="btn btn-primary" style={{ fontWeight: 700 }}>
+                  💾 Save Templates
+                </button>
+              </div>
             </div>
           </div>
         </div>
