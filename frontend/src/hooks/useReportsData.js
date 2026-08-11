@@ -325,10 +325,22 @@ export default function useReportsData(activeStoreId, toast) {
       return acc;
     }, {})).map(m => {
       const totalMarketing = m.marketingSpend + m.tiktokMarketing;
-      const taxPaid = m.deliveredSale * 0.04;
+
+      // 📊 TAX_PAID: 4% sales tax on monthly delivered sale. Source: m.deliveredSale
+      const taxPaid = m.deliveredSale * 0.04; // TAX_RATE = 0.04
+
+      // 📊 GROSS_PROFIT: Monthly delivered revenue minus CGS. Source: m.deliveredSale, m.cgs
       const grossProfit = m.deliveredSale - m.cgs;
+
+      // 📊 FINAL_PNL: Estimated monthly net profit using hybrid courier.
+      //    Formula: Gross Profit - Ad Spend - Hybrid Courier - Manual Expenses
+      //    Source: grossProfit, totalMarketing, m.hybridCourier, m.actualExp
       const pnl = grossProfit - totalMarketing - m.hybridCourier - m.actualExp;
-      
+
+      // 📊 ACTUAL_PNL (CASH): Real cash monthly profit using bank payouts + actual courier fees.
+      //    Formula: (Payouts Received - CGS) - Ad Spend - Actual Courier - Manual Expenses
+      //    Source: m.paymentPaid, m.cgs, totalMarketing, m.actualCourier, m.actualExp
+      //    ⚠️  Uses m.actualCourier (NOT m.hybridCourier) — reflects real reconciled cash out only
       const actualGrossProfit = m.paymentPaid - m.cgs;
       const actualPnl = actualGrossProfit - totalMarketing - m.actualCourier - m.actualExp;
 

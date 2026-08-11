@@ -2,6 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// ─── PNL MODULE: Named Constants (Rule 11 — No Magic Numbers) ───────────────
+const EST_COURIER_PER_ORDER = 200;  // Rs per dispatched order (PostEx/Leopards standard est. rate)
+const TAX_RATE = 0.04;              // 4% sales tax on delivered sale value
+const PAYMENT_DIFF_THRESHOLD = 0.9; // Min Rs difference to flag as unpaid/overdue payout
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.get('/daily', (req, res) => {
   const { store_id, start_date, end_date } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id is required' });
@@ -132,23 +138,35 @@ router.get('/daily', (req, res) => {
       const delivered = day.delivered || 0;
       const aov = delivered > 0 ? (deliveredSale / delivered) : 0;
       const cgsPercent = deliveredSale > 0 ? ((pureCgs + sunkPackaging) / deliveredSale) * 100 : 0;
-      const taxPaid = deliveredSale * 0.04;
+      // 📊 TAX_PAID: 4% sales tax on delivered sale. Source: deliveredSale
+      const taxPaid = deliveredSale * TAX_RATE;
       const netSales = deliveredSale - taxPaid;
+
+      // 📊 GROSS_PROFIT: Revenue after product cost + packaging. Source: deliveredSale, pureCgs, sunkPackaging
       const grossProfit = deliveredSale - pureCgs - sunkPackaging;
       const marPercent = deliveredSale > 0 ? (totalMarketing / deliveredSale) * 100 : 0;
-      
-      // 🚚 DYNAMIC COURIER LOGIC (PRE-AGGREGATED)
-      const estCourierFee = (totalDispatched || 0) * 200;
+
+      // 📊 COURIER LOGIC — 3 courier fee variants:
+      //   estCourierFee    = totalDispatched * EST_COURIER_PER_ORDER (100% estimated, no reconciliation)
+      //   actualCourierFee = Only orders with 'Paid'/'Payment Posted' status (reconciled courier fees)
+      //   hybridCourierFee = actualCourierFee + (unreconciledDispatched * EST_COURIER_PER_ORDER)
+      //                      Best estimate: uses real fees where available, estimated elsewhere
+      const estCourierFee = (totalDispatched || 0) * EST_COURIER_PER_ORDER;
       const actualCourierFee = day.actual_courier_fees || 0;
       const reconciledCount = day.reconciled_count || 0;
-      const courierDiff = actualCourierFee - (reconciledCount * 200);
-
-      // Hybrid: Actuals for reconciled + 200 for unreconciled
+      const courierDiff = actualCourierFee - (reconciledCount * EST_COURIER_PER_ORDER);
       const unreconciledDispatched = Math.max(0, totalDispatched - reconciledCount);
-      const hybridCourierFee = actualCourierFee + (unreconciledDispatched * 200);
-      
+      const hybridCourierFee = actualCourierFee + (unreconciledDispatched * EST_COURIER_PER_ORDER);
+
+      // 📊 FINAL_PNL: Estimated net profit using delivered sale + hybrid courier.
+      //    Formula: Gross Profit - Ad Spend - Hybrid Courier - Manual Expenses
+      //    Source: grossProfit, totalMarketing, hybridCourierFee, actualExp
       const finalPnl = grossProfit - totalMarketing - hybridCourierFee - actualExp;
-      
+
+      // 📊 ACTUAL_PNL (CASH): Real cash profit using bank payouts + actual reconciled courier fees.
+      //    Formula: (Payouts Received - CGS) - Ad Spend - Actual Courier - Manual Expenses
+      //    Source: paymentPaid, pureCgs, sunkPackaging, totalMarketing, actualCourierFee, actualExp
+      //    ⚠️  Uses actualCourierFee (NOT hybridCourierFee) — reflects real cash out only
       const actualGrossProfit = paymentPaid - pureCgs - sunkPackaging;
       const actualPnl = actualGrossProfit - totalMarketing - actualCourierFee - actualExp;
       
