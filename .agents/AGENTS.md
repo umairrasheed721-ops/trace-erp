@@ -22,4 +22,17 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - **Key Metric Formulas**:
      - `Final PNL` = `Gross Profit - Ad Spend - Hybrid Courier - Manual Exp` (uses estimated/hybrid courier)
      - `Actual PNL (Cash)` = `(Payouts Received - CGS) - Ad Spend - Actual Courier - Manual Exp` (uses actual reconciled courier fees)
+11. **PNL Reports Module — Code Health & AI-Readability Standard**:
+   Whenever ANY change is made to the PNL Reports module, the agent MUST enforce the following code quality standards:
+   - **AI-Friendly Comments**: Every formula block in `backend/routes/reports.js` (lines ~140-165) and `frontend/src/hooks/useReportsData.js` (lines ~326-354) MUST have a 1-line comment above it explaining WHAT it computes and WHY. Format: `// 📊 METRIC_NAME: Formula description. Source fields: X, Y, Z`
+   - **No Dead Code**: Remove any unused variables, commented-out formula lines, or leftover debug `console.log()` statements before committing.
+   - **No Magic Numbers**: Raw numbers like `200` (per-order courier estimate), `0.04` (tax rate), `0.9` (payment diff threshold) MUST be extracted to named constants at the top of the file with a comment explaining them. E.g. `const EST_COURIER_PER_ORDER = 200; // Rs per dispatched order standard rate`
+   - **Backfill Zero-Row Parity**: The zeroed-row backfill object in `reports.js` (lines ~248-257) MUST always be updated to match the live computed row shape. If a new field is added to the live result, it MUST also be added to the backfill row with a safe default.
+   - **Formula Source Labels**: Each metric variable name MUST clearly imply its source:
+     - `deliveredSale` = Shopify delivered orders value
+     - `paymentPaid` = Actual payout from courier (bank deposit)
+     - `hybridCourierFee` = Est. for unreconciled + actual for reconciled orders
+     - `actualCourierFee` = Only reconciled/paid courier fees
+
+
 
