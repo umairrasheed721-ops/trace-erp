@@ -66,7 +66,6 @@ function applyMap(statusMap, courier, rawStatus) {
   // All active parcel movements (Forward Transit, Return Transit, Out for Delivery, Attempts, Advice, etc.) map to 'In Transit'
   return 'In Transit';
 }
-}
 
 function isFinalStatus(status) {
   if (!status) return false;
