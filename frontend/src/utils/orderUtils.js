@@ -1,7 +1,5 @@
 export const ERP_STATUSES = [
-  'Pending', 'Confirmed', 'Booked', 'Picked Up', 'In Transit',
-  'Out for Delivery', 'Attempted', 'Shipper Advice', 'Undelivered',
-  'Refused', 'Delivered', 'Return Initiated', 'Return In Transit',
+  'Pending', 'Booked', 'In Transit', 'Delivered',
   'Returned', 'Return Received', 'Cancelled'
 ];
 
