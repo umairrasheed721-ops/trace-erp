@@ -689,5 +689,23 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #27:', e.message);
     }
+  },
+
+  // 28. Auto-heal orders stuck at wrong ERP status due to 'merchant warehouse' keyword conflict bug.
+  //     "Returned at Merchant Warehouse" = return COMPLETE → must be 'Returned', not 'Return Initiated'/'Return In Transit'.
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Returned'
+        WHERE LOWER(courier_status) LIKE '%merchant warehouse%'
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #28] Auto-healed ${result.changes} orders stuck at wrong return status — courier_status had 'merchant warehouse' → set to 'Returned'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #28:', e.message);
+    }
   }
 ];
