@@ -12,7 +12,8 @@ export default function ShipperAdvice() {
   const [stuckParcels, setStuckParcels] = useState([])
   const [reattemptsSent, setReattemptsSent] = useState([])
   const [returnsRequested, setReturnsRequested] = useState([])
-  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
+  const [historyList, setHistoryList] = useState([])
+  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
 
   // Modal States
   const [reattemptModalOrder, setReattemptModalOrder] = useState(null)
@@ -58,7 +59,8 @@ export default function ShipperAdvice() {
       setStuckParcels(data.stuck_parcels || [])
       setReattemptsSent(data.reattempts_sent || [])
       setReturnsRequested(data.returns_requested || [])
-      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, total: 0 })
+      setHistoryList(data.history || [])
+      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
     } catch (err) {
       addToast(`❌ ${err.message}`, 'error')
     } finally {
@@ -220,7 +222,8 @@ export default function ShipperAdvice() {
     ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
     ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
     ...reattemptsSent.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' })),
-    ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' }))
+    ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' })),
+    ...historyList.map(o => ({ ...o, stage_badge: '📜 Actioned History' }))
   ]
 
   let baseOrders = []
@@ -234,6 +237,8 @@ export default function ShipperAdvice() {
     baseOrders = reattemptsSent
   } else if (activeTab === 'returns') {
     baseOrders = returnsRequested
+  } else if (activeTab === 'history') {
+    baseOrders = historyList
   }
 
   const displayOrders = baseOrders.filter(o => {
@@ -374,6 +379,13 @@ export default function ShipperAdvice() {
         >
           📦 Returns Requested ({counts.returns_requested})
         </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`btn ${activeTab === 'history' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ borderRadius: 20, padding: '8px 18px', fontWeight: 700, color: activeTab === 'history' ? '#fff' : '#38bdf8' }}
+        >
+          📜 Actioned History ({counts.history || 0})
+        </button>
       </div>
 
       {/* Main Data Table */}
@@ -438,8 +450,8 @@ export default function ShipperAdvice() {
                   </td>
 
                   {/* Raw Courier Remark Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top', maxWidth: 320 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
                       <span style={{
                         padding: '4px 10px',
                         borderRadius: 8,
@@ -466,8 +478,18 @@ export default function ShipperAdvice() {
                       )}
                     </div>
                     {order.notes && (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: 6 }}>
-                        📝 {order.notes}
+                      <div style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--text-primary)',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border)',
+                        padding: '8px 12px',
+                        borderRadius: 10,
+                        lineHeight: 1.4,
+                        wordBreak: 'break-word',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}>
+                        📝 <span style={{ fontWeight: 600 }}>{order.notes}</span>
                       </div>
                     )}
                   </td>
@@ -481,64 +503,79 @@ export default function ShipperAdvice() {
 
                   {/* Actions Column */}
                   <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                      <button
-                        onClick={() => {
-                          setReattemptModalOrder(order)
-                          setReattemptRemark('Customer requested reattempt')
-                        }}
-                        className="btn btn-sm btn-primary"
-                        style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 700 }}
-                      >
-                        ⚡ Reattempt
-                      </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', minWidth: 200 }}>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          onClick={() => handleReturnSubmit(order)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#f87171' }}
-                        >
-                          ↩️ Return
-                        </button>
                         <button
                           onClick={() => openHistoryModal(order)}
                           className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: 'var(--brand)', fontWeight: 600 }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            color: 'var(--brand)',
+                            borderColor: 'rgba(99,102,241,0.3)',
+                            background: 'rgba(99,102,241,0.08)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
                           title="Live fetch real-time courier status history log"
                         >
-                          📜 History
+                          📜 History Log
                         </button>
                         <button
+                          onClick={() => {
+                            setReattemptModalOrder(order)
+                            setReattemptRemark('Customer requested reattempt')
+                          }}
+                          className="btn btn-sm btn-primary"
+                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        >
+                          ⚡ Reattempt
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button
                           onClick={() => triggerWhatsAppAlert(order)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#25D366' }}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#25D366', fontWeight: 700 }}
                           title="Direct WhatsApp alert to customer phone number"
                         >
                           💬 WA Alert
                         </button>
                         <button
                           onClick={() => triggerGroupShare(order)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700 }}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#38bdf8', fontWeight: 700 }}
                           title="Share full order & reattempt details to Courier CS Support Group on WhatsApp"
                         >
                           👥 Group
                         </button>
                         <button
                           onClick={() => triggerStuckShare(order)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', color: '#f59e0b', fontWeight: 700 }}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#f59e0b', fontWeight: 700 }}
                           title="Share stuck parcel escalation report to WhatsApp"
                         >
                           📦 Report Stuck
                         </button>
                         <button
-                          onClick={() => handleIgnore(order)}
-                          className="btn btn-sm btn-secondary"
-                          style={{ padding: '4px 8px', borderRadius: 8, fontSize: '0.75rem' }}
-                          title="Hide parcel"
+                          onClick={() => handleReturnSubmit(order)}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#f87171', fontWeight: 700 }}
+                          title="Request Return"
                         >
-                          👁️
+                          ↩️ Return
+                        </button>
+                        <button
+                          onClick={() => handleIgnore(order)}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: 'var(--text-muted)' }}
+                          title="Hide parcel from feed"
+                        >
+                          🙈
                         </button>
                       </div>
                     </div>

@@ -149,7 +149,27 @@ router.get('/', (req, res) => {
     // Sort stuck parcels by days_stuck DESC
     stuckParcels.sort((a, b) => (b.days_stuck || 0) - (a.days_stuck || 0));
 
-    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested], store_id);
+    // Fetch History: Actioned parcels with shipper advice logs in last 45 days
+    const history = db.prepare(`
+      SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
+             delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
+             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history
+      FROM orders 
+      WHERE store_id = ?
+      AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
+      AND (LOWER(COALESCE(notes, '')) LIKE '%[shipper advice%' OR LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR LOWER(COALESCE(courier_status, '')) LIKE '%return requested%')
+      AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')
+      ORDER BY COALESCE(status_date, order_date) DESC
+      LIMIT 100
+    `).all(store_id);
+
+    const historyItems = history.map(o => {
+      const lastDateStr = o.status_date || o.order_date;
+      const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
+      return { ...o, days_stuck: daysStuck, advice_category: 'history' };
+    });
+
+    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...historyItems], store_id);
 
     res.json({
       success: true,
@@ -158,12 +178,14 @@ router.get('/', (req, res) => {
         stuck_parcels: stuckParcels.length,
         reattempts_sent: reattemptsSent.length,
         returns_requested: returnsRequested.length,
+        history: historyItems.length,
         total: adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length
       },
       advice_required: adviceRequired,
       stuck_parcels: stuckParcels,
       reattempts_sent: reattemptsSent,
-      returns_requested: returnsRequested
+      returns_requested: returnsRequested,
+      history: historyItems
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
