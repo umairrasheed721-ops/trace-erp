@@ -34,5 +34,28 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
      - `hybridCourierFee` = Est. for unreconciled + actual for reconciled orders
      - `actualCourierFee` = Only reconciled/paid courier fees
 
+12. **Courier Status Mapping — Architecture & Safety Rules (CRITICAL)**:
+   Status mapping lives in **THREE** places — a change in one must be verified in all three:
+   - `backend/engines/tracking/statusMapper.js` — keyword-to-ERP-status function (live sync)
+   - `backend/db/migrations/orders.js` — startup auto-heal SQL migrations (runs on every deploy)
+   - `backend/db/migrations/tracking.js` — DB seed rules for status_mappings table
+
+   **Return Status Hierarchy (DO NOT confuse these)**:
+   | ERP Status | Meaning | Example Courier Phrase |
+   |---|---|---|
+   | `Return Initiated` | Courier started return process, parcel still with courier | "Return Initiated", "Out For Return" |
+   | `Return In Transit` | Parcel physically moving back toward merchant | "Return In Transit", "Enroute", "Return To Hub" |
+   | `Returned` | Parcel physically arrived back at merchant warehouse | "Returned at Merchant Warehouse", "Returned to Shipper" |
+   | `Return Received` | **MANUAL ACTION ONLY** — merchant physically confirmed receipt | Never set by sync |
+
+   **Key Safety Rules**:
+   - A keyword MUST map to ONLY ONE status — if a phrase appears in multiple status conditions, it will cause incorrect mapping.
+   - Before adding ANY new keyword to a status condition, grep ALL 3 files above for that keyword to check for conflicts.
+   - `Return Received` is FINAL (in DEAD_STATUSES) and MUST NEVER be set by auto-sync — only by manual user action.
+   - Phrases containing `merchant warehouse` = return COMPLETE → always maps to `Returned` (never `Return In Transit`).
+   - When adding new courier keywords, test by checking: does this phrase appear in ANY other status condition? If yes — resolve conflict first.
+
+
+
 
 
