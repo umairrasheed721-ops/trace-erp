@@ -77,6 +77,13 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    }
    ```
 
+13. **Product Costing & PO-SKU Architecture Specification**:
+   Future implementation of Product Costing & PO Module MUST strictly follow the design specification in `.agents/skills/cost-manager-po-architecture/SKILL.md`:
+   - 3-Tier Cascade Lookup (`SKU Primary` -> `Variant ID Backup` -> `Title Key for Ghosts`).
+   - 1-Click Shopify Baseline Auto-Sync (`PO-INITIAL-BASELINE` & `PO-GHOST-BASELINE`).
+   - Zero-Cost Hard Blocking Guard on booking/confirmation.
+
+
 
 
 
