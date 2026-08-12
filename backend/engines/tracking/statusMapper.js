@@ -64,7 +64,8 @@ function applyMap(statusMap, courier, rawStatus) {
   if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
   if (raw.includes('delivery under review') || raw.includes('shipper advice')) return 'Shipper Advice';
   if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper')) return 'Returned';
-  if (raw.includes('return in transit') || raw.includes('out for return') || raw.includes('merchant warehouse')) return 'Return In Transit';
+  if (raw.includes('return in transit') || raw.includes('out for return')) return 'Return In Transit';
+  // NOTE: 'merchant warehouse' removed — "Returned at Merchant Warehouse" = return COMPLETE → mapped to 'Returned' on line 66
   // NOTE: 'return to', 'arrived at transit hub', 'departed to', 'en route', 'enroute' are NOT mapped here
   // because they appear during NORMAL delivery transit too. These are handled context-aware in the sync engine.
   if (raw.includes('return process') || raw.includes('return initiated') || raw.includes('return request')) return 'Return Initiated';
