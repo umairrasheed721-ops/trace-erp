@@ -327,62 +327,137 @@ router.post('/ignore', (req, res) => {
 });
 
 /**
+/**
  * GET /api/shipper-advice/live-tracking-history
- * Live Fetch directly from Courier API (PostEx) — ZERO DATABASE USAGE!
+ * Live Multi-Courier Tracking Engine (Instaworld / Leopards / TCS / LCS / PostEx)
  */
 router.get('/live-tracking-history', async (req, res) => {
   const { tracking_number, store_id } = req.query;
-  if (!tracking_number || !store_id) {
-    return res.status(400).json({ error: 'tracking_number and store_id required' });
+  if (!tracking_number) {
+    return res.status(400).json({ error: 'tracking_number required' });
   }
 
+  const tnClean = String(tracking_number).trim();
+
   try {
-    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id);
-    const postexToken = store?.postex_token || store?.postex_api_key || process.env.POSTEX_API_KEY;
+    const store = store_id ? db.prepare('SELECT * FROM stores WHERE id = ?').get(store_id) : null;
+    const order = db.prepare('SELECT * FROM orders WHERE tracking_number = ? OR ref_number = ? LIMIT 1').get(tnClean, tnClean);
 
-    let rawUrl = store?.postex_track_url;
-    if (!rawUrl || rawUrl.includes('v3/get-multiple')) {
-      rawUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+    let savedHistory = [];
+    if (order?.tracking_history) {
+      try {
+        const parsed = typeof order.tracking_history === 'string' ? JSON.parse(order.tracking_history) : order.tracking_history;
+        if (Array.isArray(parsed)) savedHistory = parsed;
+      } catch (_) {}
     }
-    const baseUrl = rawUrl.replace(/\/?$/, '/');
 
-    const response = await fetch(`${baseUrl}${encodeURIComponent(tracking_number.trim())}`, {
-      method: 'GET',
-      headers: {
-        'token': postexToken || '',
-        'Content-Type': 'application/json'
+    const courierLower = (order?.courier || '').toLowerCase();
+    const isInsta = courierLower.includes('insta') || courierLower.includes('leopard') || courierLower.includes('tcs') || courierLower.includes('lcs') || tnClean.toUpperCase().startsWith('LE') || tnClean.toUpperCase().startsWith('LCS') || tnClean.startsWith('17');
+
+    let history = [];
+    let rawCourierStatus = null;
+
+    if (isInsta) {
+      const { instaworldFetch } = require('../engines/instaworld_http');
+      const apiKeys = Array.from(new Set([
+        store?.instaworld_key,
+        store?.instaworld_key_backup,
+        store?.instaworld_key_3,
+        'qxdpk08t2mhrf2ed1sym',
+        'juehwqkpycnowff4spoh'
+      ].filter(Boolean)));
+
+      let trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+      if (store?.instaworld_track_url && !store.instaworld_track_url.includes('app.instaworld.pk') && !store.instaworld_track_url.includes('one.instaworld.pk/track')) {
+        trackUrl = store.instaworld_track_url;
       }
-    });
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: `Courier API returned HTTP ${response.status}`,
-        tracking_history: []
-      });
+      for (const apiKey of apiKeys) {
+        try {
+          const fetchRes = await instaworldFetch(trackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tracking_number: tnClean, api_key: apiKey }),
+            proxyUrl: store?.gas_proxy_url
+          });
+
+          if (fetchRes.ok) {
+            const data = await fetchRes.json();
+            const historyArray = Array.isArray(data) ? data : (Array.isArray(data?.tracking_history) ? data.tracking_history : (Array.isArray(data?.data) ? data.data : null));
+            
+            if (historyArray && historyArray.length > 0) {
+              history = historyArray.map(item => ({
+                transactionStatusMessage: item.status || item.statusDescription || item.status_description || item.activity || 'Status Update',
+                transactionStatusDate: item.date_time || item.dateTime || item.date || item.created_at || item.timestamp || '',
+                remarks: item.remarks || item.vendor_name || item.courier_name || '',
+                location: item.location || item.city || ''
+              }));
+
+              const lastEv = historyArray[historyArray.length - 1];
+              rawCourierStatus = lastEv?.status || lastEv?.statusDescription || data?.status || null;
+
+              if (order?.id && history.length > 0) {
+                try {
+                  db.prepare('UPDATE orders SET tracking_history = ?, courier_status = COALESCE(?, courier_status) WHERE id = ?')
+                    .run(JSON.stringify(history), rawCourierStatus, order.id);
+                } catch (_) {}
+              }
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn(`Instaworld track key error (${apiKey}):`, e.message);
+        }
+      }
+    } else {
+      const postexToken = store?.postex_token || store?.postex_api_key || process.env.POSTEX_API_KEY;
+      let rawUrl = store?.postex_track_url || 'https://api.postex.pk/services/integration/api/order/v1/track-order/';
+      const baseUrl = rawUrl.replace(/\/?$/, '/');
+
+      try {
+        const response = await fetch(`${baseUrl}${encodeURIComponent(tnClean)}`, {
+          method: 'GET',
+          headers: { 'token': postexToken || '', 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const distData = data?.dist || data;
+          const apiHistory = data?.dist?.transactionStatusHistory || data?.transactionStatusHistory || data?.data?.transactionStatusHistory || data?.trackingHistory || [];
+          rawCourierStatus = distData?.transactionStatus || data?.transactionStatus || null;
+
+          if (Array.isArray(apiHistory) && apiHistory.length > 0) {
+            history = apiHistory;
+            if (order?.id) {
+              try {
+                db.prepare('UPDATE orders SET tracking_history = ?, courier_status = COALESCE(?, courier_status) WHERE id = ?')
+                  .run(JSON.stringify(history), rawCourierStatus, order.id);
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('PostEx track error:', e.message);
+      }
     }
 
-    const data = await response.json();
-    const distData = data?.dist || data;
+    if (history.length === 0 && savedHistory.length > 0) {
+      history = savedHistory;
+    }
 
-    const history = data?.dist?.transactionStatusHistory 
-      || data?.transactionStatusHistory 
-      || data?.data?.transactionStatusHistory 
-      || data?.dist?.trackingHistory 
-      || data?.trackingHistory 
-      || data?.data?.trackingHistory 
-      || [];
-
-    const rawCourierStatus = distData?.transactionStatus
-      || data?.transactionStatus
-      || data?.data?.transactionStatus
-      || data?.statusDescription
-      || null;
+    if (history.length === 0 && order) {
+      history = [{
+        transactionStatusMessage: order.courier_status || order.delivery_status || 'Tracking Recorded',
+        transactionStatusDate: order.status_date || order.order_date || '',
+        remarks: order.notes || `Courier: ${order.courier || 'PostEx'}`,
+        location: order.city || ''
+      }];
+    }
 
     res.json({
       success: true,
-      courier_status: rawCourierStatus,
-      tracking_history: history,
-      raw_dist: distData
+      courier_status: rawCourierStatus || order?.courier_status || null,
+      tracking_history: history
     });
   } catch (err) {
     console.error('Live tracking fetch error:', err.message);
