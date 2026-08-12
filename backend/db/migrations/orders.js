@@ -779,5 +779,36 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #31:', e.message);
     }
+  },
+
+  // 32. Auto-heal any remaining legacy orders with unmapped/NULL/empty delivery_status to official 7 Core ERP Statuses
+  (db) => {
+    try {
+      const resPending = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Pending'
+        WHERE (delivery_status IS NULL OR TRIM(delivery_status) = '' OR LOWER(delivery_status) IN ('unfulfilled', 'new', 'draft', 'unassigned'))
+        AND (tracking_number IS NULL OR TRIM(tracking_number) = '' OR tracking_number = '—')
+      `).run();
+
+      const resBooked = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Booked'
+        WHERE LOWER(delivery_status) IN ('confirmed', 'picked up')
+      `).run();
+
+      const resTransit = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'In Transit'
+        WHERE LOWER(delivery_status) IN ('shipped', 'out for delivery', 'attempted', 'shipper advice', 'return initiated', 'return in transit', 'refused', 'reattempt requested', 'undelivered', 'dispatched', 'delivery under review', 'failed', 'rto', 'self delivery')
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled', 'delivered')
+      `).run();
+
+      if (resPending.changes > 0 || resBooked.changes > 0 || resTransit.changes > 0) {
+        console.log(`✅ [Migration #32] Auto-healed legacy status variants: ${resPending.changes} Pending, ${resBooked.changes} Booked, ${resTransit.changes} In Transit.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #32:', e.message);
+    }
   }
 ];
