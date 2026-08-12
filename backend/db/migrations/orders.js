@@ -741,5 +741,43 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #30:', e.message);
     }
+  },
+
+  // 31. Auto-heal legacy Pending orders that have courier statuses (e.g. Attempted, In Transit) or tracking numbers
+  (db) => {
+    try {
+      // Step A: Move Returned courier statuses to 'Returned'
+      db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Returned'
+        WHERE LOWER(delivery_status) = 'pending'
+        AND (LOWER(courier_status) LIKE '%returned%' OR LOWER(courier_status) = 'rto')
+      `).run();
+
+      // Step B: Move Delivered courier statuses to 'Delivered'
+      db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Delivered'
+        WHERE LOWER(delivery_status) = 'pending'
+        AND LOWER(courier_status) LIKE '%delivered%'
+      `).run();
+
+      // Step C: Move all active transit/attempted/booked courier statuses or tracking numbers to 'In Transit'
+      const resultTransit = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'In Transit'
+        WHERE LOWER(delivery_status) = 'pending'
+        AND (
+          (courier_status IS NOT NULL AND courier_status != '' AND courier_status != '—') OR
+          (tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—')
+        )
+      `).run();
+
+      if (resultTransit.changes > 0) {
+        console.log(`✅ [Migration #31] Auto-healed ${resultTransit.changes} legacy Pending orders with courier statuses/tracking numbers to 'In Transit'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #31:', e.message);
+    }
   }
 ];
