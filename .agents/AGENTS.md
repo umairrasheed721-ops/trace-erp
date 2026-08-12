@@ -53,6 +53,7 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - Intermediate return statuses (`Return Initiated`, `Return In Transit`, `Shipper Advice`, `Out for Delivery`, `Attempted`) MUST NEVER be separate ERP statuses — all active parcel movement MUST map to `In Transit`.
    - `Return Received` (Restock) is in `DEAD_STATUSES` and MUST NEVER be set automatically by courier sync.
    - `Returned` represents parcels physically arrived back at merchant warehouse (`returned at merchant`).
+   - **No Dispatched / Tracked Order at Pending**: Any order that has a assigned `tracking_number` OR a non-empty `courier_status` (e.g. `Attempted`, `Booked`, `In Transit`) MUST NEVER remain at `Pending` ERP status — it MUST automatically be mapped to `In Transit`, `Booked`, `Delivered`, or `Returned`.
 
    **Mandatory Auto-Heal Migration Rule**:
    Whenever a status mapping bug is FIXED (wrong keyword removed or corrected), you MUST ALSO add a new numbered migration in `backend/db/migrations/orders.js` that:
