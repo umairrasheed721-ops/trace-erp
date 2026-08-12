@@ -55,6 +55,29 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - Phrases containing `merchant warehouse` = return COMPLETE → always maps to `Returned` (never `Return In Transit`).
    - When adding new courier keywords, test by checking: does this phrase appear in ANY other status condition? If yes — resolve conflict first.
 
+   **Mandatory Auto-Heal Migration Rule**:
+   Whenever a status mapping bug is FIXED (wrong keyword removed or corrected), you MUST ALSO add a new numbered migration in `backend/db/migrations/orders.js` that:
+   - Targets all orders already stuck at the wrong `delivery_status` due to the old bug
+   - Safely updates them to the correct status
+   - NEVER touches orders already at final statuses (`returned`, `return received`, `cancelled`, `delivered`)
+   - Logs how many orders were healed (e.g. `✅ [Migration #N] Auto-healed X orders...`)
+   
+   Template:
+   ```js
+   // N. Auto-heal orders stuck due to [bug description]
+   (db) => {
+     try {
+       const result = db.prepare(`
+         UPDATE orders SET delivery_status = 'CORRECT_STATUS'
+         WHERE LOWER(courier_status) LIKE '%affected_keyword%'
+         AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled', 'delivered')
+       `).run();
+       if (result.changes > 0) console.log(`✅ [Migration #N] Auto-healed ${result.changes} orders.`);
+     } catch (e) { console.error('Migration #N failed:', e.message); }
+   }
+   ```
+
+
 
 
 
