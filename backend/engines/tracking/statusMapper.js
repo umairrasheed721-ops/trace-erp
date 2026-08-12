@@ -57,22 +57,15 @@ function applyMap(statusMap, courier, rawStatus) {
     if (statusMap.exact[exactAllKey]) return statusMap.exact[exactAllKey];
   }
 
-  // 2. Standard ERP Hardcoded Rules Fallback
-  if (raw === 'delivered' || raw === 'delivered to customer') return 'Delivered';
-  if (raw.includes('out for delivery')) return 'Out for Delivery';
+  // 2. Standard ERP Hardcoded Rules Fallback (Simplified 6-Status Model)
+  if (raw === 'delivered' || raw.includes('delivered to customer') || raw === 'delivered') return 'Delivered';
   if (raw === 'return received' || raw.includes('return received')) return 'Return Received';
   if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
-  if (raw.includes('delivery under review') || raw.includes('shipper advice')) return 'Shipper Advice';
-  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper')) return 'Returned';
-  if (raw.includes('return in transit') || raw.includes('out for return')) return 'Return In Transit';
-  // NOTE: 'merchant warehouse' removed — "Returned at Merchant Warehouse" = return COMPLETE → mapped to 'Returned' on line 66
-  // NOTE: 'return to', 'arrived at transit hub', 'departed to', 'en route', 'enroute' are NOT mapped here
-  // because they appear during NORMAL delivery transit too. These are handled context-aware in the sync engine.
-  if (raw.includes('return process') || raw.includes('return initiated') || raw.includes('return request')) return 'Return Initiated';
-  if (raw.includes('attempted') || raw.includes('attempt made') || raw.includes('attempt')) return 'Shipper Advice';
-  if (raw.includes('refused')) return 'Refused';
+  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper') || raw === 'returned') return 'Returned';
 
-  return null;
+  // All active parcel movements (Forward Transit, Return Transit, Out for Delivery, Attempts, Advice, etc.) map to 'In Transit'
+  return 'In Transit';
+}
 }
 
 function isFinalStatus(status) {

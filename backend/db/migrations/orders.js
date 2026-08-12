@@ -707,5 +707,22 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #28:', e.message);
     }
+  },
+
+  // 29. Auto-heal legacy intermediate statuses (Return Initiated, Return In Transit, Shipper Advice, etc.) to unified 'In Transit'
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'In Transit'
+        WHERE LOWER(delivery_status) IN ('return initiated', 'return in transit', 'shipper advice', 'out for delivery', 'attempted', 'refused', 'shipped', 'dispatched')
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled', 'delivered')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #29] Simplified ${result.changes} active transit orders to unified 'In Transit' status.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #29:', e.message);
+    }
   }
 ];
