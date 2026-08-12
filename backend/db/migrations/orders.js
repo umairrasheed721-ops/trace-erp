@@ -724,5 +724,22 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #29:', e.message);
     }
+  },
+
+  // 30. Auto-heal orders whose courier_status is 'Returned' or contains 'returned' to 'Returned' ERP status
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Returned'
+        WHERE (LOWER(courier_status) LIKE '%returned%' OR LOWER(courier_status) = 'returned' OR LOWER(courier_status) = 'rto')
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled', 'delivered')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #30] Auto-healed ${result.changes} orders with courier_status 'Returned' to ERP status 'Returned'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #30:', e.message);
+    }
   }
 ];

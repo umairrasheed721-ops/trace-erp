@@ -61,7 +61,7 @@ function applyMap(statusMap, courier, rawStatus) {
   if (raw === 'delivered' || raw.includes('delivered to customer') || raw === 'delivered') return 'Delivered';
   if (raw === 'return received' || raw.includes('return received')) return 'Return Received';
   if (raw === 'cancelled' || raw === 'canceled') return 'Cancelled';
-  if (raw.includes('returned at merchant') || raw.includes('returned to merchant') || raw.includes('returned to shipper') || raw === 'returned') return 'Returned';
+  if (raw.includes('returned') || raw.includes('rto')) return 'Returned';
 
   // All active parcel movements (Forward Transit, Return Transit, Out for Delivery, Attempts, Advice, etc.) map to 'In Transit'
   return 'In Transit';
