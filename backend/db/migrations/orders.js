@@ -810,5 +810,26 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #32:', e.message);
     }
+  },
+
+  // 33. Auto-heal Voided/Cancelled orders so ERP status (delivery_status) is set to 'Cancelled' in both Command Center and Reports
+  (db) => {
+    try {
+      const resCancelled = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Cancelled'
+        WHERE (
+          LOWER(payment_status) = 'voided' OR
+          LOWER(delivery_status) = 'voided' OR
+          LOWER(delivery_status) = 'void'
+        )
+        AND LOWER(delivery_status) NOT IN ('cancelled', 'return received')
+      `).run();
+      if (resCancelled.changes > 0) {
+        console.log(`✅ [Migration #33] Auto-healed ${resCancelled.changes} Voided/Cancelled orders to ERP status 'Cancelled'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #33:', e.message);
+    }
   }
 ];

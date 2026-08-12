@@ -681,8 +681,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
 }
 
 function mapShopifyStatus(order) {
-  if (order.cancelled_at) return 'Cancelled';
-  if (order.financial_status === 'voided') return 'Voided';
+  if (order.cancelled_at || order.financial_status === 'voided') return 'Cancelled';
   
   if (order.return_status === 'returned' || order.financial_status === 'refunded' || order.financial_status === 'partially_refunded') {
     return 'Returned';
