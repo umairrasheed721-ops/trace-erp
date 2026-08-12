@@ -34,26 +34,25 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
      - `hybridCourierFee` = Est. for unreconciled + actual for reconciled orders
      - `actualCourierFee` = Only reconciled/paid courier fees
 
-12. **Courier Status Mapping — Architecture & Safety Rules (CRITICAL)**:
-   Status mapping lives in **THREE** places — a change in one must be verified in all three:
-   - `backend/engines/tracking/statusMapper.js` — keyword-to-ERP-status function (live sync)
-   - `backend/db/migrations/orders.js` — startup auto-heal SQL migrations (runs on every deploy)
-   - `backend/db/migrations/tracking.js` — DB seed rules for status_mappings table
+12. **Courier Status Mapping — 7 Core ERP Statuses Architecture (CRITICAL)**:
+   ERP Statuses are strictly limited to **7 Core Statuses** across frontend (`frontend/src/utils/orderUtils.js`) and backend (`backend/routes/status-mappings.js`, `backend/engines/tracking/statusMapper.js`):
+   - `Pending`, `Booked`, `In Transit`, `Delivered`, `Returned`, `Return Received`, `Cancelled`
 
-   **Return Status Hierarchy (DO NOT confuse these)**:
-   | ERP Status | Meaning | Example Courier Phrase |
+   **Status Hierarchy**:
+   | ERP Status | Purpose / Meaning | Example Courier Phrases |
    |---|---|---|
-   | `Return Initiated` | Courier started return process, parcel still with courier | "Return Initiated", "Out For Return" |
-   | `Return In Transit` | Parcel physically moving back toward merchant | "Return In Transit", "Enroute", "Return To Hub" |
-   | `Returned` | Parcel physically arrived back at merchant warehouse | "Returned at Merchant Warehouse", "Returned to Shipper" |
-   | `Return Received` | **MANUAL ACTION ONLY** — merchant physically confirmed receipt | Never set by sync |
+   | `Pending` | Order placed, awaiting booking | Unfulfilled, New |
+   | `Booked` | Courier booking generated | Pickup Done, Booked, Confirmed |
+   | `In Transit` | Active movement (Forward OR Return journey) | In Transit, Shipped, En Route, Out for Delivery, Attempted, Shipper Advice, Return Initiated, Return In Transit |
+   | `Delivered` | Successfully delivered to customer | Delivered, Delivered to Customer |
+   | `Returned` | Parcel returned by courier to merchant warehouse | Returned at Merchant Warehouse, Returned to Shipper |
+   | `Return Received` | **RESTOCK (MANUAL ONLY)** — Merchant verified & restocked inventory | Never set by auto-sync |
+   | `Cancelled` | Order cancelled before dispatch | Cancelled, Void |
 
    **Key Safety Rules**:
-   - A keyword MUST map to ONLY ONE status — if a phrase appears in multiple status conditions, it will cause incorrect mapping.
-   - Before adding ANY new keyword to a status condition, grep ALL 3 files above for that keyword to check for conflicts.
-   - `Return Received` is FINAL (in DEAD_STATUSES) and MUST NEVER be set by auto-sync — only by manual user action.
-   - Phrases containing `merchant warehouse` = return COMPLETE → always maps to `Returned` (never `Return In Transit`).
-   - When adding new courier keywords, test by checking: does this phrase appear in ANY other status condition? If yes — resolve conflict first.
+   - Intermediate return statuses (`Return Initiated`, `Return In Transit`, `Shipper Advice`, `Out for Delivery`, `Attempted`) MUST NEVER be separate ERP statuses — all active parcel movement MUST map to `In Transit`.
+   - `Return Received` (Restock) is in `DEAD_STATUSES` and MUST NEVER be set automatically by courier sync.
+   - `Returned` represents parcels physically arrived back at merchant warehouse (`returned at merchant`).
 
    **Mandatory Auto-Heal Migration Rule**:
    Whenever a status mapping bug is FIXED (wrong keyword removed or corrected), you MUST ALSO add a new numbered migration in `backend/db/migrations/orders.js` that:
