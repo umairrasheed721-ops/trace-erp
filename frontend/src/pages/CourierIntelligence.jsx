@@ -132,13 +132,13 @@ export default function CourierIntelligence() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const TABS = [
-    { label: '💰 Cost & Profit', icon: '💰' },
+    { label: '💰 Delivery Cost Analysis', icon: '💰' },
     { label: '📉 Return Losses', icon: '📉' },
     { label: '🚨 Dead Zones', icon: '🚨' },
     { label: '📦 Live Exposure', icon: '📦' },
     { label: '📈 Weekly Trend', icon: '📈' },
     { label: '❌ Failed Attempts', icon: '❌' },
-    { label: '🚚 Shipping P&L', icon: '🚚' },
+    { label: '🚚 Shipping Fee Recovery', icon: '🚚' },
     { label: '⏱️ City Speed', icon: '⏱️' },
     { label: '🥧 Courier Mix', icon: '🥧' },
   ]
@@ -197,14 +197,13 @@ export default function CourierIntelligence() {
         </div>
       ) : !data ? null : (
         <>
-          {/* ── SECTION 1 + 3: Cost-Per-Delivery + Profit per Courier (always visible at top) ── */}
+          {/* ── SECTION 1: Cost-Per-Delivery by Courier ── */}
           <Section>
-            <SectionHeader icon="💰" title="Cost-Per-Delivery & Profit by Courier"
-              subtitle="Avg courier fee paid on delivered orders vs net profit generated" />
+            <SectionHeader icon="💰" title="Cost-Per-Delivery by Courier"
+              subtitle="Avg courier fee paid on delivered orders and carrier metrics" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '20px' }}>
               {data.costPerDelivery.map(c => {
                 const clr = getCourier(c.courier_name)
-                const profit = data.profitByCourier.find(p => p.courier_name === c.courier_name)
                 const delRate = c.total_orders > 0 ? ((c.delivered / c.total_orders) * 100).toFixed(1) : 0
                 return (
                   <div key={c.courier_name} style={{
@@ -237,16 +236,6 @@ export default function CourierIntelligence() {
                       <StatPill label="Returned" value={fmt(c.returned)} color="#ef4444" />
                       <StatPill label="Total Fee" value={`Rs ${fmtK(c.total_fee_paid)}`} />
                     </div>
-
-                    {profit && (
-                      <div style={{ marginTop: '16px', padding: '16px', borderRadius: '14px', background: profit.net_profit > 0 ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', border: `1px solid ${profit.net_profit > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 800, opacity: 0.5, color: 'var(--text-muted)' }}>NET PROFIT (delivered orders)</span>
-                          <span style={{ fontWeight: 900, fontSize: '1.1rem', color: profit.net_profit > 0 ? '#10b981' : '#ef4444' }}>Rs {fmtK(profit.net_profit)}</span>
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.4, marginTop: '4px', color: 'var(--text-muted)' }}>Rs {fmt(profit.avg_profit_per_order)} avg per order</div>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -269,14 +258,14 @@ export default function CourierIntelligence() {
             ))}
           </div>
 
-           {activeTab === 0 && (
+          {activeTab === 0 && (
             <Section>
-              <SectionHeader icon="📊" title="Profit Breakdown Table" subtitle="Revenue, courier cost, and average delivery/return costs per carrier" />
+              <SectionHeader icon="📊" title="Courier Financial & Cost Breakdown" subtitle="Parcel volumes, courier cost, and average delivery/return costs per carrier" />
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 10px' }}>
                   <thead>
                     <tr style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {['Courier', 'Total Landed', 'Booked', 'In Transit', 'Delivered', 'Returned', 'Cancelled', 'Revenue', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost', 'Avg/Order'].map(h => (
+                      {['Courier', 'Total Landed', 'Booked', 'In Transit', 'Delivered', 'Returned', 'Cancelled', 'Courier Cost', 'Avg Del. Cost (w/tax)', 'Avg Ret. Cost'].map(h => (
                         <th key={h} style={{ padding: '0 16px', textAlign: h === 'Courier' ? 'left' : 'right' }}>{h}</th>
                       ))}
                     </tr>
@@ -298,21 +287,23 @@ export default function CourierIntelligence() {
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>{fmt(c.delivered)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: '#ef4444' }}>{fmt(c.returned || 0)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-muted)' }}>{fmt(c.cancelled || 0)}</td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 800, color: 'var(--text-primary)' }}>Rs {fmtK(c.revenue)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: '#f59e0b' }}>Rs {fmtK(c.courier_cost)}</td>
                           <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f59e0b' }}>
                             Rs {fmt(c.avg_delivery_cost || 0)}
                             <div style={{ fontSize: '0.6rem', opacity: 0.4, fontWeight: 700, color: 'var(--text-muted)' }}>incl. tax</div>
                           </td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f97316' }}>
+                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 900, color: '#f97316', borderRadius: '0 12px 12px 0' }}>
                             {c.avg_return_cost ? `Rs ${fmt(c.avg_return_cost)}` : <span style={{ opacity: 0.25 }}>—</span>}
                             {c.avg_return_cost ? <div style={{ fontSize: '0.6rem', opacity: 0.4, fontWeight: 700, color: 'var(--text-muted)' }}>no tax</div> : null}
                           </td>
-                          <td style={{ padding: '18px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text-secondary)', borderRadius: '0 12px 12px 0' }}>Rs {fmt(c.avg_profit_per_order)}</td>
                         </tr>
                       )
                     })}
                   </tbody>
+                </table>
+              </div>
+            </Section>
+          )}       </tbody>
                 </table>
               </div>
             </Section>
@@ -592,7 +583,7 @@ export default function CourierIntelligence() {
           {/* ── TAB 6: Shipping Fee Recovery ── */}
           {activeTab === 6 && (
             <Section>
-              <SectionHeader icon="🚚" title="Shipping Fee Recovery P&L" subtitle="Shipping charged to customer vs actual courier cost paid — gap is your gain or loss" />
+              <SectionHeader icon="🚚" title="Shipping Fee Recovery Audit" subtitle="Shipping charged to customer vs actual courier cost paid — gap is your gain or loss" />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '24px' }}>
                 {data.shippingRecovery.map(c => {
                   const clr = getCourier(c.courier_name)
@@ -606,7 +597,7 @@ export default function CourierIntelligence() {
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '1.6rem', fontWeight: 900, color: isProfit ? '#10b981' : '#ef4444' }}>Rs {fmtK(c.net_shipping_pnl)}</div>
-                          <div style={{ fontSize: '0.65rem', opacity: 0.4, fontWeight: 800, color: 'var(--text-muted)' }}>NET SHIPPING P&L</div>
+                          <div style={{ fontSize: '0.65rem', opacity: 0.4, fontWeight: 800, color: 'var(--text-muted)' }}>NET SHIPPING RECOVERY</div>
                         </div>
                       </div>
 
