@@ -84,6 +84,11 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - 1-Click Shopify Baseline Auto-Sync (`PO-INITIAL-BASELINE` & `PO-GHOST-BASELINE`).
    - Zero-Cost Hard Blocking Guard on booking/confirmation.
 
+14. **Universal Double-Tap Copy & Multi-Courier Live Tracking Standards**:
+   - **Universal Double-Click & Touch Double-Tap Copy**: Double-click (or mobile touch `touchend` double-tap < 350ms) MUST trigger quick copy with `copyWithTooltip` across ALL elements (table cells, cards, modals, drawers, tracking timelines, text badges) in the entire ERP. Always check `window.getSelection()` first to preserve user's highlighted text.
+   - **Multi-Courier Tracking History Log Parity**: `/api/shipper-advice/live-tracking-history` MUST support ALL integrated couriers (PostEx, Instaworld, Leopards, TCS, LCS, Trax) with automatic key rotation and fallback to DB `tracking_history`. Date strings from Pakistani APIs (`DD/MM/YYYY hh:mm AM/PM`) MUST be parsed using a dedicated `DD/MM/YYYY` regex parser to prevent month/day misinterpretations (e.g. 11/08 being parsed as November 8 instead of August 11).
+
+
 
 
 
