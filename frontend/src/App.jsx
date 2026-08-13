@@ -172,14 +172,26 @@ function AppContent() {
       }
     };
 
-    // 🎯 Double-Click Quick Copy on Any Table Cell
-    const handleDblClick = (e) => {
-      const td = e.target.closest('td');
-      if (!td) return;
-      if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(e.target.tagName)) return;
+    // 🎯 Universal Double-Click & Touch Double-Tap Quick Copy across entire ERP
+    let lastTapTime = 0;
+    let lastTapTarget = null;
 
-      const clone = td.cloneNode(true);
-      clone.querySelectorAll('button, a, .btn, script, style').forEach(el => el.remove());
+    const handleCopyTarget = (e, targetEl) => {
+      if (!targetEl) return;
+      if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(targetEl.tagName)) return;
+      if (targetEl.closest('button, input, select, a, textarea')) return;
+
+      // 1. If user highlighted specific text, copy that exact selection first
+      const selText = window.getSelection() ? window.getSelection().toString().trim() : '';
+      if (selText.length > 0) {
+        copyWithTooltip(selText, e);
+        return;
+      }
+
+      // 2. Target element or container (td, th, tr, .card, span, div, etc.)
+      const container = targetEl.closest('td, th, tr, .card, [data-copyable="true"]') || targetEl;
+      const clone = container.cloneNode(true);
+      clone.querySelectorAll('button, a, .btn, script, style, svg').forEach(el => el.remove());
 
       let text = (clone.innerText || clone.textContent || '').trim();
       text = text.replace(/⚡\s*Command Center\s*↗?/gi, '')
@@ -187,17 +199,34 @@ function AppContent() {
                  .replace(/\s+/g, ' ')
                  .trim();
 
-      if (!text || text === '—' || text === 'No Notes') return;
+      if (!text || text === '—' || text === 'No Notes' || text === 'N/A') return;
 
       copyWithTooltip(text, e);
     };
 
+    const handleDblClick = (e) => {
+      handleCopyTarget(e, e.target);
+    };
+
+    const handleTouchEnd = (e) => {
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTapTime;
+      if (tapLength < 350 && tapLength > 0 && lastTapTarget === e.target) {
+        const touch = e.changedTouches ? e.changedTouches[0] : e;
+        handleCopyTarget(touch, e.target);
+      }
+      lastTapTime = currentTime;
+      lastTapTarget = e.target;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     document.addEventListener('dblclick', handleDblClick);
+    document.addEventListener('touchend', handleTouchEnd);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('toggle-keyboard-shortcuts', handleToggleEvent);
       document.removeEventListener('dblclick', handleDblClick);
+      document.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 

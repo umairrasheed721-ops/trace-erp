@@ -14,10 +14,15 @@ export function formatCustomerName(name) {
 
 export function copyWithTooltip(text, event, label = 'Copied! ✓') {
   if (!text) return;
-  try {
-    navigator.clipboard.writeText(text);
-  } catch (e) {
-    console.warn('Clipboard write failed:', e.message);
+  const cleanText = String(text).trim();
+  if (!cleanText) return;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(cleanText).catch(() => {
+      fallbackCopyTextToClipboard(cleanText);
+    });
+  } else {
+    fallbackCopyTextToClipboard(cleanText);
   }
 
   const el = document.createElement('div');
@@ -27,8 +32,8 @@ export function copyWithTooltip(text, event, label = 'Copied! ✓') {
   const x = event && (event.clientX || event.pageX) ? event.clientX : window.innerWidth / 2;
   const y = event && (event.clientY || event.pageY) ? event.clientY : window.innerHeight / 2;
 
-  el.style.left = `${x - 30}px`;
-  el.style.top = `${y - 32}px`;
+  el.style.left = `${Math.max(10, x - 30)}px`;
+  el.style.top = `${Math.max(10, y - 32)}px`;
 
   document.body.appendChild(el);
 
@@ -38,6 +43,23 @@ export function copyWithTooltip(text, event, label = 'Copied! ✓') {
       if (document.body.contains(el)) el.remove();
     }, 250);
   }, 900);
+}
+
+function fallbackCopyTextToClipboard(text) {
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    document.execCommand('copy');
+    textArea.remove();
+  } catch (e) {
+    console.warn('Fallback copy failed:', e.message);
+  }
 }
 
 export function getStatusColor(status) {
