@@ -92,3 +92,18 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - **No Aggressive Gateway or Schema Overhauls Without Isolated Staging Verification**: Never perform mass file consolidation, gateway routing overhauls, or global layout rewrites in a single commit on production.
     - **Strict Pre-Commit Empirical Verification**: Any optimization or simplification MUST be verified locally and via production endpoint testing before committing. If an optimization breaks data loading or layout accessibility, immediately perform a clean git revert to the last verified commit (`git reset --hard <working_hash>`).
     - **Zero-Downtime Resilience**: Core system gateways (`orders-query.js`, `storeAccess.js`, `App.jsx`) MUST maintain fallback defaults so that missing parameters or legacy data shapes NEVER crash the UI or cause 0-row query locks.
+
+16. **Core Layout Component Import Protection Standard**:
+    - When editing top-level application containers (`App.jsx`, `AppProvider.jsx`, `Sidebar.jsx`), core layout component imports (`Sidebar`, `Topbar`, `ToastContainer`, `ErrorBoundary`) MUST NEVER be removed, deleted, or mis-replaced.
+    - All edits to `App.jsx` MUST preserve the original import headers to guarantee that React layout components are defined at render time.
+
+17. **Middleware & Query Fallback Protocol (Zero 0-Row Locks)**:
+    - Express middlewares (`storeAccess.js`, `tenant.js`) and database query filter builders (`orderFilterBuilder.js`, `orders-query.js`) MUST ALWAYS enforce safe fallback defaults (e.g. `rawStoreId || 1`).
+    - If a client request omits `store_id` or passes `null`/`undefined`, backend endpoints MUST default to active store `#1` rather than generating `o.store_id = NaN` or returning empty `0-row` results.
+
+18. **3-Point Automated Pre-Push Verification Protocol**:
+    - Before pushing any commit to production main branch, the agent MUST run a 3-point automated verification:
+      1. Syntax check (`node backend_check.js`).
+      2. Frontend bundle build (`npm run build`).
+      3. Empirical database query test (`node -e "require('./backend/db')"` / `getOrderFilters` test).
+    - If any of the 3 points fails or yields unexpected behavior, the agent MUST fix or revert immediately before calling git push.
