@@ -707,8 +707,25 @@ export default function ShipperAdvice() {
                     let timeText = '';
                     if (rawTime) {
                       try {
-                        const d = new Date(rawTime);
-                        if (!isNaN(d.getTime())) {
+                        const str = String(rawTime).trim();
+                        const ddmmyyyyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i;
+                        const match = str.match(ddmmyyyyRegex);
+                        let d = null;
+                        if (match) {
+                          let [, day, month, year, hours, minutes, seconds, ampm] = match;
+                          let hrs = hours ? parseInt(hours, 10) : 0;
+                          if (ampm) {
+                            const isPm = ampm.toUpperCase() === 'PM';
+                            if (isPm && hrs < 12) hrs += 12;
+                            if (!isPm && hrs === 12) hrs = 0;
+                          }
+                          d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), hrs, minutes ? parseInt(minutes, 10) : 0, seconds ? parseInt(seconds, 10) : 0);
+                        }
+                        if (!d || isNaN(d.getTime())) {
+                          d = new Date(str);
+                        }
+
+                        if (d && !isNaN(d.getTime())) {
                           timeText = d.toLocaleString('en-US', {
                             month: 'short',
                             day: 'numeric',

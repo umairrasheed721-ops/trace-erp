@@ -386,12 +386,32 @@ router.get('/live-tracking-history', async (req, res) => {
             const historyArray = Array.isArray(data) ? data : (Array.isArray(data?.tracking_history) ? data.tracking_history : (Array.isArray(data?.data) ? data.data : null));
             
             if (historyArray && historyArray.length > 0) {
-              history = historyArray.map(item => ({
-                transactionStatusMessage: item.status || item.statusDescription || item.status_description || item.activity || 'Status Update',
-                transactionStatusDate: item.date_time || item.dateTime || item.date || item.created_at || item.timestamp || '',
-                remarks: item.remarks || item.vendor_name || item.courier_name || '',
-                location: item.location || item.city || ''
-              }));
+              history = historyArray.map(item => {
+                const rawDate = item.date_time || item.dateTime || item.date || item.created_at || item.timestamp || '';
+                let normDate = rawDate;
+                if (rawDate) {
+                  const str = String(rawDate).trim();
+                  const ddmmyyyyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i;
+                  const match = str.match(ddmmyyyyRegex);
+                  if (match) {
+                    let [, day, month, year, hours, minutes, seconds, ampm] = match;
+                    let hrs = hours ? parseInt(hours, 10) : 0;
+                    if (ampm) {
+                      const isPm = ampm.toUpperCase() === 'PM';
+                      if (isPm && hrs < 12) hrs += 12;
+                      if (!isPm && hrs === 12) hrs = 0;
+                    }
+                    const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), hrs, minutes ? parseInt(minutes, 10) : 0, seconds ? parseInt(seconds, 10) : 0);
+                    if (!isNaN(d.getTime())) normDate = d.toISOString();
+                  }
+                }
+                return {
+                  transactionStatusMessage: item.status || item.statusDescription || item.status_description || item.activity || 'Status Update',
+                  transactionStatusDate: normDate,
+                  remarks: item.remarks || item.vendor_name || item.courier_name || '',
+                  location: item.location || item.city || ''
+                };
+              });
 
               const lastEv = historyArray[historyArray.length - 1];
               rawCourierStatus = lastEv?.status || lastEv?.statusDescription || data?.status || null;
