@@ -303,10 +303,6 @@ export default function CourierIntelligence() {
                 </table>
               </div>
             </Section>
-          )}       </tbody>
-                </table>
-              </div>
-            </Section>
           )}
 
           {/* ── TAB 1: Return Losses ── */}
