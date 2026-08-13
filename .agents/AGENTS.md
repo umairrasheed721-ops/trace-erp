@@ -88,10 +88,7 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
    - **Universal Double-Click & Touch Double-Tap Copy**: Double-click (or mobile touch `touchend` double-tap < 350ms) MUST trigger quick copy with `copyWithTooltip` across ALL elements (table cells, cards, modals, drawers, tracking timelines, text badges) in the entire ERP. Always check `window.getSelection()` first to preserve user's highlighted text.
    - **Multi-Courier Tracking History Log Parity**: `/api/shipper-advice/live-tracking-history` MUST support ALL integrated couriers (PostEx, Instaworld, Leopards, TCS, LCS, Trax) with automatic key rotation and fallback to DB `tracking_history`. Date strings from Pakistani APIs (`DD/MM/YYYY hh:mm AM/PM`) MUST be parsed using a dedicated `DD/MM/YYYY` regex parser to prevent month/day misinterpretations (e.g. 11/08 being parsed as November 8 instead of August 11).
 
-
-
-
-
-
-
-
+15. **Production Deployment & Architecture Change Guard (CRITICAL)**:
+    - **No Aggressive Gateway or Schema Overhauls Without Isolated Staging Verification**: Never perform mass file consolidation, gateway routing overhauls, or global layout rewrites in a single commit on production.
+    - **Strict Pre-Commit Empirical Verification**: Any optimization or simplification MUST be verified locally and via production endpoint testing before committing. If an optimization breaks data loading or layout accessibility, immediately perform a clean git revert to the last verified commit (`git reset --hard <working_hash>`).
+    - **Zero-Downtime Resilience**: Core system gateways (`orders-query.js`, `storeAccess.js`, `App.jsx`) MUST maintain fallback defaults so that missing parameters or legacy data shapes NEVER crash the UI or cause 0-row query locks.
