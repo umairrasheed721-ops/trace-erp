@@ -831,5 +831,26 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #33:', e.message);
     }
+  },
+
+  // 34. Auto-heal active non-final status variants to unified 7 Core ERP status 'In Transit'
+  (db) => {
+    try {
+      const resTransit = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'In Transit'
+        WHERE LOWER(delivery_status) IN (
+          'shipped', 'out for delivery', 'attempted', 'shipper advice', 
+          'return initiated', 'return in transit', 'refused', 'reattempt requested', 
+          'undelivered', 'dispatched', 'delivery under review', 'failed', 'rto', 'self delivery'
+        )
+        AND LOWER(delivery_status) NOT IN ('returned', 'return received', 'cancelled', 'delivered')
+      `).run();
+      if (resTransit.changes > 0) {
+        console.log(`✅ [Migration #34] Auto-healed ${resTransit.changes} orders to unified ERP status 'In Transit'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #34:', e.message);
+    }
   }
 ];
