@@ -759,10 +759,10 @@ router.get('/track-lookup', async (req, res) => {
 
     if (dbOrder?.id) {
       const reconLog = db.prepare(`
-        SELECT cpr_reference, created_at as settlement_date, old_paid_amount as net_payout 
+        SELECT cpr_reference, old_payment_date as settlement_date, old_paid_amount as net_payout 
         FROM recon_logs 
         WHERE order_id = ?
-        ORDER BY created_at DESC LIMIT 1
+        ORDER BY id DESC LIMIT 1
       `).get(dbOrder.id);
 
       if (reconLog && reconLog.cpr_reference) {
