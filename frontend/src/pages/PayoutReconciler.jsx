@@ -694,12 +694,12 @@ export default function PayoutReconciler() {
           {/* Search Box */}
           <div className="card" style={{ padding: 28 }}>
             <h3 style={{ margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>🔍 Track & Lookup</h3>
-            <p style={{ fontSize: '0.85rem', opacity: 0.7, margin: '0 0 22px 0' }}>Enter a PostEx tracking number to find its CPR settlement details.</p>
+            <p style={{ fontSize: '0.85rem', opacity: 0.7, margin: '0 0 22px 0' }}>Enter any courier tracking number (PostEx, Instaworld, TCS, Leopards, Trax, LCS) to find its CPR settlement details.</p>
             <div style={{ display: 'flex', gap: 12 }}>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. 20120050024566"
+                placeholder="e.g. 20120050024566, IW123456, TCS998877"
                 value={lookupTracking}
                 onChange={e => setLookupTracking(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleTrackLookup()}
@@ -732,6 +732,7 @@ export default function PayoutReconciler() {
                 <div className="card" style={{ padding: 24, border: '2px solid var(--border)' }}>
                   <h4 style={{ margin: '0 0 18px 0', color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     📦 Order Details
+                    <span className="badge" style={{ background: 'rgba(139, 92, 246, 0.1)', color: 'var(--brand)' }}>{order.courier || 'Courier'}</span>
                     <span className="badge" style={{ background: isDelivered ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: isDelivered ? 'var(--green)' : 'var(--red)' }}>{order.status}</span>
                   </h4>
                   <table style={{ width: '100%', fontSize: '0.9rem', borderCollapse: 'collapse' }}>

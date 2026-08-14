@@ -654,26 +654,76 @@ router.get('/track-lookup', async (req, res) => {
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(store_id));
     if (!store) return res.status(404).json({ error: 'Store not found' });
 
-    if (!store.postex_token || store.postex_token.includes('****')) {
-      return res.status(403).json({ error: 'PostEx API token not configured for this store.' });
+    const cleanTrack = String(tracking_number).trim();
+
+    // 1. Search local DB orders first
+    const dbOrder = db.prepare(`
+      SELECT o.*, s.store_name 
+      FROM orders o 
+      LEFT JOIN stores s ON o.store_id = s.id 
+      WHERE o.store_id = ? AND (o.tracking_number = ? OR o.order_ref = ? OR LOWER(o.tracking_number) = LOWER(?))
+      LIMIT 1
+    `).get(Number(store_id), cleanTrack, cleanTrack, cleanTrack);
+
+    let courierName = dbOrder?.courier || 'PostEx';
+    if (!dbOrder) {
+      if (cleanTrack.toLowerCase().startsWith('iw') || cleanTrack.length === 10) {
+        courierName = 'Instaworld';
+      } else {
+        courierName = 'PostEx';
+      }
     }
 
-    const fetch = require('node-fetch');
-    const apiUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/' + encodeURIComponent(tracking_number.trim());
-    const response = await fetch(apiUrl, {
-      headers: { 'token': store.postex_token },
-      timeout: 10000
-    });
+    let liveData = null;
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: `PostEx API returned ${response.status}` });
+    // 2. Fetch from Live API if available
+    if (courierName.toLowerCase().includes('postex') && store.postex_token && !store.postex_token.includes('****')) {
+      try {
+        const fetch = require('node-fetch');
+        const apiUrl = 'https://api.postex.pk/services/integration/api/order/v1/track-order/' + encodeURIComponent(cleanTrack);
+        const response = await fetch(apiUrl, {
+          headers: { 'token': store.postex_token },
+          timeout: 8000
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.dist) liveData = data.dist;
+        }
+      } catch (e) {
+        console.warn('[track-lookup PostEx live fetch notice]', e.message);
+      }
+    } else if (courierName.toLowerCase().includes('insta') && (store.instaworld_key || store.instaworld_key_backup)) {
+      try {
+        const { instaworldFetch } = require('../../engines/instaworld_http');
+        const keys = [store.instaworld_key, store.instaworld_key_backup, store.instaworld_key_3].filter(Boolean);
+        let trackUrl = 'https://one-be.instaworld.pk/logistics/v1/trackShipment';
+        if (store.instaworld_track_url && !store.instaworld_track_url.includes('app.instaworld.pk') && !store.instaworld_track_url.includes('one.instaworld.pk/track')) {
+          trackUrl = store.instaworld_track_url;
+        }
+        for (const k of keys) {
+          try {
+            const fetchRes = await instaworldFetch(trackUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'apiKey': k },
+              body: JSON.stringify({ trackingNumber: cleanTrack }),
+              timeout: 6000
+            });
+            if (fetchRes.ok) {
+              const resJson = await fetchRes.json();
+              if (resJson?.data || resJson?.shipment) {
+                liveData = resJson.data || resJson.shipment;
+                break;
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        console.warn('[track-lookup Instaworld live fetch notice]', e.message);
+      }
     }
 
-    const data = await response.json();
-    const dist = data?.dist || {};
-
-    // Extract settlement date from reservePaymentDate or upfrontPaymentDate
-    const settlementDateRaw = dist.reservePaymentDate || dist.upfrontPaymentDate || null;
+    // Extract settlement date
+    const settlementDateRaw = liveData?.reservePaymentDate || liveData?.upfrontPaymentDate || dbOrder?.status_date || null;
     let settlementDate = null;
     if (settlementDateRaw) {
       const d = new Date(settlementDateRaw);
@@ -682,24 +732,48 @@ router.get('/track-lookup', async (req, res) => {
       }
     }
 
+    // Fallback & Merge fields
+    const invoicePayment = liveData?.invoicePayment || dbOrder?.price || 0;
+    const reservePayment = liveData?.reservePayment || dbOrder?.paid_amount || invoicePayment;
+    const transactionFee = liveData?.transactionFee || dbOrder?.courier_fee || 200;
+    const transactionTax = liveData?.transactionTax || (courierName.toLowerCase().includes('insta') ? Math.round(invoicePayment * 0.04) : 0);
+
     const result = {
-      trackingNumber: dist.trackingNumber || tracking_number,
-      orderRef: dist.orderRefNumber || null,
-      status: dist.transactionStatus || null,
-      customerName: dist.customerName || null,
-      cityName: dist.cityName || null,
-      invoicePayment: dist.invoicePayment || 0,
-      reservePayment: dist.reservePayment || 0,
-      transactionFee: dist.transactionFee || 0,
-      transactionTax: dist.transactionTax || 0,
-      orderDeliveryDate: dist.orderDeliveryDate || null,
+      trackingNumber: liveData?.trackingNumber || dbOrder?.tracking_number || cleanTrack,
+      orderRef: liveData?.orderRefNumber || dbOrder?.order_ref || '—',
+      courier: courierName,
+      status: liveData?.transactionStatus || liveData?.status || dbOrder?.delivery_status || 'Pending',
+      customerName: liveData?.customerName || dbOrder?.customer_name || '—',
+      cityName: liveData?.cityName || dbOrder?.city || '—',
+      invoicePayment,
+      reservePayment,
+      transactionFee,
+      transactionTax,
+      orderDeliveryDate: liveData?.orderDeliveryDate || dbOrder?.status_date || dbOrder?.order_date || null,
       settlementDate,
       reservePaymentDate: settlementDateRaw,
     };
 
-    // Cross-check ledger: find if this settlement date matches a locked CPR
+    // 3. Cross-check ledger: find if this order/tracking matches a locked CPR or log
     let matchedCpr = null;
-    if (settlementDate) {
+
+    const reconLog = db.prepare(`
+      SELECT cpr_reference, payment_date as settlement_date, paid_amount as net_payout, created_at 
+      FROM recon_logs 
+      WHERE store_id = ? AND (tracking_number = ? OR order_id = ?)
+      ORDER BY created_at DESC LIMIT 1
+    `).get(Number(store_id), cleanTrack, dbOrder?.id || 0);
+
+    if (reconLog) {
+      matchedCpr = {
+        cpr_reference: reconLog.cpr_reference,
+        courier: courierName,
+        settlement_date: reconLog.settlement_date,
+        net_payout: reconLog.net_payout || reservePayment,
+        actual_bank_deposit: reconLog.net_payout || reservePayment,
+        audit_status: 'LOCKED / RECONCILED'
+      };
+    } else if (settlementDate) {
       const ledgerRows = db.prepare(`
         SELECT cpr_reference, courier, settlement_date, net_payout, actual_bank_deposit, audit_status 
         FROM cpr_settlements 
