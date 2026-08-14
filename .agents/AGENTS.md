@@ -107,3 +107,15 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
       2. Frontend bundle build (`npm run build`).
       3. Empirical database query test (`node -e "require('./backend/db')"` / `getOrderFilters` test).
     - If any of the 3 points fails or yields unexpected behavior, the agent MUST fix or revert immediately before calling git push.
+
+19. **Shopify Liquid Theme & CRO Funnel Precautionary Standard**:
+    - **No Hardcoded Store Content**: Bank details, wallet labels, prices, or promotion text in Liquid snippets (`snippets/trace-cro-funnel.liquid`, `snippets/trace-cod-checkout.liquid`) MUST NEVER be hardcoded. Always bind them to dynamic Liquid theme settings (`settings.*`) or theme customizer inputs.
+    - **Mobile Viewport & Typography Shield (>=320px)**: All buttons, tags, and price badges MUST be responsive down to 320px screens. Avoid fixed-width inline SVGs inside button flex containers that shrink, stretch, or deform text.
+    - **Order Payload & Conversion Protection**: Modifications to draft order payloads or WhatsApp conversion links MUST preserve line item quantities, variant IDs, discount percentages, and customer metadata to ensure zero conversion tracking loss.
+
+20. **Idempotent DB Migration & Railway Server Resilience**:
+    - All database migrations in `backend/db/migrations/` MUST be strictly idempotent (`IF NOT EXISTS`, safe `try/catch` per migration block). A failing migration must log an error and allow the app server to start smoothly on Railway without crash loops.
+    - Unhandled Promise rejections in API routes MUST be caught and handled with standard structured JSON responses `{ success: false, message: '...' }`.
+
+21. **Courier API Resilience & Rate-Limit Guard**:
+    - All external courier API requests (PostEx, Leopards, TCS, Trax, LCS, Instaworld) MUST enforce explicit timeouts (e.g. 5000ms max via Axios/Fetch) and key rotation fallbacks. API outages MUST gracefully degrade to cached DB status without throwing unhandled exceptions.

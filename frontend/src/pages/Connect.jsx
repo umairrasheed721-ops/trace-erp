@@ -48,6 +48,9 @@ export default function Connect() {
     }
   }, [stores])
 
+  const [disconnectingStore, setDisconnectingStore] = useState(null)
+  const [confirmInput, setConfirmInput] = useState('')
+
   const refreshStores = async (silent = false) => {
     const res = await fetch('/api/stores')
     const data = await res.json()
@@ -57,11 +60,9 @@ export default function Connect() {
     if (!silent) addToast('✅ Stores refreshed!', 'success')
   }
 
-  const handleDisconnect = async (storeId, name) => {
-    if (!confirm(`Disconnect "${name}"? This will delete all its data.`)) return
-    await fetch(`/api/stores/${storeId}`, { method: 'DELETE' })
-    await refreshStores()
-    addToast(`Store "${name}" disconnected`, 'info')
+  const handleDisconnectInit = (storeId, name) => {
+    setDisconnectingStore({ id: storeId, name })
+    setConfirmInput('')
   }
 
   const handleUpdateCreds = async (store) => {
@@ -315,10 +316,72 @@ export default function Connect() {
                 onSave={handleUpdateCreds}
                 onDeepSync={handleDeepSync}
                 onSyncSingleOrder={handleSyncSingleOrder}
-                onDisconnect={() => handleDisconnect(store.id, store.store_name || store.shop_domain)}
+                onDisconnect={() => handleDisconnectInit(store.id, store.store_name || store.shop_domain)}
                 onEnableRealTime={() => handleEnableRealTimeSync(store.id, store.store_name || store.shop_domain)}
               />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Safety Double-Confirmation Disconnect Modal ─── */}
+      {disconnectingStore && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 20
+        }}>
+          <div style={{
+            background: 'var(--bg-card)', border: '1px solid rgba(239,68,68,0.4)',
+            borderRadius: 20, padding: 28, maxWidth: 440, width: '100%',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <span style={{ fontSize: '1.6rem' }}>🚨</span>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#ef4444' }}>Disconnect Store</h3>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
+              Are you sure you want to disconnect <strong>"{disconnectingStore.name}"</strong>? This action will permanently wipe all historical orders, settings, and metrics for this store.
+            </p>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
+                Type <strong>"{disconnectingStore.name}"</strong> to confirm deletion:
+              </label>
+              <input
+                className="form-input"
+                placeholder={disconnectingStore.name}
+                value={confirmInput}
+                onChange={e => setConfirmInput(e.target.value)}
+                style={{ borderColor: confirmInput === disconnectingStore.name ? '#ef4444' : 'var(--border)' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { setDisconnectingStore(null); setConfirmInput(''); }}
+                style={{
+                  flex: 1, padding: '10px 16px', borderRadius: 10,
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer'
+                }}
+              >Cancel</button>
+              <button
+                disabled={confirmInput !== disconnectingStore.name}
+                onClick={async () => {
+                  await fetch(`/api/stores/${disconnectingStore.id}`, { method: 'DELETE' })
+                  await refreshStores()
+                  addToast(`Store "${disconnectingStore.name}" disconnected`, 'info')
+                  setDisconnectingStore(null)
+                  setConfirmInput('')
+                }}
+                style={{
+                  flex: 1, padding: '10px 16px', borderRadius: 10, border: 'none',
+                  background: confirmInput === disconnectingStore.name ? '#ef4444' : 'var(--bg-elevated)',
+                  color: confirmInput === disconnectingStore.name ? '#fff' : 'var(--text-muted)',
+                  fontWeight: 800, cursor: confirmInput === disconnectingStore.name ? 'pointer' : 'not-allowed',
+                  opacity: confirmInput === disconnectingStore.name ? 1 : 0.5
+                }}
+              >⚠️ Confirm Delete</button>
+            </div>
           </div>
         </div>
       )}
@@ -624,12 +687,15 @@ function StoreCard({ store, editing, onEdit, onCancel, onSave, onDeepSync, onSyn
               <input className="form-input font-mono" value={local.postex_token || ''} onChange={setL('postex_token')} style={{ marginBottom: 14 }} />
             </FieldGroup>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
               <FieldGroup label="Instaworld Primary Key">
                 <input className="form-input font-mono" placeholder="Primary API key" value={local.instaworld_key || ''} onChange={setL('instaworld_key')} />
               </FieldGroup>
               <FieldGroup label="Instaworld Backup Key">
                 <input className="form-input font-mono" placeholder="Backup/fallback key" value={local.instaworld_key_backup || ''} onChange={setL('instaworld_key_backup')} />
+              </FieldGroup>
+              <FieldGroup label="Instaworld Key 3" badge="Optional">
+                <input className="form-input font-mono" placeholder="3rd API key" value={local.instaworld_key_3 || ''} onChange={setL('instaworld_key_3')} />
               </FieldGroup>
             </div>
 
