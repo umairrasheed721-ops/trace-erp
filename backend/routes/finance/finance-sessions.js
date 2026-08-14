@@ -210,6 +210,12 @@ router.post('/bulk-update', async (req, res) => {
         const taxAddOn = 0; 
         const finalCharges = charges > 0 ? charges : chargesTrick;
 
+        // 📊 Taxes Breakdown Engine (Freight + 15% GST + 4% WHT)
+        const whtBreakdown = Math.round(amount * 0.04 * 100) / 100;
+        const freightAndGst = charges > whtBreakdown ? charges - whtBreakdown : 0;
+        const freightBreakdown = Math.round((freightAndGst / 1.15) * 100) / 100;
+        const gstBreakdown = Math.round((freightAndGst - freightBreakdown) * 100) / 100;
+
         const logData = {
           session_id: sessionId,
           order_id: order.id,
@@ -260,7 +266,7 @@ router.post('/bulk-update', async (req, res) => {
             `).run(finalCourierFee, ref, amount, dateStr, order.id);
               
             const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
-            results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges });
+            results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges, freightBreakdown, gstBreakdown, whtBreakdown });
             processedCount++;
 
             db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date, cpr_reference) VALUES (?,?,?,?,?,?,?,?,?)`)

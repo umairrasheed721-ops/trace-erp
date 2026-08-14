@@ -454,10 +454,14 @@ export default function FinanceManager() {
                                 <div>
                                   <span style={{ color: 'var(--text-muted)' }}>Sheet Fee:</span> Rs. {r.charges || 0}
                                 </div>
-                                {r.taxAddOn > 0 && (
-                                  <div>
-                                    <span style={{ color: 'var(--text-muted)' }}>WHT/Tax (4%):</span> Rs. {r.taxAddOn}
-                                  </div>
+                                {r.freightBreakdown > 0 && (
+                                  <div><span style={{ color: 'var(--text-muted)' }}>Freight:</span> Rs. {r.freightBreakdown}</div>
+                                )}
+                                {r.gstBreakdown > 0 && (
+                                  <div><span style={{ color: 'var(--text-muted)' }}>GST (15%):</span> Rs. {r.gstBreakdown}</div>
+                                )}
+                                {r.whtBreakdown > 0 && (
+                                  <div><span style={{ color: 'var(--text-muted)' }}>WHT (4%):</span> Rs. {r.whtBreakdown}</div>
                                 )}
                                 <div style={{ 
                                   borderTop: '1px solid var(--border)', 
