@@ -245,7 +245,10 @@ router.post('/bulk-update', async (req, res) => {
             }
 
             if (syncToShopify) {
-              combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}`);
+              const feeNote = charges > 0 ? ` | Fee: ${charges}` : '';
+              const netAmt = charges > 0 ? Math.round((amount - charges) * 100) / 100 : amount;
+              const netNote = charges > 0 ? ` | Net: ${netAmt}` : '';
+              combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}${feeNote}${netNote}`);
             }
 
             let finalCourierFee = charges;
