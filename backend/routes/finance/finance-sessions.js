@@ -206,8 +206,9 @@ router.post('/bulk-update', async (req, res) => {
         const dateStr = formatDate(row.date);
 
         const chargesTrick = order.courier_fee || 0;
-        const taxAddOn = Math.round((charges * 0.04) * 100) / 100;
-        const finalCharges = Math.round((chargesTrick + taxAddOn) * 100) / 100;
+        // Sheet fee (charges) parsed from courier payouts already includes shipping + GST + WHT (2% + 2%)
+        const taxAddOn = 0; 
+        const finalCharges = charges > 0 ? charges : chargesTrick;
 
         const logData = {
           session_id: sessionId,

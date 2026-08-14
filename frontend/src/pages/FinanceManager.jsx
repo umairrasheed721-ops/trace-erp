@@ -454,11 +454,6 @@ export default function FinanceManager() {
                                 <div>
                                   <span style={{ color: 'var(--text-muted)' }}>Sheet Fee:</span> Rs. {r.charges || 0}
                                 </div>
-                                {r.chargesTrick > 0 && (
-                                  <div>
-                                    <span style={{ color: 'var(--text-muted)' }}>Est. ERP Fee:</span> Rs. {r.chargesTrick}
-                                  </div>
-                                )}
                                 {r.taxAddOn > 0 && (
                                   <div>
                                     <span style={{ color: 'var(--text-muted)' }}>WHT/Tax (4%):</span> Rs. {r.taxAddOn}
@@ -471,7 +466,7 @@ export default function FinanceManager() {
                                   fontWeight: 600,
                                   color: 'var(--text-primary)'
                                 }}>
-                                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Final ERP Fee:</span> Rs. {r.finalCharges}
+                                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Final Fee:</span> Rs. {r.charges || r.finalCharges || 0}
                                 </div>
                               </>
                             ) : (
