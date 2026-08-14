@@ -238,10 +238,12 @@ router.post('/bulk-update', async (req, res) => {
               balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
             }
 
-            const shouldCapture = syncToShopify && !alreadyPaidInERP && amount <= balance && amount > 0;
+            const isWithinTolerance = syncToShopify && !alreadyPaidInERP && Math.abs(balance - amount) <= 10.0 && amount > 0;
+            const shouldCapture = syncToShopify && !alreadyPaidInERP && (amount <= balance || isWithinTolerance) && amount > 0;
 
             if (shouldCapture) {
-              await captureShopifyPayment(store, order.shopify_order_id, amount);
+              const captureAmount = isWithinTolerance ? balance : amount;
+              await captureShopifyPayment(store, order.shopify_order_id, captureAmount);
             }
 
             if (syncToShopify) {

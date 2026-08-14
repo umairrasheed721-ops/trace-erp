@@ -5,7 +5,7 @@ const db = require('../db');
 // ─── PNL MODULE: Named Constants (Rule 11 — No Magic Numbers) ───────────────
 const EST_COURIER_PER_ORDER = 200;  // Rs per dispatched order (PostEx/Leopards standard est. rate)
 const TAX_RATE = 0.04;              // 4% sales tax on delivered sale value
-const PAYMENT_DIFF_THRESHOLD = 0.9; // Min Rs difference to flag as unpaid/overdue payout
+const PAYMENT_DIFF_THRESHOLD = 10.0; // Min Rs difference to flag as unpaid/overdue payout (Max Rs 10 tolerance)
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get('/daily', (req, res) => {
@@ -50,10 +50,10 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('in transit', 'return in transit', 'return initiated', 'shipper advice', 'attempted', 'out for delivery', 'dispatched', 'shipped', 'refused', 'delivery under review', 'failed', 'rto', 'undelivered', 'reattempt requested') THEN 1 ELSE 0 END) as intransit,
         SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('in transit', 'return in transit', 'return initiated', 'shipper advice', 'attempted', 'out for delivery', 'dispatched', 'shipped', 'refused', 'delivery under review', 'failed', 'rto', 'undelivered', 'reattempt requested') THEN price ELSE 0 END) as cash_in_transit,
         SUM(CASE WHEN (tracking_number IS NULL OR tracking_number = '') AND LOWER(COALESCE(delivery_status, '')) != 'cancelled' THEN 1 ELSE 0 END) as without_tracking_id,
-        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > 0.9 AND (payment_status IS NULL OR (payment_status != 'Payment Posted' AND payment_status != 'Refunded' AND payment_status != 'Returned')) THEN 1 ELSE 0 END) as delivered_payment_pending,
+        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > ${PAYMENT_DIFF_THRESHOLD} AND (payment_status IS NULL OR (payment_status != 'Payment Posted' AND payment_status != 'Refunded' AND payment_status != 'Returned')) THEN 1 ELSE 0 END) as delivered_payment_pending,
         SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'returned', 'return received', 'rto') AND (cost IS NULL OR cost = 0) AND items_count > 0 THEN 1 ELSE 0 END) as cost_gaps,
-        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > 0.9 AND (payment_status IS NULL OR (payment_status != 'Payment Posted' AND payment_status != 'Refunded' AND payment_status != 'Returned')) THEN (COALESCE(price, 0) - COALESCE(paid_amount, 0)) ELSE 0 END) as unpaid_amount,
-        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > 0.9 AND (payment_status IS NULL OR payment_status != 'Payment Posted') AND (julianday('now') - julianday(datetime(COALESCE(status_date, order_date)))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
+        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > ${PAYMENT_DIFF_THRESHOLD} AND (payment_status IS NULL OR (payment_status != 'Payment Posted' AND payment_status != 'Refunded' AND payment_status != 'Returned')) THEN (COALESCE(price, 0) - COALESCE(paid_amount, 0)) ELSE 0 END) as unpaid_amount,
+        SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) LIKE '%delivered%' AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > ${PAYMENT_DIFF_THRESHOLD} AND (payment_status IS NULL OR payment_status != 'Payment Posted') AND (julianday('now') - julianday(datetime(COALESCE(status_date, order_date)))) > 10 THEN 1 ELSE 0 END) as overdue_payout_count,
         SUM(CASE WHEN (courier_fee IS NULL OR courier_fee < 1) AND LOWER(COALESCE(delivery_status, '')) NOT IN ('pending', 'cancelled') AND (tracking_number IS NOT NULL AND tracking_number != '') THEN 1 ELSE 0 END) as zero_expense_count,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (LOWER(COALESCE(delivery_status, '')) IN ('returned', 'return received') AND courier_fee > 0) THEN courier_fee ELSE 0 END), 0) as actual_courier_fees,
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (LOWER(COALESCE(delivery_status, '')) IN ('returned', 'return received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count,
