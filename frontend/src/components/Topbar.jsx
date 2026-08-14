@@ -5,7 +5,7 @@ import SyncProgressCapsule from './SyncProgressCapsule'
 
 export default function Topbar() {
   const { 
-    activeStore, activeStoreId, addToast, theme, toggleTheme,
+    stores, activeStore, activeStoreId, setActiveStoreId, user, addToast, theme, toggleTheme,
     syncHistory, fetchSyncHistory,
     isFocusMode, toggleFocusMode
   } = useApp()
@@ -14,6 +14,9 @@ export default function Topbar() {
   
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationRef = useRef(null)
+
+  const [showStoreDropdown, setShowStoreDropdown] = useState(false)
+  const storeDropdownRef = useRef(null)
 
   const [adviceCount, setAdviceCount] = useState(0)
   const [stuckCount, setStuckCount] = useState(0)
@@ -45,11 +48,14 @@ export default function Topbar() {
     return () => clearInterval(interval);
   }, [activeStoreId]);
 
-  // Close notifications on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         setShowNotifications(false)
+      }
+      if (storeDropdownRef.current && !storeDropdownRef.current.contains(event.target)) {
+        setShowStoreDropdown(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -81,8 +87,155 @@ export default function Topbar() {
     <header className="topbar" style={{ borderBottom: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px', height: '100%', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
-          <div className="topbar-title" style={{ fontSize: '1rem', fontWeight: 700 }}>
-            {activeStore?.store_name || activeStore?.shop_domain || 'Select Store'}
+          
+          {/* 🏪 SUPER ADMIN QUICK STORE SWITCHER PILL */}
+          <div style={{ position: 'relative' }} ref={storeDropdownRef}>
+            <button
+              onClick={() => setShowStoreDropdown(!showStoreDropdown)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 14px',
+                borderRadius: 20,
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(168,85,247,0.12) 100%)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                color: 'var(--text-primary)',
+                fontWeight: 800,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                boxShadow: '0 2px 10px rgba(99,102,241,0.15)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.25)'; e.currentTarget.style.transform = 'translateY(0)' }}
+            >
+              <span style={{ fontSize: '1rem' }}>🏪</span>
+              <span>{activeStore?.store_name || activeStore?.shop_domain || 'Select Store'}</span>
+              {stores.length > 1 && (
+                <span style={{
+                  fontSize: '0.62rem',
+                  background: 'rgba(99,102,241,0.2)',
+                  color: '#818cf8',
+                  padding: '2px 6px',
+                  borderRadius: 10,
+                  fontWeight: 800
+                }}>{stores.length} Stores</span>
+              )}
+              <span style={{ fontSize: '0.65rem', opacity: 0.6, transform: showStoreDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
+            </button>
+
+            {/* STORE DROPDOWN MENU */}
+            {showStoreDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '125%',
+                left: 0,
+                width: 280,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 16,
+                boxShadow: '0 15px 35px rgba(0,0,0,0.4)',
+                zIndex: 1000,
+                overflow: 'hidden',
+                backdropFilter: 'blur(10px)'
+              }}>
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'rgba(99,102,241,0.06)',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex',
+                  justify: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Switch Connected Store
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700 }}>
+                    {user?.role === 'admin' ? '👑 Super Admin' : 'Store Access'}
+                  </span>
+                </div>
+
+                <div style={{ maxHeight: 260, overflowY: 'auto', padding: '6px' }}>
+                  {stores.map(store => {
+                    const isActive = store.id === activeStoreId
+                    return (
+                      <button
+                        key={store.id}
+                        onClick={() => {
+                          setActiveStoreId(store.id)
+                          localStorage.setItem('activeStoreId', store.id)
+                          setShowStoreDropdown(false)
+                          addToast(`Switched active store to "${store.store_name || store.shop_domain}"`, 'success')
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justify: 'space-between',
+                          padding: '10px 14px',
+                          borderRadius: 10,
+                          border: 'none',
+                          background: isActive ? 'linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(168,85,247,0.2) 100%)' : 'transparent',
+                          color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: isActive ? 800 : 600,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.15s ease',
+                          marginBottom: 2
+                        }}
+                        onMouseEnter={e => { if(!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                        onMouseLeave={e => { if(!isActive) e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            background: isActive ? 'var(--brand)' : 'rgba(255,255,255,0.08)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.8rem', fontWeight: 900, color: '#fff', flexShrink: 0
+                          }}>
+                            {(store.store_name || store.shop_domain || 'S')[0].toUpperCase()}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {store.store_name || store.shop_domain}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                              {store.shop_domain}
+                            </div>
+                          </div>
+                        </div>
+                        {isActive && <span style={{ color: '#34d399', fontSize: '0.9rem', fontWeight: 900, marginLeft: 8 }}>✓</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border)', padding: '8px' }}>
+                  <Link
+                    to="/connect"
+                    onClick={() => setShowStoreDropdown(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justify: 'center',
+                      gap: 6,
+                      padding: '8px 12px',
+                      borderRadius: 10,
+                      background: 'rgba(99,102,241,0.08)',
+                      color: '#818cf8',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      textDecoration: 'none',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    🔌 Connect New Store →
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* 💊 SYNC CAPSULE (Global Progress) */}
