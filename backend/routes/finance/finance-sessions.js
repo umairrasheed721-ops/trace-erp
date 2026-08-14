@@ -757,23 +757,47 @@ router.get('/track-lookup', async (req, res) => {
     // 3. Cross-check ledger: find if this order/tracking matches a locked CPR or log
     let matchedCpr = null;
 
-    const reconLog = db.prepare(`
-      SELECT cpr_reference, payment_date as settlement_date, paid_amount as net_payout, created_at 
-      FROM recon_logs 
-      WHERE store_id = ? AND (tracking_number = ? OR order_id = ?)
-      ORDER BY created_at DESC LIMIT 1
-    `).get(Number(store_id), cleanTrack, dbOrder?.id || 0);
+    if (dbOrder?.id) {
+      const reconLog = db.prepare(`
+        SELECT cpr_reference, created_at as settlement_date, old_paid_amount as net_payout 
+        FROM recon_logs 
+        WHERE order_id = ?
+        ORDER BY created_at DESC LIMIT 1
+      `).get(dbOrder.id);
 
-    if (reconLog) {
-      matchedCpr = {
-        cpr_reference: reconLog.cpr_reference,
-        courier: courierName,
-        settlement_date: reconLog.settlement_date,
-        net_payout: reconLog.net_payout || reservePayment,
-        actual_bank_deposit: reconLog.net_payout || reservePayment,
-        audit_status: 'LOCKED / RECONCILED'
-      };
-    } else if (settlementDate) {
+      if (reconLog && reconLog.cpr_reference) {
+        matchedCpr = {
+          cpr_reference: reconLog.cpr_reference,
+          courier: courierName,
+          settlement_date: reconLog.settlement_date ? reconLog.settlement_date.split(' ')[0] : null,
+          net_payout: reservePayment,
+          actual_bank_deposit: reservePayment,
+          audit_status: 'LOCKED / RECONCILED'
+        };
+      }
+    }
+
+    if (!matchedCpr && cleanTrack) {
+      const cprOrder = db.prepare(`
+        SELECT cpr_reference, settlement_date, amount_collected as net_payout 
+        FROM cpr_settlement_orders 
+        WHERE tracking_number = ? OR order_ref = ?
+        ORDER BY id DESC LIMIT 1
+      `).get(cleanTrack, dbOrder?.ref_number || cleanTrack);
+
+      if (cprOrder && cprOrder.cpr_reference) {
+        matchedCpr = {
+          cpr_reference: cprOrder.cpr_reference,
+          courier: courierName,
+          settlement_date: cprOrder.settlement_date,
+          net_payout: cprOrder.net_payout || reservePayment,
+          actual_bank_deposit: cprOrder.net_payout || reservePayment,
+          audit_status: 'LOCKED / RECONCILED'
+        };
+      }
+    }
+
+    if (!matchedCpr && settlementDate) {
       const ledgerRows = db.prepare(`
         SELECT cpr_reference, courier, settlement_date, net_payout, actual_bank_deposit, audit_status 
         FROM cpr_settlements 
