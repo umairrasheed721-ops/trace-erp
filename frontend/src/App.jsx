@@ -125,17 +125,21 @@ function AppContent() {
         return;
       }
 
-      // 4b. Alt + S to open Super Admin Store Switcher
-      if (!isInput && e.altKey && e.key.toLowerCase() === 's') {
+      // 4b. Alt/Option + S to open Super Admin Store Switcher
+      if (!isInput && e.altKey && (e.key.toLowerCase() === 's' || e.code === 'KeyS')) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('toggle-store-dropdown'));
         return;
       }
 
-      // 4c. Alt + 1..5 for direct store index switching
-      if (!isInput && e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+      // 4c. Alt/Option + 1..9 for direct store index switching (using e.code for Mac Option key layout compatibility)
+      const digitMatch = e.code ? e.code.match(/^Digit([1-9])$/) : null;
+      const numFromKey = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].indexOf(e.key);
+      const digitNum = digitMatch ? parseInt(digitMatch[1]) : (numFromKey !== -1 ? numFromKey + 1 : null);
+
+      if (!isInput && e.altKey && digitNum !== null) {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent('switch-store-index', { detail: { index: parseInt(e.key) - 1 } }));
+        window.dispatchEvent(new CustomEvent('switch-store-index', { detail: { index: digitNum - 1 } }));
         return;
       }
 
