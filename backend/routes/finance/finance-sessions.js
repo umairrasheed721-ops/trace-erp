@@ -661,7 +661,7 @@ router.get('/track-lookup', async (req, res) => {
       SELECT o.*, s.store_name 
       FROM orders o 
       LEFT JOIN stores s ON o.store_id = s.id 
-      WHERE o.store_id = ? AND (o.tracking_number = ? OR o.order_ref = ? OR LOWER(o.tracking_number) = LOWER(?))
+      WHERE o.store_id = ? AND (o.tracking_number = ? OR o.ref_number = ? OR LOWER(o.tracking_number) = LOWER(?))
       LIMIT 1
     `).get(Number(store_id), cleanTrack, cleanTrack, cleanTrack);
 
@@ -740,7 +740,7 @@ router.get('/track-lookup', async (req, res) => {
 
     const result = {
       trackingNumber: liveData?.trackingNumber || dbOrder?.tracking_number || cleanTrack,
-      orderRef: liveData?.orderRefNumber || dbOrder?.order_ref || '—',
+      orderRef: liveData?.orderRefNumber || dbOrder?.ref_number || '—',
       courier: courierName,
       status: liveData?.transactionStatus || liveData?.status || dbOrder?.delivery_status || 'Pending',
       customerName: liveData?.customerName || dbOrder?.customer_name || '—',
