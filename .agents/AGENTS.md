@@ -119,3 +119,18 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
 
 21. **Courier API Resilience & Rate-Limit Guard**:
     - All external courier API requests (PostEx, Leopards, TCS, Trax, LCS, Instaworld) MUST enforce explicit timeouts (e.g. 5000ms max via Axios/Fetch) and key rotation fallbacks. API outages MUST gracefully degrade to cached DB status without throwing unhandled exceptions.
+
+22. **Payment Variance Tolerance Threshold Standard**:
+    - The payment variance tolerance threshold is strictly set to **`10.0` PKR (Rs. 10)** across PNL reports (`backend/routes/reports.js`), Command Center filters (`backend/services/orderFilterBuilder.js`), and Finance Payout Reconciler (`backend/routes/finance/finance-sessions.js`).
+    - Payout discrepancies <= Rs. 10 MUST automatically be marked as **Paid & Cleared** without flagging unpaid balance.
+
+23. **Shopify Order Notes Reconciliation Standard**:
+    - Every reconciled payout synced to Shopify MUST include full financial details in the Shopify Order Note:
+      - Delivered: `| 💰 COD Rec: YYYY-MM-DD | Ref: CPR-XXX | Amt: X | Charges: Y | Net: Z`
+      - Return: `| ↩️ Return Charged: YYYY-MM-DD | Ref: CPR-XXX | Charges: Y`
+
+24. **WhatsApp Bot & Template Variable Protection**:
+    - All WhatsApp template placeholders (`{{customer_name}}`, `{{tracking_number}}`, `{{courier_name}}`, `{{order_ref}}`) MUST be sanitized and checked against `null`/`undefined` before invoking WhatsApp API to prevent blank message dispatches.
+
+25. **Payout Reconciliation Duplicate Prevention Protocol**:
+    - Quick Reconcile and Payout Session processing MUST enforce strict idempotent duplicate checks on `cpr_reference` or `(order_id, payment_date)` in `recon_logs` to prevent double-recording payments or inflating financial payouts.
