@@ -167,6 +167,7 @@ function AppContent() {
 
         if (lastKey === 'g' && now - lastKeyTime < 1000) {
           if (key === 'c') window.location.href = '/search';
+          else if (key === 'p') window.location.href = '/reports';
           else if (key === 'a') window.location.href = '/advice';
           else if (key === 's') window.location.href = '/stuck';
           else if (key === 'r') window.location.href = '/returns';
