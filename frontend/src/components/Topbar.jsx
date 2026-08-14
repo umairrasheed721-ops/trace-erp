@@ -48,7 +48,7 @@ export default function Topbar() {
     return () => clearInterval(interval);
   }, [activeStoreId]);
 
-  // Close dropdowns on outside click
+  // Close dropdowns on outside click & Handle keyboard shortcuts
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
@@ -58,9 +58,27 @@ export default function Topbar() {
         setShowStoreDropdown(false)
       }
     }
+
+    const handleToggleStoreDropdown = () => setShowStoreDropdown(prev => !prev);
+    const handleSwitchStoreIndex = (e) => {
+      const idx = e.detail?.index;
+      if (Array.isArray(stores) && stores[idx]) {
+        setActiveStoreId(stores[idx].id);
+        localStorage.setItem('activeStoreId', stores[idx].id);
+        addToast(`Switched active store to "${stores[idx].store_name || stores[idx].shop_domain}"`, 'success');
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    window.addEventListener('toggle-store-dropdown', handleToggleStoreDropdown);
+    window.addEventListener('switch-store-index', handleSwitchStoreIndex);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('toggle-store-dropdown', handleToggleStoreDropdown);
+      window.removeEventListener('switch-store-index', handleSwitchStoreIndex);
+    }
+  }, [stores, setActiveStoreId, addToast])
 
   const downloadAuditReport = async (logId, logType) => {
     try {

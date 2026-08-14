@@ -10,6 +10,8 @@ export default function KeyboardShortcutsModal({ isOpen, onClose }) {
         { keys: ['⌘', 'K'], label: 'Global Order & Tracking Search' },
         { keys: ['?'], label: 'Toggle Keyboard Shortcuts Cheatsheet' },
         { keys: ['Esc'], label: 'Close Active Modal / Overlay' },
+        { keys: ['Alt', 'S'], label: 'Open Super Admin Store Switcher' },
+        { keys: ['Alt', '1..5'], label: 'Directly Switch to Store #1, #2, #3...' },
         { keys: ['Alt', 'B'], label: 'Toggle Navigation Sidebar' },
       ]
     },

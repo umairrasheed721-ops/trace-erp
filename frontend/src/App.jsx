@@ -125,6 +125,20 @@ function AppContent() {
         return;
       }
 
+      // 4b. Alt + S to open Super Admin Store Switcher
+      if (!isInput && e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('toggle-store-dropdown'));
+        return;
+      }
+
+      // 4c. Alt + 1..5 for direct store index switching
+      if (!isInput && e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('switch-store-index', { detail: { index: parseInt(e.key) - 1 } }));
+        return;
+      }
+
       // 5. Shift + R for Refresh Page Data
       if (!isInput && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault();
