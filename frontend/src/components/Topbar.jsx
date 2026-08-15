@@ -21,6 +21,64 @@ export default function Topbar() {
   const [adviceCount, setAdviceCount] = useState(0)
   const [stuckCount, setStuckCount] = useState(0)
 
+  // 📝 Super Admin Quick Notepad Engine
+  const isAdmin = !user || user.role === 'admin';
+  const [showNotepadModal, setShowNotepadModal] = useState(false);
+  const [notepadContent, setNotepadContent] = useState('');
+  const [savingNotepad, setSavingNotepad] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState('');
+  const saveTimeoutRef = useRef(null);
+
+  // Fetch notepad contents when store changes or modal opens
+  useEffect(() => {
+    if (!activeStoreId || !isAdmin) return;
+    const localSaved = localStorage.getItem(`admin_notepad_${activeStoreId}`);
+    if (localSaved !== null) setNotepadContent(localSaved);
+
+    const token = localStorage.getItem('trace_token') || '';
+    fetch(`/api/users/notepad?store_id=${activeStoreId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.success && data.content !== undefined) {
+          setNotepadContent(data.content);
+          localStorage.setItem(`admin_notepad_${activeStoreId}`, data.content);
+        }
+      })
+      .catch(() => {});
+  }, [activeStoreId, isAdmin]);
+
+  const saveNotepadToBackend = async (text) => {
+    setSavingNotepad(true);
+    try {
+      localStorage.setItem(`admin_notepad_${activeStoreId}`, text);
+      const token = localStorage.getItem('trace_token') || '';
+      await fetch('/api/users/notepad', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ store_id: activeStoreId, content: text })
+      });
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastSavedTime(nowStr);
+    } catch (_) {
+    } finally {
+      setSavingNotepad(false);
+    }
+  };
+
+  const handleNotepadChange = (val) => {
+    setNotepadContent(val);
+    localStorage.setItem(`admin_notepad_${activeStoreId}`, val);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveNotepadToBackend(val);
+    }, 600);
+  };
+
   // 🔔 Live Monitor Alert Counters Engine
   useEffect(() => {
     if (!activeStoreId) return;
@@ -387,6 +445,31 @@ export default function Topbar() {
               <span style={{ fontSize: '1.2rem' }}>🎯</span>
             </button>
 
+          {/* 📝 SUPER ADMIN QUICK NOTEPAD BUTTON */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowNotepadModal(prev => !prev)}
+              className="btn btn-secondary btn-sm"
+              title="Super Admin Quick Notepad (Private Notes & Reminders)"
+              style={{
+                height: 38,
+                borderRadius: 20,
+                padding: '0 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                background: showNotepadModal ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                border: showNotepadModal ? '1px solid var(--brand)' : '1px solid var(--border)',
+                color: showNotepadModal ? 'var(--brand)' : 'var(--text-secondary)',
+                boxShadow: showNotepadModal ? '0 0 12px rgba(99, 102, 241, 0.3)' : 'none'
+              }}
+            >
+              <span>📝</span> Notepad
+            </button>
+          )}
+
           {/* ⌨️ KEYBOARD SHORTCUTS BUTTON */}
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('toggle-keyboard-shortcuts'))}
@@ -422,6 +505,107 @@ export default function Topbar() {
           </button>
         </div>
       </div>
+
+      {/* 📝 SUPER ADMIN QUICK NOTEPAD MODAL */}
+      {showNotepadModal && isAdmin && (
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNotepadModal(false); }}
+          style={{ 
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        >
+          <div style={{ 
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, 
+            width: '90%', maxWidth: 620, padding: 24, boxShadow: '0 25px 60px rgba(0,0,0,0.7)', 
+            display: 'flex', flexDirection: 'column', gap: 16 
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ 
+                  width: 36, height: 36, borderRadius: 10, background: 'rgba(99, 102, 241, 0.15)', 
+                  border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.2rem'
+                }}>📝</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>Super Admin Quick Notepad</h3>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Private to Super Admin | Auto-syncs to cloud</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '0.72rem', color: savingNotepad ? 'var(--brand)' : '#22c55e', fontWeight: 700 }}>
+                  {savingNotepad ? '💾 Saving...' : (lastSavedTime ? `✅ Saved ${lastSavedTime}` : '✅ Auto-saved')}
+                </span>
+                <button 
+                  onClick={() => setShowNotepadModal(false)} 
+                  className="btn btn-secondary btn-sm" 
+                  style={{ padding: '4px 10px', borderRadius: 8, fontSize: '0.9rem' }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Textarea Input */}
+            <textarea
+              value={notepadContent}
+              onChange={(e) => handleNotepadChange(e.target.value)}
+              placeholder="Type private admin notes, reminders, task lists, or shop credentials here... Auto-saves automatically!"
+              autoFocus
+              style={{
+                width: '100%',
+                height: 300,
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                padding: 16,
+                fontSize: '0.9rem',
+                lineHeight: 1.6,
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                outline: 'none',
+                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.2)'
+              }}
+            />
+
+            {/* Modal Footer Controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <div>
+                <span>{notepadContent.length} chars | {notepadContent.trim() ? notepadContent.trim().split(/\s+/).length : 0} words</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(notepadContent);
+                    addToast('📋 Notes copied to clipboard!', 'success');
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.75rem', padding: '5px 12px' }}
+                >
+                  📋 Copy All
+                </button>
+                <button
+                  onClick={() => handleNotepadChange('')}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.75rem', color: 'var(--red)', padding: '5px 12px' }}
+                >
+                  🧹 Clear
+                </button>
+                <button
+                  onClick={() => saveNotepadToBackend(notepadContent)}
+                  className="btn btn-primary btn-sm"
+                  style={{ fontSize: '0.75rem', padding: '5px 14px' }}
+                >
+                  💾 Save Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes pulse-glow {

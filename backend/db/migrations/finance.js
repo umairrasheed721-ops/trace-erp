@@ -120,5 +120,14 @@ module.exports = [
     created_at TEXT DEFAULT (datetime('now', '+5 hours')),
     UNIQUE(store_id, snapshot_date, month_key) ON CONFLICT REPLACE
   );`,
-  `CREATE INDEX IF NOT EXISTS idx_pnl_daily_snapshots_store_date ON pnl_daily_snapshots(store_id, snapshot_date);`
+  `CREATE INDEX IF NOT EXISTS idx_pnl_daily_snapshots_store_date ON pnl_daily_snapshots(store_id, snapshot_date);`,
+
+  // 9. CREATE admin_notepads TABLE — Super Admin Quick Notepad per store
+  `CREATE TABLE IF NOT EXISTS admin_notepads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL DEFAULT 1,
+    content TEXT DEFAULT '',
+    updated_at TEXT DEFAULT (datetime('now', '+5 hours')),
+    UNIQUE(store_id) ON CONFLICT REPLACE
+  );`
 ];

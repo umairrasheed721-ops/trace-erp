@@ -50,6 +50,37 @@ router.post('/permissions', authenticateToken, isAdmin, (req, res) => {
   }
 });
 
+// GET /api/users/notepad - Get super admin notepad content
+router.get('/notepad', authenticateToken, isAdmin, (req, res) => {
+  const store_id = Number(req.query.store_id || 1);
+  try {
+    const row = db.prepare('SELECT content, updated_at FROM admin_notepads WHERE store_id = ?').get(store_id);
+    res.json({ success: true, content: row ? row.content : '', updated_at: row ? row.updated_at : null });
+  } catch (err) {
+    console.error('GET notepad error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/users/notepad - Save super admin notepad content
+router.post('/notepad', authenticateToken, isAdmin, (req, res) => {
+  const { store_id = 1, content = '' } = req.body;
+  const numericStoreId = Number(store_id);
+  try {
+    db.prepare(`
+      INSERT INTO admin_notepads (store_id, content, updated_at)
+      VALUES (?, ?, datetime('now', '+5 hours'))
+      ON CONFLICT(store_id) DO UPDATE SET
+        content = excluded.content,
+        updated_at = datetime('now', '+5 hours')
+    `).run(numericStoreId, content);
+    res.json({ success: true, message: 'Notepad saved successfully' });
+  } catch (err) {
+    console.error('POST notepad error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── CRUD ROUTES ───
 
 // GET /api/users - List all users (Admin only)
