@@ -134,3 +134,9 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
 
 25. **Payout Reconciliation Duplicate Prevention Protocol**:
     - Quick Reconcile and Payout Session processing MUST enforce strict idempotent duplicate checks on `cpr_reference` or `(order_id, payment_date)` in `recon_logs` to prevent double-recording payments or inflating financial payouts.
+
+26. **24-Hour PNL Delta Tracking & Baseline Snapshot Architecture**:
+    - **Month Vise View 24h Delta Badges**: Month Vise View (`useReportsData.js` & `PnLMetricsPanel.jsx`) MUST compare current monthly metrics against the 24-hour baseline snapshot stored in `pnl_daily_snapshots`.
+    - **Snapshot Auto-Persistence**: Whenever `monthlyData` is rendered or updated, frontend MUST automatically persist today's monthly snapshot to `/api/reports/snapshots-24h` so that future 24h comparisons always have accurate historical baselines.
+    - **Delta Directional Rules**: Positive growth metrics (PNL, Delivered Sale, DEL%) show GREEN for positive diffs (`⚡ +12.5k`), RED for negative diffs (`🔻 -4.2k`). Expense/cost/cancel metrics show RED for positive diffs (`▲ +2k`) and GREEN for negative diffs (`▼ -1k`).
+
