@@ -265,21 +265,6 @@ export default function PnLMetricsPanel({
 
   const [activeColumnInfo, setActiveColumnInfo] = useState(null);
 
-  if (loading) {
-    return (
-      <div style={{ padding: 100, textAlign: 'center', opacity: 0.5, color: 'var(--text-muted)' }}>
-        ⏳ Crunching numbers...
-      </div>
-    );
-  }
-
-  const dataset = view === 'daily' ? filteredDaily : monthlyData;
-
-  // ─── Vertical Layout ────────────────────────────────────────────────────────
-  if (tableLayout === 'vertical' && dataset.length > 0) {
-    const metricCols = visibleCols.filter(c => c.id !== 'date');
-    const periods = dataset.map(r => r.date || r.month);
-
   const render24hBadge = (colId, row) => {
     if (view !== 'monthly' || !row.deltas24h || !row.deltas24h[colId]) return null;
     const { diff, prevVal, curVal } = row.deltas24h[colId];
@@ -334,14 +319,29 @@ export default function PnLMetricsPanel({
     );
   };
 
-  const getCellContent = (col, row) => {
-    if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
-    let content = row[col.id];
-    if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
-    if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
-    if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
-    return content;
-  };
+  if (loading) {
+    return (
+      <div style={{ padding: 100, textAlign: 'center', opacity: 0.5, color: 'var(--text-muted)' }}>
+        ⏳ Crunching numbers...
+      </div>
+    );
+  }
+
+  const dataset = view === 'daily' ? filteredDaily : monthlyData;
+
+  // ─── Vertical Layout ────────────────────────────────────────────────────────
+  if (tableLayout === 'vertical' && dataset.length > 0) {
+    const metricCols = visibleCols.filter(c => c.id !== 'date');
+    const periods = dataset.map(r => r.date || r.month);
+
+    const getCellContent = (col, row) => {
+      if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
+      let content = row[col.id];
+      if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
+      if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
+      if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
+      return content;
+    };
 
     // Inject separator rows before each new group
     const rowsWithSeparators = [];
