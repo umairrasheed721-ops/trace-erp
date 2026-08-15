@@ -650,5 +650,93 @@ router.get('/logistics-intelligence', (req, res) => {
   }
 });
 
+// ─── 24-HOUR DELTA SNAPSHOT SYSTEM (Rule 11 — AI-Friendly Comments) ─────────
+// 📊 SNAPSHOT_GET: Fetch 24-hour ago baseline PNL metrics per month for store
+router.get('/snapshots-24h', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id is required' });
+
+  try {
+    const numericStoreId = Number(store_id);
+
+    // 1. Find 24h ago snapshot (yesterday date in PKT) or closest recent snapshot
+    const yesterdayDate = db.prepare(`SELECT date('now', '-1 day', '+5 hours') as d`).get().d;
+    const todayDate = db.prepare(`SELECT date('now', '+5 hours') as d`).get().d;
+
+    // Fetch snapshot for yesterday (or fallback to latest snapshot created before today)
+    let rows = db.prepare(`
+      SELECT month_key, metrics_json, snapshot_date 
+      FROM pnl_daily_snapshots 
+      WHERE store_id = ? AND snapshot_date = ?
+    `).all(numericStoreId, yesterdayDate);
+
+    // Fallback: If no snapshot for yesterday, fetch most recent snapshot prior to today
+    if (rows.length === 0) {
+      rows = db.prepare(`
+        SELECT month_key, metrics_json, snapshot_date 
+        FROM pnl_daily_snapshots 
+        WHERE store_id = ? AND snapshot_date < ?
+        ORDER BY snapshot_date DESC
+      `).all(numericStoreId, todayDate);
+    }
+
+    // Fallback 2: If no previous snapshot exists at all, fetch today's snapshot
+    if (rows.length === 0) {
+      rows = db.prepare(`
+        SELECT month_key, metrics_json, snapshot_date 
+        FROM pnl_daily_snapshots 
+        WHERE store_id = ? AND snapshot_date = ?
+      `).all(numericStoreId, todayDate);
+    }
+
+    const snapshots = {};
+    rows.forEach(r => {
+      if (!snapshots[r.month_key]) {
+        try {
+          snapshots[r.month_key] = JSON.parse(r.metrics_json);
+        } catch (_) {}
+      }
+    });
+
+    res.json({ success: true, yesterdayDate, snapshots });
+  } catch (err) {
+    console.error('24h Snapshot GET Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 📊 SNAPSHOT_POST: Store today's baseline PNL snapshot per month
+router.post('/snapshots-24h', (req, res) => {
+  const { store_id, monthlyData } = req.body;
+  if (!store_id || !Array.isArray(monthlyData)) {
+    return res.status(400).json({ error: 'store_id and monthlyData array are required' });
+  }
+
+  try {
+    const numericStoreId = Number(store_id);
+    const todayDate = db.prepare(`SELECT date('now', '+5 hours') as d`).get().d;
+
+    const stmt = db.prepare(`
+      INSERT INTO pnl_daily_snapshots (store_id, snapshot_date, month_key, metrics_json)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(store_id, snapshot_date, month_key) DO UPDATE SET
+        metrics_json = excluded.metrics_json,
+        created_at = datetime('now', '+5 hours')
+    `);
+
+    db.transaction(() => {
+      for (const item of monthlyData) {
+        if (!item.month) continue;
+        stmt.run(numericStoreId, todayDate, item.month, JSON.stringify(item));
+      }
+    })();
+
+    res.json({ success: true, message: `Updated 24h snapshot for ${monthlyData.length} months`, todayDate });
+  } catch (err) {
+    console.error('24h Snapshot POST Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 

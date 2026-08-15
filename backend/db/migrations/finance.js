@@ -108,5 +108,17 @@ module.exports = [
     notes TEXT,
     created_at TEXT DEFAULT (datetime('now', '+5 hours'))
   );`,
-  `CREATE INDEX IF NOT EXISTS idx_manual_expenses_store_date ON manual_expenses(store_id, expense_date);`
+  `CREATE INDEX IF NOT EXISTS idx_manual_expenses_store_date ON manual_expenses(store_id, expense_date);`,
+
+  // 8. CREATE pnl_daily_snapshots TABLE — tracks daily snapshots of monthly PNL for 24h delta tracking
+  `CREATE TABLE IF NOT EXISTS pnl_daily_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL DEFAULT 1,
+    snapshot_date TEXT NOT NULL,
+    month_key TEXT NOT NULL,
+    metrics_json TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', '+5 hours')),
+    UNIQUE(store_id, snapshot_date, month_key) ON CONFLICT REPLACE
+  );`,
+  `CREATE INDEX IF NOT EXISTS idx_pnl_daily_snapshots_store_date ON pnl_daily_snapshots(store_id, snapshot_date);`
 ];

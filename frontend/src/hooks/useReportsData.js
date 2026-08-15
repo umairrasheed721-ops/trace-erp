@@ -25,6 +25,7 @@ export function getColMinWidth(col) {
 export default function useReportsData(activeStoreId, toast) {
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState([]);
+  const [snapshots24h, setSnapshots24h] = useState({});
   const [view, setView] = usePersistentState('reports_filters_v1_view', 'daily'); // 'daily' or 'monthly'
 
   // ─── Date Range Filter ───────────────────────────────────────────
@@ -107,9 +108,21 @@ export default function useReportsData(activeStoreId, toast) {
     }
   }, [activeStoreId, toast]);
 
+  const fetchSnapshots24h = useCallback(async () => {
+    if (!activeStoreId) return;
+    try {
+      const res = await fetch(`/api/reports/snapshots-24h?store_id=${activeStoreId}&t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.snapshots) setSnapshots24h(data.snapshots);
+      }
+    } catch (_) {}
+  }, [activeStoreId]);
+
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchSnapshots24h();
+  }, [fetchData, fetchSnapshots24h]);
 
   const handleMetricChange = async (date, field, value) => {
     const numValue = parseFloat(value) || 0;
@@ -346,6 +359,31 @@ export default function useReportsData(activeStoreId, toast) {
 
       const landedOrders = m.landedOrders || 0;
       const netOrders = landedOrders - m.cancelations;
+      const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
+      const canPercent = landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0;
+
+      // 📊 24-HOUR DELTA COMPUTATION: Compare current monthly metrics against 24h baseline snapshot
+      const prev24h = snapshots24h[m.month];
+      const deltas24h = {};
+      if (prev24h) {
+        const currentCalculated = {
+          pnl, actualPnl, deliveredSale: m.deliveredSale, cgs: m.cgs, grossProfit,
+          marketingSpend: totalMarketing, hybridCourier: m.hybridCourier, actualCourier: m.actualCourier,
+          actualExp: m.actualExp, landedOrders: m.landedOrders, cancelations: m.cancelations,
+          pending: m.pending, booked: m.booked, totalDispatched: m.totalDispatched,
+          delivered: m.delivered, restock: m.restock, intransit: m.intransit,
+          cashInTransit: m.cashInTransit, delPercent, canPercent
+        };
+        Object.keys(currentCalculated).forEach(k => {
+          const curVal = currentCalculated[k] || 0;
+          const prevVal = prev24h[k] || 0;
+          const diff = curVal - prevVal;
+          if (Math.abs(diff) >= (k.toLowerCase().includes('percent') ? 0.01 : 1)) {
+            deltas24h[k] = { diff, prevVal, curVal };
+          }
+        });
+      }
+
       return { 
         ...m, date: m.month, 
         aov: m.delivered > 0 ? (m.deliveredSale / m.delivered) : 0,
@@ -354,19 +392,31 @@ export default function useReportsData(activeStoreId, toast) {
         marPercent: m.deliveredSale > 0 ? (totalMarketing / m.deliveredSale) * 100 : 0,
         pnl, 
         actualPnl,
-        canPercent: landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0,
-        delPercent: m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0,
+        canPercent,
+        delPercent,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
         deliveredRoas: totalMarketing > 0 ? (m.deliveredSale / totalMarketing) : 0,
         ndrRecoveryRate: m.ordersWithFailedAttempts > 0 ? (m.failedButDelivered / m.ordersWithFailedAttempts) * 100 : 0,
         cpaAvg: landedOrders > 0 ? (totalMarketing / landedOrders) : 0,
         netCpaAvg: netOrders > 0 ? (totalMarketing / netOrders) : 0,
         courierDiff: m.actualCourier - m.estCourier,
-        mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0))
+        mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0)),
+        deltas24h
       };
     });
     return sortData(rawMonthly, sortConfig);
-  }, [dailyData, isInRange, sortConfig]);
+  }, [dailyData, isInRange, sortConfig, snapshots24h]);
+
+  // Auto-post today's monthly snapshot to backend for future 24h comparisons
+  useEffect(() => {
+    if (monthlyData && monthlyData.length > 0 && activeStoreId) {
+      fetch('/api/reports/snapshots-24h', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId, monthlyData })
+      }).catch(() => {});
+    }
+  }, [monthlyData, activeStoreId]);
 
   const filteredDaily = useMemo(() => {
     let data = dailyData.filter(r => isInRange(r.date));

@@ -280,14 +280,68 @@ export default function PnLMetricsPanel({
     const metricCols = visibleCols.filter(c => c.id !== 'date');
     const periods = dataset.map(r => r.date || r.month);
 
-    const getCellContent = (col, row) => {
-      if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
-      let content = row[col.id];
-      if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
-      if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
-      if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
-      return content;
-    };
+  const render24hBadge = (colId, row) => {
+    if (view !== 'monthly' || !row.deltas24h || !row.deltas24h[colId]) return null;
+    const { diff, prevVal, curVal } = row.deltas24h[colId];
+    if (!diff || Math.abs(diff) < 0.01) return null;
+
+    const isCostOrNegativeMetric = ['cancelations', 'actualExp', 'hybridCourier', 'actualCourier', 'cgs', 'marketingSpend', 'tiktokMarketing', 'costGaps', 'unpaidAmount', 'overduePayoutCount', 'zeroExpenseCount'].includes(colId);
+
+    const isGood = isCostOrNegativeMetric ? diff < 0 : diff > 0;
+    const color = isGood ? '#22c55e' : '#ef4444';
+    const bg = isGood ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+    const icon = isGood ? (diff > 0 ? '⚡' : '▼') : (diff > 0 ? '▲' : '🔻');
+
+    let formattedDiff = '';
+    if (colId.toLowerCase().includes('percent') || colId === 'delPercent' || colId === 'canPercent') {
+      formattedDiff = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+    } else if (['pnl', 'actualPnl', 'deliveredSale', 'cgs', 'marketingSpend', 'hybridCourier', 'actualCourier', 'actualExp', 'cashInTransit', 'unpaidAmount'].includes(colId)) {
+      const absVal = Math.abs(diff);
+      const sign = diff > 0 ? '+' : '-';
+      if (absVal >= 1000) {
+        formattedDiff = `${sign}${(absVal / 1000).toFixed(1)}k`;
+      } else {
+        formattedDiff = `${sign}${Math.round(absVal)}`;
+      }
+    } else {
+      formattedDiff = `${diff > 0 ? '+' : ''}${Math.round(diff)}`;
+    }
+
+    const tooltipText = `⚡ 24-Hour Change: ${diff > 0 ? '+' : ''}${typeof diff === 'number' ? diff.toLocaleString() : diff} in last 24h\n(Previous 24h baseline: ${prevVal?.toLocaleString() || 0} → Current: ${curVal?.toLocaleString() || 0})`;
+
+    return (
+      <span
+        title={tooltipText}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 2,
+          marginLeft: 5,
+          padding: '1px 5px',
+          borderRadius: 4,
+          background: bg,
+          color: color,
+          fontSize: '0.70rem',
+          fontWeight: 800,
+          letterSpacing: '0.2px',
+          verticalAlign: 'middle',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+        }}
+      >
+        <span>{icon}</span>
+        <span>{formattedDiff}</span>
+      </span>
+    );
+  };
+
+  const getCellContent = (col, row) => {
+    if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
+    let content = row[col.id];
+    if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
+    if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
+    if (NUMBER_IDS.has(col.id))   content = formatNumber(row[col.id]);
+    return content;
+  };
 
     // Inject separator rows before each new group
     const rowsWithSeparators = [];
@@ -441,6 +495,7 @@ export default function PnLMetricsPanel({
                             ? <span style={{ borderBottom: isMathMismatch ? '2px dashed #ef4444' : '1px dashed var(--text-muted)' }}>{isMathMismatch ? `⚠️ ${content}` : content}</span>
                             : content
                           }
+                          {render24hBadge(col.id, row)}
                         </td>
                       );
                     })}
@@ -538,6 +593,7 @@ export default function PnLMetricsPanel({
                     onClick={() => isClickable && handleDrilldown(row, col.id)}
                   >
                     {isClickable ? <span style={{ borderBottom: isMathMismatch ? '2px dashed var(--red)' : '1px dashed var(--text-muted)' }}>{isMathMismatch ? `⚠️ ${content}` : content}</span> : content}
+                    {render24hBadge(col.id, row)}
                   </td>
                 );
               })}
