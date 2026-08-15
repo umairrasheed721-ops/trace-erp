@@ -150,10 +150,25 @@ export default function ShipperAdvice() {
   const [templateEditModalOpen, setTemplateEditModalOpen] = useState(false)
   const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck'
 
+  // Extract latest status from tracking_history JSON (fallback to courier_status)
+  const getLatestCourierStatus = (order) => {
+    if (order.tracking_history) {
+      try {
+        const hist = typeof order.tracking_history === 'string' ? JSON.parse(order.tracking_history) : order.tracking_history
+        if (Array.isArray(hist) && hist.length > 0) {
+          const last = hist[hist.length - 1]
+          const status = last.status || last.description || last.Status || last.Description || last.remarks || ''
+          if (status) return status
+        }
+      } catch (_) {}
+    }
+    return order.courier_status || order.delivery_status || 'Delivery Under Review'
+  }
+
   // Apply Template Interpolation
   const applyTemplate = (templateStr, order) => {
     if (!templateStr || !order) return ''
-    const rawStatus = order.courier_status || order.delivery_status || 'Delivery Under Review'
+    const rawStatus = getLatestCourierStatus(order)
     const fullAddr = order.address ? `${order.address}, ${order.city || ''}` : (order.city || 'N/A')
 
     return templateStr
@@ -461,7 +476,7 @@ export default function ShipperAdvice() {
                         fontSize: '0.78rem',
                         fontWeight: 700
                       }}>
-                        ⚠️ {order.courier_status || 'Delivery Under Review'}
+                        ⚠️ {getLatestCourierStatus(order)}
                       </span>
                       {order.days_stuck >= 2 && (
                         <span style={{
