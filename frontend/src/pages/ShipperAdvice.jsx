@@ -151,13 +151,16 @@ export default function ShipperAdvice() {
   const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck'
 
   // Extract latest status from tracking_history JSON (fallback to courier_status)
+  // Keys match PostEx/Instaworld history format (same as liveHistory modal at line ~719)
   const getLatestCourierStatus = (order) => {
     if (order.tracking_history) {
       try {
         const hist = typeof order.tracking_history === 'string' ? JSON.parse(order.tracking_history) : order.tracking_history
         if (Array.isArray(hist) && hist.length > 0) {
           const last = hist[hist.length - 1]
-          const status = last.status || last.description || last.Status || last.Description || last.remarks || ''
+          const status = last.transactionStatusMessage || last.statusMessage || last.message ||
+                         last.transactionStatus || last.status || last.activity ||
+                         last.description || last.Description || last.remarks || ''
           if (status) return status
         }
       } catch (_) {}
