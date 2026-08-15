@@ -90,8 +90,9 @@ router.get('/', (req, res) => {
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
-      AND LOWER(COALESCE(courier_status, '')) NOT IN ('delivered', 'return received', 'returned', 'rto received')
-      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('delivered', 'return received', 'returned')
+      AND LOWER(COALESCE(courier_status, '')) NOT LIKE '%delivered%'
+      AND LOWER(COALESCE(courier_status, '')) NOT IN ('return received', 'returned', 'rto received', 'return received at hub', 'return received at warehouse')
+      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('delivered', 'return received', 'returned', 'cancelled')
       AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')
       ORDER BY COALESCE(status_date, order_date) DESC
     `).all(store_id);
