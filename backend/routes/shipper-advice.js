@@ -124,7 +124,17 @@ router.get('/', (req, res) => {
 
       const isReturnRequested = notesLower.includes('[shipper advice - return') || 
                                 courierStatusLower.includes('return requested') ||
-                                courierStatusLower.includes('merchant requested return');
+                                courierStatusLower.includes('merchant requested return') ||
+                                courierStatusLower.includes('waiting for return') ||
+                                courierStatusLower.includes('return process initiated') ||
+                                courierStatusLower.includes('return in process') ||
+                                courierStatusLower.includes('return initiated') ||
+                                courierStatusLower.includes('return in transit') ||
+                                courierStatusLower.includes('refused to receive') ||
+                                courierStatusLower.includes('rfd(refused') ||
+                                courierStatusLower.includes('consignee refused delivery') ||
+                                courierStatusLower.includes('return to shipper') ||
+                                courierStatusLower.includes('rts');
 
       const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => combinedFeed.includes(k));
 
