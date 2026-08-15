@@ -362,29 +362,7 @@ export default function useReportsData(activeStoreId, toast) {
       const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
       const canPercent = landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0;
 
-      // 📊 24-HOUR DELTA COMPUTATION: Compare current monthly metrics against 24h baseline snapshot
-      const prev24h = snapshots24h[m.month];
-      const deltas24h = {};
-      if (prev24h) {
-        const currentCalculated = {
-          pnl, actualPnl, deliveredSale: m.deliveredSale, cgs: m.cgs, grossProfit,
-          marketingSpend: totalMarketing, hybridCourier: m.hybridCourier, actualCourier: m.actualCourier,
-          actualExp: m.actualExp, landedOrders: m.landedOrders, cancelations: m.cancelations,
-          pending: m.pending, booked: m.booked, totalDispatched: m.totalDispatched,
-          delivered: m.delivered, restock: m.restock, intransit: m.intransit,
-          cashInTransit: m.cashInTransit, delPercent, canPercent
-        };
-        Object.keys(currentCalculated).forEach(k => {
-          const curVal = currentCalculated[k] || 0;
-          const prevVal = prev24h[k] || 0;
-          const diff = curVal - prevVal;
-          if (Math.abs(diff) >= (k.toLowerCase().includes('percent') ? 0.01 : 1)) {
-            deltas24h[k] = { diff, prevVal, curVal };
-          }
-        });
-      }
-
-      return { 
+      const finalRow = { 
         ...m, date: m.month, 
         aov: m.delivered > 0 ? (m.deliveredSale / m.delivered) : 0,
         cgsPercent: m.deliveredSale > 0 ? (m.cgs / m.deliveredSale) * 100 : 0,
@@ -400,7 +378,27 @@ export default function useReportsData(activeStoreId, toast) {
         cpaAvg: landedOrders > 0 ? (totalMarketing / landedOrders) : 0,
         netCpaAvg: netOrders > 0 ? (totalMarketing / netOrders) : 0,
         courierDiff: m.actualCourier - m.estCourier,
-        mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0)),
+        mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0))
+      };
+
+      // 📊 24-HOUR DELTA COMPUTATION: Compare current monthly metrics against 24h baseline snapshot
+      const prev24h = snapshots24h[m.month];
+      const deltas24h = {};
+      if (prev24h) {
+        Object.keys(finalRow).forEach(k => {
+          if (typeof finalRow[k] === 'number') {
+            const curVal = finalRow[k] || 0;
+            const prevVal = prev24h[k] !== undefined ? prev24h[k] : (prev24h[k === 'prepaidOrders' ? 'prepaid' : k] !== undefined ? prev24h[k === 'prepaidOrders' ? 'prepaid' : k] : curVal);
+            const diff = curVal - prevVal;
+            if (Math.abs(diff) >= (k.toLowerCase().includes('percent') ? 0.01 : 1)) {
+              deltas24h[k] = { diff, prevVal, curVal };
+            }
+          }
+        });
+      }
+
+      return { 
+        ...finalRow,
         deltas24h
       };
     });
