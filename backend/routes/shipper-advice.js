@@ -118,25 +118,43 @@ router.get('/', (req, res) => {
 
       const combinedFeed = `${courierStatusLower} ${notesLower}`;
 
+      // Extract latest tracking_history event to catch stale courier_status
+      let latestHistStatusLower = '';
+      if (o.tracking_history) {
+        try {
+          const hist = typeof o.tracking_history === 'string' ? JSON.parse(o.tracking_history) : o.tracking_history;
+          if (Array.isArray(hist) && hist.length > 0) {
+            const last = hist[hist.length - 1];
+            const s = last.transactionStatusMessage || last.statusMessage || last.message ||
+                      last.transactionStatus || last.status || last.activity ||
+                      last.description || last.remarks || '';
+            latestHistStatusLower = s.toLowerCase().trim();
+          }
+        } catch (_) {}
+      }
+
+      // Effective courier status = latest history event OR stale courier_status
+      const effectiveStatus = latestHistStatusLower || courierStatusLower;
+
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
       const isReturnRequested = notesLower.includes('[shipper advice - return') || 
-                                courierStatusLower.includes('return requested') ||
-                                courierStatusLower.includes('merchant requested return') ||
-                                courierStatusLower.includes('waiting for return') ||
-                                courierStatusLower.includes('return process initiated') ||
-                                courierStatusLower.includes('return in process') ||
-                                courierStatusLower.includes('return initiated') ||
-                                courierStatusLower.includes('return in transit') ||
-                                courierStatusLower.includes('refused to receive') ||
-                                courierStatusLower.includes('rfd(refused') ||
-                                courierStatusLower.includes('consignee refused delivery') ||
-                                courierStatusLower.includes('return to shipper') ||
-                                courierStatusLower.includes('rts');
+                                effectiveStatus.includes('return requested') ||
+                                effectiveStatus.includes('merchant requested return') ||
+                                effectiveStatus.includes('waiting for return') ||
+                                effectiveStatus.includes('return process initiated') ||
+                                effectiveStatus.includes('return in process') ||
+                                effectiveStatus.includes('return initiated') ||
+                                effectiveStatus.includes('return in transit') ||
+                                effectiveStatus.includes('refused to receive') ||
+                                effectiveStatus.includes('rfd(refused') ||
+                                effectiveStatus.includes('consignee refused delivery') ||
+                                effectiveStatus.includes('return to shipper') ||
+                                effectiveStatus.includes('rts');
 
-      const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => combinedFeed.includes(k));
+      const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => combinedFeed.includes(k) || effectiveStatus.includes(k));
 
       // Calculate days stuck in current warehouse/status without movement
       const lastDateStr = o.status_date || o.order_date;
