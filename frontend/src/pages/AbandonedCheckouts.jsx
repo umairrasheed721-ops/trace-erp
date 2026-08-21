@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 
+const DEFAULT_WA_TEMPLATES = {
+  REMINDER: "Assalam-o-Alaikum {{customer_name}}, aapka {{store_name}} cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai?\n\nComplete link: {{checkout_url}}",
+  DISCOUNT: "Assalam-o-Alaikum {{customer_name}}! Aap ke {{store_name}} cart par Special Discount activate kar diya gaya hai.\n\nComplete karne ke liye link par click karein: {{checkout_url}}",
+  LINK: "Assalam-o-Alaikum {{customer_name}}, yeh aapke {{store_name}} order (Total {{total_price}}) ka direct checkout link hai: {{checkout_url}}",
+  CUSTOM: "Assalam-o-Alaikum {{customer_name}}, aapka cart link: {{checkout_url}}"
+}
+
 export default function AbandonedCheckouts() {
-  const { activeStoreId, addToast } = useApp()
+  const { activeStoreId, activeStore, addToast } = useApp()
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({ stats: {}, checkouts: [] })
   const [activeTab, setActiveTab] = useState('TRUE_ABANDONED') // Default directly to True Abandoned for maximum ease!
@@ -12,8 +19,22 @@ export default function AbandonedCheckouts() {
   const [endDate, setEndDate] = useState('')
   
   // Custom message template option
-  const [msgTemplate, setMsgTemplate] = useState('REMINDER') // REMINDER | DISCOUNT | LINK
+  const [msgTemplate, setMsgTemplate] = useState('REMINDER') // REMINDER | DISCOUNT | LINK | CUSTOM
   const [useWaWeb, setUseWaWeb] = useState(localStorage.getItem('trace_use_wa_web') === 'true')
+
+  // WA Templates state
+  const [waTemplates, setWaTemplates] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trace_abandoned_wa_templates')
+      return saved ? { ...DEFAULT_WA_TEMPLATES, ...JSON.parse(saved) } : DEFAULT_WA_TEMPLATES
+    } catch (_) {
+      return DEFAULT_WA_TEMPLATES
+    }
+  })
+  const [showCustomizerModal, setShowCustomizerModal] = useState(false)
+  const [editingKey, setEditingKey] = useState('REMINDER')
+  const [editingText, setEditingText] = useState('')
+  const textareaRef = useRef(null)
 
   // Dismissed/Handled checkouts set stored in localStorage
   const [dismissedIds, setDismissedIds] = useState(() => {
@@ -157,6 +178,54 @@ export default function AbandonedCheckouts() {
     })
   }
 
+  // Helper to format live preview text
+  const getPreviewText = (textKey, rawText) => {
+    const templateText = rawText !== undefined ? rawText : (waTemplates[textKey] || DEFAULT_WA_TEMPLATES[textKey] || '')
+    return templateText
+      .replace(/\{\{customer_name\}\}/g, 'Ali Ahmed')
+      .replace(/\{\{checkout_url\}\}/g, 'https://tracepk.com/checkouts/cn/c123456789')
+      .replace(/\{\{total_price\}\}/g, 'Rs 3,500')
+      .replace(/\{\{items_summary\}\}/g, '2 item(s)')
+      .replace(/\{\{store_name\}\}/g, activeStore?.store_name || 'TRACE')
+  }
+
+  // Insert variable tag into editor at cursor position
+  const insertVariable = (varName) => {
+    const textToInsert = `{{${varName}}}`
+    if (!textareaRef.current) {
+      setEditingText(prev => prev + ` ${textToInsert}`)
+      return
+    }
+    const start = textareaRef.current.selectionStart || 0
+    const end = textareaRef.current.selectionEnd || 0
+    const newText = editingText.substring(0, start) + textToInsert + editingText.substring(end)
+    setEditingText(newText)
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + textToInsert.length
+        textareaRef.current.focus()
+      }
+    }, 50)
+  }
+
+  // Save template to localStorage
+  const saveTemplate = () => {
+    const updated = { ...waTemplates, [editingKey]: editingText }
+    setWaTemplates(updated)
+    localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
+    addToast('✅ WhatsApp template saved!', 'success')
+  }
+
+  // Reset template to default
+  const resetTemplateToDefault = () => {
+    const defaultText = DEFAULT_WA_TEMPLATES[editingKey] || ''
+    setEditingText(defaultText)
+    const updated = { ...waTemplates, [editingKey]: defaultText }
+    setWaTemplates(updated)
+    localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
+    addToast('Reset to default template', 'info')
+  }
+
   // Open WhatsApp with selected Template
   const handleWhatsApp = (c) => {
     const name = (c.customer_name || 'Customer').trim()
@@ -168,16 +237,19 @@ export default function AbandonedCheckouts() {
 
     const baseUrl = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const checkoutLink = c.abandoned_checkout_url || ''
+    const formattedPrice = `Rs ${parseInt(c.total_price || 0).toLocaleString()}`
+    const itemsSummary = `${c.line_items_count || 1} item(s)`
+    const storeName = activeStore?.store_name || 'TRACE'
 
-    let msg = ''
-    if (msgTemplate === 'DISCOUNT') {
-      msg = `Assalam-o-Alaikum ${name}! Aap ke TRACE cart par 10% Special Discount activate kar diya gaya hai. Complete karne ke liye click karein: ${checkoutLink}`
-    } else if (msgTemplate === 'LINK') {
-      msg = `Assalam-o-Alaikum ${name}, yeh aapke TRACE order ka direct checkout link hai: ${checkoutLink}`
-    } else {
-      // REMINDER (Default)
-      msg = `Assalam-o-Alaikum ${name}, aapka TRACE cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai? Link: ${checkoutLink}`
-    }
+    let rawTemplate = waTemplates[msgTemplate] || DEFAULT_WA_TEMPLATES[msgTemplate] || DEFAULT_WA_TEMPLATES.REMINDER
+    
+    // Safely replace variables (Rule 24 compliant)
+    const msg = rawTemplate
+      .replace(/\{\{customer_name\}\}/g, name)
+      .replace(/\{\{checkout_url\}\}/g, checkoutLink)
+      .replace(/\{\{total_price\}\}/g, formattedPrice)
+      .replace(/\{\{items_summary\}\}/g, itemsSummary)
+      .replace(/\{\{store_name\}\}/g, storeName)
 
     window.open(`${baseUrl}?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`, '_blank')
   }
@@ -241,7 +313,34 @@ export default function AbandonedCheckouts() {
             <option value="REMINDER">💬 Gentle Reminder</option>
             <option value="DISCOUNT">🏷️ 10% Discount Offer</option>
             <option value="LINK">🔗 Direct Cart Link</option>
+            <option value="CUSTOM">⭐ Custom Template</option>
           </select>
+
+          {/* WhatsApp Template Customizer Trigger Button */}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setEditingKey(msgTemplate);
+              setEditingText(waTemplates[msgTemplate] || DEFAULT_WA_TEMPLATES[msgTemplate] || '');
+              setShowCustomizerModal(true);
+            }}
+            title="Customize WhatsApp message templates & variable placeholders"
+            style={{
+              height: 36,
+              padding: '0 12px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              borderRadius: 8,
+              background: 'rgba(99, 102, 241, 0.12)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              color: 'var(--brand)'
+            }}
+          >
+            <span>⚙️</span> Customize
+          </button>
 
           {/* Date Filter Preset Dropdown */}
           <select
@@ -673,6 +772,199 @@ export default function AbandonedCheckouts() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 💬 WHATSAPP TEMPLATE CUSTOMIZER MODAL */}
+      {showCustomizerModal && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCustomizerModal(false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
+            animation: 'fadeIn 0.2s ease-out', padding: 20
+          }}
+        >
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 18,
+            width: '100%', maxWidth: 780, maxHeight: '90vh', overflowY: 'auto', padding: 24,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', gap: 20
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: 'rgba(34, 197, 94, 0.15)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.3rem'
+                }}>💬</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    WhatsApp Template Customizer
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Customize cart recovery messages with dynamic placeholders & live preview
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCustomizerModal(false)}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '6px 12px', borderRadius: 8, fontSize: '0.9rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Template Selector Tabs */}
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+              {[
+                { key: 'REMINDER', label: '💬 Gentle Reminder' },
+                { key: 'DISCOUNT', label: '🏷️ 10% Discount Offer' },
+                { key: 'LINK', label: '🔗 Direct Cart Link' },
+                { key: 'CUSTOM', label: '⭐ Custom Message' }
+              ].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => {
+                    setEditingKey(t.key);
+                    setEditingText(waTemplates[t.key] || DEFAULT_WA_TEMPLATES[t.key] || '');
+                  }}
+                  className="btn btn-sm"
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: 10,
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    background: editingKey === t.key ? 'rgba(34, 197, 94, 0.2)' : 'var(--bg-elevated)',
+                    border: editingKey === t.key ? '1px solid #22c55e' : '1px solid var(--border)',
+                    color: editingKey === t.key ? '#22c55e' : 'var(--text-secondary)'
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Editor & Preview Split View */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {/* Left Column: Variable Chips & Editor */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  Click to Insert Variables:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[
+                    { varName: 'customer_name', label: '👤 {{customer_name}}' },
+                    { varName: 'checkout_url', label: '🔗 {{checkout_url}}' },
+                    { varName: 'total_price', label: '💰 {{total_price}}' },
+                    { varName: 'items_summary', label: '📦 {{items_summary}}' },
+                    { varName: 'store_name', label: '🏬 {{store_name}}' }
+                  ].map(v => (
+                    <button
+                      key={v.varName}
+                      type="button"
+                      onClick={() => insertVariable(v.varName)}
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        borderRadius: 6,
+                        background: 'rgba(99, 102, 241, 0.1)',
+                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                        color: 'var(--brand)'
+                      }}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  ref={textareaRef}
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  placeholder="Type message template here..."
+                  style={{
+                    width: '100%',
+                    height: 200,
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    padding: 12,
+                    fontSize: '0.85rem',
+                    lineHeight: 1.5,
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none'
+                  }}
+                />
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  <button
+                    onClick={resetTemplateToDefault}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                  >
+                    🔄 Reset Default
+                  </button>
+                  <button
+                    onClick={saveTemplate}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px 16px', background: '#22c55e', borderColor: '#22c55e' }}
+                  >
+                    💾 Save Template
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Simulated WhatsApp Mobile Chat Preview */}
+              <div style={{
+                background: '#0b141a',
+                borderRadius: 14,
+                border: '1px solid var(--border)',
+                padding: 16,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                backgroundImage: 'radial-gradient(rgba(255,255,255,0.03) 1px, transparent 0)',
+                backgroundSize: '12px 12px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 10 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem' }}>
+                    💬
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e9edef' }}>WhatsApp Live Preview</div>
+                    <div style={{ fontSize: '0.68rem', color: '#8696a0' }}>Sample: Ali Ahmed (Rs 3,500)</div>
+                  </div>
+                </div>
+
+                {/* WhatsApp Chat Bubble */}
+                <div style={{
+                  background: '#005c4b',
+                  color: '#e9edef',
+                  borderRadius: '12px 12px 0px 12px',
+                  padding: 12,
+                  fontSize: '0.8rem',
+                  lineHeight: 1.5,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                  alignSelf: 'flex-end',
+                  maxWidth: '92%'
+                }}>
+                  {getPreviewText(editingKey, editingText)}
+                  <div style={{ fontSize: '0.62rem', color: 'rgba(233, 237, 239, 0.6)', textAlign: 'right', marginTop: 6 }}>
+                    12:45 PM ✓✓
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
