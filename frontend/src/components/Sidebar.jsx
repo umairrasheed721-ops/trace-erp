@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { NAV_ITEMS } from '../utils/navigationItems'
 
 export default function Sidebar() {
   const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout, permissions } = useApp()
@@ -21,24 +22,7 @@ export default function Sidebar() {
 
   const isExpanded = !sidebarCollapsed || isHovered
 
-  const navItems = [
-    { to: '/', icon: '🏠', label: 'Dashboard' },
-    { to: '/search', icon: '🔍', label: 'Command Center' },
-    { to: '/returns', icon: '↩️', label: 'Unified Returns' },
-    { to: '/whatsapp-templates', icon: '✍️', label: 'WA Templates', permission: 'admin_only' },
-    { to: '/finance', icon: '💰', label: 'Finance Engine', permission: 'admin_only' },
-    { to: '/payout-reconciler', icon: '💸', label: 'Payout Reconciler', permission: 'admin_only' },
-    { to: '/costing', icon: '🛡️', label: 'Costing & Watchdog', permission: 'admin_only' },
-    { to: '/reports', icon: '📊', label: 'Profit & Loss', permission: 'admin_only' },
-    { to: '/expenses', icon: '📝', label: 'Expense Manager', permission: 'admin_only' },
-    { to: '/reviews', icon: '⭐', label: 'Reviews Manager', permission: 'admin_only' },
-    { to: '/abandoned', icon: '🛒', label: 'Abandoned Checkouts' },
-    { to: '/intelligence', icon: '🚚', label: 'Courier Intelligence', permission: 'admin_only' },
-    { to: '/advice', icon: '🧠', label: 'Shipper Advice' },
-    { to: '/connect', icon: '🔌', label: 'Connect Store', permission: 'admin_only' },
-    { to: '/users', icon: '👥', label: 'User Management', permission: 'admin_only' },
-    { to: '/profile', icon: '👤', label: 'My Profile' },
-  ].filter(item => {
+  const navItems = NAV_ITEMS.filter(item => {
     if (user?.role === 'admin') return true
     // Check if this specific path is granted to this role in our Dynamic Matrix
     if (!Array.isArray(permissions)) return false

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
+import { NAV_ITEMS } from '../utils/navigationItems'
 
 // ─── Avatar Generator ───
 const getAvatar = (username) => {
@@ -623,24 +624,11 @@ function RoleAuthorityMatrix({ addToast, token }) {
     load()
   }, [])
 
-  const pages = [
-    { id: '/', label: 'Dashboard', icon: '🏠' },
-    { id: '/search', label: 'Command Center', icon: '🔍' },
-    { id: '/returns', label: 'Unified Returns', icon: '↩️' },
-    { id: '/whatsapp-templates', label: 'WA Templates', icon: '✍️' },
-    { id: '/finance', label: 'Finance Engine', icon: '💰' },
-    { id: '/payout-reconciler', label: 'Payout Reconciler', icon: '💸' },
-    { id: '/costing', label: 'Master Costing', icon: '💎' },
-    { id: '/prevention', label: 'Cost Watchdog', icon: '🛡️' },
-    { id: '/reports', label: 'Profit & Loss', icon: '📊' },
-    { id: '/reviews', label: 'Reviews Manager', icon: '⭐' },
-    { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚' },
-    { id: '/stuck', label: 'Stuck Monitor', icon: '⏳' },
-    { id: '/advice', label: 'Advice Monitor', icon: '🧠' },
-    { id: '/connect', label: 'Connect Store', icon: '🔌' },
-    { id: '/users', label: 'User Management', icon: '👥' },
-    { id: '/profile', label: 'My Profile', icon: '👤' },
-  ]
+  const pages = NAV_ITEMS.map(item => ({
+    id: item.to,
+    label: item.label,
+    icon: item.icon
+  }))
 
   const roles = ['manager', 'agent']
 

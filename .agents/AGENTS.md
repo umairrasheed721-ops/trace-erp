@@ -141,3 +141,21 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - **Delta Directional Rules**: Positive growth metrics (PNL, Delivered Sale, DEL%) show GREEN for positive diffs (`⚡ +12.5k`), RED for negative diffs (`🔻 -4.2k`). Expense/cost/cancel metrics show RED for positive diffs (`▲ +2k`) and GREEN for negative diffs (`▼ -1k`).
     - **Top-Level Helper Scope Protection**: Render helpers like `render24hBadge` MUST be declared in the top-level component scope (above `if (loading)` or conditional layout blocks like `if (tableLayout === 'vertical')`) so that both Horizontal and Vertical table views can invoke them without `ReferenceError` crashes.
 
+27. **Shopify Theme Push Script — File List Completeness Guard**:
+    - `scratch/push_theme_files.js` me har naya edited theme file (`sections/`, `snippets/`, `assets/`) MUST be explicitly added to the upload list before deploying. Never assume a file will be uploaded if it is not listed.
+    - After adding any new theme file, ALWAYS verify live rendered HTML (`curl -s "https://tracepk.com/products/..."`) to confirm new markup is present before concluding deployment is done.
+    - **Root Cause Pattern**: If a Liquid/JS change is applied but live site shows old markup, FIRST check whether `push_theme_files.js` includes that file — do NOT keep iterating on file content itself.
+
+28. **Shopify Liquid — `file_reference` Video Metafield Extraction Standard**:
+    - When Metafield type is `file_reference` pointing to an uploaded Video (`.mp4`), Liquid drop structure is:
+      - `metafield.value` → Video object (NOT a URL string, NOT a GID)
+      - `metafield.value.sources` → array of `{ url, mime_type, format }` objects
+      - `metafield.value.sources.first.url` → direct CDN MP4 URL
+    - ALWAYS iterate `.sources` and match `format == 'mp4'` to extract a usable URL.
+    - NEVER use `{{ metafield.value }}` directly in `<script>` expecting a URL — outputs GID string (`gid://shopify/Video/...`), not a CDN URL.
+    - Railway backend's `app.get('*')` SPA catch-all will intercept any `/api/public/...` calls from Shopify storefront and return `index.html` instead of JSON. For storefront JS, ALWAYS use same-origin Shopify endpoints (`/products/handle.js` or Liquid output variables) instead of Railway public routes.
+
+29. **Sidebar & User Management Single-Source Navigation Standard**:
+    - All ERP application pages and routes MUST be registered in the single-source-of-truth registry `frontend/src/utils/navigationItems.js` (`NAV_ITEMS`).
+    - Both `Sidebar.jsx` (Navigation Menu) and `Users.jsx` (`RoleAuthorityMatrix`) MUST dynamically import `NAV_ITEMS` from this registry.
+    - Whenever a new page or route is added, removed, or renamed, the agent MUST update `navigationItems.js` so that Sidebar navigation and User Management permissions matrix update simultaneously in 100% parity.

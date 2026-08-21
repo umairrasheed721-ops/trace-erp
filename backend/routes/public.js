@@ -38,7 +38,74 @@ function formatE164Phone(rawPhone) {
 }
 
 // node-fetch v2 shim — use native fetch if available (Node 18+), fallback to require
-const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+const fetch = globalThis.fetch || require('node-fetch');
+
+// GET /api/public/product-video?handle=...
+// Fast public API to return Shopify Video CDN URL for product_video metafield
+router.get('/product-video', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const handle = req.query.handle;
+  if (!handle) {
+    return res.status(400).json({ success: false, error: 'Missing product handle' });
+  }
+
+  const shopDomain = '041839-3.myshopify.com';
+  const accessToken = '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';
+
+  const query = `
+    query getProductVideo($handle: String!) {
+      product(handle: $handle) {
+        metafield(namespace: "custom", key: "product_video") {
+          value
+          type
+          reference {
+            ... on Video {
+              sources {
+                url
+                mimeType
+                format
+              }
+            }
+            ... on GenericFile {
+              url
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const fetchRes = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, variables: { handle } })
+    });
+
+    const data = await fetchRes.json();
+    const mf = data?.data?.product?.metafield;
+
+    let videoUrl = null;
+    if (mf) {
+      if (mf.reference?.sources && mf.reference.sources.length > 0) {
+        const mp4Src = mf.reference.sources.find(s => s.mimeType === 'video/mp4' || s.format === 'mp4');
+        videoUrl = mp4Src ? mp4Src.url : mf.reference.sources[0].url;
+      } else if (mf.reference?.url) {
+        videoUrl = mf.reference.url;
+      } else if (typeof mf.value === 'string' && mf.value.startsWith('http')) {
+        videoUrl = mf.value;
+      }
+    }
+
+    return res.json({ success: true, video_url: videoUrl });
+  } catch (err) {
+    console.error('Failed to fetch product video:', err);
+    return res.json({ success: false, video_url: null });
+  }
+});
 
 // ── Shopify API version — update here when upgrading ──
 const SHOPIFY_API_VERSION = '2024-10';
@@ -386,15 +453,20 @@ router.post('/create-draft-order', async (req, res) => {
       }
     } catch (_) {}
 
-    // 5. Build clean, standard Shopify Draft Order payload
-    const noteText = `City: ${cleanCity} | Address: ${cleanAddress} | Email: ${cleanEmail}${target_total ? ` | Deal Total: Rs. ${target_total}` : ''}`;
+    // 5. Clean & auto-heal target_total to prevent extra decimal zeros (e.g. 283800 -> 2838)
+    let cleanTargetTotal = target_total ? Math.round(parseFloat(String(target_total).replace(/,/g, '').replace(/[^0-9.]/g, ''))) : 0;
+    if (cleanTargetTotal > 50000 && cleanTargetTotal % 100 === 0) {
+      cleanTargetTotal = Math.round(cleanTargetTotal / 100);
+    }
+
+    const noteText = `City: ${cleanCity} | Address: ${cleanAddress} | Email: ${cleanEmail}${cleanTargetTotal ? ` | Deal Total: Rs. ${cleanTargetTotal.toLocaleString('en-PK')}` : ''}`;
     const noteAttributes = [
       { name: 'City', value: cleanCity },
       { name: 'Email', value: cleanEmail },
       { name: 'Delivery Address', value: cleanAddress }
     ];
-    if (target_total) {
-      noteAttributes.push({ name: 'Deal Total', value: `Rs. ${target_total}` });
+    if (cleanTargetTotal) {
+      noteAttributes.push({ name: 'Deal Total', value: `Rs. ${cleanTargetTotal.toLocaleString('en-PK')}` });
     }
 
     const payload = {

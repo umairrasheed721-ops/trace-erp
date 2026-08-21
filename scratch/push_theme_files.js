@@ -114,6 +114,9 @@ async function main() {
   await uploadAsset('sections/main-cart-footer.liquid', path.join(themeDir, 'sections/main-cart-footer.liquid'));
   await uploadAsset('snippets/buy-buttons.liquid', path.join(themeDir, 'snippets/buy-buttons.liquid'));
 
+  // 8. Upload main-product section (video button, metafield logic)
+  await uploadAsset('sections/main-product.liquid', path.join(themeDir, 'sections/main-product.liquid'));
+
   console.log('All theme uploads completed!');
 }
 
