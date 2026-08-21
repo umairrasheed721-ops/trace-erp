@@ -1024,6 +1024,7 @@ export default function AbandonedCheckouts() {
                     12:45 PM ✓✓
                   </div>
                 </div>
+              </div>
             </div>
           </div>
         </div>
