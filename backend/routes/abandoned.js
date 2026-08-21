@@ -75,7 +75,19 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // 3. Process & Reconcile Each Checkout
+    // 3. Pre-fetch variant images map from product_master_costs
+    const costs = db.prepare('SELECT shopify_variant_id, parent_title, variant_title, variant_image_url FROM product_master_costs WHERE store_id = ?').all(Number(store.id));
+    const costMap = {};
+    costs.forEach(c => {
+      if (c.variant_image_url) {
+        if (c.shopify_variant_id) costMap[String(c.shopify_variant_id)] = c.variant_image_url;
+        const fullTitle = `${c.parent_title || ''} - ${c.variant_title || ''}`.toLowerCase().trim();
+        if (fullTitle) costMap[fullTitle] = c.variant_image_url;
+        if (c.parent_title) costMap[c.parent_title.toLowerCase().trim()] = c.variant_image_url;
+      }
+    });
+
+    // 4. Process & Reconcile Each Checkout
     const checkouts = rawCheckouts.map(c => {
       const customer = c.customer || {};
       const shipping = c.shipping_address || c.billing_address || {};
@@ -89,13 +101,23 @@ router.get('/', async (req, res) => {
       const rawPhone = c.phone || shipping.phone || customer.phone || '';
       const cleanPhone = String(rawPhone).replace(/\D/g, '').slice(-10);
 
-      const items = (c.line_items || []).map(item => ({
-        title: item.title || item.name || 'Product',
-        variant_title: item.variant_title || '',
-        quantity: item.quantity || 1,
-        price: parseFloat(item.price || 0),
-        sku: item.sku || ''
-      }));
+      const items = (c.line_items || []).map(item => {
+        const titleKey = (item.title || item.name || '').toLowerCase().trim();
+        const fullKey = `${item.title || ''} - ${item.variant_title || ''}`.toLowerCase().trim();
+        const varIdKey = item.variant_id ? String(item.variant_id) : '';
+        const img = item.image_url || item.image || (item.featured_image ? (item.featured_image.url || item.featured_image) : null) || costMap[varIdKey] || costMap[fullKey] || costMap[titleKey] || null;
+
+        return {
+          title: item.title || item.name || 'Product',
+          variant_title: item.variant_title || '',
+          quantity: item.quantity || 1,
+          price: parseFloat(item.price || 0),
+          sku: item.sku || '',
+          variant_id: item.variant_id || null,
+          product_id: item.product_id || null,
+          image_url: img
+        };
+      });
 
       const checkoutCreatedAt = c.created_at ? new Date(c.created_at) : new Date();
 

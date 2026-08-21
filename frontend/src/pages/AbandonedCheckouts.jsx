@@ -32,6 +32,7 @@ export default function AbandonedCheckouts() {
     }
   })
   const [showCustomizerModal, setShowCustomizerModal] = useState(false)
+  const [selectedCheckoutForImages, setSelectedCheckoutForImages] = useState(null)
   const [editingKey, setEditingKey] = useState('REMINDER')
   const [editingText, setEditingText] = useState('')
   const textareaRef = useRef(null)
@@ -617,12 +618,73 @@ export default function AbandonedCheckouts() {
                     </td>
 
                     {/* Cart Items */}
-                    <td style={{ padding: '12px 16px', maxWidth: 220 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(c.line_items || []).map(i => `${i.title} (${i.variant_title}) x${i.quantity}`).join(', ')}>
-                        {(c.line_items || []).map(i => i.title).join(', ') || 'Cart Items'}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {c.items_count} item{c.items_count > 1 ? 's' : ''}
+                    <td style={{ padding: '12px 16px', maxWidth: 260 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {/* Inline Product Image Thumbnails */}
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          {(c.line_items || []).slice(0, 3).map((item, idx) => (
+                            item.image_url ? (
+                              <img
+                                key={idx}
+                                src={item.image_url}
+                                alt={item.title}
+                                style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: 6,
+                                  objectFit: 'cover',
+                                  border: '1px solid var(--border)',
+                                  marginLeft: idx > 0 ? -8 : 0,
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                                  background: 'var(--bg-elevated)',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => setSelectedCheckoutForImages(c)}
+                                title={`${item.title} - Click to view images`}
+                              />
+                            ) : (
+                              <div
+                                key={idx}
+                                onClick={() => setSelectedCheckoutForImages(c)}
+                                style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: 6,
+                                  background: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.75rem',
+                                  marginLeft: idx > 0 ? -8 : 0,
+                                  cursor: 'pointer'
+                                }}
+                                title={`${item.title} - Click to view images`}
+                              >
+                                📦
+                              </div>
+                            )
+                          ))}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(c.line_items || []).map(i => `${i.title} (${i.variant_title}) x${i.quantity}`).join(', ')}>
+                            {(c.line_items || []).map(i => i.title).join(', ') || 'Cart Items'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              {c.items_count} item{c.items_count > 1 ? 's' : ''}
+                            </span>
+                            <button
+                              onClick={() => setSelectedCheckoutForImages(c)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '1px 6px', fontSize: '0.68rem', borderRadius: 4, height: 20, display: 'inline-flex', alignItems: 'center', gap: 3, fontWeight: 700 }}
+                              title="View full product images & cart snapshot"
+                            >
+                              <span>📸</span> Images
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </td>
 
@@ -962,6 +1024,167 @@ export default function AbandonedCheckouts() {
                     12:45 PM ✓✓
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+      {/* 🖼️ PRODUCT IMAGES & CART SNAPSHOT MODAL */}
+      {selectedCheckoutForImages && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedCheckoutForImages(null); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)',
+            animation: 'fadeIn 0.2s ease-out', padding: 20
+          }}
+        >
+          <div style={{
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 18,
+            width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: 24,
+            boxShadow: '0 25px 60px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', gap: 20
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: 'rgba(99, 102, 241, 0.15)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.3rem'
+                }}>🖼️</div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Cart Items & Product Images
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Customer: {selectedCheckoutForImages.customer_name} ({selectedCheckoutForImages.phone || 'No phone'})
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedCheckoutForImages(null)}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '6px 12px', borderRadius: 8, fontSize: '0.9rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Checkout Items List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {(selectedCheckoutForImages.line_items || []).map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: 14,
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 14
+                  }}
+                >
+                  {/* Product Image */}
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      style={{
+                        width: 80,
+                        height: 80,
+                        borderRadius: 10,
+                        objectFit: 'cover',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: 10,
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px dashed var(--border)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.8rem',
+                      color: 'var(--text-muted)'
+                    }}>
+                      📦
+                    </div>
+                  )}
+
+                  {/* Item Details */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {item.title}
+                    </div>
+                    {item.variant_title && (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--brand)', fontWeight: 600, marginTop: 2 }}>
+                        Variant: {item.variant_title}
+                      </div>
+                    )}
+                    {item.sku && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        SKU: <span style={{ fontFamily: 'monospace' }}>{item.sku}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: '0.8rem', fontWeight: 600 }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Qty: x{item.quantity}</span>
+                      <span style={{ color: '#22c55e' }}>{formatRs(item.price)} each</span>
+                    </div>
+                  </div>
+
+                  {/* Line Total */}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Line Total</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
+                      {formatRs((item.price || 0) * (item.quantity || 1))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Total Footer & Actions */}
+            <div style={{
+              display: 'flex',
+              justify: 'space-between',
+              alignItems: 'center',
+              borderTop: '1px solid var(--border)',
+              paddingTop: 16
+            }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cart Total</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#22c55e' }}>
+                  {formatRs(selectedCheckoutForImages.total_price)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => {
+                    const text = (selectedCheckoutForImages.line_items || [])
+                      .map(i => `• ${i.title} (${i.variant_title || 'Default'}) x${i.quantity} - Rs ${i.price}`)
+                      .join('\n');
+                    navigator.clipboard.writeText(`🛒 Cart Items for ${selectedCheckoutForImages.customer_name}:\n${text}\n\nTotal: ${formatRs(selectedCheckoutForImages.total_price)}`);
+                    addToast('📋 Cart summary copied to clipboard!', 'success');
+                  }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  📋 Copy Summary
+                </button>
+                <button
+                  onClick={() => {
+                    const checkout = selectedCheckoutForImages;
+                    setSelectedCheckoutForImages(null);
+                    handleWhatsApp(checkout);
+                  }}
+                  className="btn btn-primary btn-sm"
+                  style={{ background: '#22c55e', borderColor: '#22c55e' }}
+                >
+                  💬 Send WhatsApp
+                </button>
               </div>
             </div>
           </div>
