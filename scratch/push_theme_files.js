@@ -114,8 +114,9 @@ async function main() {
   await uploadAsset('sections/main-cart-footer.liquid', path.join(themeDir, 'sections/main-cart-footer.liquid'));
   await uploadAsset('snippets/buy-buttons.liquid', path.join(themeDir, 'snippets/buy-buttons.liquid'));
 
-  // 8. Upload main-product section (video button, metafield logic)
+  // 8. Upload main-product section and asset (video button, metafield logic, compact spacing)
   await uploadAsset('sections/main-product.liquid', path.join(themeDir, 'sections/main-product.liquid'));
+  await uploadAsset('assets/section-main-product.css', path.join(themeDir, 'assets/section-main-product.css'));
 
   console.log('All theme uploads completed!');
 }

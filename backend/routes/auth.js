@@ -217,18 +217,16 @@ router.post('/url', (req, res) => {
   const existing = db.prepare('SELECT id FROM stores WHERE shop_domain = ?').get(cleanDomain);
   if (!existing) {
     db.prepare(`
-      INSERT INTO stores (shop_domain, store_name, access_token, shopify_client_id, postex_token, instaworld_key, instaworld_key_backup, sync_start_date)
-      VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?)
-    `).run(cleanDomain, store_name || cleanDomain, client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '', sync_start_date || '');
+      INSERT INTO stores (shop_domain, store_name, access_token, shopify_client_id, shopify_client_secret, postex_token, instaworld_key, instaworld_key_backup, sync_start_date)
+      VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
+    `).run(cleanDomain, store_name || cleanDomain, client_id, client_secret, postex_token || '', instaworld_key || '', instaworld_key_backup || '', sync_start_date || '');
   } else {
     db.prepare(`
-      UPDATE stores SET shopify_client_id=?, postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?, sync_start_date=?
+      UPDATE stores SET shopify_client_id=?, shopify_client_secret=?, postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?, sync_start_date=?
       WHERE shop_domain=?
-    `).run(client_id, postex_token || '', instaworld_key || '', instaworld_key_backup || '', store_name || cleanDomain, sync_start_date || '', cleanDomain);
+    `).run(client_id, client_secret, postex_token || '', instaworld_key || '', instaworld_key_backup || '', store_name || cleanDomain, sync_start_date || '', cleanDomain);
   }
 
-  // Temporarily store client_secret in a separate temp table using properties
-  // We'll store it in a simple in-memory map (since this is private app, this is fine)
   global._tempSecrets = global._tempSecrets || {};
   global._tempSecrets[cleanDomain] = client_secret;
 
@@ -250,7 +248,8 @@ router.get('/callback', async (req, res) => {
     return res.status(400).send('<h2>❌ Store not found. Please restart the connection process.</h2>');
   }
 
-  const clientSecret = (global._tempSecrets || {})[shop];
+  const clientSecret = (global._tempSecrets || {})[shop] || storeRow.shopify_client_secret || process.env.SHOPIFY_CLIENT_SECRET;
+
   if (!clientSecret) {
     return res.status(400).send('<h2>❌ Client secret expired. Please restart the connection process.</h2>');
   }

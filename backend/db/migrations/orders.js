@@ -852,5 +852,15 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #34:', e.message);
     }
+  },
+
+  // 35. Add shopify_client_secret column to stores table
+  (db) => {
+    try {
+      db.prepare(`ALTER TABLE stores ADD COLUMN shopify_client_secret TEXT`).run();
+      console.log(`✅ [Migration #35] Added shopify_client_secret column to stores table.`);
+    } catch (e) {
+      // Column already exists
+    }
   }
 ];
