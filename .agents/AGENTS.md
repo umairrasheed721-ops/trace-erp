@@ -159,3 +159,14 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - All ERP application pages and routes MUST be registered in the single-source-of-truth registry `frontend/src/utils/navigationItems.js` (`NAV_ITEMS`).
     - Both `Sidebar.jsx` (Navigation Menu) and `Users.jsx` (`RoleAuthorityMatrix`) MUST dynamically import `NAV_ITEMS` from this registry.
     - Whenever a new page or route is added, removed, or renamed, the agent MUST update `navigationItems.js` so that Sidebar navigation and User Management permissions matrix update simultaneously in 100% parity.
+
+30. **Shopify Multi-Store, Deletion & ZIP Scope Confirmation Guard (STRICT MANDATORY)**:
+    - The agent MUST NEVER perform ANY action (theme update, feature addition, deletion, metafield removal, CSS/Liquid code edit) without FIRST asking the user for explicit scope confirmation across stores and physical ZIP files.
+    - Before touching ANY online store, DB, or theme file, the agent MUST ask the user in Roman Urdu:
+      > *"Kya ye action/update/deletion teeno scopes par execute karni hai?*  
+      > 1. *Trace Store (`tracepk.com`)*  
+      > 2. *Ace Store (`1i7tnb-bb.myshopify.com`)*  
+      > 3. *Physical ZIP File (`/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip`)"*
+    - The agent MUST wait for the user's explicit approval ("all", "store 1 only", etc.) BEFORE executing any API call, script, file modification, or deletion.
+
+
