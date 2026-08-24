@@ -862,5 +862,57 @@ module.exports = [
     } catch (e) {
       // Column already exists
     }
+  },
+
+  // 36. Auto-heal orders stuck at 'Pending' or unmapped status that have active tracking_number or courier_status per Rule 12
+  (db) => {
+    try {
+      // Step A: Move Returned courier statuses to 'Returned'
+      db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Returned'
+        WHERE (LOWER(delivery_status) = 'pending' OR delivery_status IS NULL OR delivery_status = '')
+        AND (
+          LOWER(courier_status) LIKE '%returned at merchant%' OR
+          LOWER(courier_status) LIKE '%returned to merchant%' OR
+          LOWER(courier_status) LIKE '%returned to shipper%' OR
+          LOWER(courier_status) = 'returned' OR
+          LOWER(courier_status) = 'rto'
+        )
+      `).run();
+
+      // Step B: Move Delivered courier statuses to 'Delivered'
+      db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Delivered'
+        WHERE (LOWER(delivery_status) = 'pending' OR delivery_status IS NULL OR delivery_status = '')
+        AND LOWER(courier_status) LIKE '%delivered%'
+      `).run();
+
+      // Step C: Move all active transit/attempted/booked/return-received-at-hub courier statuses or tracking numbers to 'In Transit'
+      const resultHeal = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'In Transit'
+        WHERE (LOWER(delivery_status) = 'pending' OR delivery_status IS NULL OR delivery_status = '')
+        AND (
+          (courier_status IS NOT NULL AND courier_status != '' AND courier_status != '—') OR
+          (tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—')
+        )
+      `).run();
+
+      // Step D: Update legacy status_mappings DB table entries with 'Return In Transit' or wrong 'Return Received at...' to 'In Transit'
+      db.prepare(`
+        UPDATE status_mappings
+        SET erp_status = 'In Transit'
+        WHERE LOWER(erp_status) IN ('return in transit', 'return initiated')
+        OR LOWER(courier_status) LIKE '%return received at%'
+      `).run();
+
+      if (resultHeal.changes > 0) {
+        console.log(`✅ [Migration #36] Auto-healed ${resultHeal.changes} orders stuck at Pending with active tracking/courier_status to 'In Transit'.`);
+      }
+    } catch (e) {
+      console.error('Failed to run Migration #36:', e.message);
+    }
   }
 ];
