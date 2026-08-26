@@ -51,6 +51,22 @@ export default function SearchTool() {
   const lastRefreshRef = useRef(0)
   const isClearingRef = useRef(false)
   const isClearingStageRef = useRef(null)
+  
+  // ⚡ Self-Echo Guard: Prevents double refresh when local tab saves an order
+  const recentlySavedOrderIdsRef = useRef(new Map());
+  const markOrderSelfSaved = useCallback((orderId, shopifyOrderId) => {
+    const now = Date.now();
+    if (orderId) recentlySavedOrderIdsRef.current.set(String(orderId), now);
+    if (shopifyOrderId) recentlySavedOrderIdsRef.current.set(String(shopifyOrderId), now);
+    
+    // Prune entries older than 10 seconds
+    for (const [key, timestamp] of recentlySavedOrderIdsRef.current.entries()) {
+      if (now - timestamp > 10000) {
+        recentlySavedOrderIdsRef.current.delete(key);
+      }
+    }
+  }, []);
+
   const missingCostCount = useMemo(() => {
     return allOrders.filter(o => (o.delivery_status||'').toLowerCase().includes('delivered') && (!o.cost || parseFloat(o.cost) === 0) && (parseInt(o.items_count) > 0)).length
   }, [allOrders])
@@ -453,6 +469,7 @@ export default function SearchTool() {
   })
 
   const handleConfirmOrder = useCallback(async (orderId) => {
+    markOrderSelfSaved(orderId);
     const order = allOrders.find(o => o.id === orderId)
     if (order && (!order.cost || parseFloat(order.cost) <= 0)) {
       addToast('🛑 Zero Cost Block: Heal cost before confirming', 'error')
@@ -473,9 +490,10 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Network error / Failed to confirm order', 'error')
     }
-  }, [allOrders, addToast, fetchBacklogDates])
+  }, [allOrders, addToast, fetchBacklogDates, markOrderSelfSaved])
 
   const handleRevertConfirm = useCallback(async (orderId) => {
+    markOrderSelfSaved(orderId);
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: 'Pending' } : o))
     try {
@@ -491,9 +509,10 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Network error / Failed to revert order', 'error')
     }
-  }, [allOrders, addToast, fetchBacklogDates])
+  }, [allOrders, addToast, fetchBacklogDates, markOrderSelfSaved])
 
   const handleUpdateNotes = useCallback(async (orderId, notes) => {
+    markOrderSelfSaved(orderId);
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, notes } : o))
     try {
@@ -512,9 +531,10 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Sync error / Failed to update notes', 'error')
     }
-  }, [allOrders, addToast])
+  }, [allOrders, addToast, markOrderSelfSaved])
 
   const handleUpdateAddress = useCallback(async (orderId, address) => {
+    markOrderSelfSaved(orderId);
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, address } : o))
     try {
@@ -533,10 +553,11 @@ export default function SearchTool() {
       setAllOrders(previousOrders)
       addToast('Sync error / Failed to update address', 'error')
     }
-  }, [allOrders, addToast])
+  }, [allOrders, addToast, markOrderSelfSaved])
 
   const handleManualStatusChange = useCallback(async (orderId, newStatus) => {
     if (!newStatus) return
+    markOrderSelfSaved(orderId);
     const previousOrders = [...allOrders];
     setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, delivery_status: newStatus } : o))
     setStatusUpdatingId(orderId)
@@ -1393,6 +1414,18 @@ export default function SearchTool() {
       try {
         const data = JSON.parse(e.data);
         if (String(data.storeId) === String(activeStoreId)) {
+          const now = Date.now();
+          const shopifyIdStr = String(data.shopifyOrderId || '');
+          const orderIdStr = String(data.orderId || '');
+
+          // ⚡ Self-Echo Guard: If this order was saved by this tab within the last 6 seconds, skip redundant SSE re-fetch!
+          const lastShopifySave = recentlySavedOrderIdsRef.current.get(shopifyIdStr) || 0;
+          const lastOrderSave = recentlySavedOrderIdsRef.current.get(orderIdStr) || 0;
+          if ((now - lastShopifySave < 6000) || (now - lastOrderSave < 6000)) {
+            console.log(`⚡ [SSE Guard] Ignored self-emitted order_updated event for ${shopifyIdStr || orderIdStr} (saved ${now - Math.max(lastShopifySave, lastOrderSave)}ms ago)`);
+            return;
+          }
+
           pendingUpdates.push(data.shopifyOrderId);
           
           if (!flushTimeout) {
@@ -1571,10 +1604,12 @@ export default function SearchTool() {
 
   const handleLocalOrderUpdate = useCallback((updatedOrder) => {
     if (!updatedOrder?.id) return;
+    markOrderSelfSaved(updatedOrder.id, updatedOrder.shopify_order_id);
     setAllOrders(prev => prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
-  }, []);
+  }, [markOrderSelfSaved]);
 
   const updateOrderField = useCallback(async (orderId, field, value) => {
+    markOrderSelfSaved(orderId);
     const previousOrders = [...allOrders];
     const isMulti = typeof field === 'object' && field !== null;
     const payload = isMulti ? field : { [field]: value };
@@ -1589,6 +1624,7 @@ export default function SearchTool() {
       });
       const data = await res.json();
       if (res.ok && data.order) {
+        markOrderSelfSaved(data.order.id, data.order.shopify_order_id);
         setAllOrders(prev => prev.map(o => o.id === orderId ? data.order : o));
         addToast('✅ Saved', 'success');
         return data.order;
