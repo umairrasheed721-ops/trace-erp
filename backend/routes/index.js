@@ -237,10 +237,13 @@ router.get('/api/public/deploy-theme-all', async (req, res) => {
           headers: { 'X-Shopify-Access-Token': store.access_token }
         });
         const themeData = await themeRes.json();
-        const mainTheme = (themeData.themes || []).find(t => t.role === 'main') || (themeData.themes || [])[0];
+        const themesList = themeData.themes || [];
+        storeRes.allThemes = themesList.map(t => ({ id: t.id, name: t.name, role: t.role }));
+
+        const mainTheme = themesList.find(t => t.role === 'main') || themesList.find(t => t.role === 'unpublished' || t.role === 'unpublished_main') || themesList[0];
 
         if (!mainTheme) {
-          storeRes.errors.push('No published main theme found');
+          storeRes.errors.push(`No theme found in shop. Raw response: ${JSON.stringify(themeData)}`);
           results.push(storeRes);
           continue;
         }
