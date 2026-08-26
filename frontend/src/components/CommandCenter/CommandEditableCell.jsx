@@ -141,9 +141,27 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
     )
   }
 
+  const isReturned = ['returned', 'return received', 'rto'].includes((order.delivery_status || '').toLowerCase())
+  const paidAmt = parseFloat(order.paid_amount) || 0
+  const orderPrice = parseFloat(order.price) || 0
+  
+  let surplusAmt = 0
+  if (paidAmt > 0.9) {
+    if (isReturned) {
+      surplusAmt = paidAmt
+    } else if (paidAmt - orderPrice > 0.9) {
+      surplusAmt = paidAmt - orderPrice
+    }
+  }
+
   return (
     <div onClick={() => { setIsEditing(true); if (onInteraction) onInteraction(); }} style={{ cursor: 'pointer', fontWeight: 600 }}>
-      Rs {Math.round(parseFloat(order.paid_amount)||0).toLocaleString()}
+      <div>Rs {Math.round(paidAmt).toLocaleString()}</div>
+      {surplusAmt > 0.9 && (
+        <div style={{ fontSize: '0.65rem', color: '#eab308', fontWeight: 700, marginTop: '2px' }} title="Surplus cash collected from courier">
+          ⚡ Surplus: +Rs {Math.round(surplusAmt).toLocaleString()}
+        </div>
+      )}
     </div>
   )
 })
