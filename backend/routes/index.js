@@ -120,6 +120,78 @@ setInterval(() => {
 
 router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
 
+// ⚡ AUTOMATIC MULTI-STORE METAFIEILD REGISTRATION ENDPOINT ⚡
+router.get('/api/public/sync-metafields-all', async (req, res) => {
+  const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+  const DEFINITIONS = [
+    { name: 'Show Buy Bundle Button', key: 'show_bundle_button', type: 'boolean', description: 'Enable CHOOSE BUNDLE button on collection card' },
+    { name: 'Bundle Deal Target', key: 'bundle_deal_target', type: 'single_line_text_field', description: 'Target deal parameter (e.g. addon_3, addon_2) or custom URL' },
+    { name: 'Bundle Button Text', key: 'bundle_button_text', type: 'single_line_text_field', description: 'Custom text for collection card bundle button (e.g. BUY BUNDLE)' },
+    { name: 'Bundle Addon Products', key: 'bundle_addon_products', type: 'list.product_reference', description: 'List of add-on products shown as combo tiers in CRO funnel' },
+    { name: '2-in-1 Combo Discount Code', key: 'bundle_2in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 2-in-1 combo' },
+    { name: '3-Piece Set Discount Code', key: 'bundle_3in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 3-piece set' },
+    { name: 'VIP 4-Piece Discount Code', key: 'bundle_4in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for VIP 4-piece mega pack' },
+    { name: '2-in-1 Combo Discount Amount (Rs)', key: 'bundle_2in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 2-in-1 combo' },
+    { name: '3-Piece Set Discount Amount (Rs)', key: 'bundle_3in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 3-piece set' },
+    { name: 'VIP 4-Piece Discount Amount (Rs)', key: 'bundle_4in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for VIP 4-piece mega pack' },
+    { name: 'Redirect Target Product', key: 'redirect_target_product', type: 'product_reference', description: 'Target Product to redirect customer to' },
+    { name: 'Redirect Default Deal', key: 'redirect_default_deal', type: 'single_line_text_field', description: 'Default Deal to pre-select (addon_2, addon_3)' },
+    { name: 'Linked Color Products', key: 'linked_color_products', type: 'list.product_reference', description: 'Linked Color Products for swatches' },
+    { name: 'Size Chart', key: 'size_chart', type: 'file_reference', description: 'Size Chart Image' },
+    { name: 'Product Video', key: 'product_video', type: 'file_reference', description: 'Product Video MP4 file' },
+    { name: 'Advance Only', key: 'advance_only', type: 'boolean', description: 'Require 100% advance payment' },
+    { name: 'Hide Bundles', key: 'hide_bundles', type: 'boolean', description: 'Hide package bundle deals for product' }
+  ];
+
+  const query = `
+    mutation CreateMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionCreate(definition: $definition) {
+        createdDefinition { id name namespace key type { name } }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  try {
+    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all();
+    const results = [];
+
+    for (const store of stores) {
+      const storeRes = { id: store.id, name: store.store_name, domain: store.shop_domain, registered: [], skipped: [], errors: [] };
+      for (const def of DEFINITIONS) {
+        try {
+          const res = await fetch(`https://${store.shop_domain}/admin/api/2024-10/graphql.json`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Shopify-Access-Token': store.access_token
+            },
+            body: JSON.stringify({ query, variables: { definition: { name: def.name, namespace: 'custom', key: def.key, type: def.type, ownerType: 'PRODUCT', description: def.description } } })
+          });
+          const data = await res.json();
+          const created = data?.data?.metafieldDefinitionCreate?.createdDefinition;
+          const userErrors = data?.data?.metafieldDefinitionCreate?.userErrors;
+
+          if (created) {
+            storeRes.registered.push(`custom.${def.key} (${created.name})`);
+          } else if (userErrors && userErrors.length > 0) {
+            storeRes.skipped.push(`custom.${def.key}: ${userErrors[0].message}`);
+          } else {
+            storeRes.errors.push(`custom.${def.key}: ${JSON.stringify(data.errors || data)}`);
+          }
+        } catch (err) {
+          storeRes.errors.push(`custom.${def.key}: ${err.message}`);
+        }
+      }
+      results.push(storeRes);
+    }
+
+    res.json({ success: true, totalStores: stores.length, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
