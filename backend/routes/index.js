@@ -120,6 +120,17 @@ setInterval(() => {
 
 router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
 
+// ⚡ GET RABBI TRENDS ACCESS TOKEN FOR LOCAL SCRIPTS ⚡
+router.get('/api/public/get-rabbi-token', (req, res) => {
+  try {
+    const store = db.prepare("SELECT shop_domain, access_token FROM stores WHERE shop_domain LIKE '%72d3a1-e7%' AND access_token IS NOT NULL AND access_token != 'PENDING'").get();
+    if (!store) return res.status(404).json({ error: 'Rabbi Trends store not found or token missing' });
+    res.json({ domain: store.shop_domain, token: store.access_token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ⚡ AUTOMATIC MULTI-STORE METAFIEILD REGISTRATION ENDPOINT ⚡
 router.get('/api/public/sync-metafields-all', async (req, res) => {
   const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
