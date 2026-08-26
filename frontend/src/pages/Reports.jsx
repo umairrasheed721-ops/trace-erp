@@ -109,6 +109,8 @@ export default function Reports() {
     else if (colId === 'cashInTransit') filters.status = '[IN TRANSIT]';
     else if (colId === 'withoutTrackingId') filters.status = '[NO TRACKING]';
     else if (colId === 'deliveredPaymentPending') filters.status = '[UNPAID DELIVERED]';
+    else if (colId === 'unpaidAmount') filters.status = '[UNPAID DELIVERED]';
+    else if (colId === 'paymentPaid') filters.status = '[PAID]';
     else if (colId === 'costGaps') filters.status = '[MISSING COST]';
     else if (colId === 'overduePayoutCount') filters.status = 'OVERDUE PAYOUT';
     else if (colId === 'zeroExpenseCount') filters.status = '[AUDIT: MISSING CHARGES]';
