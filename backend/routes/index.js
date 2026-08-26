@@ -295,7 +295,7 @@ router.get('/api/public/deploy-theme-all', async (req, res) => {
 // ⚡ AUTOMATIC STORE THEME ASSET UPLOAD ENDPOINT ⚡
 router.post('/api/public/upload-theme-asset', async (req, res) => {
   const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
-  const { store_id, domain, key, value, attachment } = req.body;
+  const { store_id, domain, key, value, attachment, theme_id } = req.body;
 
   if (!key || (!value && !attachment)) {
     return res.status(400).json({ error: 'key and value/attachment required' });
@@ -315,16 +315,20 @@ router.post('/api/public/upload-theme-asset', async (req, res) => {
       return res.status(404).json({ error: 'Store not found or token missing' });
     }
 
-    // 1. Fetch main published theme ID
-    const themeRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes.json`, {
-      headers: { 'X-Shopify-Access-Token': store.access_token }
-    });
-    const themeData = await themeRes.json();
-    const themesList = themeData.themes || [];
-    const mainTheme = themesList.find(t => t.role === 'main') || themesList[0];
+    let targetThemeId = theme_id;
+    if (!targetThemeId) {
+      // 1. Fetch main published theme ID
+      const themeRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes.json`, {
+        headers: { 'X-Shopify-Access-Token': store.access_token }
+      });
+      const themeData = await themeRes.json();
+      const themesList = themeData.themes || [];
+      const mainTheme = themesList.find(t => t.role === 'main') || themesList[0];
+      targetThemeId = mainTheme?.id;
+    }
 
-    if (!mainTheme) {
-      return res.status(404).json({ error: 'No theme found on store' });
+    if (!targetThemeId) {
+      return res.status(404).json({ error: 'No target theme found on store' });
     }
 
     // 2. Upload asset payload
@@ -332,7 +336,7 @@ router.post('/api/public/upload-theme-asset', async (req, res) => {
     if (attachment) payload.asset.attachment = attachment;
     else payload.asset.value = value;
 
-    const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${mainTheme.id}/assets.json`, {
+    const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${targetThemeId}/assets.json`, {
       method: 'PUT',
       headers: {
         'X-Shopify-Access-Token': store.access_token,
@@ -343,9 +347,9 @@ router.post('/api/public/upload-theme-asset', async (req, res) => {
 
     const upData = await upRes.json();
     if (upRes.ok) {
-      res.json({ success: true, store: store.shop_domain, themeId: mainTheme.id, key });
+      res.json({ success: true, store: store.shop_domain, themeId: targetThemeId, key });
     } else {
-      res.status(upRes.status).json({ success: false, store: store.shop_domain, error: upData });
+      res.status(upRes.status).json({ success: false, store: store.shop_domain, themeId: targetThemeId, error: upData });
     }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
