@@ -29,15 +29,32 @@ try {
 
 // ── Helper to resolve active store from request origin (Multi-Store Safe) ──
 function getStoreFromRequest(req) {
+  // 1. Check explicit shop query param (e.g. ?shop=72d3a1-e7.myshopify.com)
+  const shopParam = req.query.shop || req.query.shop_domain || '';
+  if (shopParam) {
+    const byParam = db.prepare('SELECT id, shop_domain FROM stores WHERE shop_domain = ? OR shop_domain LIKE ? LIMIT 1')
+      .get(shopParam, `%${shopParam}%`);
+    if (byParam) return byParam;
+  }
+
+  // 2. Check Origin/Referer header
   const origin = req.get('origin') || req.get('referer') || '';
   let store = null;
   if (origin) {
     try {
       const hostname = new URL(origin).hostname;
+      // Try direct match first, then partial (handles rabbitrends.com -> 72d3a1-e7.myshopify.com lookup via store name)
       store = db.prepare('SELECT id, shop_domain FROM stores WHERE shop_domain = ? OR shop_domain LIKE ? LIMIT 1')
         .get(hostname, `%${hostname}%`);
+      // If not found by myshopify domain, try store_name or primary_domain match
+      if (!store) {
+        store = db.prepare("SELECT id, shop_domain FROM stores WHERE store_name LIKE ? OR JSON_EXTRACT(meta, '$.primary_domain') LIKE ? LIMIT 1")
+          .get(`%${hostname}%`, `%${hostname}%`);
+      }
     } catch (_) {}
   }
+
+  // 3. Fallback to first store
   if (!store) {
     store = db.prepare('SELECT id, shop_domain FROM stores LIMIT 1').get();
   }
@@ -51,7 +68,7 @@ function getStoreFromRequest(req) {
 // ─────────────────────────────────────────────────────────────────
 router.get('/reviews', (req, res) => {
   try {
-    const { handle, handles, page = 1, limit = 20 } = req.query;
+    const { handle, handles, page = 1, limit = 20, shop, shop_domain } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let handleList = [];
@@ -437,7 +454,7 @@ router.post('/submit-review', (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 router.post('/write-review', (req, res) => {
   try {
-    const { handle, rating, name, email, title, body } = req.body;
+    const { handle, rating, name, email, title, body, shop_domain } = req.body;
 
     if (!handle || !rating || !name || !email || !body) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
@@ -452,6 +469,8 @@ router.post('/write-review', (req, res) => {
       return res.status(400).json({ success: false, error: 'Review is too short' });
     }
 
+    // Inject shop_domain into query so getStoreFromRequest resolves correctly
+    if (shop_domain) req.query.shop = shop_domain;
     const store = getStoreFromRequest(req);
     const storeId = store ? store.id : null;
 
