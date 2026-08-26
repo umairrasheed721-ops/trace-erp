@@ -114,6 +114,7 @@ export default function Reports() {
     else if (colId === 'costGaps') filters.status = '[MISSING COST]';
     else if (colId === 'overduePayoutCount') filters.status = 'OVERDUE PAYOUT';
     else if (colId === 'zeroExpenseCount') filters.status = '[AUDIT: MISSING CHARGES]';
+    else if (colId === 'surplusPayout' || colId === 'surplusPayoutCount') filters.status = '[SURPLUS PAYOUT]';
 
     navigate('/search', { state: filters });
   };
@@ -157,6 +158,7 @@ export default function Reports() {
     { id: 'cashInTransit', label: 'Cash In Transit', group: 'kpi' },
     { id: 'withoutTrackingId', label: 'No Tracking', group: 'kpi' },
     { id: 'paymentPaid', label: 'Payouts', group: 'kpi' },
+    { id: 'surplusPayout', label: 'Surplus Payout', group: 'kpi' },
     { id: 'diffCorrection', label: 'Correction', group: 'kpi' },
     { id: 'deliveredPaymentPending', label: 'Unpaid Del', group: 'kpi' },
     { id: 'costGaps', label: 'Cost Gaps', group: 'kpi' },

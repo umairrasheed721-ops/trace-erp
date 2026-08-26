@@ -300,7 +300,8 @@ export default function useReportsData(activeStoreId, toast) {
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
-          zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0
+          zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0,
+          surplusPayout: 0, surplusPayoutCount: 0
         };
       }
       const m = acc[month];
@@ -334,6 +335,8 @@ export default function useReportsData(activeStoreId, toast) {
       m.failedButDelivered += row.failedButDelivered || 0;
       m.prepaidOrders += row.prepaidOrders || 0;
       m.claimOrders += row.claimOrders || 0;
+      m.surplusPayout += row.surplusPayout || 0;
+      m.surplusPayoutCount += row.surplusPayoutCount || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
       m.totalSale += (row.roasMeta * totalMarketing);
       return acc;
