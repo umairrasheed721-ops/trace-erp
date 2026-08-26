@@ -42,11 +42,11 @@ function getOrderFilters(req) {
     } else if (s.includes('NO TRACKING')) {
       whereClauses.push("(o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—') AND LOWER(o.delivery_status) != 'cancelled'");
     } else if (s.includes('UNPAID DELIVERED')) {
-      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 10.0 AND (o.payment_status IS NULL OR (o.payment_status != 'Payment Posted' AND o.payment_status != 'Refunded' AND o.payment_status != 'Returned'))");
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 0.9 AND (o.payment_status IS NULL OR (o.payment_status != 'Payment Posted' AND o.payment_status != 'Refunded' AND o.payment_status != 'Returned'))");
     } else if (s.includes('MISSING COST')) {
       whereClauses.push("LOWER(o.delivery_status) NOT IN ('cancelled', 'returned', 'return received', 'rto') AND (o.cost IS NULL OR o.cost = 0) AND o.items_count > 0");
     } else if (s.includes('OVERDUE PAYOUT')) {
-      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 10.0 AND (o.payment_status IS NULL OR o.payment_status != 'Payment Posted') AND (julianday('now') - julianday(datetime(COALESCE(o.status_date, o.order_date)))) > 10");
+      whereClauses.push("LOWER(o.delivery_status) LIKE '%delivered%' AND ABS(COALESCE(o.price, 0) - COALESCE(o.paid_amount, 0)) > 0.9 AND (o.payment_status IS NULL OR o.payment_status != 'Payment Posted') AND (julianday('now') - julianday(datetime(COALESCE(o.status_date, o.order_date)))) > 10");
     } else if (s.includes('MISSING CHARGES')) {
       whereClauses.push("(o.courier_fee IS NULL OR o.courier_fee < 1) AND LOWER(o.delivery_status) NOT IN ('pending', 'cancelled') AND o.tracking_number IS NOT NULL AND o.tracking_number != ''");
     } else if (s.includes('[IN TRANSIT]') || s === 'transit' || s.includes('in transit')) {

@@ -5,7 +5,7 @@ const db = require('../db');
 // ─── PNL MODULE: Named Constants (Rule 11 — No Magic Numbers) ───────────────
 const EST_COURIER_PER_ORDER = 200;  // Rs per dispatched order (PostEx/Leopards standard est. rate)
 const TAX_RATE = 0.04;              // 4% sales tax on delivered sale value
-const PAYMENT_DIFF_THRESHOLD = 10.0; // Min Rs difference to flag as unpaid/overdue payout (Max Rs 10 tolerance)
+const PAYMENT_DIFF_THRESHOLD = 0.9;  // Min Rs difference to flag as unpaid/overdue payout (captures all + and - variances > 0.9 PKR)
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get('/daily', (req, res) => {

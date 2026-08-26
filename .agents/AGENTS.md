@@ -124,8 +124,8 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - All external courier API requests (PostEx, Leopards, TCS, Trax, LCS, Instaworld) MUST enforce explicit timeouts (e.g. 5000ms max via Axios/Fetch) and key rotation fallbacks. API outages MUST gracefully degrade to cached DB status without throwing unhandled exceptions.
 
 22. **Payment Variance Tolerance Threshold Standard**:
-    - The payment variance tolerance threshold is strictly set to **`10.0` PKR (Rs. 10)** across PNL reports (`backend/routes/reports.js`), Command Center filters (`backend/services/orderFilterBuilder.js`), and Finance Payout Reconciler (`backend/routes/finance/finance-sessions.js`).
-    - Payout discrepancies <= Rs. 10 MUST automatically be marked as **Paid & Cleared** without flagging unpaid balance.
+    - The payment variance tolerance threshold is strictly set to **`0.9` PKR** across PNL reports (`backend/routes/reports.js`), Command Center filters (`backend/services/orderFilterBuilder.js`), and Finance Payout Reconciler (`backend/routes/finance/finance-sessions.js`).
+    - Any delivered order with `ABS(price - paid_amount) > 0.9` PKR MUST be captured under `UNPAID PAYOUTS` — including positive shortfalls (`price > paid_amount`) and negative surpluses (`paid_amount > price`).
 
 23. **Shopify Order Notes Reconciliation Standard**:
     - Every reconciled payout synced to Shopify MUST include full financial details in the Shopify Order Note:
