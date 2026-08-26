@@ -192,6 +192,103 @@ router.get('/api/public/sync-metafields-all', async (req, res) => {
   }
 });
 
+// ⚡ AUTOMATIC MULTI-STORE THEME DEPLOYMENT ENDPOINT ⚡
+router.get('/api/public/deploy-theme-all', async (req, res) => {
+  const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+  const fs = require('fs');
+  const path = require('path');
+
+  const filesToUpload = [
+    'snippets/trace-cro-funnel.liquid',
+    'layout/theme.liquid',
+    'snippets/product-thumbnail.liquid',
+    'snippets/price.liquid',
+    'snippets/card-product.liquid',
+    'assets/base.css',
+    'assets/trace-whatsapp-community.js',
+    'snippets/trace-cod-checkout.liquid',
+    'snippets/trace-floating-video.liquid',
+    'sections/custom-hero-slider.liquid',
+    'sections/header.liquid',
+    'sections/footer.liquid',
+    'config/settings_schema.json',
+    'sections/trace-reviews.liquid',
+    'snippets/trace-reviews.liquid',
+    'snippets/cart-drawer.liquid',
+    'snippets/cart-notification.liquid',
+    'sections/main-cart-footer.liquid',
+    'snippets/buy-buttons.liquid',
+    'sections/main-product.liquid',
+    'assets/section-main-product.css'
+  ];
+
+  const themeDir = path.join(__dirname, '../../shopify_theme');
+
+  try {
+    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all();
+    const results = [];
+
+    for (const store of stores) {
+      const storeRes = { id: store.id, name: store.store_name, domain: store.shop_domain, themeId: null, uploaded: [], errors: [] };
+
+      // 1. Fetch main published theme ID
+      try {
+        const themeRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes.json`, {
+          headers: { 'X-Shopify-Access-Token': store.access_token }
+        });
+        const themeData = await themeRes.json();
+        const mainTheme = (themeData.themes || []).find(t => t.role === 'main') || (themeData.themes || [])[0];
+
+        if (!mainTheme) {
+          storeRes.errors.push('No published main theme found');
+          results.push(storeRes);
+          continue;
+        }
+
+        storeRes.themeId = mainTheme.id;
+
+        // 2. Upload each file to main theme
+        for (const key of filesToUpload) {
+          const localPath = path.join(themeDir, key);
+          if (!fs.existsSync(localPath)) continue;
+
+          const isBinary = localPath.endsWith('.woff2') || localPath.endsWith('.png') || localPath.endsWith('.jpg') || localPath.endsWith('.gif');
+          const payload = { asset: { key } };
+          if (isBinary) {
+            payload.asset.attachment = fs.readFileSync(localPath).toString('base64');
+          } else {
+            payload.asset.value = fs.readFileSync(localPath, 'utf8');
+          }
+
+          const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${mainTheme.id}/assets.json`, {
+            method: 'PUT',
+            headers: {
+              'X-Shopify-Access-Token': store.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (upRes.ok) {
+            storeRes.uploaded.push(key);
+          } else {
+            const errTxt = await upRes.text();
+            storeRes.errors.push(`${key}: HTTP ${upRes.status} - ${errTxt.slice(0, 80)}`);
+          }
+        }
+      } catch (err) {
+        storeRes.errors.push(`Store error: ${err.message}`);
+      }
+
+      results.push(storeRes);
+    }
+
+    res.json({ success: true, totalStores: stores.length, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
