@@ -292,6 +292,66 @@ router.get('/api/public/deploy-theme-all', async (req, res) => {
   }
 });
 
+// ⚡ AUTOMATIC STORE THEME ASSET UPLOAD ENDPOINT ⚡
+router.post('/api/public/upload-theme-asset', async (req, res) => {
+  const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+  const { store_id, domain, key, value, attachment } = req.body;
+
+  if (!key || (!value && !attachment)) {
+    return res.status(400).json({ error: 'key and value/attachment required' });
+  }
+
+  try {
+    let store;
+    if (store_id) {
+      store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE id = ?').get(Number(store_id));
+    } else if (domain) {
+      store = db.prepare('SELECT id, shop_domain, access_token FROM stores WHERE shop_domain = ? OR shop_domain LIKE ?').get(domain, `%${domain}%`);
+    } else {
+      store = db.prepare("SELECT id, shop_domain, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' LIMIT 1").get();
+    }
+
+    if (!store || !store.access_token) {
+      return res.status(404).json({ error: 'Store not found or token missing' });
+    }
+
+    // 1. Fetch main published theme ID
+    const themeRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes.json`, {
+      headers: { 'X-Shopify-Access-Token': store.access_token }
+    });
+    const themeData = await themeRes.json();
+    const themesList = themeData.themes || [];
+    const mainTheme = themesList.find(t => t.role === 'main') || themesList[0];
+
+    if (!mainTheme) {
+      return res.status(404).json({ error: 'No theme found on store' });
+    }
+
+    // 2. Upload asset payload
+    const payload = { asset: { key } };
+    if (attachment) payload.asset.attachment = attachment;
+    else payload.asset.value = value;
+
+    const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${mainTheme.id}/assets.json`, {
+      method: 'PUT',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const upData = await upRes.json();
+    if (upRes.ok) {
+      res.json({ success: true, store: store.shop_domain, themeId: mainTheme.id, key });
+    } else {
+      res.status(upRes.status).json({ success: false, store: store.shop_domain, error: upData });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/api/admin/system-status', (req, res) => {
   const mem = process.memoryUsage();
   const toMB = (b) => (b / 1024 / 1024).toFixed(1);
