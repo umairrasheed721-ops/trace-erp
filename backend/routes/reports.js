@@ -59,9 +59,9 @@ router.get('/daily', (req, res) => {
         COALESCE(SUM(CASE WHEN payment_status IN ('Paid', 'Payment Posted') OR (LOWER(COALESCE(delivery_status, '')) IN ('returned', 'return received') AND courier_fee > 0) THEN 1 ELSE 0 END), 0) as reconciled_count,
         SUM(CASE WHEN COALESCE(failed_attempts, 0) > 0 THEN 1 ELSE 0 END) as orders_with_failed_attempts,
         SUM(CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'delivered' AND COALESCE(failed_attempts, 0) > 0 THEN 1 ELSE 0 END) as failed_but_delivered,
-        -- 📊 SURPLUS_PAYOUT: Excess cash collected from non-delivered orders OR paid_amount > price on delivered orders. Source: paid_amount, price, delivery_status
-        SUM(CASE WHEN COALESCE(paid_amount, 0) > 0 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR COALESCE(paid_amount, 0) > COALESCE(price, 0)) THEN (COALESCE(paid_amount, 0) - CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'delivered' THEN COALESCE(price, 0) ELSE 0 END) ELSE 0 END) as surplus_payout,
-        SUM(CASE WHEN COALESCE(paid_amount, 0) > 0 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR COALESCE(paid_amount, 0) > COALESCE(price, 0)) THEN 1 ELSE 0 END) as surplus_payout_count,
+        -- 📊 SURPLUS_PAYOUT: Excess cash collected from non-delivered orders OR paid_amount > price + 0.9 on delivered orders. Source: paid_amount, price, delivery_status
+        SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN (COALESCE(paid_amount, 0) - CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'delivered' THEN COALESCE(price, 0) ELSE 0 END) ELSE 0 END) as surplus_payout,
+        SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN 1 ELSE 0 END) as surplus_payout_count,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' OR LOWER(COALESCE(notes, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders
       FROM orders
