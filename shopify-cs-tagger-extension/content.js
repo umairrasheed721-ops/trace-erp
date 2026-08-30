@@ -178,7 +178,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '3.3') return;
+      if (oldBar.getAttribute('data-version') === '4.0') return;
       oldBar.remove();
     }
 
@@ -189,7 +189,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '3.3');
+    bar.setAttribute('data-version', '4.0');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -353,6 +353,92 @@
     }
   }
 
+  // -------------------------------------------------------------
+  // ORDERS LIST VIEW — INLINE ROW QUICK ACTIONS & WHATSAPP
+  // -------------------------------------------------------------
+  function injectOrderListRowActions() {
+    const orderLinks = document.querySelectorAll('a[href*="/orders/"]');
+    orderLinks.forEach(link => {
+      if (link.getAttribute('data-trace-cs-injected') === 'true') return;
+
+      const href = link.getAttribute('href') || '';
+      const match = href.match(/\/orders\/(\d+)/);
+      if (!match) return;
+      const shopifyOrderId = match[1];
+
+      const orderText = link.innerText ? link.innerText.trim() : '';
+      if (!orderText || orderText.length < 2) return;
+      if (!/^TR\d+/i.test(orderText) && !/^#TR\d+/i.test(orderText) && !/^\d+$/i.test(orderText)) return;
+
+      link.setAttribute('data-trace-cs-injected', 'true');
+
+      const actionContainer = document.createElement('span');
+      actionContainer.className = 'trace-row-action-bar';
+      actionContainer.style.cssText = `
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 3px !important;
+        margin-left: 6px !important;
+        vertical-align: middle !important;
+      `;
+
+      actionContainer.innerHTML = `
+        <button type="button" class="trace-row-btn" data-tag="WhatsApp" style="background: rgba(16, 185, 129, 0.15) !important; color: #10b981 !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag WhatsApp">🟢 WA</button>
+        <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
+        <button type="button" class="trace-row-btn" data-tag="Cancel Request" style="background: rgba(239, 68, 68, 0.15) !important; color: #ef4444 !important; border: 1px solid #ef4444 !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Cancel Request">🔴 Cancel</button>
+        <a class="trace-row-wa-link" href="#" target="_blank" style="background: #059669 !important; color: #ffffff !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important;" title="Open WhatsApp Chat">💬 Chat</a>
+      `;
+
+      actionContainer.querySelectorAll('.trace-row-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const tag = btn.getAttribute('data-tag');
+          btn.style.opacity = '0.4';
+
+          try {
+            const res = await fetch(ERP_API_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shopify_order_id: shopifyOrderId, tag, action: 'add' })
+            });
+            const data = await res.json();
+            if (data.success) {
+              createNotificationToast(`✅ Order ${orderText}: Tag "${tag}" applied!`, 'success');
+              btn.style.background = '#10b981';
+              btn.style.color = '#ffffff';
+            } else {
+              createNotificationToast(`⚠️ ${data.error || 'Failed'}`, 'error');
+            }
+          } catch (err) {
+            createNotificationToast(`❌ Network Error`, 'error');
+          } finally {
+            btn.style.opacity = '1';
+          }
+        });
+      });
+
+      const waLink = actionContainer.querySelector('.trace-row-wa-link');
+      fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderText)}`)
+        .then(res => res.json())
+        .then(infoData => {
+          if (infoData.success && infoData.order && infoData.order.clean_phone) {
+            const ord = infoData.order;
+            const msg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
+            waLink.href = `https://wa.me/${ord.clean_phone}?text=${msg}`;
+          } else {
+            waLink.style.display = 'none';
+          }
+        }).catch(() => {
+          waLink.style.display = 'none';
+        });
+
+      if (link.parentNode) {
+        link.parentNode.appendChild(actionContainer);
+      }
+    });
+  }
+
   // Keyboard Shortcuts Listener
   document.addEventListener('keydown', (e) => {
     if (!e.altKey) return;
@@ -390,9 +476,14 @@
       if (extractShopifyOrderId()) {
         injectTaggingWidget();
       }
+      // Inject inline row actions on Orders List View page
+      injectOrderListRowActions();
     }
   }, 1200);
 
   // Initial Run
-  setTimeout(injectTaggingWidget, 800);
+  setTimeout(() => {
+    injectTaggingWidget();
+    injectOrderListRowActions();
+  }, 800);
 })();
