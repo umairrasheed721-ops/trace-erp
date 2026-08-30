@@ -4,61 +4,172 @@
   <meta charset="utf-8">
   <title>TRACE ERP CS Assistant</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      width: 260px;
+      width: 320px;
       padding: 16px;
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #0f172a;
       color: #f8fafc;
     }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 8px;
+    }
     h3 {
-      margin: 0 0 8px 0;
-      font-size: 0.95rem;
+      margin: 0;
+      font-size: 0.92rem;
       color: #38bdf8;
       display: flex;
       align-items: center;
       gap: 6px;
     }
-    p {
-      font-size: 0.78rem;
-      color: #94a3b8;
-      margin: 0 0 12px 0;
-      line-height: 1.4;
-    }
     .status-badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 0.72rem;
+      font-size: 0.65rem;
       font-weight: bold;
       background: rgba(16, 185, 129, 0.2);
       color: #10b981;
       border: 1px solid #10b981;
+      padding: 2px 6px;
+      border-radius: 4px;
     }
-    ul {
-      padding-left: 16px;
-      margin: 8px 0;
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+    label {
       font-size: 0.72rem;
-      color: #cbd5e1;
+      color: #94a3b8;
+      font-weight: 600;
     }
-    li { margin-bottom: 4px; }
+    input[type="text"] {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: #ffffff;
+      font-size: 0.82rem;
+      font-family: monospace;
+      width: 100%;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tag-btn {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--btn-color, #ffffff);
+      border: 1px solid var(--btn-color, #ffffff);
+      border-radius: 8px;
+      padding: 10px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+    }
+    .tag-btn:hover {
+      background: var(--btn-color, #ffffff);
+      color: #0f172a;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .tag-btn:active {
+      transform: translateY(0);
+    }
+    .btn-loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    #status-toast {
+      font-size: 0.75rem;
+      padding: 8px;
+      border-radius: 6px;
+      display: none;
+      text-align: center;
+      margin-top: 8px;
+      font-weight: 600;
+    }
+    .toast-success {
+      background: #065f46;
+      color: #a7f3d0;
+      border: 1px solid #10b981;
+    }
+    .toast-error {
+      background: #7f1d1d;
+      color: #fecaca;
+      border: 1px solid #ef4444;
+    }
+    .shortcut-list {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.68rem;
+      color: #64748b;
+    }
+    .shortcut-list code {
+      color: #38bdf8;
+      background: #1e293b;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
   </style>
 </head>
 <body>
-  <h3>⚡ TRACE ERP CS Assistant</h3>
-  <p>1-Click Order Tagging Bar active on all Shopify Admin order pages.</p>
-  <div class="status-badge">🟢 Connected to TRACE ERP</div>
-
-  <div style="margin-top: 12px;">
-    <strong style="font-size: 0.75rem; color: #94a3b8;">Hotkeys (Shortcuts):</strong>
-    <ul>
-      <li><code style="color: #38bdf8;">Alt + W</code> ➔ WhatsApp</li>
-      <li><code style="color: #8b5cf6;">Alt + F</code> ➔ WhatsApp-In-Funnel</li>
-      <li><code style="color: #3b82f6;">Alt + P</code> ➔ Prepaid</li>
-      <li><code style="color: #f59e0b;">Alt + C</code> ➔ Claim</li>
-      <li><code style="color: #ef4444;">Alt + X</code> ➔ Cancel Request</li>
-    </ul>
+  <div class="header">
+    <h3>⚡ TRACE CS Assistant</h3>
+    <span class="status-badge">🟢 ERP Connected</span>
   </div>
+
+  <div class="input-group">
+    <label for="order-id-input">Shopify Order ID / Number:</label>
+    <input type="text" id="order-id-input" placeholder="e.g. 6123456789 or TR1234" />
+  </div>
+
+  <div class="section-title">1-Click Tag Buttons:</div>
+  <div class="btn-grid">
+    <button class="tag-btn" data-tag="WhatsApp" style="--btn-color: #10b981;">🟢 WhatsApp</button>
+    <button class="tag-btn" data-tag="WhatsApp-In-Funnel" style="--btn-color: #a855f7;">🟣 Funnel</button>
+    <button class="tag-btn" data-tag="Prepaid" style="--btn-color: #3b82f6;">🔵 Prepaid</button>
+    <button class="tag-btn" data-tag="Claim" style="--btn-color: #f59e0b;">🟡 Claim</button>
+    <button class="tag-btn" data-tag="Cancel Request" style="--btn-color: #ef4444;">🔴 Cancel Req</button>
+    <button class="tag-btn" data-tag="Address Change" style="--btn-color: #ec4899;">💗 Address Chg</button>
+    <button class="tag-btn" data-tag="Hold" style="--btn-color: #94a3b8;">⏸️ Hold</button>
+    <button class="tag-btn" data-tag="Exchange" style="--btn-color: #06b6d4;">🔄 Exchange</button>
+  </div>
+
+  <div id="status-toast"></div>
+
+  <div class="shortcut-list">
+    <strong>Shortcuts:</strong> <code>Alt+W</code> WhatsApp | <code>Alt+F</code> Funnel | <code>Alt+P</code> Prepaid | <code>Alt+C</code> Claim
+  </div>
+
+  <script src="popup.js"></script>
 </body>
 </html>

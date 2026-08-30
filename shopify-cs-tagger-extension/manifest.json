@@ -3,7 +3,7 @@
   "name": "TRACE ERP — CS Quick Tagging Assistant",
   "version": "1.0.0",
   "description": "Instant 1-Click Shopify Order Tagging Bar integrated with TRACE ERP.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
     "https://admin.shopify.com/*",
     "https://*.myshopify.com/*",
@@ -12,9 +12,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://admin.shopify.com/store/*/orders/*",
-        "https://admin.shopify.com/owner/*/orders/*",
-        "https://*.myshopify.com/admin/orders/*"
+        "https://admin.shopify.com/*",
+        "https://*.myshopify.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"],

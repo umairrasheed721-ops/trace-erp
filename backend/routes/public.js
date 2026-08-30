@@ -761,12 +761,18 @@ router.post('/extension-tag-order', async (req, res) => {
     let store = null;
     if (localOrder && localOrder.store_id) {
       store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(localOrder.store_id);
-    } else {
-      store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' LIMIT 1").get();
     }
+    
+    let shopDomain = store ? (store.shop_domain || store.myshopify_domain) : null;
+    let token = store ? store.access_token : null;
 
-    if (!store || !store.access_token || !store.myshopify_domain) {
-      return res.status(400).json({ success: false, error: 'Active store token not found' });
+    if (!token || !token.startsWith('shpat_')) {
+      const validStore = db.db.prepare("SELECT * FROM stores WHERE access_token LIKE 'shpat_%' LIMIT 1").get();
+      if (validStore) {
+        store = validStore;
+        shopDomain = validStore.shop_domain || validStore.myshopify_domain;
+        token = validStore.access_token;
+      }
     }
 
     const orderGid = `gid://shopify/Order/${cleanOrderNum}`;
@@ -774,17 +780,22 @@ router.post('/extension-tag-order', async (req, res) => {
       ? `mutation tagsRemove($id: ID!, $tags: [String!]!) { tagsRemove(id: $id, tags: $tags) { userErrors { message } node { id } } }`
       : `mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { userErrors { message } node { id } } }`;
 
-    const shopifyRes = await fetch(`https://${store.myshopify_domain}/admin/api/2024-01/graphql.json`, {
-      method: 'POST',
-      headers: {
-        'X-Shopify-Access-Token': store.access_token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query: mutation, variables: { id: orderGid, tags: [tag] } })
-    });
-
-    const graphResult = await shopifyRes.json();
-    console.log(`🏷️ [Extension Tag Relay] ${action.toUpperCase()} tag '${tag}' on ${cleanOrderNum}:`, JSON.stringify(graphResult));
+    if (token && token.startsWith('shpat_') && shopDomain) {
+      try {
+        const shopifyRes = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
+          method: 'POST',
+          headers: {
+            'X-Shopify-Access-Token': token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ query: mutation, variables: { id: orderGid, tags: [tag] } })
+        });
+        const graphResult = await shopifyRes.json();
+        console.log(`🏷️ [Extension Tag Relay] ${action.toUpperCase()} tag '${tag}' on ${cleanOrderNum} via ${shopDomain}:`, JSON.stringify(graphResult));
+      } catch (shopErr) {
+        console.warn(`⚠️ [Extension Tag Relay] Shopify live edit error:`, shopErr.message);
+      }
+    }
 
     // Update local DB tag list
     if (localOrder) {

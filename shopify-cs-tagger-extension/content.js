@@ -4,14 +4,14 @@
   const ERP_API_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-tag-order';
 
   const PRESET_TAGS = [
-    { label: 'WhatsApp', tag: 'WhatsApp', color: '#10b981', shortcut: 'Alt+W' },
-    { label: 'Funnel', tag: 'WhatsApp-In-Funnel', color: '#8b5cf6', shortcut: 'Alt+F' },
-    { label: 'Prepaid', tag: 'Prepaid', color: '#3b82f6', shortcut: 'Alt+P' },
-    { label: 'Claim', tag: 'Claim', color: '#f59e0b', shortcut: 'Alt+C' },
-    { label: 'Cancel Request', tag: 'Cancel Request', color: '#ef4444', shortcut: 'Alt+X' },
-    { label: 'Address Change', tag: 'Address Change', color: '#ec4899', shortcut: 'Alt+A' },
-    { label: 'Hold / Pending', tag: 'Hold', color: '#64748b', shortcut: 'Alt+H' },
-    { label: 'Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' }
+    { label: '🟢 WhatsApp', tag: 'WhatsApp', color: '#10b981', shortcut: 'Alt+W' },
+    { label: '🟣 Funnel', tag: 'WhatsApp-In-Funnel', color: '#a855f7', shortcut: 'Alt+F' },
+    { label: '🔵 Prepaid', tag: 'Prepaid', color: '#3b82f6', shortcut: 'Alt+P' },
+    { label: '🟡 Claim', tag: 'Claim', color: '#f59e0b', shortcut: 'Alt+C' },
+    { label: '🔴 Cancel Req', tag: 'Cancel Request', color: '#ef4444', shortcut: 'Alt+X' },
+    { label: '💗 Address Chg', tag: 'Address Change', color: '#ec4899', shortcut: 'Alt+A' },
+    { label: '⏸️ Hold', tag: 'Hold', color: '#94a3b8', shortcut: 'Alt+H' },
+    { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' }
   ];
 
   function extractShopifyOrderId() {
@@ -33,7 +33,7 @@
     setTimeout(() => {
       toast.classList.remove('trace-cs-toast-show');
       setTimeout(() => toast.remove(), 300);
-    }, 2500);
+    }, 3000);
   }
 
   async function sendTagToErp(shopifyOrderId, tag, action = 'add', buttonEl) {
@@ -48,7 +48,7 @@
 
       const resData = await response.json();
       if (resData.success) {
-        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> ${action === 'add' ? 'applied' : 'removed'} successfully!`, 'success');
+        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> ${action === 'add' ? 'applied' : 'removed'} to Order #${shopifyOrderId}!`, 'success');
       } else {
         createNotificationToast(`⚠️ Tagging Failed: ${resData.error || 'Server error'}`, 'error');
       }
@@ -71,11 +71,13 @@
     bar.className = 'trace-cs-tagger-bar';
 
     let html = `
-      <div className="trace-tagger-header">
-        <span className="trace-tagger-logo">⚡ TRACE ERP CS Assistant</span>
-        <span className="trace-tagger-order">Order #${orderId}</span>
+      <div class="trace-tagger-header">
+        <span class="trace-tagger-logo">⚡ TRACE CS Assistant</span>
+        <span class="trace-tagger-order">Order #${orderId}</span>
+        <button type="button" class="trace-min-btn" title="Minimize">—</button>
       </div>
-      <div className="trace-tagger-buttons">
+      <div class="trace-tagger-body">
+        <div class="trace-tagger-buttons">
     `;
 
     PRESET_TAGS.forEach(item => {
@@ -86,10 +88,22 @@
       `;
     });
 
-    html += `</div>`;
+    html += `
+        </div>
+      </div>
+    `;
     bar.innerHTML = html;
 
     document.body.appendChild(bar);
+
+    // Minimize toggle
+    const minBtn = bar.querySelector('.trace-min-btn');
+    const body = bar.querySelector('.trace-tagger-body');
+    minBtn.addEventListener('click', () => {
+      const isHidden = body.style.display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
+      minBtn.innerText = isHidden ? '—' : '+';
+    });
 
     // Attach Click Handlers
     bar.querySelectorAll('.trace-tag-btn').forEach(btn => {
@@ -127,15 +141,19 @@
 
   // Observe URL changes (Shopify SPA navigation)
   let lastUrl = location.href;
-  new MutationObserver(() => {
+  setInterval(() => {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
       const existing = document.getElementById('trace-cs-tagger-bar');
       if (existing) existing.remove();
       setTimeout(injectTaggingWidget, 1000);
+    } else {
+      if (extractShopifyOrderId() && !document.getElementById('trace-cs-tagger-bar')) {
+        injectTaggingWidget();
+      }
     }
-  }).observe(document, { subtree: true, childList: true });
+  }, 1500);
 
   // Initial Run
   setTimeout(injectTaggingWidget, 1200);
