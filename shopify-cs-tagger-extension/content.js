@@ -2,6 +2,8 @@
   'use strict';
 
   const ERP_API_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-tag-order';
+  const ERP_INFO_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-order-info';
+  const ERP_NOTE_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-add-note';
 
   const PRESET_TAGS = [
     { label: '🟢 WhatsApp', tag: 'WhatsApp', color: '#10b981', shortcut: 'Alt+W' },
@@ -12,6 +14,13 @@
     { label: '💗 Address Chg', tag: 'Address Change', color: '#ec4899', shortcut: 'Alt+A' },
     { label: '⏸️ Hold', tag: 'Hold', color: '#94a3b8', shortcut: 'Alt+H' },
     { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' }
+  ];
+
+  const QUICK_NOTES = [
+    { label: '📞 Call No Answer', note: 'CS: Called customer, no response.' },
+    { label: '📍 Address Verified', note: 'CS: Address verified with customer.' },
+    { label: '⏳ Delay Requested', note: 'CS: Customer requested delivery delay.' },
+    { label: '🔁 Re-attempt Req', note: 'CS: Re-attempt requested with courier.' }
   ];
 
   function extractShopifyOrderId() {
@@ -77,6 +86,33 @@
     }
   }
 
+  async function sendNoteToErp(shopifyOrderId, noteText, buttonEl) {
+    if (buttonEl) buttonEl.style.opacity = '0.5';
+
+    try {
+      const response = await fetch(ERP_NOTE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopify_order_id: shopifyOrderId, note: noteText })
+      });
+
+      const resData = await response.json();
+      if (resData.success) {
+        createNotificationToast(`📝 Note added: <strong>"${noteText}"</strong>! Reloading...`, 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
+      } else {
+        createNotificationToast(`⚠️ Note Error: ${resData.error || 'Server error'}`, 'error');
+      }
+    } catch (err) {
+      console.error('[TRACE CS Note Error]:', err);
+      createNotificationToast(`❌ Server Error`, 'error');
+    } finally {
+      if (buttonEl) buttonEl.style.opacity = '1';
+    }
+  }
+
   function makeDraggable(element, handle) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     handle.style.cursor = 'grab';
@@ -84,7 +120,7 @@
     handle.onmousedown = dragMouseDown;
 
     function dragMouseDown(e) {
-      if (e.target.tagName === 'BUTTON') return;
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
       e.preventDefault();
       handle.style.cursor = 'grabbing';
       pos3 = e.clientX;
@@ -123,11 +159,10 @@
     }
   }
 
-  function injectTaggingWidget() {
-    // Purge old widget if present to force update
+  async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '2.1') return;
+      if (oldBar.getAttribute('data-version') === '3.0') return;
       oldBar.remove();
     }
 
@@ -136,10 +171,9 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '2.1');
+    bar.setAttribute('data-version', '3.0');
     bar.className = 'trace-cs-tagger-bar';
 
-    // Bulletproof inline styles - FORCE height: auto and max-height: fit-content
     bar.style.cssText = `
       position: fixed !important;
       bottom: 20px !important;
@@ -155,7 +189,7 @@
       display: flex !important;
       flex-direction: column !important;
       gap: 6px !important;
-      width: 220px !important;
+      width: 240px !important;
       height: auto !important;
       min-height: 0 !important;
       max-height: fit-content !important;
@@ -163,7 +197,6 @@
       user-select: none !important;
     `;
 
-    // Restore saved position if available
     try {
       const savedPos = JSON.parse(localStorage.getItem('trace_cs_widget_pos'));
       if (savedPos && savedPos.top && savedPos.left) {
@@ -176,23 +209,50 @@
 
     let html = `
       <div id="trace-cs-drag-handle" style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important; padding-bottom: 5px !important; height: auto !important; cursor: grab !important;" title="Click & Drag to move screen position">
-        <span style="font-weight: 800 !important; font-size: 11px !important; color: #38bdf8 !important;">⚡ CS TAGGER</span>
+        <span style="font-weight: 800 !important; font-size: 11px !important; color: #38bdf8 !important;">⚡ CS ASSISTANT</span>
         <span style="font-size: 10px !important; color: #94a3b8 !important; font-family: monospace !important; background: rgba(255, 255, 255, 0.1) !important; padding: 1px 4px !important; border-radius: 3px !important;">#${orderId.slice(-6)}</span>
         <button type="button" id="trace-cs-min-btn" style="background: transparent !important; border: none !important; color: #94a3b8 !important; font-size: 14px !important; font-weight: bold !important; cursor: pointer !important; padding: 0 4px !important;" title="Minimize/Expand">—</button>
       </div>
+
+      <div id="trace-cs-tracking-banner" style="font-size: 9.5px !important; color: #93c5fd !important; background: rgba(59, 130, 246, 0.12) !important; border: 1px solid rgba(59, 130, 246, 0.3) !important; padding: 4px 6px !important; border-radius: 6px !important; display: flex !important; align-items: center !important; justify-content: space-between !important;">
+        <span>🚚 Loading Courier Info...</span>
+      </div>
+
       <div id="trace-cs-body" style="display: block !important; height: auto !important; min-height: 0 !important; max-height: fit-content !important;">
-        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 5px !important; height: auto !important;">
+        <div style="font-size: 9px !important; font-weight: 700 !important; color: #64748b !important; text-transform: uppercase !important; margin-bottom: 3px !important;">Tag Buttons:</div>
+        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; height: auto !important; margin-bottom: 6px !important;">
     `;
 
     PRESET_TAGS.forEach(item => {
       html += `
-        <button type="button" class="trace-tag-btn" data-tag="${item.tag}" style="background: rgba(255,255,255,0.08) !important; color: ${item.color} !important; border: 1px solid ${item.color} !important; border-radius: 6px !important; padding: 5px 3px !important; font-size: 10px !important; font-weight: 700 !important; cursor: pointer !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;" title="Shortcut: ${item.shortcut}">
+        <button type="button" class="trace-tag-btn" data-tag="${item.tag}" style="background: rgba(255,255,255,0.08) !important; color: ${item.color} !important; border: 1px solid ${item.color} !important; border-radius: 6px !important; padding: 4px 2px !important; font-size: 9.5px !important; font-weight: 700 !important; cursor: pointer !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;" title="Shortcut: ${item.shortcut}">
           ${item.label}
         </button>
       `;
     });
 
     html += `
+        </div>
+
+        <div style="font-size: 9px !important; font-weight: 700 !important; color: #64748b !important; text-transform: uppercase !important; margin-bottom: 3px !important;">Quick Notes:</div>
+        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; height: auto !important; margin-bottom: 6px !important;">
+    `;
+
+    QUICK_NOTES.forEach(qn => {
+      html += `
+        <button type="button" class="trace-note-btn" data-note="${qn.note}" style="background: rgba(255,255,255,0.05) !important; color: #cbd5e1 !important; border: 1px solid #475569 !important; border-radius: 6px !important; padding: 3px 2px !important; font-size: 9px !important; font-weight: 600 !important; cursor: pointer !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;">
+          ${qn.label}
+        </button>
+      `;
+    });
+
+    html += `
+        </div>
+
+        <div id="trace-cs-wa-container" style="display: none !important; margin-top: 4px !important;">
+          <a id="trace-cs-wa-btn" href="#" target="_blank" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
+            💬 Open WhatsApp Chat
+          </a>
         </div>
       </div>
     `;
@@ -214,7 +274,7 @@
       minBtn.innerText = isHidden ? '—' : '+';
     });
 
-    // Attach Click Handlers
+    // Tag Click Handlers
     bar.querySelectorAll('.trace-tag-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -223,6 +283,44 @@
         sendTagToErp(orderId, tag, 'add', btn);
       });
     });
+
+    // Note Click Handlers
+    bar.querySelectorAll('.trace-note-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const noteText = btn.getAttribute('data-note');
+        sendNoteToErp(orderId, noteText, btn);
+      });
+    });
+
+    // Fetch ERP Order Details (WhatsApp link & Live Courier Tracking Status)
+    try {
+      const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${orderId}`);
+      const infoData = await infoRes.json();
+      const banner = bar.querySelector('#trace-cs-tracking-banner');
+      const waContainer = bar.querySelector('#trace-cs-wa-container');
+      const waBtn = bar.querySelector('#trace-cs-wa-btn');
+
+      if (infoData.success && infoData.order) {
+        const ord = infoData.order;
+        // Tracking Banner
+        let trackingText = `🚚 ${ord.courier_name}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
+        if (ord.tracking_number) trackingText += ` (#${ord.tracking_number})`;
+        banner.innerHTML = trackingText;
+
+        // WhatsApp Direct Link
+        if (ord.clean_phone) {
+          const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
+          waBtn.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;
+          waContainer.style.display = 'block';
+        }
+      } else {
+        banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
+      }
+    } catch (err) {
+      console.warn('[TRACE CS Tagger Info Error]:', err);
+    }
   }
 
   // Keyboard Shortcuts Listener

@@ -816,4 +816,119 @@ router.post('/extension-tag-order', async (req, res) => {
   }
 });
 
+// OPTIONS /api/public/extension-order-info
+router.options('/extension-order-info', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+// GET /api/public/extension-order-info?shopify_order_id=...
+router.get('/extension-order-info', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { shopify_order_id } = req.query;
+  if (!shopify_order_id) return res.status(400).json({ success: false, error: 'shopify_order_id required' });
+
+  try {
+    const cleanNum = String(shopify_order_id).replace(/\D/g, '');
+    const order = db.db.prepare('SELECT * FROM orders WHERE shopify_order_id = ? OR id = ? OR ref_number LIKE ? LIMIT 1').get(cleanNum, cleanNum, `%${cleanNum}%`);
+
+    if (!order) {
+      return res.json({ success: false, error: 'Order not found in TRACE ERP' });
+    }
+
+    let phone = order.phone || order.customer_phone || '';
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
+    if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
+
+    res.json({
+      success: true,
+      order: {
+        id: order.id,
+        shopify_order_id: order.shopify_order_id,
+        ref_number: order.ref_number || order.name || `#${order.shopify_order_id}`,
+        customer_name: order.customer_name || 'Customer',
+        phone,
+        clean_phone: cleanPhone,
+        tracking_number: order.tracking_number,
+        courier_name: order.courier_name || 'Courier',
+        delivery_status: order.delivery_status || 'Pending',
+        courier_status: order.courier_status || 'N/A',
+        tags: order.tags || '',
+        notes: order.notes || ''
+      }
+    });
+  } catch (err) {
+    console.error('❌ [Extension Order Info Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// OPTIONS /api/public/extension-add-note
+router.options('/extension-add-note', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+// POST /api/public/extension-add-note
+router.post('/extension-add-note', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { shopify_order_id, note } = req.body;
+  if (!shopify_order_id || !note) {
+    return res.status(400).json({ success: false, error: 'shopify_order_id and note required' });
+  }
+
+  try {
+    const cleanNum = String(shopify_order_id).replace(/\D/g, '');
+    const localOrder = db.db.prepare('SELECT * FROM orders WHERE shopify_order_id = ? OR id = ? OR ref_number LIKE ? LIMIT 1').get(cleanNum, cleanNum, `%${cleanNum}%`);
+
+    let store = null;
+    if (localOrder && localOrder.store_id) {
+      store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(localOrder.store_id);
+    }
+    if (!store || !store.access_token || store.access_token === 'PENDING') {
+      store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != '' AND access_token != 'PENDING' LIMIT 1").get();
+    }
+
+    const shopDomain = store ? (store.shop_domain || store.myshopify_domain) : null;
+    const token = store ? store.access_token : null;
+
+    if (token && shopDomain) {
+      try {
+        const timestamp = new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
+        const noteWithTimestamp = `[CS ${timestamp}]: ${note}`;
+        
+        await fetch(`https://${shopDomain}/admin/api/2024-01/orders/${cleanNum}.json`, {
+          method: 'PUT',
+          headers: {
+            'X-Shopify-Access-Token': token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ order: { id: cleanNum, note: noteWithTimestamp } })
+        });
+      } catch (shopErr) {
+        console.warn('⚠️ [Extension Note Relay] Shopify Note update error:', shopErr.message);
+      }
+    }
+
+    if (localOrder) {
+      const existingNotes = localOrder.notes ? localOrder.notes + '\n' : '';
+      const newNotes = existingNotes + `[CS]: ${note}`;
+      db.db.prepare('UPDATE orders SET notes = ? WHERE id = ?').run(newNotes, localOrder.id);
+      
+      const { broadcast } = require('../sse');
+      broadcast('order_updated', { storeId: localOrder.store_id, shopifyOrderId: localOrder.shopify_order_id });
+    }
+
+    res.json({ success: true, shopify_order_id: cleanNum, note });
+  } catch (err) {
+    console.error('❌ [Extension Add Note Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
