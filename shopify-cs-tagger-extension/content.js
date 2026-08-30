@@ -60,6 +60,53 @@
     }
   }
 
+  function makeDraggable(element, handle) {
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+    handle.style.cursor = 'grab';
+
+    handle.onmousedown = dragMouseDown;
+
+    function dragMouseDown(e) {
+      if (e.target.tagName === 'BUTTON') return; // Don't drag when clicking minimize button
+      e.preventDefault();
+      handle.style.cursor = 'grabbing';
+      pos3 = e.clientX;
+      pos4 = e.clientY;
+      document.onmouseup = closeDragElement;
+      document.onmousemove = elementDrag;
+    }
+
+    function elementDrag(e) {
+      e.preventDefault();
+      pos1 = pos3 - e.clientX;
+      pos2 = pos4 - e.clientY;
+      pos3 = e.clientX;
+      pos4 = e.clientY;
+
+      let newTop = element.offsetTop - pos2;
+      let newLeft = element.offsetLeft - pos1;
+
+      // Keep within viewport boundaries
+      newTop = Math.max(10, Math.min(window.innerHeight - element.offsetHeight - 10, newTop));
+      newLeft = Math.max(10, Math.min(window.innerWidth - element.offsetWidth - 10, newLeft));
+
+      element.style.top = newTop + "px";
+      element.style.left = newLeft + "px";
+      element.style.bottom = 'auto';
+      element.style.right = 'auto';
+
+      try {
+        localStorage.setItem('trace_cs_widget_pos', JSON.stringify({ top: element.style.top, left: element.style.left }));
+      } catch (err) {}
+    }
+
+    function closeDragElement() {
+      handle.style.cursor = 'grab';
+      document.onmouseup = null;
+      document.onmousemove = null;
+    }
+  }
+
   function injectTaggingWidget() {
     if (document.getElementById('trace-cs-tagger-bar')) return;
 
@@ -70,11 +117,22 @@
     bar.id = 'trace-cs-tagger-bar';
     bar.className = 'trace-cs-tagger-bar';
 
+    // Restore saved position if available
+    try {
+      const savedPos = JSON.parse(localStorage.getItem('trace_cs_widget_pos'));
+      if (savedPos && savedPos.top && savedPos.left) {
+        bar.style.top = savedPos.top;
+        bar.style.left = savedPos.left;
+        bar.style.bottom = 'auto';
+        bar.style.right = 'auto';
+      }
+    } catch (err) {}
+
     let html = `
-      <div class="trace-tagger-header">
-        <span class="trace-tagger-logo">⚡ TRACE CS Assistant</span>
-        <span class="trace-tagger-order">Order #${orderId}</span>
-        <button type="button" class="trace-min-btn" title="Minimize">—</button>
+      <div class="trace-tagger-header" id="trace-cs-drag-handle" title="Click & Drag to move screen position">
+        <span class="trace-tagger-logo">⚡ CS Tagger</span>
+        <span class="trace-tagger-order">#${orderId.slice(-6)}</span>
+        <button type="button" class="trace-min-btn" title="Minimize/Expand">—</button>
       </div>
       <div class="trace-tagger-body">
         <div class="trace-tagger-buttons">
@@ -95,6 +153,10 @@
     bar.innerHTML = html;
 
     document.body.appendChild(bar);
+
+    // Make Draggable
+    const dragHandle = bar.querySelector('#trace-cs-drag-handle');
+    makeDraggable(bar, dragHandle);
 
     // Minimize toggle
     const minBtn = bar.querySelector('.trace-min-btn');
