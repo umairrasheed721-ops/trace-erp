@@ -45,6 +45,15 @@
     return null;
   }
 
+  function formatInternationalPhone(phoneStr) {
+    if (!phoneStr) return '';
+    let clean = String(phoneStr).replace(/\D/g, '');
+    if (clean.startsWith('0')) clean = '92' + clean.slice(1);
+    if (clean.length === 10 && clean.startsWith('3')) clean = '92' + clean;
+    if (!clean.startsWith('92') && clean.length === 10) clean = '92' + clean;
+    return '+' + clean;
+  }
+
   function extractOrderDetailsFromShopifyDOM() {
     const details = {
       customerName: '',
@@ -60,10 +69,7 @@
       // Phone Number
       const phoneMatch = text.match(/(\+?92[\s\-]?3\d{2}[\s\-]?\d{7}|03\d{2}[\s\-]?\d{7}|\+?923\d{9})/g);
       if (phoneMatch && phoneMatch.length > 0) {
-        let clean = phoneMatch[0].replace(/\D/g, '');
-        if (clean.startsWith('0')) clean = '92' + clean.slice(1);
-        if (clean.length === 10 && clean.startsWith('3')) clean = '92' + clean;
-        details.phone = clean;
+        details.phone = formatInternationalPhone(phoneMatch[0]);
       }
 
       // Courier Name
@@ -93,7 +99,8 @@
 
     const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : (domDetails.customerName || 'Customer');
     const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
-    const phone = (ord && ord.clean_phone) ? ord.clean_phone : domDetails.phone;
+
+    let phone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : domDetails.phone;
 
     const courierName = (ord && ord.courier_name && ord.courier_name !== 'Courier') ? ord.courier_name : (domDetails.courierName || '');
     const trackingNumber = (ord && ord.tracking_number) ? ord.tracking_number : (domDetails.trackingNumber || '');
@@ -117,10 +124,11 @@
     const msgText = lines.join('\n');
     const encoded = encodeURIComponent(msgText);
 
-    if (phone) {
-      return `https://api.whatsapp.com/send?phone=${phone}&text=${encoded}`;
+    if (phone && phone.length >= 11) {
+      // whatsapp://send?phone=+923225867200 forces WhatsApp Native App to open DIRECT 1-on-1 CHAT window!
+      return `whatsapp://send?phone=${encodeURIComponent(phone)}&text=${encoded}`;
     } else {
-      return `https://api.whatsapp.com/send?text=${encoded}`;
+      return `whatsapp://send?text=${encoded}`;
     }
   }
 
@@ -257,7 +265,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '6.0') return;
+      if (oldBar.getAttribute('data-version') === '7.0') return;
       oldBar.remove();
     }
 
@@ -269,7 +277,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '6.0');
+    bar.setAttribute('data-version', '7.0');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -348,8 +356,8 @@
         </div>
 
         <div id="trace-cs-wa-container" style="display: block !important; margin-top: 4px !important;">
-          <a id="trace-cs-wa-btn" href="${initialWaUrl}" target="_blank" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
-            💬 Open WhatsApp Direct Chat
+          <a id="trace-cs-wa-btn" href="${initialWaUrl}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
+            💬 Open WhatsApp Native App
           </a>
         </div>
       </div>
@@ -394,6 +402,19 @@
       });
     });
 
+    // WhatsApp Button Click Listener
+    const waBtn = bar.querySelector('#trace-cs-wa-btn');
+    if (waBtn) {
+      waBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetUrl = waBtn.getAttribute('href');
+        if (targetUrl && targetUrl !== '#') {
+          window.location.href = targetUrl;
+        }
+      });
+    }
+
     // Safe Fetch ERP Order Details & Enrich WhatsApp Link
     try {
       const orderSearchKey = extractShopifyOrderName() || orderId;
@@ -405,7 +426,7 @@
 
       const banner = liveBar.querySelector('#trace-cs-tracking-banner');
       const orderNameSpan = liveBar.querySelector('#trace-cs-order-name');
-      const waBtn = liveBar.querySelector('#trace-cs-wa-btn');
+      const liveWaBtn = liveBar.querySelector('#trace-cs-wa-btn');
 
       const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
       if (ord) {
@@ -422,8 +443,8 @@
         if (banner) banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
       }
 
-      if (waBtn) {
-        waBtn.href = buildRichWhatsAppLink(ord, orderName);
+      if (liveWaBtn) {
+        liveWaBtn.href = buildRichWhatsAppLink(ord, orderName);
       }
     } catch (err) {
       console.warn('[TRACE CS Tagger Info Error]:', err);
@@ -460,9 +481,22 @@
       `;
 
       actionContainer.innerHTML = `
-        <a class="trace-row-wa-anchor" href="${buildRichWhatsAppLink(null, orderText)}" target="_blank" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct WhatsApp Chat with Pre-filled Tracking Message">💬 WhatsApp</a>
+        <a class="trace-row-wa-anchor" href="${buildRichWhatsAppLink(null, orderText)}" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct 1-on-1 WhatsApp Desktop Native Chat">💬 WhatsApp</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
       `;
+
+      // Click Handler for WhatsApp Anchor
+      const rowWaAnchor = actionContainer.querySelector('.trace-row-wa-anchor');
+      if (rowWaAnchor) {
+        rowWaAnchor.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const url = rowWaAnchor.getAttribute('href');
+          if (url && url !== '#') {
+            window.location.href = url;
+          }
+        });
+      }
 
       // Tag Click Handler (Book)
       const bookBtn = actionContainer.querySelector('.trace-row-btn');
@@ -495,15 +529,18 @@
         });
       }
 
-      // Fetch Phone & Set Direct WhatsApp API Link with Rich Pre-filled Message
-      const waAnchor = actionContainer.querySelector('.trace-row-wa-anchor');
+      // Fetch Phone & Set Direct WhatsApp Protocol Link
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
           const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
-          waAnchor.href = buildRichWhatsAppLink(ord, orderText);
+          if (rowWaAnchor) {
+            rowWaAnchor.href = buildRichWhatsAppLink(ord, orderText);
+          }
         }).catch(() => {
-          waAnchor.href = buildRichWhatsAppLink(null, orderText);
+          if (rowWaAnchor) {
+            rowWaAnchor.href = buildRichWhatsAppLink(null, orderText);
+          }
         });
 
       if (link.parentNode) {
