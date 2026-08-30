@@ -327,7 +327,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.6') return;
+      if (oldBar.getAttribute('data-version') === '7.7') return;
       oldBar.remove();
     }
 
@@ -339,7 +339,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.6');
+    bar.setAttribute('data-version', '7.7');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -543,10 +543,18 @@
       `;
 
       actionContainer.innerHTML = `
-        <a class="trace-row-confirm-btn" href="${buildConfirmLink(null, orderText)}" style="background: #1d4ed8 !important; color: #ffffff !important; border: 1px solid #3b82f6 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Order Confirmation Message">📦 Confirm</a>
-        <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: none !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
-        <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
-        <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
+        <div class="trace-row-btn-line" style="display: flex !important; align-items: center !important; gap: 4px !important; flex-wrap: wrap !important;">
+          <a class="trace-row-confirm-btn" href="${buildConfirmLink(null, orderText)}" style="background: #1d4ed8 !important; color: #ffffff !important; border: 1px solid #3b82f6 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Order Confirmation Message">📦 Confirm</a>
+          <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: none !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
+          <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
+          <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
+        </div>
+        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 2px 5px !important; border-radius: 4px !important; border-left: 2px solid #3b82f6 !important;">
+          📍 <span class="trace-addr-val">...</span>
+        </div>
+        <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 2px 5px !important; border-radius: 4px !important; border-left: 2px solid #0284c7 !important;">
+          📦 <span class="trace-items-val">...</span>
+        </div>
       `;
 
       // Click handlers for new WA buttons (native app protocol)
@@ -590,10 +598,15 @@
         });
       }
 
-      // Fetch Phone + Update all WA message links + Display Phone Badge
+      // Fetch Phone + Update all WA message links + Display Phone, Address & Items Sub-lines
       const phoneBadge = actionContainer.querySelector('.trace-row-phone');
       const confirmBtnEl = actionContainer.querySelector('.trace-row-confirm-btn');
       const shipBtnEl = actionContainer.querySelector('.trace-row-ship-btn');
+      const addrLineEl = actionContainer.querySelector('.trace-row-addr-line');
+      const addrValEl = actionContainer.querySelector('.trace-addr-val');
+      const itemsLineEl = actionContainer.querySelector('.trace-row-items-line');
+      const itemsValEl = actionContainer.querySelector('.trace-items-val');
+
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
@@ -601,13 +614,12 @@
           if (confirmBtnEl) confirmBtnEl.href = buildConfirmLink(ord, orderText);
           if (shipBtnEl) {
             shipBtnEl.href = buildShippingLink(ord, orderText);
-            // Show Shipped button only when order is NOT Pending (has tracking or is dispatched)
             const status = (ord && ord.delivery_status) ? ord.delivery_status.toLowerCase() : 'pending';
             const hasTracking = !!(ord && ord.tracking_number);
             const isShipped = hasTracking || !['pending', ''].includes(status);
             shipBtnEl.style.display = isShipped ? 'inline-flex' : 'none';
           }
-          // Show phone number in badge with click-to-call
+          // Phone Badge
           const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
           if (phoneBadge && rawPhone) {
             const display = rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') || rawPhone;
@@ -618,6 +630,28 @@
           } else if (phoneBadge) {
             phoneBadge.textContent = '📱 N/A';
             phoneBadge.style.color = '#9ca3af !important';
+          }
+
+          // Address Sub-line
+          const addressStr = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
+          if (addrLineEl && addrValEl) {
+            if (addressStr) {
+              addrValEl.textContent = addressStr;
+              addrLineEl.style.display = 'block';
+            } else {
+              addrLineEl.style.display = 'none';
+            }
+          }
+
+          // Product Items Sub-line
+          const productsStr = (ord && ord.product_titles) ? ord.product_titles : '';
+          if (itemsLineEl && itemsValEl) {
+            if (productsStr) {
+              itemsValEl.textContent = productsStr;
+              itemsLineEl.style.display = 'block';
+            } else {
+              itemsLineEl.style.display = 'none';
+            }
           }
         }).catch(() => {
           if (phoneBadge) phoneBadge.textContent = '📱 —';
