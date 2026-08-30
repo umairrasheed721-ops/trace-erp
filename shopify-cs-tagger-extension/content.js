@@ -178,7 +178,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '4.2') return;
+      if (oldBar.getAttribute('data-version') === '5.0') return;
       oldBar.remove();
     }
 
@@ -189,7 +189,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '4.2');
+    bar.setAttribute('data-version', '5.0');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -268,8 +268,8 @@
         </div>
 
         <div id="trace-cs-wa-container" style="display: none !important; margin-top: 4px !important;">
-          <a id="trace-cs-wa-btn" href="#" target="_blank" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
-            💬 Open WhatsApp Chat
+          <a id="trace-cs-wa-btn" href="#" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
+            💬 Open WhatsApp Native App
           </a>
         </div>
       </div>
@@ -342,7 +342,7 @@
 
         if (waBtn && waContainer && ord.clean_phone) {
           const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
-          waBtn.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;
+          waBtn.href = `whatsapp://send?phone=${ord.clean_phone}&text=${waMsg}`;
           waContainer.style.setProperty('display', 'block', 'important');
         }
       } else {
@@ -354,7 +354,7 @@
   }
 
   // -------------------------------------------------------------
-  // ORDERS LIST VIEW — DIRECT WHATSAPP HYPERLINK + READY TO BOOK
+  // ORDERS LIST VIEW — DIRECT WHATSAPP NATIVE APP LINK + READY TO BOOK
   // -------------------------------------------------------------
   function injectOrderListRowActions() {
     const orderLinks = document.querySelectorAll('a[href*="/orders/"]');
@@ -383,7 +383,7 @@
       `;
 
       actionContainer.innerHTML = `
-        <a class="trace-row-wa-anchor" href="#" target="_blank" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct WhatsApp Chat">💬 WhatsApp</a>
+        <a class="trace-row-wa-anchor" href="#" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open WhatsApp Desktop Native App">💬 WhatsApp</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
       `;
 
@@ -418,7 +418,7 @@
         });
       }
 
-      // Fetch Phone & Set Direct Native <a> Hyperlink (100% Popup-Blocker Safe)
+      // Fetch Phone & Set WhatsApp Desktop Native App Link (whatsapp://send?phone=...)
       const waAnchor = actionContainer.querySelector('.trace-row-wa-anchor');
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
@@ -426,13 +426,12 @@
           if (infoData && infoData.success && infoData.order && infoData.order.clean_phone) {
             const ord = infoData.order;
             const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
-            waAnchor.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;
+            waAnchor.href = `whatsapp://send?phone=${ord.clean_phone}&text=${waMsg}`;
           } else {
-            // Fallback to searching by orderText number
-            waAnchor.href = `https://web.whatsapp.com/send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
+            waAnchor.href = `whatsapp://send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
           }
         }).catch(() => {
-          waAnchor.href = `https://web.whatsapp.com/send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
+          waAnchor.href = `whatsapp://send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
         });
 
       if (link.parentNode) {
