@@ -266,7 +266,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.1') return;
+      if (oldBar.getAttribute('data-version') === '7.2') return;
       oldBar.remove();
     }
 
@@ -278,7 +278,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.1');
+    bar.setAttribute('data-version', '7.2');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -484,6 +484,7 @@
       actionContainer.innerHTML = `
         <a class="trace-row-wa-anchor" href="${buildRichWhatsAppLink(null, orderText)}" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct 1-on-1 WhatsApp Desktop Native Chat">💬 WhatsApp</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
+        <span class="trace-row-phone" style="font-size: 9px !important; color: #94a3b8 !important; font-family: monospace !important; white-space: nowrap !important; padding: 1px 4px !important; background: rgba(148,163,184,0.1) !important; border: 1px solid rgba(148,163,184,0.25) !important; border-radius: 4px !important;">📱 ...</span>
       `;
 
       // Click Handler for WhatsApp Anchor
@@ -530,7 +531,8 @@
         });
       }
 
-      // Fetch Phone & Set Direct WhatsApp Protocol Link
+      // Fetch Phone & Set Direct WhatsApp Protocol Link + Display Phone Badge
+      const phoneBadge = actionContainer.querySelector('.trace-row-phone');
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
@@ -538,10 +540,21 @@
           if (rowWaAnchor) {
             rowWaAnchor.href = buildRichWhatsAppLink(ord, orderText);
           }
+          // Show phone number in badge
+          const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
+          if (phoneBadge && rawPhone) {
+            // Format display: 0322-5867200
+            const display = rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2');
+            phoneBadge.textContent = `📱 ${display}`;
+            phoneBadge.style.color = '#38bdf8 !important';
+          } else if (phoneBadge) {
+            phoneBadge.textContent = '📱 N/A';
+          }
         }).catch(() => {
           if (rowWaAnchor) {
             rowWaAnchor.href = buildRichWhatsAppLink(null, orderText);
           }
+          if (phoneBadge) phoneBadge.textContent = '📱 —';
         });
 
       if (link.parentNode) {
