@@ -23,21 +23,35 @@
   function createNotificationToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `trace-cs-toast trace-cs-toast-${type}`;
+    toast.style.cssText = `
+      position: fixed !important;
+      top: 20px !important;
+      right: 20px !important;
+      z-index: 99999999 !important;
+      padding: 8px 14px !important;
+      border-radius: 8px !important;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
+      font-size: 0.8rem !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important;
+      color: #ffffff !important;
+      background: ${type === 'success' ? '#065f46' : '#7f1d1d'} !important;
+      border: 1px solid ${type === 'success' ? '#10b981' : '#ef4444'} !important;
+    `;
     toast.innerHTML = message;
     document.body.appendChild(toast);
 
     setTimeout(() => {
-      toast.classList.add('trace-cs-toast-show');
+      toast.style.opacity = '1';
     }, 10);
 
     setTimeout(() => {
-      toast.classList.remove('trace-cs-toast-show');
+      toast.style.opacity = '0';
       setTimeout(() => toast.remove(), 300);
     }, 3000);
   }
 
   async function sendTagToErp(shopifyOrderId, tag, action = 'add', buttonEl) {
-    if (buttonEl) buttonEl.classList.add('trace-btn-loading');
+    if (buttonEl) buttonEl.style.opacity = '0.5';
 
     try {
       const response = await fetch(ERP_API_URL, {
@@ -48,15 +62,15 @@
 
       const resData = await response.json();
       if (resData.success) {
-        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> ${action === 'add' ? 'applied' : 'removed'} to Order #${shopifyOrderId}!`, 'success');
+        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> applied!`, 'success');
       } else {
-        createNotificationToast(`⚠️ Tagging Failed: ${resData.error || 'Server error'}`, 'error');
+        createNotificationToast(`⚠️ Failed: ${resData.error || 'Server error'}`, 'error');
       }
     } catch (err) {
       console.error('[TRACE CS Tagger Error]:', err);
-      createNotificationToast(`❌ Connection Error: Unable to reach TRACE ERP server`, 'error');
+      createNotificationToast(`❌ Server Error`, 'error');
     } finally {
-      if (buttonEl) buttonEl.classList.remove('trace-btn-loading');
+      if (buttonEl) buttonEl.style.opacity = '1';
     }
   }
 
@@ -67,7 +81,7 @@
     handle.onmousedown = dragMouseDown;
 
     function dragMouseDown(e) {
-      if (e.target.tagName === 'BUTTON') return; // Don't drag when clicking minimize button
+      if (e.target.tagName === 'BUTTON') return;
       e.preventDefault();
       handle.style.cursor = 'grabbing';
       pos3 = e.clientX;
@@ -86,7 +100,6 @@
       let newTop = element.offsetTop - pos2;
       let newLeft = element.offsetLeft - pos1;
 
-      // Keep within viewport boundaries
       newTop = Math.max(10, Math.min(window.innerHeight - element.offsetHeight - 10, newTop));
       newLeft = Math.max(10, Math.min(window.innerWidth - element.offsetWidth - 10, newLeft));
 
@@ -108,14 +121,41 @@
   }
 
   function injectTaggingWidget() {
-    if (document.getElementById('trace-cs-tagger-bar')) return;
+    // Purge old widget if present to force update
+    const oldBar = document.getElementById('trace-cs-tagger-bar');
+    if (oldBar) {
+      // Check if it's already updated
+      if (oldBar.getAttribute('data-version') === '2.0') return;
+      oldBar.remove();
+    }
 
     const orderId = extractShopifyOrderId();
     if (!orderId) return;
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
+    bar.setAttribute('data-version', '2.0');
     bar.className = 'trace-cs-tagger-bar';
+
+    // Bulletproof inline styles
+    bar.style.cssText = `
+      position: fixed !important;
+      bottom: 20px !important;
+      right: 20px !important;
+      z-index: 9999999 !important;
+      background: #0f172a !important;
+      border: 1px solid rgba(255, 255, 255, 0.2) !important;
+      border-radius: 12px !important;
+      padding: 8px 10px !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6) !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+      color: #ffffff !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+      width: 220px !important;
+      user-select: none !important;
+    `;
 
     // Restore saved position if available
     try {
@@ -129,18 +169,18 @@
     } catch (err) {}
 
     let html = `
-      <div class="trace-tagger-header" id="trace-cs-drag-handle" title="Click & Drag to move screen position">
-        <span class="trace-tagger-logo">⚡ CS Tagger</span>
-        <span class="trace-tagger-order">#${orderId.slice(-6)}</span>
-        <button type="button" class="trace-min-btn" title="Minimize/Expand">—</button>
+      <div id="trace-cs-drag-handle" style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important; padding-bottom: 5px !important; cursor: grab !important;" title="Click & Drag to move screen position">
+        <span style="font-weight: 800 !important; font-size: 11px !important; color: #38bdf8 !important;">⚡ CS TAGGER</span>
+        <span style="font-size: 10px !important; color: #94a3b8 !important; font-family: monospace !important; background: rgba(255, 255, 255, 0.1) !important; padding: 1px 4px !important; border-radius: 3px !important;">#${orderId.slice(-6)}</span>
+        <button type="button" id="trace-cs-min-btn" style="background: transparent !important; border: none !important; color: #94a3b8 !important; font-size: 14px !important; font-weight: bold !important; cursor: pointer !important; padding: 0 4px !important;" title="Minimize/Expand">—</button>
       </div>
-      <div class="trace-tagger-body">
-        <div class="trace-tagger-buttons">
+      <div id="trace-cs-body" style="display: block !important;">
+        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 5px !important;">
     `;
 
     PRESET_TAGS.forEach(item => {
       html += `
-        <button type="button" class="trace-tag-btn" data-tag="${item.tag}" style="--btn-color: ${item.color}" title="Shortcut: ${item.shortcut}">
+        <button type="button" class="trace-tag-btn" data-tag="${item.tag}" style="background: rgba(255,255,255,0.08) !important; color: ${item.color} !important; border: 1px solid ${item.color} !important; border-radius: 6px !important; padding: 5px 3px !important; font-size: 10px !important; font-weight: 700 !important; cursor: pointer !important; text-align: center !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;" title="Shortcut: ${item.shortcut}">
           ${item.label}
         </button>
       `;
@@ -159,9 +199,10 @@
     makeDraggable(bar, dragHandle);
 
     // Minimize toggle
-    const minBtn = bar.querySelector('.trace-min-btn');
-    const body = bar.querySelector('.trace-tagger-body');
-    minBtn.addEventListener('click', () => {
+    const minBtn = bar.querySelector('#trace-cs-min-btn');
+    const body = bar.querySelector('#trace-cs-body');
+    minBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const isHidden = body.style.display === 'none';
       body.style.display = isHidden ? 'block' : 'none';
       minBtn.innerText = isHidden ? '—' : '+';
@@ -171,6 +212,7 @@
     bar.querySelectorAll('.trace-tag-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         const tag = btn.getAttribute('data-tag');
         sendTagToErp(orderId, tag, 'add', btn);
       });
@@ -201,7 +243,7 @@
     }
   });
 
-  // Observe URL changes (Shopify SPA navigation)
+  // Observe URL changes & DOM updates
   let lastUrl = location.href;
   setInterval(() => {
     const url = location.href;
@@ -209,14 +251,14 @@
       lastUrl = url;
       const existing = document.getElementById('trace-cs-tagger-bar');
       if (existing) existing.remove();
-      setTimeout(injectTaggingWidget, 1000);
+      setTimeout(injectTaggingWidget, 800);
     } else {
-      if (extractShopifyOrderId() && !document.getElementById('trace-cs-tagger-bar')) {
+      if (extractShopifyOrderId()) {
         injectTaggingWidget();
       }
     }
-  }, 1500);
+  }, 1200);
 
   // Initial Run
-  setTimeout(injectTaggingWidget, 1200);
+  setTimeout(injectTaggingWidget, 800);
 })();
