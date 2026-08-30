@@ -825,7 +825,7 @@ router.options('/extension-order-info', (req, res) => {
 });
 
 // GET /api/public/extension-order-info?shopify_order_id=...
-router.get('/extension-order-info', (req, res) => {
+router.get('/extension-order-info', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const { shopify_order_id } = req.query;
   if (!shopify_order_id) return res.status(400).json({ success: false, error: 'shopify_order_id required' });
@@ -849,7 +849,39 @@ router.get('/extension-order-info', (req, res) => {
       return res.json({ success: false, error: 'Order not found in TRACE ERP' });
     }
 
-    let phone = order.phone || order.customer_phone || '';
+    let phone = order.phone || '';
+    
+    // Live fetch from Shopify when DB phone is empty
+    if (!phone && order.shopify_order_id) {
+      try {
+        let store = null;
+        if (order.store_id) store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (!store || !store.access_token || store.access_token === 'PENDING') {
+          store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != '' AND access_token != 'PENDING' LIMIT 1").get();
+        }
+        if (store && store.access_token) {
+          const shopDomain = store.shop_domain || store.myshopify_domain;
+          const axios = require('axios');
+          const shopifyRes = await axios.get(
+            `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,shipping_address,customer`,
+            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
+          );
+          const so = shopifyRes.data && shopifyRes.data.order;
+          if (so) {
+            const addr = so.shipping_address || {};
+            const cust = so.customer || {};
+            phone = addr.phone || so.phone || cust.phone || '';
+            // Save back to DB for future lookups
+            if (phone) {
+              try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
+            }
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('[Extension Phone Fetch Warn]:', fetchErr.message);
+      }
+    }
+
     let cleanPhone = phone.replace(/\D/g, '');
     if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
