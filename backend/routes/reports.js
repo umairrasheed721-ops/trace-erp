@@ -63,7 +63,8 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN (COALESCE(paid_amount, 0) - CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'delivered' THEN COALESCE(price, 0) ELSE 0 END) ELSE 0 END) as surplus_payout,
         SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN 1 ELSE 0 END) as surplus_payout_count,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
-        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' OR LOWER(COALESCE(notes, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders
+        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' OR LOWER(COALESCE(notes, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders,
+        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' OR LOWER(COALESCE(notes, '')) LIKE '%whatsapp%' THEN 1 ELSE 0 END) as whatsapp_orders
       FROM orders
       WHERE ${whereString}
       GROUP BY substr(order_date, 1, 10)
@@ -242,6 +243,7 @@ router.get('/daily', (req, res) => {
         failedButDelivered: day.failed_but_delivered || 0,
         prepaidOrders: day.prepaid_orders || 0,
         claimOrders: day.claim_orders || 0,
+        whatsappOrders: day.whatsapp_orders || 0,
         surplusPayout: day.surplus_payout || 0,
         surplusPayoutCount: day.surplus_payout_count || 0
       };
@@ -278,7 +280,7 @@ router.get('/daily', (req, res) => {
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, mathCounter: 0, cashInTransit: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
-            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, claimOrders: 0,
+            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, claimOrders: 0, whatsappOrders: 0,
             surplusPayout: 0, surplusPayoutCount: 0
           });
         }
