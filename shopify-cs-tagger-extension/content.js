@@ -132,22 +132,30 @@
     }
   }
 
-  // Order Confirmation Message
+  // Order Confirmation Message — Rich format with products, address, reply options
   function buildConfirmLink(ord, fallbackOrderName) {
     const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
     const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
     const phone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
-    const price = (ord && ord.price) ? `Rs. ${ord.price}` : '';
+    const displayPhone = phone ? phone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') : '';
+    const price = (ord && ord.price) ? `Rs. ${Math.round(ord.price)}` : '';
+    const products = (ord && ord.product_titles) ? ord.product_titles : '';
+    const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
     const lines = [
-      `Assalam-o-Alaikum ${customerName}! 👋`,
+      `👋 Hello ${customerName} from Trace ERP!`,
+      displayPhone ? displayPhone : '',
       ``,
-      `✅ Aapka Order ${orderName} Trace PK se confirm ho gaya!`,
+      `We have received your COD order #${orderName}${price ? ` for ${price}` : ''}.`,
       ``,
-      price ? `💰 Order Amount: ${price}` : '',
-      `📦 Hamari team jald hi aapka parcel dispatch kar degi.`,
+      `Order Details:`,
+      products ? `📦 Products: ${products}` : '',
+      address ? `📍 Delivery Address: ${address}` : '',
       ``,
-      `Shukriya Trace PK se shopping karne ke liye! 🛍️`
+      `Please reply with:`,
+      `1 - ✅ Confirm Order`,
+      `2 - ❌ Cancel Order`,
+      `3 - ✏️ Edit Address/Size`
     ].filter(l => l !== null && l !== undefined);
 
     const encoded = encodeURIComponent(lines.join('\n'));
@@ -319,7 +327,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.4') return;
+      if (oldBar.getAttribute('data-version') === '7.5') return;
       oldBar.remove();
     }
 
@@ -331,7 +339,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.4');
+    bar.setAttribute('data-version', '7.5');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
