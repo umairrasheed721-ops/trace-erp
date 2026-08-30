@@ -737,4 +737,75 @@ router.post('/create-cod-order', async (req, res) => {
   }
 });
 
+// OPTIONS /api/public/extension-tag-order (CORS preflight)
+router.options('/extension-tag-order', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(204);
+});
+
+// POST /api/public/extension-tag-order
+// Real-time tagging relay for CS Chrome Extension
+router.post('/extension-tag-order', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { shopify_order_id, tag, action = 'add' } = req.body;
+  if (!shopify_order_id || !tag) {
+    return res.status(400).json({ success: false, error: 'shopify_order_id and tag are required' });
+  }
+
+  try {
+    const cleanOrderNum = String(shopify_order_id).replace(/\D/g, '');
+    const localOrder = db.db.prepare('SELECT * FROM orders WHERE shopify_order_id = ? OR id = ? OR ref_number LIKE ? LIMIT 1').get(cleanOrderNum, cleanOrderNum, `%${cleanOrderNum}%`);
+
+    let store = null;
+    if (localOrder && localOrder.store_id) {
+      store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(localOrder.store_id);
+    } else {
+      store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' LIMIT 1").get();
+    }
+
+    if (!store || !store.access_token || !store.myshopify_domain) {
+      return res.status(400).json({ success: false, error: 'Active store token not found' });
+    }
+
+    const orderGid = `gid://shopify/Order/${cleanOrderNum}`;
+    const mutation = action === 'remove'
+      ? `mutation tagsRemove($id: ID!, $tags: [String!]!) { tagsRemove(id: $id, tags: $tags) { userErrors { message } node { id } } }`
+      : `mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { userErrors { message } node { id } } }`;
+
+    const shopifyRes = await fetch(`https://${store.myshopify_domain}/admin/api/2024-01/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query: mutation, variables: { id: orderGid, tags: [tag] } })
+    });
+
+    const graphResult = await shopifyRes.json();
+    console.log(`🏷️ [Extension Tag Relay] ${action.toUpperCase()} tag '${tag}' on ${cleanOrderNum}:`, JSON.stringify(graphResult));
+
+    // Update local DB tag list
+    if (localOrder) {
+      let currentTags = (localOrder.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+      if (action === 'add') {
+        if (!currentTags.includes(tag)) currentTags.push(tag);
+      } else {
+        currentTags = currentTags.filter(t => t.toLowerCase() !== tag.toLowerCase());
+      }
+      const newTagsStr = currentTags.join(', ');
+      db.db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(newTagsStr, localOrder.id);
+      
+      const { broadcast } = require('../sse');
+      broadcast('order_updated', { storeId: localOrder.store_id, shopifyOrderId: localOrder.shopify_order_id });
+    }
+
+    res.json({ success: true, shopify_order_id: cleanOrderNum, tag, action });
+  } catch (err) {
+    console.error('❌ [Extension Tag Relay Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
