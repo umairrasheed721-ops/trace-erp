@@ -126,11 +126,64 @@
     const encoded = encodeURIComponent(msgText);
 
     if (phone && phone.length >= 11) {
-      // macOS WhatsApp Desktop: raw digits only, NO + sign, NO encoding on phone number
       return `whatsapp://send?phone=${phone}&text=${encoded}`;
     } else {
       return `whatsapp://send?text=${encoded}`;
     }
+  }
+
+  // Order Confirmation Message
+  function buildConfirmLink(ord, fallbackOrderName) {
+    const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
+    const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
+    const phone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
+    const price = (ord && ord.price) ? `Rs. ${ord.price}` : '';
+
+    const lines = [
+      `Assalam-o-Alaikum ${customerName}! 👋`,
+      ``,
+      `✅ Aapka Order ${orderName} Trace PK se confirm ho gaya!`,
+      ``,
+      price ? `💰 Order Amount: ${price}` : '',
+      `📦 Hamari team jald hi aapka parcel dispatch kar degi.`,
+      ``,
+      `Shukriya Trace PK se shopping karne ke liye! 🛍️`
+    ].filter(l => l !== null && l !== undefined);
+
+    const encoded = encodeURIComponent(lines.join('\n'));
+    return phone ? `whatsapp://send?phone=${phone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
+  }
+
+  // Shipping Update Message
+  function buildShippingLink(ord, fallbackOrderName) {
+    const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
+    const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
+    const phone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
+    const courierName = (ord && ord.courier_name && ord.courier_name !== 'Courier') ? ord.courier_name : '';
+    const trackingNumber = (ord && ord.tracking_number) ? ord.tracking_number : '';
+    const courierStatus = (ord && ord.courier_status && ord.courier_status !== 'N/A') ? ord.courier_status : (ord?.delivery_status || '');
+    let trackingUrl = '';
+    if (trackingNumber) {
+      trackingUrl = courierName.toLowerCase().includes('postex')
+        ? `https://postex.pk/tracking?cn=${trackingNumber}`
+        : `https://tracepk.com/apps/tracking?tn=${trackingNumber}`;
+    }
+
+    const lines = [
+      `Assalam-o-Alaikum ${customerName}! 👋`,
+      ``,
+      `🚚 Aapka Order ${orderName} ship ho gaya!`,
+      ``,
+      courierName ? `📦 Courier: ${courierName}` : '',
+      courierStatus ? `📌 Status: ${courierStatus}` : '',
+      trackingNumber ? `🔢 Tracking #: ${trackingNumber}` : '',
+      trackingUrl ? `🔗 Order Track Karein: ${trackingUrl}` : '',
+      ``,
+      `Koi bhi sawal ho to humse rabta karein. Shukriya! 🙏`
+    ].filter(l => l !== null && l !== undefined);
+
+    const encoded = encodeURIComponent(lines.join('\n'));
+    return phone ? `whatsapp://send?phone=${phone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
   }
 
   function createNotificationToast(message, type = 'success') {
@@ -266,7 +319,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.3') return;
+      if (oldBar.getAttribute('data-version') === '7.4') return;
       oldBar.remove();
     }
 
@@ -278,7 +331,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.3');
+    bar.setAttribute('data-version', '7.4');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -482,22 +535,20 @@
       `;
 
       actionContainer.innerHTML = `
-        <a class="trace-row-wa-anchor" href="${buildRichWhatsAppLink(null, orderText)}" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct 1-on-1 WhatsApp Desktop Native Chat">💬 WhatsApp</a>
+        <a class="trace-row-confirm-btn" href="${buildConfirmLink(null, orderText)}" style="background: #1d4ed8 !important; color: #ffffff !important; border: 1px solid #3b82f6 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Order Confirmation Message">📦 Confirm</a>
+        <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
         <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
       `;
 
-      // Click Handler for WhatsApp Anchor
-      const rowWaAnchor = actionContainer.querySelector('.trace-row-wa-anchor');
-      if (rowWaAnchor) {
-        rowWaAnchor.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const url = rowWaAnchor.getAttribute('href');
-          if (url && url !== '#') {
-            window.location.href = url;
-          }
-        });
+      // Click handlers for new WA buttons (native app protocol)
+      const confirmBtn = actionContainer.querySelector('.trace-row-confirm-btn');
+      const shipBtn = actionContainer.querySelector('.trace-row-ship-btn');
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const u = confirmBtn.getAttribute('href'); if (u && u !== '#') window.location.href = u; });
+      }
+      if (shipBtn) {
+        shipBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const u = shipBtn.getAttribute('href'); if (u && u !== '#') window.location.href = u; });
       }
 
       // Tag Click Handler (Book)
@@ -531,19 +582,19 @@
         });
       }
 
-      // Fetch Phone & Set Direct WhatsApp Protocol Link + Display Phone Badge
+      // Fetch Phone + Update all WA message links + Display Phone Badge
       const phoneBadge = actionContainer.querySelector('.trace-row-phone');
+      const confirmBtnEl = actionContainer.querySelector('.trace-row-confirm-btn');
+      const shipBtnEl = actionContainer.querySelector('.trace-row-ship-btn');
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
           const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
-          if (rowWaAnchor) {
-            rowWaAnchor.href = buildRichWhatsAppLink(ord, orderText);
-          }
+          if (confirmBtnEl) confirmBtnEl.href = buildConfirmLink(ord, orderText);
+          if (shipBtnEl) shipBtnEl.href = buildShippingLink(ord, orderText);
           // Show phone number in badge with click-to-call
           const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
           if (phoneBadge && rawPhone) {
-            // Format display: 0322-5867200
             const display = rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') || rawPhone;
             phoneBadge.textContent = `📱 ${display}`;
             phoneBadge.style.cssText = `font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;`;
@@ -554,7 +605,6 @@
             phoneBadge.style.color = '#9ca3af !important';
           }
         }).catch(() => {
-          if (rowWaAnchor) rowWaAnchor.href = buildRichWhatsAppLink(null, orderText);
           if (phoneBadge) phoneBadge.textContent = '📱 —';
         });
 
