@@ -839,11 +839,9 @@ router.get('/extension-order-info', async (req, res) => {
       WHERE shopify_order_id = ? 
          OR id = ? 
          OR ref_number = ?
-         OR ref_number LIKE ? 
-         OR name = ?
-         OR name = ?
+         OR ref_number LIKE ?
       LIMIT 1
-    `).get(cleanNum, cleanNum, refNum, `%${cleanNum}%`, rawStr, `#${rawStr}`);
+    `).get(cleanNum, cleanNum, refNum || rawStr, `%${cleanNum}%`);
 
     if (!order) {
       return res.json({ success: false, error: 'Order not found in TRACE ERP' });
