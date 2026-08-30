@@ -64,7 +64,7 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN 1 ELSE 0 END) as surplus_payout_count,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' OR LOWER(COALESCE(notes, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders,
-        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' OR LOWER(COALESCE(notes, '')) LIKE '%whatsapp%' THEN 1 ELSE 0 END) as whatsapp_orders
+        SUM(CASE WHEN (LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' OR LOWER(COALESCE(notes, '')) LIKE '%whatsapp%') AND LOWER(COALESCE(tags, '')) NOT LIKE '%whatsapp%funnel%' AND LOWER(COALESCE(notes, '')) NOT LIKE '%whatsapp%funnel%' THEN 1 ELSE 0 END) as whatsapp_orders
       FROM orders
       WHERE ${whereString}
       GROUP BY substr(order_date, 1, 10)

@@ -128,9 +128,9 @@ const COLUMN_INFO = {
     example: "Total count of orders tagged or noted with claim."
   },
   whatsappOrders: {
-    description: "Total WhatsApp orders containing the whatsapp tag or note.",
-    formula: "COUNT(id) WHERE tags LIKE '%whatsapp%' OR notes LIKE '%whatsapp%'",
-    example: "Total count of orders tagged or noted with whatsapp."
+    description: "Total WhatsApp orders containing the whatsapp tag or note (strictly excluding WhatsApp-In-Funnel).",
+    formula: "COUNT(id) WHERE (tags LIKE '%whatsapp%' OR notes LIKE '%whatsapp%') AND tags NOT LIKE '%whatsapp%funnel%'",
+    example: "Total count of orders tagged or noted with whatsapp (excluding WhatsApp-In-Funnel)."
   },
   cancelations: {
     description: "Total cancellations before dispatch.",

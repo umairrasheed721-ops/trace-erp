@@ -37,6 +37,8 @@ function getOrderFilters(req) {
       whereClauses.push("o.paid_amount > 0 AND (o.payment_status IN ('Paid', 'Payment Posted') OR LOWER(o.delivery_status) = 'delivered')");
     } else if (s.includes('SURPLUS PAYOUT')) {
       whereClauses.push("o.paid_amount > 0.9 AND ((LOWER(o.delivery_status) = 'delivered' AND (COALESCE(o.paid_amount, 0) - COALESCE(o.price, 0)) > 0.9) OR (LOWER(o.delivery_status) != 'delivered'))");
+    } else if (s.includes('[WHATSAPP ONLY]')) {
+      whereClauses.push("(LOWER(COALESCE(o.tags, '')) LIKE '%whatsapp%' OR LOWER(COALESCE(o.notes, '')) LIKE '%whatsapp%') AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%whatsapp%funnel%' AND LOWER(COALESCE(o.notes, '')) NOT LIKE '%whatsapp%funnel%'");
     } else if (s.includes('READY TO BOOK')) {
       whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
     } else if (s.includes('NO TRACKING')) {
