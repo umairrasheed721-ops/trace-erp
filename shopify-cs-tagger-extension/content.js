@@ -47,11 +47,12 @@
 
   function formatInternationalPhone(phoneStr) {
     if (!phoneStr) return '';
+    // Return RAW DIGITS ONLY — no + prefix — for whatsapp://send?phone= (macOS Desktop Native App)
     let clean = String(phoneStr).replace(/\D/g, '');
     if (clean.startsWith('0')) clean = '92' + clean.slice(1);
     if (clean.length === 10 && clean.startsWith('3')) clean = '92' + clean;
     if (!clean.startsWith('92') && clean.length === 10) clean = '92' + clean;
-    return '+' + clean;
+    return clean; // e.g. "923225867200" — NO leading + sign
   }
 
   function extractOrderDetailsFromShopifyDOM() {
@@ -125,8 +126,8 @@
     const encoded = encodeURIComponent(msgText);
 
     if (phone && phone.length >= 11) {
-      // whatsapp://send?phone=+923225867200 forces WhatsApp Native App to open DIRECT 1-on-1 CHAT window!
-      return `whatsapp://send?phone=${encodeURIComponent(phone)}&text=${encoded}`;
+      // macOS WhatsApp Desktop: raw digits only, NO + sign, NO encoding on phone number
+      return `whatsapp://send?phone=${phone}&text=${encoded}`;
     } else {
       return `whatsapp://send?text=${encoded}`;
     }
@@ -265,7 +266,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.0') return;
+      if (oldBar.getAttribute('data-version') === '7.1') return;
       oldBar.remove();
     }
 
@@ -277,7 +278,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.0');
+    bar.setAttribute('data-version', '7.1');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
