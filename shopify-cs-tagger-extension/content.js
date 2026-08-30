@@ -30,18 +30,18 @@
   }
 
   function extractShopifyOrderName() {
-    // Try h1 or header element on page (e.g. TR33924)
-    const h1s = Array.from(document.querySelectorAll('h1, h2, span, a'));
-    for (const el of h1s) {
-      const txt = el.innerText ? el.innerText.trim() : '';
-      if (/^TR\d+/i.test(txt) || /^#TR\d+/i.test(txt)) {
-        return txt.replace('#', '');
-      }
-    }
-    // Try document title
-    const match = document.title.match(/(TR\d+|#\d+)/i);
-    if (match) return match[0].replace('#', '');
+    try {
+      const match = document.title.match(/(TR\d+|#\d+)/i);
+      if (match) return match[0].replace('#', '');
 
+      const headers = document.querySelectorAll('h1, h2, [class*="Header-Title"]');
+      for (let i = 0; i < headers.length; i++) {
+        const txt = (headers[i].textContent || '').trim();
+        if (/^TR\d+/i.test(txt) || /^#TR\d+/i.test(txt)) {
+          return txt.replace('#', '');
+        }
+      }
+    } catch (e) {}
     return null;
   }
 
@@ -178,7 +178,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '3.2') return;
+      if (oldBar.getAttribute('data-version') === '3.3') return;
       oldBar.remove();
     }
 
@@ -189,7 +189,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '3.2');
+    bar.setAttribute('data-version', '3.3');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -280,17 +280,19 @@
 
     // Make Draggable
     const dragHandle = bar.querySelector('#trace-cs-drag-handle');
-    makeDraggable(bar, dragHandle);
+    if (dragHandle) makeDraggable(bar, dragHandle);
 
     // Minimize toggle
     const minBtn = bar.querySelector('#trace-cs-min-btn');
     const body = bar.querySelector('#trace-cs-body');
-    minBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isHidden = body.style.display === 'none';
-      body.style.display = isHidden ? 'block' : 'none';
-      minBtn.innerText = isHidden ? '—' : '+';
-    });
+    if (minBtn && body) {
+      minBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = body.style.display === 'none';
+        body.style.display = isHidden ? 'block' : 'none';
+        minBtn.innerText = isHidden ? '—' : '+';
+      });
+    }
 
     // Tag Click Handlers
     bar.querySelectorAll('.trace-tag-btn').forEach(btn => {
@@ -312,31 +314,39 @@
       });
     });
 
-    // Fetch ERP Order Details (Order Ref Name, WhatsApp link & Live Courier Tracking Status)
+    // Safe Fetch ERP Order Details
     try {
       const orderSearchKey = extractShopifyOrderName() || orderId;
       const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderSearchKey)}`);
       const infoData = await infoRes.json();
-      const banner = bar.querySelector('#trace-cs-tracking-banner');
-      const orderNameSpan = bar.querySelector('#trace-cs-order-name');
-      const waContainer = bar.querySelector('#trace-cs-wa-container');
-      const waBtn = bar.querySelector('#trace-cs-wa-btn');
 
-      if (infoData.success && infoData.order) {
+      const liveBar = document.getElementById('trace-cs-tagger-bar');
+      if (!liveBar) return;
+
+      const banner = liveBar.querySelector('#trace-cs-tracking-banner');
+      const orderNameSpan = liveBar.querySelector('#trace-cs-order-name');
+      const waContainer = liveBar.querySelector('#trace-cs-wa-container');
+      const waBtn = liveBar.querySelector('#trace-cs-wa-btn');
+
+      if (infoData && infoData.success && infoData.order) {
         const ord = infoData.order;
-        if (ord.ref_number) orderNameSpan.innerText = ord.ref_number;
+        if (orderNameSpan && ord.ref_number) {
+          orderNameSpan.innerText = ord.ref_number;
+        }
 
-        let trackingText = `🚚 ${ord.courier_name || 'Courier'}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
-        if (ord.tracking_number) trackingText += ` (#${ord.tracking_number})`;
-        banner.innerHTML = trackingText;
+        if (banner) {
+          let trackingText = `🚚 ${ord.courier_name || 'Courier'}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
+          if (ord.tracking_number) trackingText += ` (#${ord.tracking_number})`;
+          banner.innerHTML = trackingText;
+        }
 
-        if (ord.clean_phone) {
+        if (waBtn && waContainer && ord.clean_phone) {
           const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
           waBtn.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;
-          waContainer.style.display = 'block';
+          waContainer.style.setProperty('display', 'block', 'important');
         }
       } else {
-        banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
+        if (banner) banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
       }
     } catch (err) {
       console.warn('[TRACE CS Tagger Info Error]:', err);
