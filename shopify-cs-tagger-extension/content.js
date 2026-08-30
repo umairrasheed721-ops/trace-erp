@@ -11,7 +11,7 @@
     { label: '🔵 Prepaid', tag: 'Prepaid', color: '#3b82f6', shortcut: 'Alt+P' },
     { label: '🟡 Claim', tag: 'Claim', color: '#f59e0b', shortcut: 'Alt+C' },
     { label: '🔴 Cancel Req', tag: 'Cancel Request', color: '#ef4444', shortcut: 'Alt+X' },
-    { label: '💗 Address Chg', tag: 'Address Change', color: '#ec4899', shortcut: 'Alt+A' },
+    { label: '📋 Ready to Book', tag: 'Ready to Book', color: '#ec4899', shortcut: 'Alt+R' },
     { label: '⏸️ Hold', tag: 'Hold', color: '#94a3b8', shortcut: 'Alt+H' },
     { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' }
   ];
@@ -162,7 +162,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '3.0') return;
+      if (oldBar.getAttribute('data-version') === '3.1') return;
       oldBar.remove();
     }
 
@@ -171,7 +171,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '3.0');
+    bar.setAttribute('data-version', '3.1');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -337,7 +337,7 @@
     else if (key === 'P') matchedTag = 'Prepaid';
     else if (key === 'C') matchedTag = 'Claim';
     else if (key === 'X') matchedTag = 'Cancel Request';
-    else if (key === 'A') matchedTag = 'Address Change';
+    else if (key === 'R' || key === 'A') matchedTag = 'Ready to Book';
     else if (key === 'H') matchedTag = 'Hold';
     else if (key === 'E') matchedTag = 'Exchange';
 
