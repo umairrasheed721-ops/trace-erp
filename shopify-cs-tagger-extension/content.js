@@ -327,7 +327,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.5') return;
+      if (oldBar.getAttribute('data-version') === '7.6') return;
       oldBar.remove();
     }
 
@@ -339,7 +339,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.5');
+    bar.setAttribute('data-version', '7.6');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -544,7 +544,7 @@
 
       actionContainer.innerHTML = `
         <a class="trace-row-confirm-btn" href="${buildConfirmLink(null, orderText)}" style="background: #1d4ed8 !important; color: #ffffff !important; border: 1px solid #3b82f6 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Order Confirmation Message">📦 Confirm</a>
-        <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
+        <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: none !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
         <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
       `;
@@ -599,7 +599,14 @@
         .then(infoData => {
           const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
           if (confirmBtnEl) confirmBtnEl.href = buildConfirmLink(ord, orderText);
-          if (shipBtnEl) shipBtnEl.href = buildShippingLink(ord, orderText);
+          if (shipBtnEl) {
+            shipBtnEl.href = buildShippingLink(ord, orderText);
+            // Show Shipped button only when order is NOT Pending (has tracking or is dispatched)
+            const status = (ord && ord.delivery_status) ? ord.delivery_status.toLowerCase() : 'pending';
+            const hasTracking = !!(ord && ord.tracking_number);
+            const isShipped = hasTracking || !['pending', ''].includes(status);
+            shipBtnEl.style.display = isShipped ? 'inline-flex' : 'none';
+          }
           // Show phone number in badge with click-to-call
           const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
           if (phoneBadge && rawPhone) {
