@@ -179,5 +179,11 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - Whenever any change is made to `frontend/src/`, the agent MUST run `npm run build` AND ALWAYS stage the compiled `backend/public/` directory (`git add -A` or `git add backend/public frontend/src ...`) before calling `git push origin main`.
     - Never assume Railway builds frontend static assets automatically; Railway serves the compiled static bundle from `backend/public/`. Uncommitted `backend/public/` assets cause Railway to serve stale JS bundles.
 
+32. **Zero-Deflection & Empirical Production Bundle Verification Guard (STRICT MANDATORY)**:
+    - The agent MUST NEVER blame user browser caching, temporary deployment lags, or user error when a user reports a missing feature or unresolved issue. User feedback is treated as ground truth.
+    - **Empirical Live Bundle Verification**: Before responding that a task is done or deployed, the agent MUST run an empirical `curl` or bundle inspection on the live production endpoint (e.g. `curl -s https://trace-erp-production.up.railway.app/assets/...`) to verify that the compiled code containing the new feature is physically present in the live HTTP response.
+    - If the feature is missing from the live bundle, the agent MUST immediately inspect git status, stage untracked `backend/public/` build artifacts, push to main, and verify live HTTP response again before replying to the user.
+
+
 
 
