@@ -266,7 +266,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.2') return;
+      if (oldBar.getAttribute('data-version') === '7.3') return;
       oldBar.remove();
     }
 
@@ -278,7 +278,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.2');
+    bar.setAttribute('data-version', '7.3');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -484,7 +484,7 @@
       actionContainer.innerHTML = `
         <a class="trace-row-wa-anchor" href="${buildRichWhatsAppLink(null, orderText)}" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct 1-on-1 WhatsApp Desktop Native Chat">💬 WhatsApp</a>
         <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
-        <span class="trace-row-phone" style="font-size: 9px !important; color: #94a3b8 !important; font-family: monospace !important; white-space: nowrap !important; padding: 1px 4px !important; background: rgba(148,163,184,0.1) !important; border: 1px solid rgba(148,163,184,0.25) !important; border-radius: 4px !important;">📱 ...</span>
+        <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
       `;
 
       // Click Handler for WhatsApp Anchor
@@ -540,20 +540,21 @@
           if (rowWaAnchor) {
             rowWaAnchor.href = buildRichWhatsAppLink(ord, orderText);
           }
-          // Show phone number in badge
+          // Show phone number in badge with click-to-call
           const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
           if (phoneBadge && rawPhone) {
             // Format display: 0322-5867200
-            const display = rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2');
+            const display = rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') || rawPhone;
             phoneBadge.textContent = `📱 ${display}`;
-            phoneBadge.style.color = '#38bdf8 !important';
+            phoneBadge.style.cssText = `font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;`;
+            phoneBadge.setAttribute('href', `tel:+${rawPhone}`);
+            phoneBadge.setAttribute('title', `Call ${display}`);
           } else if (phoneBadge) {
             phoneBadge.textContent = '📱 N/A';
+            phoneBadge.style.color = '#9ca3af !important';
           }
         }).catch(() => {
-          if (rowWaAnchor) {
-            rowWaAnchor.href = buildRichWhatsAppLink(null, orderText);
-          }
+          if (rowWaAnchor) rowWaAnchor.href = buildRichWhatsAppLink(null, orderText);
           if (phoneBadge) phoneBadge.textContent = '📱 —';
         });
 
