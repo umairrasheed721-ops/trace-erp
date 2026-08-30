@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.9') return;
+      if (oldBar.getAttribute('data-version') === '8.0') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.9');
+    bar.setAttribute('data-version', '8.0');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -566,6 +566,9 @@
         <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #0284c7 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
           📦 <span class="trace-items-val">...</span>
         </div>
+        <div class="trace-row-notes-line" style="display: none; font-size: 9.5px !important; color: #d97706 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #fffbeb !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #f59e0b !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
+          📝 <span class="trace-notes-val">...</span>
+        </div>
       `;
 
       // Click handlers for new WA buttons (native app protocol)
@@ -609,7 +612,7 @@
         });
       }
 
-      // Fetch Phone + Update all WA message links + Display Phone, Address & Items Sub-lines
+      // Fetch Phone + Update all WA message links + Display Phone, Address, Items & Notes Sub-lines
       const phoneBadge = actionContainer.querySelector('.trace-row-phone');
       const confirmBtnEl = actionContainer.querySelector('.trace-row-confirm-btn');
       const shipBtnEl = actionContainer.querySelector('.trace-row-ship-btn');
@@ -617,6 +620,8 @@
       const addrValEl = actionContainer.querySelector('.trace-addr-val');
       const itemsLineEl = actionContainer.querySelector('.trace-row-items-line');
       const itemsValEl = actionContainer.querySelector('.trace-items-val');
+      const notesLineEl = actionContainer.querySelector('.trace-row-notes-line');
+      const notesValEl = actionContainer.querySelector('.trace-notes-val');
 
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
@@ -665,6 +670,18 @@
               itemsLineEl.style.display = 'block';
             } else {
               itemsLineEl.style.display = 'none';
+            }
+          }
+
+          // Customer Notes Sub-line (Line 4)
+          const notesStr = (ord && ord.notes) ? ord.notes : '';
+          if (notesLineEl && notesValEl) {
+            if (notesStr) {
+              notesValEl.textContent = notesStr;
+              notesLineEl.setAttribute('title', notesStr);
+              notesLineEl.style.display = 'block';
+            } else {
+              notesLineEl.style.display = 'none';
             }
           }
         }).catch(() => {

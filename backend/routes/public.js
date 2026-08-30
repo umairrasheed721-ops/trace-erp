@@ -902,7 +902,7 @@ router.get('/extension-order-info', async (req, res) => {
         delivery_status: order.delivery_status || 'Pending',
         courier_status: order.courier_status || 'N/A',
         tags: order.tags || '',
-        notes: order.notes || ''
+        notes: [order.notes, order.cs_notes].filter(Boolean).join(' | ') || ''
       }
     });
   } catch (err) {
