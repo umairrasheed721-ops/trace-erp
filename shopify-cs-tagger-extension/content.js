@@ -178,7 +178,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '4.1') return;
+      if (oldBar.getAttribute('data-version') === '4.2') return;
       oldBar.remove();
     }
 
@@ -189,7 +189,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '4.1');
+    bar.setAttribute('data-version', '4.2');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -354,7 +354,7 @@
   }
 
   // -------------------------------------------------------------
-  // ORDERS LIST VIEW — DIRECT WHATSAPP CHAT + READY TO BOOK + CANCEL
+  // ORDERS LIST VIEW — DIRECT WHATSAPP HYPERLINK + READY TO BOOK
   // -------------------------------------------------------------
   function injectOrderListRowActions() {
     const orderLinks = document.querySelectorAll('a[href*="/orders/"]');
@@ -377,24 +377,24 @@
       actionContainer.style.cssText = `
         display: inline-flex !important;
         align-items: center !important;
-        gap: 3px !important;
+        gap: 4px !important;
         margin-left: 6px !important;
         vertical-align: middle !important;
       `;
 
       actionContainer.innerHTML = `
-        <button type="button" class="trace-row-wa-btn" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9.5px !important; font-weight: 700 !important; cursor: pointer !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Open WhatsApp Chat with Customer">💬 WhatsApp</button>
-        <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
-        <button type="button" class="trace-row-btn" data-tag="Cancel Request" style="background: rgba(239, 68, 68, 0.15) !important; color: #ef4444 !important; border: 1px solid #ef4444 !important; border-radius: 4px !important; padding: 1px 4px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Cancel Request">🔴 Cancel</button>
+        <a class="trace-row-wa-anchor" href="#" target="_blank" style="background: #059669 !important; color: #ffffff !important; border: 1px solid #10b981 !important; border-radius: 4px !important; padding: 1px 6px !important; font-size: 9.5px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; box-shadow: 0 2px 6px rgba(16,185,129,0.2) !important;" title="Open Direct WhatsApp Chat">💬 WhatsApp</a>
+        <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
       `;
 
-      // Tag Click Handlers (Book / Cancel)
-      actionContainer.querySelectorAll('.trace-row-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
+      // Tag Click Handler (Book)
+      const bookBtn = actionContainer.querySelector('.trace-row-btn');
+      if (bookBtn) {
+        bookBtn.addEventListener('click', async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const tag = btn.getAttribute('data-tag');
-          btn.style.opacity = '0.4';
+          const tag = bookBtn.getAttribute('data-tag');
+          bookBtn.style.opacity = '0.4';
 
           try {
             const res = await fetch(ERP_API_URL, {
@@ -405,69 +405,35 @@
             const data = await res.json();
             if (data.success) {
               createNotificationToast(`✅ Order ${orderText}: Tag "${tag}" applied!`, 'success');
-              btn.style.background = '#10b981';
-              btn.style.color = '#ffffff';
+              bookBtn.style.background = '#10b981';
+              bookBtn.style.color = '#ffffff';
             } else {
               createNotificationToast(`⚠️ ${data.error || 'Failed'}`, 'error');
             }
           } catch (err) {
             createNotificationToast(`❌ Network Error`, 'error');
           } finally {
-            btn.style.opacity = '1';
+            bookBtn.style.opacity = '1';
           }
         });
-      });
+      }
 
-      // Direct WhatsApp Button Click Handler
-      const waBtn = actionContainer.querySelector('.trace-row-wa-btn');
-      waBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const phone = waBtn.getAttribute('data-phone');
-        if (phone) {
-          const name = waBtn.getAttribute('data-name') || 'Customer';
-          const ref = waBtn.getAttribute('data-ref') || orderText;
-          const status = waBtn.getAttribute('data-status') || '';
-          const msg = encodeURIComponent(`Assalam-o-Alaikum ${name},\nRegarding your Order ${ref} from Trace...\nStatus: ${status}`);
-          window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
-          return;
-        }
-
-        waBtn.style.opacity = '0.5';
-        try {
-          const res = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderText)}`);
-          const infoData = await res.json();
-          if (infoData.success && infoData.order && infoData.order.clean_phone) {
-            const ord = infoData.order;
-            waBtn.setAttribute('data-phone', ord.clean_phone);
-            waBtn.setAttribute('data-name', ord.customer_name || 'Customer');
-            waBtn.setAttribute('data-ref', ord.ref_number || orderText);
-            waBtn.setAttribute('data-status', ord.courier_status || ord.delivery_status);
-            const msg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
-            window.open(`https://wa.me/${ord.clean_phone}?text=${msg}`, '_blank');
-          } else {
-            createNotificationToast(`⚠️ Phone number not found for ${orderText}`, 'error');
-          }
-        } catch (err) {
-          createNotificationToast(`❌ Failed to load WhatsApp link`, 'error');
-        } finally {
-          waBtn.style.opacity = '1';
-        }
-      });
-
-      // Background Pre-fetch for Instant 1-Click WhatsApp
-      fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderText)}`)
+      // Fetch Phone & Set Direct Native <a> Hyperlink (100% Popup-Blocker Safe)
+      const waAnchor = actionContainer.querySelector('.trace-row-wa-anchor');
+      fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
-          if (infoData.success && infoData.order && infoData.order.clean_phone) {
+          if (infoData && infoData.success && infoData.order && infoData.order.clean_phone) {
             const ord = infoData.order;
-            waBtn.setAttribute('data-phone', ord.clean_phone);
-            waBtn.setAttribute('data-name', ord.customer_name || 'Customer');
-            waBtn.setAttribute('data-ref', ord.ref_number || orderText);
-            waBtn.setAttribute('data-status', ord.courier_status || ord.delivery_status);
+            const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
+            waAnchor.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;
+          } else {
+            // Fallback to searching by orderText number
+            waAnchor.href = `https://web.whatsapp.com/send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
           }
-        }).catch(() => {});
+        }).catch(() => {
+          waAnchor.href = `https://web.whatsapp.com/send?text=${encodeURIComponent('Assalam-o-Alaikum, regarding Order ' + orderText + ' from Trace...')}`;
+        });
 
       if (link.parentNode) {
         link.parentNode.appendChild(actionContainer);
