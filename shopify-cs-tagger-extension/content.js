@@ -45,6 +45,20 @@
     return null;
   }
 
+  function extractPhoneFromShopifyDOM() {
+    try {
+      const bodyText = document.body.innerText || '';
+      const matches = bodyText.match(/(\+?92[\s\-]?3\d{2}[\s\-]?\d{7}|03\d{2}[\s\-]?\d{7}|\+?923\d{9})/g);
+      if (matches && matches.length > 0) {
+        let clean = matches[0].replace(/\D/g, '');
+        if (clean.startsWith('0')) clean = '92' + clean.slice(1);
+        if (clean.length === 10 && clean.startsWith('3')) clean = '92' + clean;
+        return clean;
+      }
+    } catch (e) {}
+    return null;
+  }
+
   function createNotificationToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `trace-cs-toast trace-cs-toast-${type}`;
@@ -178,7 +192,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '5.0') return;
+      if (oldBar.getAttribute('data-version') === '5.1') return;
       oldBar.remove();
     }
 
@@ -186,10 +200,13 @@
     if (!orderId) return;
 
     const orderName = extractShopifyOrderName() || `#${orderId.slice(-6)}`;
+    const domPhone = extractPhoneFromShopifyDOM();
+    const initWaMsg = encodeURIComponent(`Assalam-o-Alaikum, regarding your Order ${orderName} from Trace...`);
+    const initWaHref = domPhone ? `whatsapp://send?phone=${domPhone}&text=${initWaMsg}` : `whatsapp://send?text=${initWaMsg}`;
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '5.0');
+    bar.setAttribute('data-version', '5.1');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -267,8 +284,8 @@
     html += `
         </div>
 
-        <div id="trace-cs-wa-container" style="display: none !important; margin-top: 4px !important;">
-          <a id="trace-cs-wa-btn" href="#" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
+        <div id="trace-cs-wa-container" style="display: block !important; margin-top: 4px !important;">
+          <a id="trace-cs-wa-btn" href="${initWaHref}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
             💬 Open WhatsApp Native App
           </a>
         </div>
@@ -314,7 +331,7 @@
       });
     });
 
-    // Safe Fetch ERP Order Details
+    // Safe Fetch ERP Order Details & Enrich WhatsApp Link
     try {
       const orderSearchKey = extractShopifyOrderName() || orderId;
       const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderSearchKey)}`);
@@ -325,7 +342,6 @@
 
       const banner = liveBar.querySelector('#trace-cs-tracking-banner');
       const orderNameSpan = liveBar.querySelector('#trace-cs-order-name');
-      const waContainer = liveBar.querySelector('#trace-cs-wa-container');
       const waBtn = liveBar.querySelector('#trace-cs-wa-btn');
 
       if (infoData && infoData.success && infoData.order) {
@@ -340,10 +356,10 @@
           banner.innerHTML = trackingText;
         }
 
-        if (waBtn && waContainer && ord.clean_phone) {
-          const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
-          waBtn.href = `whatsapp://send?phone=${ord.clean_phone}&text=${waMsg}`;
-          waContainer.style.setProperty('display', 'block', 'important');
+        const targetPhone = ord.clean_phone || domPhone;
+        if (waBtn && targetPhone) {
+          const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name || 'Customer'},\nRegarding your Order ${ord.ref_number || orderName} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
+          waBtn.href = `whatsapp://send?phone=${targetPhone}&text=${waMsg}`;
         }
       } else {
         if (banner) banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
