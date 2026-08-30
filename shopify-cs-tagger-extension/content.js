@@ -29,6 +29,22 @@
     return match ? match[1] : null;
   }
 
+  function extractShopifyOrderName() {
+    // Try h1 or header element on page (e.g. TR33924)
+    const h1s = Array.from(document.querySelectorAll('h1, h2, span, a'));
+    for (const el of h1s) {
+      const txt = el.innerText ? el.innerText.trim() : '';
+      if (/^TR\d+/i.test(txt) || /^#TR\d+/i.test(txt)) {
+        return txt.replace('#', '');
+      }
+    }
+    // Try document title
+    const match = document.title.match(/(TR\d+|#\d+)/i);
+    if (match) return match[0].replace('#', '');
+
+    return null;
+  }
+
   function createNotificationToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `trace-cs-toast trace-cs-toast-${type}`;
@@ -162,16 +178,18 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '3.1') return;
+      if (oldBar.getAttribute('data-version') === '3.2') return;
       oldBar.remove();
     }
 
     const orderId = extractShopifyOrderId();
     if (!orderId) return;
 
+    const orderName = extractShopifyOrderName() || `#${orderId.slice(-6)}`;
+
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '3.1');
+    bar.setAttribute('data-version', '3.2');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -210,12 +228,12 @@
     let html = `
       <div id="trace-cs-drag-handle" style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important; padding-bottom: 5px !important; height: auto !important; cursor: grab !important;" title="Click & Drag to move screen position">
         <span style="font-weight: 800 !important; font-size: 11px !important; color: #38bdf8 !important;">⚡ CS ASSISTANT</span>
-        <span style="font-size: 10px !important; color: #94a3b8 !important; font-family: monospace !important; background: rgba(255, 255, 255, 0.1) !important; padding: 1px 4px !important; border-radius: 3px !important;">#${orderId.slice(-6)}</span>
+        <span id="trace-cs-order-name" style="font-size: 10.5px !important; font-weight: 700 !important; color: #38bdf8 !important; font-family: monospace !important; background: rgba(56, 189, 248, 0.15) !important; border: 1px solid rgba(56, 189, 248, 0.4) !important; padding: 1px 6px !important; border-radius: 4px !important;">${orderName}</span>
         <button type="button" id="trace-cs-min-btn" style="background: transparent !important; border: none !important; color: #94a3b8 !important; font-size: 14px !important; font-weight: bold !important; cursor: pointer !important; padding: 0 4px !important;" title="Minimize/Expand">—</button>
       </div>
 
       <div id="trace-cs-tracking-banner" style="font-size: 9.5px !important; color: #93c5fd !important; background: rgba(59, 130, 246, 0.12) !important; border: 1px solid rgba(59, 130, 246, 0.3) !important; padding: 4px 6px !important; border-radius: 6px !important; display: flex !important; align-items: center !important; justify-content: space-between !important;">
-        <span>🚚 Loading Courier Info...</span>
+        <span>🚚 Fetching TRACE ERP Data...</span>
       </div>
 
       <div id="trace-cs-body" style="display: block !important; height: auto !important; min-height: 0 !important; max-height: fit-content !important;">
@@ -294,22 +312,24 @@
       });
     });
 
-    // Fetch ERP Order Details (WhatsApp link & Live Courier Tracking Status)
+    // Fetch ERP Order Details (Order Ref Name, WhatsApp link & Live Courier Tracking Status)
     try {
-      const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${orderId}`);
+      const orderSearchKey = extractShopifyOrderName() || orderId;
+      const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderSearchKey)}`);
       const infoData = await infoRes.json();
       const banner = bar.querySelector('#trace-cs-tracking-banner');
+      const orderNameSpan = bar.querySelector('#trace-cs-order-name');
       const waContainer = bar.querySelector('#trace-cs-wa-container');
       const waBtn = bar.querySelector('#trace-cs-wa-btn');
 
       if (infoData.success && infoData.order) {
         const ord = infoData.order;
-        // Tracking Banner
-        let trackingText = `🚚 ${ord.courier_name}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
+        if (ord.ref_number) orderNameSpan.innerText = ord.ref_number;
+
+        let trackingText = `🚚 ${ord.courier_name || 'Courier'}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
         if (ord.tracking_number) trackingText += ` (#${ord.tracking_number})`;
         banner.innerHTML = trackingText;
 
-        // WhatsApp Direct Link
         if (ord.clean_phone) {
           const waMsg = encodeURIComponent(`Assalam-o-Alaikum ${ord.customer_name},\nRegarding your Order ${ord.ref_number} from Trace...\nStatus: ${ord.courier_status || ord.delivery_status}`);
           waBtn.href = `https://wa.me/${ord.clean_phone}?text=${waMsg}`;

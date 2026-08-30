@@ -832,7 +832,16 @@ router.get('/extension-order-info', (req, res) => {
 
   try {
     const cleanNum = String(shopify_order_id).replace(/\D/g, '');
-    const order = db.db.prepare('SELECT * FROM orders WHERE shopify_order_id = ? OR id = ? OR ref_number LIKE ? LIMIT 1').get(cleanNum, cleanNum, `%${cleanNum}%`);
+    const rawStr = String(shopify_order_id).trim();
+    const order = db.db.prepare(`
+      SELECT * FROM orders 
+      WHERE shopify_order_id = ? 
+         OR id = ? 
+         OR ref_number LIKE ? 
+         OR ref_number = ? 
+         OR name = ?
+      LIMIT 1
+    `).get(cleanNum, cleanNum, `%${cleanNum}%`, rawStr, rawStr);
 
     if (!order) {
       return res.json({ success: false, error: 'Order not found in TRACE ERP' });
