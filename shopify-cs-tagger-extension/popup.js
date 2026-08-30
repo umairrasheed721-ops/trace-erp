@@ -47,7 +47,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const data = await res.json();
         if (data.success) {
-          showToast(`✅ Tag <strong>"${tag}"</strong> applied to Order #${orderId}!`, 'success');
+          showToast(`✅ Tag <strong>"${tag}"</strong> applied! Reloading...`, 'success');
+          try {
+            const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (activeTab && activeTab.id) {
+              setTimeout(() => {
+                chrome.tabs.reload(activeTab.id);
+              }, 600);
+            }
+          } catch(tabErr){}
         } else {
           showToast(`❌ Error: ${data.error || 'Failed to apply tag'}`, 'error');
         }

@@ -62,7 +62,10 @@
 
       const resData = await response.json();
       if (resData.success) {
-        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> applied!`, 'success');
+        createNotificationToast(`✅ Tag <strong>"${tag}"</strong> applied! Reloading...`, 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
       } else {
         createNotificationToast(`⚠️ Failed: ${resData.error || 'Server error'}`, 'error');
       }
