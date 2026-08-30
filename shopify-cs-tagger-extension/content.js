@@ -127,8 +127,7 @@
     // Purge old widget if present to force update
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      // Check if it's already updated
-      if (oldBar.getAttribute('data-version') === '2.0') return;
+      if (oldBar.getAttribute('data-version') === '2.1') return;
       oldBar.remove();
     }
 
@@ -137,10 +136,10 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '2.0');
+    bar.setAttribute('data-version', '2.1');
     bar.className = 'trace-cs-tagger-bar';
 
-    // Bulletproof inline styles
+    // Bulletproof inline styles - FORCE height: auto and max-height: fit-content
     bar.style.cssText = `
       position: fixed !important;
       bottom: 20px !important;
@@ -157,6 +156,10 @@
       flex-direction: column !important;
       gap: 6px !important;
       width: 220px !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: fit-content !important;
+      box-sizing: border-box !important;
       user-select: none !important;
     `;
 
@@ -172,13 +175,13 @@
     } catch (err) {}
 
     let html = `
-      <div id="trace-cs-drag-handle" style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important; padding-bottom: 5px !important; cursor: grab !important;" title="Click & Drag to move screen position">
+      <div id="trace-cs-drag-handle" style="display: flex !important; align-items: center !important; justify-content: space-between !important; border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important; padding-bottom: 5px !important; height: auto !important; cursor: grab !important;" title="Click & Drag to move screen position">
         <span style="font-weight: 800 !important; font-size: 11px !important; color: #38bdf8 !important;">⚡ CS TAGGER</span>
         <span style="font-size: 10px !important; color: #94a3b8 !important; font-family: monospace !important; background: rgba(255, 255, 255, 0.1) !important; padding: 1px 4px !important; border-radius: 3px !important;">#${orderId.slice(-6)}</span>
         <button type="button" id="trace-cs-min-btn" style="background: transparent !important; border: none !important; color: #94a3b8 !important; font-size: 14px !important; font-weight: bold !important; cursor: pointer !important; padding: 0 4px !important;" title="Minimize/Expand">—</button>
       </div>
-      <div id="trace-cs-body" style="display: block !important;">
-        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 5px !important;">
+      <div id="trace-cs-body" style="display: block !important; height: auto !important; min-height: 0 !important; max-height: fit-content !important;">
+        <div style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 5px !important; height: auto !important;">
     `;
 
     PRESET_TAGS.forEach(item => {

@@ -5,20 +5,21 @@
   bottom: 20px !important;
   right: 20px !important;
   z-index: 9999999 !important;
-  background: rgba(15, 23, 42, 0.96) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: #0f172a !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
   border-radius: 12px !important;
-  padding: 8px 12px !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55) !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   color: #ffffff !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 8px !important;
-  width: 240px !important;
-  animation: traceSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  gap: 6px !important;
+  width: 220px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: fit-content !important;
+  box-sizing: border-box !important;
   user-select: none !important;
 }
 
@@ -38,7 +39,8 @@
   align-items: center !important;
   justify-content: space-between !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
-  padding-bottom: 6px !important;
+  padding-bottom: 5px !important;
+  height: auto !important;
   cursor: grab !important;
 }
 
@@ -82,12 +84,16 @@
 
 .trace-tagger-body {
   display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: fit-content !important;
 }
 
 .trace-tagger-buttons {
   display: grid !important;
   grid-template-columns: 1fr 1fr !important;
-  gap: 6px !important;
+  gap: 5px !important;
+  height: auto !important;
 }
 
 .trace-tag-btn {
@@ -95,7 +101,7 @@
   color: var(--btn-color, #ffffff) !important;
   border: 1px solid var(--btn-color, #ffffff) !important;
   border-radius: 6px !important;
-  padding: 5px 4px !important;
+  padding: 5px 3px !important;
   font-size: 0.7rem !important;
   font-weight: 700 !important;
   cursor: pointer !important;
