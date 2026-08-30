@@ -327,7 +327,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.7') return;
+      if (oldBar.getAttribute('data-version') === '7.8') return;
       oldBar.remove();
     }
 
@@ -339,7 +339,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.7');
+    bar.setAttribute('data-version', '7.8');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -532,14 +532,16 @@
 
       link.setAttribute('data-trace-cs-injected', 'true');
 
-      const actionContainer = document.createElement('span');
+      const actionContainer = document.createElement('div');
       actionContainer.className = 'trace-row-action-bar';
       actionContainer.style.cssText = `
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 4px !important;
-        margin-left: 6px !important;
-        vertical-align: middle !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 3px !important;
+        margin-top: 4px !important;
+        max-width: 320px !important;
+        width: 100% !important;
       `;
 
       actionContainer.innerHTML = `
@@ -549,10 +551,10 @@
           <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
           <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
         </div>
-        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 2px 5px !important; border-radius: 4px !important; border-left: 2px solid #3b82f6 !important;">
+        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.25 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 3px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: normal !important; word-break: break-word !important; max-width: 320px !important;">
           📍 <span class="trace-addr-val">...</span>
         </div>
-        <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 2px 5px !important; border-radius: 4px !important; border-left: 2px solid #0284c7 !important;">
+        <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.25 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 3px 6px !important; border-radius: 4px !important; border-left: 3px solid #0284c7 !important; white-space: normal !important; word-break: break-word !important; max-width: 320px !important;">
           📦 <span class="trace-items-val">...</span>
         </div>
       `;
