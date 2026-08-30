@@ -763,24 +763,20 @@ router.post('/extension-tag-order', async (req, res) => {
       store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(localOrder.store_id);
     }
     
+    if (!store || !store.access_token || store.access_token === 'PENDING') {
+      store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != '' AND access_token != 'PENDING' LIMIT 1").get();
+    }
+
     let shopDomain = store ? (store.shop_domain || store.myshopify_domain) : null;
     let token = store ? store.access_token : null;
-
-    if (!token || !token.startsWith('shpat_')) {
-      const validStore = db.db.prepare("SELECT * FROM stores WHERE access_token LIKE 'shpat_%' LIMIT 1").get();
-      if (validStore) {
-        store = validStore;
-        shopDomain = validStore.shop_domain || validStore.myshopify_domain;
-        token = validStore.access_token;
-      }
-    }
 
     const orderGid = `gid://shopify/Order/${cleanOrderNum}`;
     const mutation = action === 'remove'
       ? `mutation tagsRemove($id: ID!, $tags: [String!]!) { tagsRemove(id: $id, tags: $tags) { userErrors { message } node { id } } }`
       : `mutation tagsAdd($id: ID!, $tags: [String!]!) { tagsAdd(id: $id, tags: $tags) { userErrors { message } node { id } } }`;
 
-    if (token && token.startsWith('shpat_') && shopDomain) {
+    let shopifyUpdated = false;
+    if (token && shopDomain) {
       try {
         const shopifyRes = await fetch(`https://${shopDomain}/admin/api/2024-01/graphql.json`, {
           method: 'POST',
@@ -791,6 +787,7 @@ router.post('/extension-tag-order', async (req, res) => {
           body: JSON.stringify({ query: mutation, variables: { id: orderGid, tags: [tag] } })
         });
         const graphResult = await shopifyRes.json();
+        shopifyUpdated = true;
         console.log(`🏷️ [Extension Tag Relay] ${action.toUpperCase()} tag '${tag}' on ${cleanOrderNum} via ${shopDomain}:`, JSON.stringify(graphResult));
       } catch (shopErr) {
         console.warn(`⚠️ [Extension Tag Relay] Shopify live edit error:`, shopErr.message);
