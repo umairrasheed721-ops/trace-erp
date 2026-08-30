@@ -175,4 +175,9 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
       > 4. *Physical ZIP File (`/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip`)"*
     - The agent MUST wait for the user's explicit approval ("all", "store 1 only", etc.) BEFORE executing any API call, script, file modification, or deletion.
 
+31. **Production Deployment Static Asset Commitment Guard (STRICT MANDATORY)**:
+    - Whenever any change is made to `frontend/src/`, the agent MUST run `npm run build` AND ALWAYS stage the compiled `backend/public/` directory (`git add -A` or `git add backend/public frontend/src ...`) before calling `git push origin main`.
+    - Never assume Railway builds frontend static assets automatically; Railway serves the compiled static bundle from `backend/public/`. Uncommitted `backend/public/` assets cause Railway to serve stale JS bundles.
+
+
 
