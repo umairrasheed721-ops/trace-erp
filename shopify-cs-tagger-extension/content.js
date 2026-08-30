@@ -132,6 +132,14 @@
     }
   }
 
+  // Max 2 items summary formatter
+  function formatItemsSummary(productTitles) {
+    if (!productTitles) return '';
+    const items = String(productTitles).split(',').map(s => s.trim()).filter(Boolean);
+    if (items.length <= 2) return items.join(', ');
+    return items.slice(0, 2).join(', ') + '... (' + items.length + ' items)';
+  }
+
   // Order Confirmation Message — Rich format with products, address, reply options
   function buildConfirmLink(ord, fallbackOrderName) {
     const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
@@ -327,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '7.8') return;
+      if (oldBar.getAttribute('data-version') === '7.9') return;
       oldBar.remove();
     }
 
@@ -339,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '7.8');
+    bar.setAttribute('data-version', '7.9');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -540,21 +548,22 @@
         align-items: flex-start !important;
         gap: 3px !important;
         margin-top: 4px !important;
-        max-width: 320px !important;
+        min-width: 280px !important;
+        max-width: 360px !important;
         width: 100% !important;
       `;
 
       actionContainer.innerHTML = `
-        <div class="trace-row-btn-line" style="display: flex !important; align-items: center !important; gap: 4px !important; flex-wrap: wrap !important;">
+        <div class="trace-row-btn-line" style="display: flex !important; align-items: center !important; gap: 4px !important; flex-wrap: nowrap !important; white-space: nowrap !important;">
           <a class="trace-row-confirm-btn" href="${buildConfirmLink(null, orderText)}" style="background: #1d4ed8 !important; color: #ffffff !important; border: 1px solid #3b82f6 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: inline-flex !important; align-items: center !important; gap: 2px !important;" title="Send Order Confirmation Message">📦 Confirm</a>
           <a class="trace-row-ship-btn" href="${buildShippingLink(null, orderText)}" style="background: #0369a1 !important; color: #ffffff !important; border: 1px solid #0ea5e9 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; text-decoration: none !important; display: none !important; align-items: center !important; gap: 2px !important;" title="Send Shipping Update Message">🚚 Shipped</a>
           <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
           <a class="trace-row-phone" href="#" style="font-size: 9px !important; color: #111827 !important; font-family: monospace !important; font-weight: 700 !important; white-space: nowrap !important; padding: 1px 5px !important; background: #f1f5f9 !important; border: 1px solid #cbd5e1 !important; border-radius: 4px !important; text-decoration: none !important; cursor: pointer !important;" title="Click to Call">📱 ...</a>
         </div>
-        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.25 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 3px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: normal !important; word-break: break-word !important; max-width: 320px !important;">
+        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
           📍 <span class="trace-addr-val">...</span>
         </div>
-        <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.25 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 3px 6px !important; border-radius: 4px !important; border-left: 3px solid #0284c7 !important; white-space: normal !important; word-break: break-word !important; max-width: 320px !important;">
+        <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #0284c7 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
           📦 <span class="trace-items-val">...</span>
         </div>
       `;
@@ -634,22 +643,25 @@
             phoneBadge.style.color = '#9ca3af !important';
           }
 
-          // Address Sub-line
+          // Address Sub-line (1 line truncated with ellipsis)
           const addressStr = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
           if (addrLineEl && addrValEl) {
             if (addressStr) {
               addrValEl.textContent = addressStr;
+              addrLineEl.setAttribute('title', addressStr);
               addrLineEl.style.display = 'block';
             } else {
               addrLineEl.style.display = 'none';
             }
           }
 
-          // Product Items Sub-line
-          const productsStr = (ord && ord.product_titles) ? ord.product_titles : '';
+          // Product Items Sub-line (Max 2 items truncated)
+          const rawProducts = (ord && ord.product_titles) ? ord.product_titles : '';
+          const productsSummary = formatItemsSummary(rawProducts);
           if (itemsLineEl && itemsValEl) {
-            if (productsStr) {
-              itemsValEl.textContent = productsStr;
+            if (productsSummary) {
+              itemsValEl.textContent = productsSummary;
+              itemsLineEl.setAttribute('title', rawProducts);
               itemsLineEl.style.display = 'block';
             } else {
               itemsLineEl.style.display = 'none';
