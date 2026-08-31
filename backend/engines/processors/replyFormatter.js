@@ -144,10 +144,16 @@ function formatTemplate(templateStr, orderInfo) {
 
   // Direct Courier Tracking URL
   let courierLink = 'N/A';
-  if (tracking && tracking !== 'N/A') {
+  if (tracking && tracking !== 'N/A' && tracking !== '—') {
     const courierLower = (courier || '').toLowerCase();
-    if (courierLower.includes('postex')) {
+    if (courierLower.includes('postex') || tracking.startsWith('24') || tracking.startsWith('27') || tracking.startsWith('20')) {
       courierLink = `https://postex.pk/tracking?cn=${tracking}`;
+    } else if (courierLower.includes('leopard') || courierLower.includes('lcs')) {
+      courierLink = `https://www.leopardscourier.com/tracking?track_number=${tracking}`;
+    } else if (courierLower.includes('tcs')) {
+      courierLink = `https://www.tcsexpress.com/tracking?trackingNo=${tracking}`;
+    } else if (courierLower.includes('trax')) {
+      courierLink = `https://trax.pk/tracking?trackingNumber=${tracking}`;
     } else {
       courierLink = `https://insta-app-be.instaworld.pk/logistics/orderTracking/?tracking_number=${tracking}`;
     }
