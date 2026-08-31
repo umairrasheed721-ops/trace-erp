@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '10.1') return;
+      if (oldBar.getAttribute('data-version') === '10.2') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '10.1');
+    bar.setAttribute('data-version', '10.2');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `

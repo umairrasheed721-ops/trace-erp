@@ -957,7 +957,7 @@ router.get('/extension-order-info', async (req, res) => {
               console.warn('[Extension Live DB Count Error]:', err.message);
             }
 
-            const finalLiveCount = Math.max(realOrdersCount || 1, erpDbCount || 1);
+            const finalLiveCount = erpDbCount > 0 ? erpDbCount : (realOrdersCount || 1);
 
             return res.json({
               success: true,
@@ -1083,7 +1083,7 @@ router.get('/extension-order-info', async (req, res) => {
       console.warn('[Extension DB Count Error]:', err.message);
     }
 
-    const finalOrdersCount = Math.max(liveCustOrdersCount || 1, erpDbOrdersCount || 1);
+    const finalOrdersCount = erpDbOrdersCount > 0 ? erpDbOrdersCount : (liveCustOrdersCount || 1);
 
     res.json({
       success: true,
