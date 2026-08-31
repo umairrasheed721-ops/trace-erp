@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.5') return;
+      if (oldBar.getAttribute('data-version') === '8.6') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.5');
+    bar.setAttribute('data-version', '8.6');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -685,21 +685,15 @@
           }
 
           // Customer Total Orders Count Badge in Customer Column
-          if (ord && ord.customer_orders_count && ord.customer_name) {
+          if (ord && ord.customer_orders_count) {
             const tr = link.closest('tr');
             if (tr && !tr.querySelector('.trace-cust-count-badge')) {
-              let custCell = null;
               const tds = Array.from(tr.querySelectorAll('td'));
-
-              // Primary: find the td whose textContent contains the customer name
-              const custNameClean = (ord.customer_name || '').trim().toLowerCase();
-              if (custNameClean) {
-                custCell = tds.find(td => td.textContent && td.textContent.trim().toLowerCase().includes(custNameClean));
-              }
-
-              // Fallback: td[3] is Customer column in default Shopify Orders table layout
-              if (!custCell && tds.length > 3) custCell = tds[3];
-              if (!custCell && tds.length > 2) custCell = tds[2];
+              // Order link lives in one td. Customer is 2 cols to the right (Date is in between).
+              const orderTd = link.closest('td');
+              const orderTdIdx = tds.indexOf(orderTd);
+              // Try offset +2 (Customer), then +1, then raw td[3]
+              const custCell = tds[orderTdIdx + 2] || tds[orderTdIdx + 1] || tds[3] || tds[2];
 
               if (custCell) {
                 const badge = document.createElement('span');
