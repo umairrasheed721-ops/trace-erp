@@ -960,10 +960,23 @@ router.get('/extension-order-info', async (req, res) => {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
             if (!phone) phone = addr.phone || so.phone || cust.phone || '';
-            const fullCust = [cust.first_name, cust.last_name].filter(Boolean).join(' ').trim() ||
-                             [addr.first_name, addr.last_name].filter(Boolean).join(' ').trim();
-            if (fullCust) liveCustName = fullCust;
+            if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
             if (cust.orders_count !== undefined) liveOrdersCount = cust.orders_count;
+
+            if (cust.id) {
+              try {
+                const custRes = await axios.get(
+                  `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
+                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
+                );
+                if (custRes.data?.customer) {
+                  const c = custRes.data.customer;
+                  if (c.orders_count !== undefined) liveOrdersCount = c.orders_count;
+                  const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
+                  if (full) liveCustName = full;
+                }
+              } catch (_) {}
+            }
 
             if (phone && !order.phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
