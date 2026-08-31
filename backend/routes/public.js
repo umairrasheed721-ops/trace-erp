@@ -925,14 +925,14 @@ router.get('/extension-order-info', async (req, res) => {
 
             let erpDbCount = 0;
             const last10P = cleanPhone ? cleanPhone.slice(-10) : '';
-            if (last10P.length >= 7 || realCustName) {
+            if (last10P.length >= 10 || realCustName) {
               try {
                 const countRes = db.db.prepare(`
                   SELECT COUNT(*) as cnt FROM orders 
-                  WHERE (clean_phone IS NOT NULL AND clean_phone LIKE ?)
-                     OR (phone IS NOT NULL AND phone LIKE ?)
+                  WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(phone, -10) = ?)
+                     OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(clean_phone, -10) = ?)
                      OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-                `).get(`%${last10P}%`, `%${last10P}%`, (realCustName || '').trim());
+                `).get(last10P, last10P, (realCustName || '').trim());
                 if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
               } catch (_) {}
             }
@@ -1028,14 +1028,14 @@ router.get('/extension-order-info', async (req, res) => {
 
     let erpDbOrdersCount = 0;
     const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
-    if (last10Digits.length >= 7 || order.customer_name) {
+    if (last10Digits.length >= 10 || order.customer_name) {
       try {
         const countRes = db.db.prepare(`
           SELECT COUNT(*) as cnt FROM orders 
-          WHERE (clean_phone IS NOT NULL AND clean_phone LIKE ?)
-             OR (phone IS NOT NULL AND phone LIKE ?)
+          WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(phone, -10) = ?)
+             OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(clean_phone, -10) = ?)
              OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-        `).get(`%${last10Digits}%`, `%${last10Digits}%`, (order.customer_name || '').trim());
+        `).get(last10Digits, last10Digits, (order.customer_name || '').trim());
         if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
       } catch (_) {}
     }
