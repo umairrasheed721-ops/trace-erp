@@ -925,14 +925,15 @@ router.get('/extension-order-info', async (req, res) => {
 
             let erpDbCount = 0;
             const last10P = cleanPhone ? cleanPhone.slice(-10) : '';
-            if (last10P.length >= 10 || realCustName) {
+            const custNameFirstLive = (realCustName || '').trim().split(' ')[0] || '';
+            if (last10P.length >= 7 || custNameFirstLive) {
               try {
                 const countRes = db.db.prepare(`
                   SELECT COUNT(*) as cnt FROM orders 
-                  WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(phone, -10) = ?)
-                     OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(clean_phone, -10) = ?)
-                     OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-                `).get(last10P, last10P, (realCustName || '').trim());
+                  WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(REPLACE(phone, '-', ''), -10) = ?)
+                     OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(REPLACE(clean_phone, '-', ''), -10) = ?)
+                     OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) LIKE ?)
+                `).get(last10P, last10P, `%${custNameFirstLive.toLowerCase()}%`);
                 if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
               } catch (_) {}
             }
@@ -1028,14 +1029,15 @@ router.get('/extension-order-info', async (req, res) => {
 
     let erpDbOrdersCount = 0;
     const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
-    if (last10Digits.length >= 10 || order.customer_name) {
+    const custNameFirst = (order.customer_name || '').trim().split(' ')[0] || '';
+    if (last10Digits.length >= 7 || custNameFirst) {
       try {
         const countRes = db.db.prepare(`
           SELECT COUNT(*) as cnt FROM orders 
-          WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(phone, -10) = ?)
-             OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(clean_phone, -10) = ?)
-             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-        `).get(last10Digits, last10Digits, (order.customer_name || '').trim());
+          WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(REPLACE(REPLACE(phone, '-', ''), ' ', ''), -10) = ?)
+             OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(REPLACE(REPLACE(clean_phone, '-', ''), ' ', ''), -10) = ?)
+             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) LIKE ?)
+        `).get(last10Digits, last10Digits, `%${custNameFirst.toLowerCase()}%`);
         if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
       } catch (_) {}
     }
