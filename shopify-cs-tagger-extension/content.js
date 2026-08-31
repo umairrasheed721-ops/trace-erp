@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.0') return;
+      if (oldBar.getAttribute('data-version') === '8.1') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.0');
+    bar.setAttribute('data-version', '8.1');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -487,8 +487,7 @@
 
     // Safe Fetch ERP Order Details & Enrich WhatsApp Link
     try {
-      const orderSearchKey = extractShopifyOrderName() || orderId;
-      const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderSearchKey)}`);
+      const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderId)}&ref_number=${encodeURIComponent(orderName)}`);
       const infoData = await infoRes.json();
 
       const liveBar = document.getElementById('trace-cs-tagger-bar');

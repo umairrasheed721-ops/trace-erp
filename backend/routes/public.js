@@ -831,20 +831,107 @@ router.get('/extension-order-info', async (req, res) => {
   if (!shopify_order_id) return res.status(400).json({ success: false, error: 'shopify_order_id required' });
 
   try {
-    const cleanNum = String(shopify_order_id).replace(/\D/g, '');
-    const rawStr = String(shopify_order_id).trim();
+    const rawShopifyId = String(shopify_order_id).trim();
     const refNum = req.query.ref_number ? String(req.query.ref_number).trim() : '';
-    const order = db.db.prepare(`
-      SELECT * FROM orders 
-      WHERE shopify_order_id = ? 
-         OR id = ? 
-         OR ref_number = ?
-         OR ref_number LIKE ?
-      LIMIT 1
-    `).get(cleanNum, cleanNum, refNum || rawStr, `%${cleanNum}%`);
+    const cleanRef = refNum.replace(/^#/, '');
 
+    // STRICT Exact Search ONLY — NEVER match loose LIKE '%number%' or raw numeric IDs of unrelated orders
+    let order = null;
+    if (cleanRef) {
+      order = db.db.prepare(`
+        SELECT * FROM orders 
+        WHERE ref_number = ? 
+           OR ref_number = ? 
+           OR ref_number = ?
+           OR shopify_order_id = ?
+        LIMIT 1
+      `).get(refNum, cleanRef, `#${cleanRef}`, rawShopifyId);
+    } else if (rawShopifyId) {
+      order = db.db.prepare(`
+        SELECT * FROM orders 
+        WHERE shopify_order_id = ? 
+           OR ref_number = ?
+        LIMIT 1
+      `).get(rawShopifyId, rawShopifyId);
+    }
+
+    // Fallback: If not found in TRACE ERP database yet, live fetch from Shopify Admin API!
     if (!order) {
-      return res.json({ success: false, error: 'Order not found in TRACE ERP' });
+      try {
+        let store = db.db.prepare("SELECT * FROM stores WHERE access_token IS NOT NULL AND access_token != '' AND access_token != 'PENDING' LIMIT 1").get();
+        if (store && store.access_token) {
+          const shopDomain = store.shop_domain || store.myshopify_domain;
+          const axios = require('axios');
+          let shopifyRes = null;
+
+          // 1. Try fetching by numeric Shopify Order ID if passed
+          if (/^\d{10,}$/.test(rawShopifyId)) {
+            try {
+              shopifyRes = await axios.get(
+                `https://${shopDomain}/admin/api/2024-01/orders/${rawShopifyId}.json`,
+                { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
+              );
+            } catch (_) {}
+          }
+
+          // 2. Search Shopify API by name (e.g. TR33766 or TR33966)
+          const targetName = cleanRef || rawShopifyId;
+          if (!shopifyRes?.data?.order && targetName) {
+            try {
+              const searchRes = await axios.get(
+                `https://${shopDomain}/admin/api/2024-01/orders.json?name=${encodeURIComponent(targetName)}&status=any`,
+                { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
+              );
+              if (searchRes.data?.orders?.length) {
+                const match = searchRes.data.orders.find(o => 
+                  String(o.name).toLowerCase() === targetName.toLowerCase() ||
+                  String(o.name).toLowerCase() === `#${targetName}`.toLowerCase() ||
+                  String(o.order_number) === targetName.replace(/\D/g, '')
+                );
+                if (match) shopifyRes = { data: { order: match } };
+              }
+            } catch (_) {}
+          }
+
+          const so = shopifyRes?.data?.order;
+          if (so) {
+            const addr = so.shipping_address || {};
+            const cust = so.customer || {};
+            const phone = addr.phone || so.phone || cust.phone || '';
+            let cleanPhone = phone.replace(/\D/g, '');
+            if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
+            if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
+
+            const itemsStr = (so.line_items || []).map(i => `${i.title}${i.variant_title ? ` - ${i.variant_title}` : ''} (x${i.quantity})`).join(', ');
+
+            return res.json({
+              success: true,
+              order: {
+                id: so.id,
+                shopify_order_id: String(so.id),
+                ref_number: so.name || `#${so.order_number}`,
+                customer_name: (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : 'Customer'),
+                phone,
+                clean_phone: cleanPhone,
+                price: so.current_total_price || so.total_price || '',
+                product_titles: itemsStr,
+                address: [addr.address1, addr.address2].filter(Boolean).join(', '),
+                city: addr.city || '',
+                tracking_number: '',
+                courier_name: '',
+                delivery_status: (so.fulfillment_status === 'fulfilled' ? 'In Transit' : 'Pending'),
+                courier_status: (so.fulfillment_status === 'fulfilled' ? 'Fulfilled' : 'Unfulfilled'),
+                tags: so.tags || '',
+                notes: so.note || ''
+              }
+            });
+          }
+        }
+      } catch (liveErr) {
+        console.warn('[Extension Live Shopify Fetch Error]:', liveErr.message);
+      }
+
+      return res.json({ success: false, error: 'Order not found in TRACE ERP or Shopify' });
     }
 
     let phone = order.phone || '';
