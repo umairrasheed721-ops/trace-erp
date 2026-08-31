@@ -906,28 +906,19 @@ router.get('/extension-order-info', async (req, res) => {
             const itemsStr = (so.line_items || []).map(i => `${i.title}${i.variant_title ? ` - ${i.variant_title}` : ''} (x${i.quantity})`).join(', ');
 
             let realOrdersCount = cust.orders_count || 1;
-            if (cleanPhone && cleanPhone.length >= 10) {
-              try {
-                const searchPhone = cleanPhone.slice(-10);
-                const custSearchRes = await axios.get(
-                  `https://${shopDomain}/admin/api/2024-01/customers/search.json?query=${encodeURIComponent(searchPhone)}`,
-                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
-                );
-                if (custSearchRes.data?.customers?.length) {
-                  const totalPhoneOrders = custSearchRes.data.customers.reduce((sum, c) => sum + (c.orders_count || 0), 0);
-                  if (totalPhoneOrders > 0) realOrdersCount = Math.max(realOrdersCount, totalPhoneOrders);
-                }
-              } catch (_) {}
-            }
+            let realCustName = (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : 'Customer');
 
-            if (realOrdersCount <= 1 && cust.id) {
+            if (cust.id) {
               try {
                 const custRes = await axios.get(
                   `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
                   { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
                 );
-                if (custRes.data?.customer?.orders_count) {
-                  realOrdersCount = Math.max(realOrdersCount, custRes.data.customer.orders_count);
+                if (custRes.data?.customer) {
+                  const c = custRes.data.customer;
+                  if (c.orders_count !== undefined) realOrdersCount = c.orders_count;
+                  const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
+                  if (full) realCustName = full;
                 }
               } catch (_) {}
             }
@@ -938,7 +929,7 @@ router.get('/extension-order-info', async (req, res) => {
                 id: so.id,
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
-                customer_name: (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : 'Customer'),
+                customer_name: realCustName,
                 customer_orders_count: realOrdersCount,
                 phone,
                 clean_phone: cleanPhone,
@@ -988,34 +979,22 @@ router.get('/extension-order-info', async (req, res) => {
             const cust = so.customer || {};
             if (!phone) phone = addr.phone || so.phone || cust.phone || '';
             if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
+            if (cust.orders_count) liveCustOrdersCount = cust.orders_count;
 
-            const cleanP = phone ? phone.replace(/\D/g, '') : '';
-            if (cleanP && cleanP.length >= 10) {
-              try {
-                const searchPhone = cleanP.slice(-10);
-                const custSearchRes = await axios.get(
-                  `https://${shopDomain}/admin/api/2024-01/customers/search.json?query=${encodeURIComponent(searchPhone)}`,
-                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
-                );
-                if (custSearchRes.data?.customers?.length) {
-                  const totalPhoneOrders = custSearchRes.data.customers.reduce((sum, c) => sum + (c.orders_count || 0), 0);
-                  if (totalPhoneOrders > 0) liveCustOrdersCount = Math.max(liveCustOrdersCount || 0, totalPhoneOrders);
-                }
-              } catch (_) {}
-            }
-
-            if ((!liveCustOrdersCount || liveCustOrdersCount <= 1) && cust.id) {
+            if (cust.id) {
               try {
                 const custRes = await axios.get(
                   `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
                   { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
                 );
-                if (custRes.data?.customer?.orders_count) {
-                  liveCustOrdersCount = Math.max(liveCustOrdersCount || 0, custRes.data.customer.orders_count);
+                if (custRes.data?.customer) {
+                  const c = custRes.data.customer;
+                  if (c.orders_count !== undefined) liveCustOrdersCount = c.orders_count;
+                  const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
+                  if (full) liveCustName = full;
                 }
               } catch (_) {}
             }
-            if (!liveCustOrdersCount && cust.orders_count) liveCustOrdersCount = cust.orders_count;
 
             if (phone && !order.phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
@@ -1037,9 +1016,9 @@ router.get('/extension-order-info', async (req, res) => {
         try {
           const countRes = db.db.prepare(`
             SELECT COUNT(*) as cnt FROM orders 
-            WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+            WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ? OR clean_phone = ?))
                OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-          `).get(phone || '', cleanPhone || '', order.customer_name || '');
+          `).get(phone || '', cleanPhone || '', cleanPhone || '', order.customer_name || '');
           if (countRes && countRes.cnt > 0) customerOrdersCount = countRes.cnt;
         } catch (_) {}
       }
