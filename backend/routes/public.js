@@ -933,10 +933,8 @@ router.get('/extension-order-info', async (req, res) => {
               const queryParams = [];
 
               if (last10P.length >= 7) {
-                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-                queryParams.push(last10P);
-                whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-                queryParams.push(last10P);
+                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (phone LIKE ? OR SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
+                queryParams.push(`%${last10P}%`, last10P);
               }
               if (emailValLive) {
                 whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
@@ -954,7 +952,9 @@ router.get('/extension-order-info', async (req, res) => {
                 `).get(...queryParams);
                 if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
               }
-            } catch (_) {}
+            } catch (err) {
+              console.warn('[Extension Live DB Count Error]:', err.message);
+            }
 
             const finalLiveCount = Math.max(realOrdersCount || 1, erpDbCount || 1);
 
@@ -1060,8 +1060,6 @@ router.get('/extension-order-info', async (req, res) => {
       if (last10Digits.length >= 7) {
         whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (phone LIKE ? OR SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
         queryParams.push(`%${last10Digits}%`, last10Digits);
-        whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND (clean_phone LIKE ? OR SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
-        queryParams.push(`%${last10Digits}%`, last10Digits);
       }
       if (emailVal) {
         whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
@@ -1079,7 +1077,9 @@ router.get('/extension-order-info', async (req, res) => {
         `).get(...queryParams);
         if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Extension DB Count Error]:', err.message);
+    }
 
     const finalOrdersCount = Math.max(liveCustOrdersCount || 1, erpDbOrdersCount || 1);
 
