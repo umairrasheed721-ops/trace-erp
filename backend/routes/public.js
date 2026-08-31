@@ -835,24 +835,25 @@ router.get('/extension-order-info', async (req, res) => {
     const refNum = req.query.ref_number ? String(req.query.ref_number).trim() : '';
     const cleanRef = refNum.replace(/^#/, '');
 
-    // STRICT Exact Search ONLY — NEVER match loose LIKE '%number%' or raw numeric IDs of unrelated orders
+    // STRICT Exact Search ONLY — NEVER match legacy orders without TR prefix
     let order = null;
-    if (cleanRef) {
+    if (refNum) {
+      const targetExact = refNum.startsWith('#') ? refNum : `#${refNum}`;
+      const targetNoHash = refNum.replace(/^#/, '');
+
       order = db.db.prepare(`
         SELECT * FROM orders 
         WHERE ref_number = ? 
            OR ref_number = ? 
-           OR ref_number = ?
-           OR shopify_order_id = ?
+           OR (shopify_order_id = ? AND shopify_order_id != '')
         LIMIT 1
-      `).get(refNum, cleanRef, `#${cleanRef}`, rawShopifyId);
-    } else if (rawShopifyId) {
+      `).get(targetExact, targetNoHash, rawShopifyId);
+    } else if (rawShopifyId && /^\d{10,}$/.test(rawShopifyId)) {
       order = db.db.prepare(`
         SELECT * FROM orders 
-        WHERE shopify_order_id = ? 
-           OR ref_number = ?
+        WHERE shopify_order_id = ?
         LIMIT 1
-      `).get(rawShopifyId, rawShopifyId);
+      `).get(rawShopifyId);
     }
 
     // Fallback: If not found in TRACE ERP database yet, live fetch from Shopify Admin API!
