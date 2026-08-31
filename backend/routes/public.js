@@ -924,7 +924,9 @@ router.get('/extension-order-info', async (req, res) => {
             }
 
             let erpDbCount = 0;
-            const last10P = cleanPhone ? cleanPhone.slice(-10) : '';
+            const cleanPLive = phone ? phone.replace(/\D/g, '') : '';
+            const last7PLive = cleanPLive.slice(-7);
+            const last10PLive = cleanPLive.slice(-10);
             const emailValLive = (so.email || addr.email || cust.email || '').trim().toLowerCase();
             const custNameFirstLive = (realCustName || '').trim().split(' ')[0] || '';
 
@@ -932,9 +934,9 @@ router.get('/extension-order-info', async (req, res) => {
               const whereParts = [];
               const queryParams = [];
 
-              if (last10P.length >= 7) {
-                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (phone LIKE ? OR SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
-                queryParams.push(`%${last10P}%`, last10P);
+              if (last7PLive.length >= 7) {
+                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (REPLACE(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), \'+\', \'\') LIKE ? OR phone LIKE ?))');
+                queryParams.push(`%${last10PLive || last7PLive}%`, `%${last7PLive}%`);
               }
               if (emailValLive) {
                 whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
@@ -1049,7 +1051,9 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
     let erpDbOrdersCount = 0;
-    const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
+    const cleanP = phone ? phone.replace(/\D/g, '') : '';
+    const last7Digits = cleanP.slice(-7);
+    const last10Digits = cleanP.slice(-10);
     const emailVal = (liveEmail || order.email || '').trim().toLowerCase();
     const custNameFirst = (liveCustName || order.customer_name || '').trim().split(' ')[0] || '';
 
@@ -1057,9 +1061,9 @@ router.get('/extension-order-info', async (req, res) => {
       const whereParts = [];
       const queryParams = [];
 
-      if (last10Digits.length >= 7) {
-        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (phone LIKE ? OR SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
-        queryParams.push(`%${last10Digits}%`, last10Digits);
+      if (last7Digits.length >= 7) {
+        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (REPLACE(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), \'+\', \'\') LIKE ? OR phone LIKE ?))');
+        queryParams.push(`%${last10Digits || last7Digits}%`, `%${last7Digits}%`);
       }
       if (emailVal) {
         whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
