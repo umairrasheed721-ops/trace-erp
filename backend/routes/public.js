@@ -905,68 +905,13 @@ router.get('/extension-order-info', async (req, res) => {
 
             const itemsStr = (so.line_items || []).map(i => `${i.title}${i.variant_title ? ` - ${i.variant_title}` : ''} (x${i.quantity})`).join(', ');
 
-            let realOrdersCount = cust.orders_count || 1;
-            let realCustName = (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : 'Customer');
-
-            if (cust.id) {
-              try {
-                const custRes = await axios.get(
-                  `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
-                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
-                );
-                if (custRes.data?.customer) {
-                  const c = custRes.data.customer;
-                  if (c.orders_count !== undefined) realOrdersCount = c.orders_count;
-                  const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
-                  if (full) realCustName = full;
-                }
-              } catch (_) {}
-            }
-
-            let erpDbCount = 0;
-            const cleanPLive = phone ? phone.replace(/\D/g, '') : '';
-            const last10PLive = cleanPLive.length >= 10 ? cleanPLive.slice(-10) : '';
-            const emailValLive = (so.email || addr.email || cust.email || '').trim().toLowerCase();
-            const fullCustNameLive = (realCustName || '').trim().toLowerCase();
-
-            try {
-              const whereParts = [];
-              const queryParams = [];
-
-              if (last10PLive.length === 10) {
-                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-                queryParams.push(last10PLive);
-              }
-              if (emailValLive) {
-                whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
-                queryParams.push(emailValLive);
-              }
-              if (fullCustNameLive && fullCustNameLive !== 'customer') {
-                whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) = ?)');
-                queryParams.push(fullCustNameLive);
-              }
-
-              if (whereParts.length > 0) {
-                const countRes = db.db.prepare(`
-                  SELECT COUNT(*) as cnt FROM orders 
-                  WHERE ${whereParts.join(' OR ')}
-                `).get(...queryParams);
-                if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
-              }
-            } catch (err) {
-              console.warn('[Extension Live DB Count Error]:', err.message);
-            }
-
-            const finalLiveCount = erpDbCount > 0 ? erpDbCount : (realOrdersCount || 1);
-
             return res.json({
               success: true,
               order: {
                 id: so.id,
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
-                customer_name: realCustName,
-                customer_orders_count: finalLiveCount,
+                customer_name: (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : 'Customer'),
                 phone,
                 clean_phone: cleanPhone,
                 price: so.current_total_price || so.total_price || '',
@@ -991,12 +936,9 @@ router.get('/extension-order-info', async (req, res) => {
     }
 
     let phone = order.phone || '';
-    let liveCustOrdersCount = null;
-    let liveCustName = null;
-    let liveEmail = null;
-
-    // Live fetch from Shopify to get accurate customer profile name, phone & total Shopify orders count
-    if (order.shopify_order_id) {
+    
+    // Live fetch from Shopify when DB phone is empty
+    if (!phone && order.shopify_order_id) {
       try {
         let store = null;
         if (order.store_id) store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
@@ -1007,41 +949,22 @@ router.get('/extension-order-info', async (req, res) => {
           const shopDomain = store.shop_domain || store.myshopify_domain;
           const axios = require('axios');
           const shopifyRes = await axios.get(
-            `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,email,shipping_address,customer`,
-            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 4000 }
+            `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,shipping_address,customer`,
+            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
           );
           const so = shopifyRes.data && shopifyRes.data.order;
           if (so) {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
-            if (!phone) phone = addr.phone || so.phone || cust.phone || '';
-            liveEmail = so.email || addr.email || cust.email || '';
-            if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
-            if (cust.orders_count) liveCustOrdersCount = cust.orders_count;
-
-            if (cust.id) {
-              try {
-                const custRes = await axios.get(
-                  `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
-                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
-                );
-                if (custRes.data?.customer) {
-                  const c = custRes.data.customer;
-                  if (c.orders_count !== undefined) liveCustOrdersCount = c.orders_count;
-                  const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
-                  if (full) liveCustName = full;
-                  if (c.email && !liveEmail) liveEmail = c.email;
-                }
-              } catch (_) {}
-            }
-
-            if (phone && !order.phone) {
+            phone = addr.phone || so.phone || cust.phone || '';
+            // Save back to DB for future lookups
+            if (phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
             }
           }
         }
       } catch (fetchErr) {
-        console.warn('[Extension Live Fetch Warn]:', fetchErr.message);
+        console.warn('[Extension Phone Fetch Warn]:', fetchErr.message);
       }
     }
 
@@ -1049,50 +972,13 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
-    let erpDbOrdersCount = 0;
-    const cleanP = phone ? phone.replace(/\D/g, '') : '';
-    const last10Digits = cleanP.length >= 10 ? cleanP.slice(-10) : '';
-    const emailVal = (liveEmail || order.email || '').trim().toLowerCase();
-    const fullCustName = (liveCustName || order.customer_name || '').trim().toLowerCase();
-
-    try {
-      const whereParts = [];
-      const queryParams = [];
-
-      if (last10Digits.length === 10) {
-        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-        queryParams.push(last10Digits);
-      }
-      if (emailVal) {
-        whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
-        queryParams.push(emailVal);
-      }
-      if (fullCustName && fullCustName !== 'customer') {
-        whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) = ?)');
-        queryParams.push(fullCustName);
-      }
-
-      if (whereParts.length > 0) {
-        const countRes = db.db.prepare(`
-          SELECT COUNT(*) as cnt FROM orders 
-          WHERE ${whereParts.join(' OR ')}
-        `).get(...queryParams);
-        if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
-      }
-    } catch (err) {
-      console.warn('[Extension DB Count Error]:', err.message);
-    }
-
-    const finalOrdersCount = erpDbOrdersCount > 0 ? erpDbOrdersCount : (liveCustOrdersCount || 1);
-
     res.json({
       success: true,
       order: {
         id: order.id,
         shopify_order_id: order.shopify_order_id,
         ref_number: order.ref_number || `#${order.shopify_order_id}`,
-        customer_name: liveCustName || order.customer_name || 'Customer',
-        customer_orders_count: finalOrdersCount,
+        customer_name: order.customer_name || 'Customer',
         phone,
         clean_phone: cleanPhone,
         price: order.price || order.total_price || '',
