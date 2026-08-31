@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.6') return;
+      if (oldBar.getAttribute('data-version') === '8.7') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.6');
+    bar.setAttribute('data-version', '8.7');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -559,6 +559,9 @@
           <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
           <a class="trace-row-phone" href="#" style="font-size: 11.5px !important; color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; font-weight: 800 !important; white-space: nowrap !important; padding: 2px 7px !important; background: #f8fafc !important; border: 1.5px solid #0f172a !important; border-radius: 5px !important; text-decoration: none !important; cursor: pointer !important; letter-spacing: 0.3px !important;" title="Click to Call">📱 ...</a>
         </div>
+        <div class="trace-row-cust-line" style="display: none; font-size: 9.5px !important; color: #1e293b !important; font-weight: 700 !important; line-height: 1.2 !important; margin-top: 2px !important; white-space: nowrap !important;">
+          👤 <span class="trace-cust-val"></span>
+        </div>
         <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
           📍 <span class="trace-addr-val">...</span>
         </div>
@@ -615,6 +618,8 @@
       const phoneBadge = actionContainer.querySelector('.trace-row-phone');
       const confirmBtnEl = actionContainer.querySelector('.trace-row-confirm-btn');
       const shipBtnEl = actionContainer.querySelector('.trace-row-ship-btn');
+      const custLineEl = actionContainer.querySelector('.trace-row-cust-line');
+      const custValEl = actionContainer.querySelector('.trace-cust-val');
       const addrLineEl = actionContainer.querySelector('.trace-row-addr-line');
       const addrValEl = actionContainer.querySelector('.trace-addr-val');
       const itemsLineEl = actionContainer.querySelector('.trace-row-items-line');
@@ -645,6 +650,14 @@
           } else if (phoneBadge) {
             phoneBadge.textContent = '📱 N/A';
             phoneBadge.style.color = '#9ca3af !important';
+          }
+
+          // Customer Name + Orders Count line
+          if (custLineEl && custValEl && ord && ord.customer_name) {
+            const count = ord.customer_orders_count || 1;
+            const countLabel = count > 1 ? ` · 🛍️ ${count} orders` : ` · 🛍️ 1 order`;
+            custValEl.textContent = `${ord.customer_name}${countLabel}`;
+            custLineEl.style.display = 'block';
           }
 
           // Address Sub-line (1 line truncated with ellipsis)
@@ -684,41 +697,7 @@
             }
           }
 
-          // Customer Total Orders Count Badge in Customer Column
-          if (ord && ord.customer_orders_count) {
-            const tr = link.closest('tr');
-            if (tr && !tr.querySelector('.trace-cust-count-badge')) {
-              const tds = Array.from(tr.querySelectorAll('td'));
-              // Order link lives in one td. Customer is 2 cols to the right (Date is in between).
-              const orderTd = link.closest('td');
-              const orderTdIdx = tds.indexOf(orderTd);
-              // Try offset +2 (Customer), then +1, then raw td[3]
-              const custCell = tds[orderTdIdx + 2] || tds[orderTdIdx + 1] || tds[3] || tds[2];
-
-              if (custCell) {
-                const badge = document.createElement('span');
-                badge.className = 'trace-cust-count-badge';
-                const count = ord.customer_orders_count;
-                const label = count === 1 ? '1 order' : `${count} orders`;
-                badge.textContent = `🛍️ ${label}`;
-                badge.style.cssText = `
-                  display: inline-block !important;
-                  font-size: 10px !important;
-                  color: ${count > 1 ? '#0369a1' : '#475569'} !important;
-                  background: ${count > 1 ? '#e0f2fe' : '#f1f5f9'} !important;
-                  border: 1px solid ${count > 1 ? '#7dd3fc' : '#cbd5e1'} !important;
-                  border-radius: 4px !important;
-                  padding: 1px 6px !important;
-                  margin-left: 6px !important;
-                  font-weight: 700 !important;
-                  white-space: nowrap !important;
-                  vertical-align: middle !important;
-                  line-height: 1.2 !important;
-                `;
-                custCell.appendChild(badge);
-              }
-            }
-          }
+          // (Customer column badge removed — now shown inline in trace-row-cust-line above)
         }).catch(() => {
           if (phoneBadge) phoneBadge.textContent = '📱 —';
         });
