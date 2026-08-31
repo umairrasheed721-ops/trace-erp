@@ -923,6 +923,21 @@ router.get('/extension-order-info', async (req, res) => {
               } catch (_) {}
             }
 
+            let erpDbCount = 0;
+            if (cleanPhone || phone || realCustName) {
+              try {
+                const countRes = db.db.prepare(`
+                  SELECT COUNT(*) as cnt FROM orders 
+                  WHERE (clean_phone IS NOT NULL AND clean_phone != '' AND clean_phone = ?)
+                     OR (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+                     OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
+                `).get(cleanPhone || '', phone || '', cleanPhone || '', (realCustName || '').trim());
+                if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
+              } catch (_) {}
+            }
+
+            const finalLiveCount = Math.max(realOrdersCount || 1, erpDbCount || 1);
+
             return res.json({
               success: true,
               order: {
@@ -930,7 +945,7 @@ router.get('/extension-order-info', async (req, res) => {
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
                 customer_name: realCustName,
-                customer_orders_count: realOrdersCount,
+                customer_orders_count: finalLiveCount,
                 phone,
                 clean_phone: cleanPhone,
                 price: so.current_total_price || so.total_price || '',
@@ -1010,20 +1025,20 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
-    let customerOrdersCount = liveCustOrdersCount;
-    if (!customerOrdersCount) {
-      if (cleanPhone || phone || order.customer_name) {
-        try {
-          const countRes = db.db.prepare(`
-            SELECT COUNT(*) as cnt FROM orders 
-            WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ? OR clean_phone = ?))
-               OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-          `).get(phone || '', cleanPhone || '', cleanPhone || '', order.customer_name || '');
-          if (countRes && countRes.cnt > 0) customerOrdersCount = countRes.cnt;
-        } catch (_) {}
-      }
+    let erpDbOrdersCount = 0;
+    if (cleanPhone || phone || order.customer_name) {
+      try {
+        const countRes = db.db.prepare(`
+          SELECT COUNT(*) as cnt FROM orders 
+          WHERE (clean_phone IS NOT NULL AND clean_phone != '' AND clean_phone = ?)
+             OR (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
+        `).get(cleanPhone || '', phone || '', cleanPhone || '', (order.customer_name || '').trim());
+        if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
+      } catch (_) {}
     }
-    if (!customerOrdersCount) customerOrdersCount = 1;
+
+    const finalOrdersCount = Math.max(liveCustOrdersCount || 1, erpDbOrdersCount || 1);
 
     res.json({
       success: true,
@@ -1032,7 +1047,7 @@ router.get('/extension-order-info', async (req, res) => {
         shopify_order_id: order.shopify_order_id,
         ref_number: order.ref_number || `#${order.shopify_order_id}`,
         customer_name: liveCustName || order.customer_name || 'Customer',
-        customer_orders_count: customerOrdersCount,
+        customer_orders_count: finalOrdersCount,
         phone,
         clean_phone: cleanPhone,
         price: order.price || order.total_price || '',
