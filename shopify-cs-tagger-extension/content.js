@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.2') return;
+      if (oldBar.getAttribute('data-version') === '10.5') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.2');
+    bar.setAttribute('data-version', '10.5');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -559,7 +559,10 @@
           <button type="button" class="trace-row-btn" data-tag="Ready to Book" style="background: rgba(236, 72, 153, 0.15) !important; color: #ec4899 !important; border: 1px solid #ec4899 !important; border-radius: 4px !important; padding: 1px 5px !important; font-size: 9px !important; font-weight: 700 !important; cursor: pointer !important;" title="Tag Ready to Book">📋 Book</button>
           <a class="trace-row-phone" href="#" style="font-size: 11.5px !important; color: #0f172a !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important; font-weight: 800 !important; white-space: nowrap !important; padding: 2px 7px !important; background: #f8fafc !important; border: 1.5px solid #0f172a !important; border-radius: 5px !important; text-decoration: none !important; cursor: pointer !important; letter-spacing: 0.3px !important;" title="Click to Call">📱 ...</a>
         </div>
-        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f8fafc !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
+        <div class="trace-row-cust-line" style="display: none; font-size: 9.5px !important; color: #1e293b !important; font-weight: 700 !important; line-height: 1.2 !important; margin-top: 2px !important; background: #f1f5f9 !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #6366f1 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
+          👤 <span class="trace-cust-val">...</span>
+        </div>
+        <div class="trace-row-addr-line" style="display: none; font-size: 9.5px !important; color: #334155 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f8fafc !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #3b82f6 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
           📍 <span class="trace-addr-val">...</span>
         </div>
         <div class="trace-row-items-line" style="display: none; font-size: 9.5px !important; color: #0284c7 !important; font-weight: 600 !important; line-height: 1.2 !important; margin-top: 1px !important; background: #f0f9ff !important; padding: 2px 6px !important; border-radius: 4px !important; border-left: 3px solid #0284c7 !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; max-width: 340px !important;">
@@ -615,6 +618,8 @@
       const phoneBadge = actionContainer.querySelector('.trace-row-phone');
       const confirmBtnEl = actionContainer.querySelector('.trace-row-confirm-btn');
       const shipBtnEl = actionContainer.querySelector('.trace-row-ship-btn');
+      const custLineEl = actionContainer.querySelector('.trace-row-cust-line');
+      const custValEl = actionContainer.querySelector('.trace-cust-val');
       const addrLineEl = actionContainer.querySelector('.trace-row-addr-line');
       const addrValEl = actionContainer.querySelector('.trace-addr-val');
       const itemsLineEl = actionContainer.querySelector('.trace-row-items-line');
@@ -633,6 +638,18 @@
             const hasTracking = !!(ord && ord.tracking_number);
             const isShipped = hasTracking || !['pending', ''].includes(status);
             shipBtnEl.style.display = isShipped ? 'inline-flex' : 'none';
+          }
+
+          // Customer Sub-line (Line 1.5): Customer Profile Name + Orders Count
+          const custNameStr = (ord && ord.customer_name) ? ord.customer_name : '';
+          const countNum = (ord && ord.customer_orders_count) ? ord.customer_orders_count : 1;
+          const countLabel = countNum === 1 ? '1 order' : `${countNum} orders`;
+          if (custLineEl && custValEl && custNameStr) {
+            custValEl.textContent = `${custNameStr} · 🛍️ ${countLabel}`;
+            custLineEl.setAttribute('title', `${custNameStr} (${countLabel})`);
+            custLineEl.style.display = 'block';
+          } else if (custLineEl) {
+            custLineEl.style.display = 'none';
           }
           // Phone Badge — Bigger (11.5px), Extra Bold (800 weight), High-contrast border
           const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';

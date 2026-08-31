@@ -911,7 +911,8 @@ router.get('/extension-order-info', async (req, res) => {
                 id: so.id,
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
-                customer_name: (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : 'Customer'),
+                customer_name: (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : 'Customer'),
+                customer_orders_count: cust.orders_count || 1,
                 phone,
                 clean_phone: cleanPhone,
                 price: so.current_total_price || so.total_price || '',
@@ -936,9 +937,11 @@ router.get('/extension-order-info', async (req, res) => {
     }
 
     let phone = order.phone || '';
-    
-    // Live fetch from Shopify when DB phone is empty
-    if (!phone && order.shopify_order_id) {
+    let liveCustName = null;
+    let liveOrdersCount = 1;
+
+    // Live fetch from Shopify to get exact customer profile name & orders count for this specific order
+    if (order.shopify_order_id) {
       try {
         let store = null;
         if (order.store_id) store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
@@ -950,21 +953,25 @@ router.get('/extension-order-info', async (req, res) => {
           const axios = require('axios');
           const shopifyRes = await axios.get(
             `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,shipping_address,customer`,
-            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
+            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 4000 }
           );
           const so = shopifyRes.data && shopifyRes.data.order;
           if (so) {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
-            phone = addr.phone || so.phone || cust.phone || '';
-            // Save back to DB for future lookups
-            if (phone) {
+            if (!phone) phone = addr.phone || so.phone || cust.phone || '';
+            const fullCust = [cust.first_name, cust.last_name].filter(Boolean).join(' ').trim() ||
+                             [addr.first_name, addr.last_name].filter(Boolean).join(' ').trim();
+            if (fullCust) liveCustName = fullCust;
+            if (cust.orders_count !== undefined) liveOrdersCount = cust.orders_count;
+
+            if (phone && !order.phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
             }
           }
         }
       } catch (fetchErr) {
-        console.warn('[Extension Phone Fetch Warn]:', fetchErr.message);
+        console.warn('[Extension Live Customer Fetch Warn]:', fetchErr.message);
       }
     }
 
@@ -978,7 +985,8 @@ router.get('/extension-order-info', async (req, res) => {
         id: order.id,
         shopify_order_id: order.shopify_order_id,
         ref_number: order.ref_number || `#${order.shopify_order_id}`,
-        customer_name: order.customer_name || 'Customer',
+        customer_name: liveCustName || order.customer_name || 'Customer',
+        customer_orders_count: liveOrdersCount || 1,
         phone,
         clean_phone: cleanPhone,
         price: order.price || order.total_price || '',
