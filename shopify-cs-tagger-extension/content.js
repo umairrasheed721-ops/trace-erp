@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.4') return;
+      if (oldBar.getAttribute('data-version') === '8.5') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.4');
+    bar.setAttribute('data-version', '8.5');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -685,31 +685,28 @@
           }
 
           // Customer Total Orders Count Badge in Customer Column
-          if (ord && ord.customer_orders_count) {
+          if (ord && ord.customer_orders_count && ord.customer_name) {
             const tr = link.closest('tr');
             if (tr && !tr.querySelector('.trace-cust-count-badge')) {
               let custCell = null;
-              const table = tr.closest('table');
-              if (table) {
-                const ths = Array.from(table.querySelectorAll('th'));
-                const custColIdx = ths.findIndex(th => th.textContent && th.textContent.toLowerCase().includes('customer'));
-                if (custColIdx !== -1) {
-                  const tds = tr.querySelectorAll('td');
-                  if (tds[custColIdx]) custCell = tds[custColIdx];
-                }
+              const tds = Array.from(tr.querySelectorAll('td'));
+
+              // Primary: find the td whose textContent contains the customer name
+              const custNameClean = (ord.customer_name || '').trim().toLowerCase();
+              if (custNameClean) {
+                custCell = tds.find(td => td.textContent && td.textContent.trim().toLowerCase().includes(custNameClean));
               }
 
-              if (!custCell) {
-                const custLink = tr.querySelector('a[href*="/customers/"]');
-                custCell = custLink ? custLink.closest('td') : (tr.querySelectorAll('td')[3] || tr.querySelectorAll('td')[2]);
-              }
+              // Fallback: td[3] is Customer column in default Shopify Orders table layout
+              if (!custCell && tds.length > 3) custCell = tds[3];
+              if (!custCell && tds.length > 2) custCell = tds[2];
 
               if (custCell) {
                 const badge = document.createElement('span');
                 badge.className = 'trace-cust-count-badge';
                 const count = ord.customer_orders_count;
                 const label = count === 1 ? '1 order' : `${count} orders`;
-                badge.innerHTML = `🛍️ ${label}`;
+                badge.textContent = `🛍️ ${label}`;
                 badge.style.cssText = `
                   display: inline-block !important;
                   font-size: 10px !important;
@@ -720,6 +717,7 @@
                   padding: 1px 6px !important;
                   margin-left: 6px !important;
                   font-weight: 700 !important;
+                  white-space: nowrap !important;
                   vertical-align: middle !important;
                   line-height: 1.2 !important;
                 `;
