@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.3') return;
+      if (oldBar.getAttribute('data-version') === '8.4') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.3');
+    bar.setAttribute('data-version', '8.4');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -687,9 +687,24 @@
           // Customer Total Orders Count Badge in Customer Column
           if (ord && ord.customer_orders_count) {
             const tr = link.closest('tr');
-            if (tr) {
-              const custTarget = tr.querySelector('a[href*="/customers/"]') || tr.querySelector('td:nth-child(2), td:nth-child(3)');
-              if (custTarget && !tr.querySelector('.trace-cust-count-badge')) {
+            if (tr && !tr.querySelector('.trace-cust-count-badge')) {
+              let custCell = null;
+              const table = tr.closest('table');
+              if (table) {
+                const ths = Array.from(table.querySelectorAll('th'));
+                const custColIdx = ths.findIndex(th => th.textContent && th.textContent.toLowerCase().includes('customer'));
+                if (custColIdx !== -1) {
+                  const tds = tr.querySelectorAll('td');
+                  if (tds[custColIdx]) custCell = tds[custColIdx];
+                }
+              }
+
+              if (!custCell) {
+                const custLink = tr.querySelector('a[href*="/customers/"]');
+                custCell = custLink ? custLink.closest('td') : (tr.querySelectorAll('td')[3] || tr.querySelectorAll('td')[2]);
+              }
+
+              if (custCell) {
                 const badge = document.createElement('span');
                 badge.className = 'trace-cust-count-badge';
                 const count = ord.customer_orders_count;
@@ -697,19 +712,18 @@
                 badge.innerHTML = `🛍️ ${label}`;
                 badge.style.cssText = `
                   display: inline-block !important;
-                  font-size: 9.5px !important;
-                  color: ${count > 1 ? '#0369a1' : '#64748b'} !important;
+                  font-size: 10px !important;
+                  color: ${count > 1 ? '#0369a1' : '#475569'} !important;
                   background: ${count > 1 ? '#e0f2fe' : '#f1f5f9'} !important;
                   border: 1px solid ${count > 1 ? '#7dd3fc' : '#cbd5e1'} !important;
                   border-radius: 4px !important;
-                  padding: 1px 5px !important;
+                  padding: 1px 6px !important;
                   margin-left: 6px !important;
                   font-weight: 700 !important;
                   vertical-align: middle !important;
                   line-height: 1.2 !important;
                 `;
-                const parent = custTarget.tagName === 'A' ? custTarget.parentNode : custTarget;
-                if (parent) parent.appendChild(badge);
+                custCell.appendChild(badge);
               }
             }
           }
