@@ -937,9 +937,11 @@ router.get('/extension-order-info', async (req, res) => {
     }
 
     let phone = order.phone || '';
-    
-    // Live fetch from Shopify when DB phone is empty
-    if (!phone && order.shopify_order_id) {
+    let liveCustOrdersCount = null;
+    let liveCustName = null;
+
+    // Live fetch from Shopify to get accurate customer profile name, phone & total Shopify orders count
+    if (order.shopify_order_id) {
       try {
         let store = null;
         if (order.store_id) store = db.db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
@@ -951,21 +953,23 @@ router.get('/extension-order-info', async (req, res) => {
           const axios = require('axios');
           const shopifyRes = await axios.get(
             `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,shipping_address,customer`,
-            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 5000 }
+            { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 4000 }
           );
           const so = shopifyRes.data && shopifyRes.data.order;
           if (so) {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
-            phone = addr.phone || so.phone || cust.phone || '';
-            // Save back to DB for future lookups
-            if (phone) {
+            if (!phone) phone = addr.phone || so.phone || cust.phone || '';
+            if (cust.orders_count) liveCustOrdersCount = cust.orders_count;
+            if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
+
+            if (phone && !order.phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
             }
           }
         }
       } catch (fetchErr) {
-        console.warn('[Extension Phone Fetch Warn]:', fetchErr.message);
+        console.warn('[Extension Live Fetch Warn]:', fetchErr.message);
       }
     }
 
@@ -973,17 +977,20 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
-    let customerOrdersCount = 1;
-    if (cleanPhone || phone || order.customer_name) {
-      try {
-        const countRes = db.db.prepare(`
-          SELECT COUNT(*) as cnt FROM orders 
-          WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
-             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-        `).get(phone || '', cleanPhone || '', order.customer_name || '');
-        if (countRes && countRes.cnt > 0) customerOrdersCount = countRes.cnt;
-      } catch (_) {}
+    let customerOrdersCount = liveCustOrdersCount;
+    if (!customerOrdersCount) {
+      if (cleanPhone || phone || order.customer_name) {
+        try {
+          const countRes = db.db.prepare(`
+            SELECT COUNT(*) as cnt FROM orders 
+            WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+               OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
+          `).get(phone || '', cleanPhone || '', order.customer_name || '');
+          if (countRes && countRes.cnt > 0) customerOrdersCount = countRes.cnt;
+        } catch (_) {}
+      }
     }
+    if (!customerOrdersCount) customerOrdersCount = 1;
 
     res.json({
       success: true,
@@ -991,7 +998,7 @@ router.get('/extension-order-info', async (req, res) => {
         id: order.id,
         shopify_order_id: order.shopify_order_id,
         ref_number: order.ref_number || `#${order.shopify_order_id}`,
-        customer_name: order.customer_name || 'Customer',
+        customer_name: liveCustName || order.customer_name || 'Customer',
         customer_orders_count: customerOrdersCount,
         phone,
         clean_phone: cleanPhone,
