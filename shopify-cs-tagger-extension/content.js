@@ -335,7 +335,7 @@
   async function injectTaggingWidget() {
     const oldBar = document.getElementById('trace-cs-tagger-bar');
     if (oldBar) {
-      if (oldBar.getAttribute('data-version') === '8.2') return;
+      if (oldBar.getAttribute('data-version') === '8.3') return;
       oldBar.remove();
     }
 
@@ -347,7 +347,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '8.2');
+    bar.setAttribute('data-version', '8.3');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -681,6 +681,36 @@
               notesLineEl.style.display = 'block';
             } else {
               notesLineEl.style.display = 'none';
+            }
+          }
+
+          // Customer Total Orders Count Badge in Customer Column
+          if (ord && ord.customer_orders_count) {
+            const tr = link.closest('tr');
+            if (tr) {
+              const custTarget = tr.querySelector('a[href*="/customers/"]') || tr.querySelector('td:nth-child(2), td:nth-child(3)');
+              if (custTarget && !tr.querySelector('.trace-cust-count-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'trace-cust-count-badge';
+                const count = ord.customer_orders_count;
+                const label = count === 1 ? '1 order' : `${count} orders`;
+                badge.innerHTML = `🛍️ ${label}`;
+                badge.style.cssText = `
+                  display: inline-block !important;
+                  font-size: 9.5px !important;
+                  color: ${count > 1 ? '#0369a1' : '#64748b'} !important;
+                  background: ${count > 1 ? '#e0f2fe' : '#f1f5f9'} !important;
+                  border: 1px solid ${count > 1 ? '#7dd3fc' : '#cbd5e1'} !important;
+                  border-radius: 4px !important;
+                  padding: 1px 5px !important;
+                  margin-left: 6px !important;
+                  font-weight: 700 !important;
+                  vertical-align: middle !important;
+                  line-height: 1.2 !important;
+                `;
+                const parent = custTarget.tagName === 'A' ? custTarget.parentNode : custTarget;
+                if (parent) parent.appendChild(badge);
+              }
             }
           }
         }).catch(() => {

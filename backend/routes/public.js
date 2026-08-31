@@ -912,6 +912,7 @@ router.get('/extension-order-info', async (req, res) => {
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
                 customer_name: (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : 'Customer'),
+                customer_orders_count: cust.orders_count || 1,
                 phone,
                 clean_phone: cleanPhone,
                 price: so.current_total_price || so.total_price || '',
@@ -972,6 +973,18 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1);
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
+    let customerOrdersCount = 1;
+    if (cleanPhone || phone || order.customer_name) {
+      try {
+        const countRes = db.db.prepare(`
+          SELECT COUNT(*) as cnt FROM orders 
+          WHERE (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
+        `).get(phone || '', cleanPhone || '', order.customer_name || '');
+        if (countRes && countRes.cnt > 0) customerOrdersCount = countRes.cnt;
+      } catch (_) {}
+    }
+
     res.json({
       success: true,
       order: {
@@ -979,6 +992,7 @@ router.get('/extension-order-info', async (req, res) => {
         shopify_order_id: order.shopify_order_id,
         ref_number: order.ref_number || `#${order.shopify_order_id}`,
         customer_name: order.customer_name || 'Customer',
+        customer_orders_count: customerOrdersCount,
         phone,
         clean_phone: cleanPhone,
         price: order.price || order.total_price || '',
