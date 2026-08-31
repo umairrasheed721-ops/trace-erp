@@ -1005,7 +1005,7 @@ router.get('/extension-order-info', async (req, res) => {
           const shopDomain = store.shop_domain || store.myshopify_domain;
           const axios = require('axios');
           const shopifyRes = await axios.get(
-            `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,shipping_address,customer`,
+            `https://${shopDomain}/admin/api/2024-01/orders/${order.shopify_order_id}.json?fields=id,phone,email,shipping_address,customer`,
             { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 4000 }
           );
           const so = shopifyRes.data && shopifyRes.data.order;
