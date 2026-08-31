@@ -925,26 +925,25 @@ router.get('/extension-order-info', async (req, res) => {
 
             let erpDbCount = 0;
             const cleanPLive = phone ? phone.replace(/\D/g, '') : '';
-            const last7PLive = cleanPLive.slice(-7);
-            const last10PLive = cleanPLive.slice(-10);
+            const last10PLive = cleanPLive.length >= 10 ? cleanPLive.slice(-10) : '';
             const emailValLive = (so.email || addr.email || cust.email || '').trim().toLowerCase();
-            const custNameFirstLive = (realCustName || '').trim().split(' ')[0] || '';
+            const fullCustNameLive = (realCustName || '').trim().toLowerCase();
 
             try {
               const whereParts = [];
               const queryParams = [];
 
-              if (last7PLive.length >= 7) {
-                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (REPLACE(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), \'+\', \'\') LIKE ? OR phone LIKE ?))');
-                queryParams.push(`%${last10PLive || last7PLive}%`, `%${last7PLive}%`);
+              if (last10PLive.length === 10) {
+                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+                queryParams.push(last10PLive);
               }
               if (emailValLive) {
                 whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
                 queryParams.push(emailValLive);
               }
-              if (custNameFirstLive.length >= 2) {
-                whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) LIKE ?)');
-                queryParams.push(`%${custNameFirstLive.toLowerCase()}%`);
+              if (fullCustNameLive && fullCustNameLive !== 'customer') {
+                whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) = ?)');
+                queryParams.push(fullCustNameLive);
               }
 
               if (whereParts.length > 0) {
@@ -1052,26 +1051,25 @@ router.get('/extension-order-info', async (req, res) => {
 
     let erpDbOrdersCount = 0;
     const cleanP = phone ? phone.replace(/\D/g, '') : '';
-    const last7Digits = cleanP.slice(-7);
-    const last10Digits = cleanP.slice(-10);
+    const last10Digits = cleanP.length >= 10 ? cleanP.slice(-10) : '';
     const emailVal = (liveEmail || order.email || '').trim().toLowerCase();
-    const custNameFirst = (liveCustName || order.customer_name || '').trim().split(' ')[0] || '';
+    const fullCustName = (liveCustName || order.customer_name || '').trim().toLowerCase();
 
     try {
       const whereParts = [];
       const queryParams = [];
 
-      if (last7Digits.length >= 7) {
-        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (REPLACE(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), \'+\', \'\') LIKE ? OR phone LIKE ?))');
-        queryParams.push(`%${last10Digits || last7Digits}%`, `%${last7Digits}%`);
+      if (last10Digits.length === 10) {
+        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+        queryParams.push(last10Digits);
       }
       if (emailVal) {
         whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
         queryParams.push(emailVal);
       }
-      if (custNameFirst.length >= 2) {
-        whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) LIKE ?)');
-        queryParams.push(`%${custNameFirst.toLowerCase()}%`);
+      if (fullCustName && fullCustName !== 'customer') {
+        whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) = ?)');
+        queryParams.push(fullCustName);
       }
 
       if (whereParts.length > 0) {
