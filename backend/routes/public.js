@@ -924,14 +924,15 @@ router.get('/extension-order-info', async (req, res) => {
             }
 
             let erpDbCount = 0;
-            if (cleanPhone || phone || realCustName) {
+            const last10P = cleanPhone ? cleanPhone.slice(-10) : '';
+            if (last10P.length >= 7 || realCustName) {
               try {
                 const countRes = db.db.prepare(`
                   SELECT COUNT(*) as cnt FROM orders 
-                  WHERE (clean_phone IS NOT NULL AND clean_phone != '' AND clean_phone = ?)
-                     OR (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+                  WHERE (clean_phone IS NOT NULL AND clean_phone LIKE ?)
+                     OR (phone IS NOT NULL AND phone LIKE ?)
                      OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-                `).get(cleanPhone || '', phone || '', cleanPhone || '', (realCustName || '').trim());
+                `).get(`%${last10P}%`, `%${last10P}%`, (realCustName || '').trim());
                 if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
               } catch (_) {}
             }
@@ -1026,14 +1027,15 @@ router.get('/extension-order-info', async (req, res) => {
     if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '92' + cleanPhone;
 
     let erpDbOrdersCount = 0;
-    if (cleanPhone || phone || order.customer_name) {
+    const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
+    if (last10Digits.length >= 7 || order.customer_name) {
       try {
         const countRes = db.db.prepare(`
           SELECT COUNT(*) as cnt FROM orders 
-          WHERE (clean_phone IS NOT NULL AND clean_phone != '' AND clean_phone = ?)
-             OR (phone IS NOT NULL AND phone != '' AND (phone = ? OR phone = ?))
+          WHERE (clean_phone IS NOT NULL AND clean_phone LIKE ?)
+             OR (phone IS NOT NULL AND phone LIKE ?)
              OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) = LOWER(?))
-        `).get(cleanPhone || '', phone || '', cleanPhone || '', (order.customer_name || '').trim());
+        `).get(`%${last10Digits}%`, `%${last10Digits}%`, (order.customer_name || '').trim());
         if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
       } catch (_) {}
     }
