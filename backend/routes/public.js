@@ -992,6 +992,7 @@ router.get('/extension-order-info', async (req, res) => {
     let phone = order.phone || '';
     let liveCustOrdersCount = null;
     let liveCustName = null;
+    let liveEmail = null;
 
     // Live fetch from Shopify to get accurate customer profile name, phone & total Shopify orders count
     if (order.shopify_order_id) {
@@ -1013,6 +1014,7 @@ router.get('/extension-order-info', async (req, res) => {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
             if (!phone) phone = addr.phone || so.phone || cust.phone || '';
+            liveEmail = so.email || addr.email || cust.email || '';
             if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
             if (cust.orders_count) liveCustOrdersCount = cust.orders_count;
 
@@ -1027,6 +1029,7 @@ router.get('/extension-order-info', async (req, res) => {
                   if (c.orders_count !== undefined) liveCustOrdersCount = c.orders_count;
                   const full = [c.first_name, c.last_name].filter(Boolean).join(' ').trim();
                   if (full) liveCustName = full;
+                  if (c.email && !liveEmail) liveEmail = c.email;
                 }
               } catch (_) {}
             }
@@ -1047,18 +1050,18 @@ router.get('/extension-order-info', async (req, res) => {
 
     let erpDbOrdersCount = 0;
     const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
-    const emailVal = (order.email || '').trim().toLowerCase();
-    const custNameFirst = (order.customer_name || '').trim().split(' ')[0] || '';
+    const emailVal = (liveEmail || order.email || '').trim().toLowerCase();
+    const custNameFirst = (liveCustName || order.customer_name || '').trim().split(' ')[0] || '';
 
     try {
       const whereParts = [];
       const queryParams = [];
 
       if (last10Digits.length >= 7) {
-        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-        queryParams.push(last10Digits);
-        whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
-        queryParams.push(last10Digits);
+        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND (phone LIKE ? OR SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
+        queryParams.push(`%${last10Digits}%`, last10Digits);
+        whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND (clean_phone LIKE ? OR SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?))');
+        queryParams.push(`%${last10Digits}%`, last10Digits);
       }
       if (emailVal) {
         whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
