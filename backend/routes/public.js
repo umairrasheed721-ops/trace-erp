@@ -925,18 +925,36 @@ router.get('/extension-order-info', async (req, res) => {
 
             let erpDbCount = 0;
             const last10P = cleanPhone ? cleanPhone.slice(-10) : '';
+            const emailValLive = (so.email || addr.email || cust.email || '').trim().toLowerCase();
             const custNameFirstLive = (realCustName || '').trim().split(' ')[0] || '';
-            if (last10P.length >= 7 || custNameFirstLive) {
-              try {
+
+            try {
+              const whereParts = [];
+              const queryParams = [];
+
+              if (last10P.length >= 7) {
+                whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+                queryParams.push(last10P);
+                whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+                queryParams.push(last10P);
+              }
+              if (emailValLive) {
+                whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
+                queryParams.push(emailValLive);
+              }
+              if (custNameFirstLive.length >= 2) {
+                whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) LIKE ?)');
+                queryParams.push(`%${custNameFirstLive.toLowerCase()}%`);
+              }
+
+              if (whereParts.length > 0) {
                 const countRes = db.db.prepare(`
                   SELECT COUNT(*) as cnt FROM orders 
-                  WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(REPLACE(phone, '-', ''), -10) = ?)
-                     OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(REPLACE(clean_phone, '-', ''), -10) = ?)
-                     OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) LIKE ?)
-                `).get(last10P, last10P, `%${custNameFirstLive.toLowerCase()}%`);
+                  WHERE ${whereParts.join(' OR ')}
+                `).get(...queryParams);
                 if (countRes && countRes.cnt > 0) erpDbCount = countRes.cnt;
-              } catch (_) {}
-            }
+              }
+            } catch (_) {}
 
             const finalLiveCount = Math.max(realOrdersCount || 1, erpDbCount || 1);
 
@@ -1029,18 +1047,36 @@ router.get('/extension-order-info', async (req, res) => {
 
     let erpDbOrdersCount = 0;
     const last10Digits = cleanPhone ? cleanPhone.slice(-10) : '';
+    const emailVal = (order.email || '').trim().toLowerCase();
     const custNameFirst = (order.customer_name || '').trim().split(' ')[0] || '';
-    if (last10Digits.length >= 7 || custNameFirst) {
-      try {
+
+    try {
+      const whereParts = [];
+      const queryParams = [];
+
+      if (last10Digits.length >= 7) {
+        whereParts.push('(phone IS NOT NULL AND phone != \'\' AND SUBSTR(REPLACE(REPLACE(phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+        queryParams.push(last10Digits);
+        whereParts.push('(clean_phone IS NOT NULL AND clean_phone != \'\' AND SUBSTR(REPLACE(REPLACE(clean_phone, \'-\', \'\'), \' \', \'\'), -10) = ?)');
+        queryParams.push(last10Digits);
+      }
+      if (emailVal) {
+        whereParts.push('(email IS NOT NULL AND email != \'\' AND LOWER(email) = ?)');
+        queryParams.push(emailVal);
+      }
+      if (custNameFirst.length >= 2) {
+        whereParts.push('(customer_name IS NOT NULL AND customer_name != \'\' AND LOWER(customer_name) LIKE ?)');
+        queryParams.push(`%${custNameFirst.toLowerCase()}%`);
+      }
+
+      if (whereParts.length > 0) {
         const countRes = db.db.prepare(`
           SELECT COUNT(*) as cnt FROM orders 
-          WHERE (phone IS NOT NULL AND phone != '' AND SUBSTR(REPLACE(REPLACE(phone, '-', ''), ' ', ''), -10) = ?)
-             OR (clean_phone IS NOT NULL AND clean_phone != '' AND SUBSTR(REPLACE(REPLACE(clean_phone, '-', ''), ' ', ''), -10) = ?)
-             OR (customer_name IS NOT NULL AND customer_name != '' AND LOWER(customer_name) LIKE ?)
-        `).get(last10Digits, last10Digits, `%${custNameFirst.toLowerCase()}%`);
+          WHERE ${whereParts.join(' OR ')}
+        `).get(...queryParams);
         if (countRes && countRes.cnt > 0) erpDbOrdersCount = countRes.cnt;
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
 
     const finalOrdersCount = Math.max(liveCustOrdersCount || 1, erpDbOrdersCount || 1);
 
