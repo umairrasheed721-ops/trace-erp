@@ -905,14 +905,39 @@ router.get('/extension-order-info', async (req, res) => {
 
             const itemsStr = (so.line_items || []).map(i => `${i.title}${i.variant_title ? ` - ${i.variant_title}` : ''} (x${i.quantity})`).join(', ');
 
+            let realOrdersCount = cust.orders_count || 1;
+            if (cust.id) {
+              try {
+                const custRes = await axios.get(
+                  `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
+                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
+                );
+                if (custRes.data?.customer?.orders_count) {
+                  realOrdersCount = custRes.data.customer.orders_count;
+                }
+              } catch (_) {}
+
+              if (realOrdersCount <= 1) {
+                try {
+                  const ordersListRes = await axios.get(
+                    `https://${shopDomain}/admin/api/2024-01/orders.json?status=any&customer_id=${cust.id}&limit=250`,
+                    { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
+                  );
+                  if (ordersListRes.data?.orders?.length) {
+                    realOrdersCount = Math.max(realOrdersCount, ordersListRes.data.orders.length);
+                  }
+                } catch (_) {}
+              }
+            }
+
             return res.json({
               success: true,
               order: {
                 id: so.id,
                 shopify_order_id: String(so.id),
                 ref_number: so.name || `#${so.order_number}`,
-                customer_name: (addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : 'Customer'),
-                customer_orders_count: cust.orders_count || 1,
+                customer_name: (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : addr.first_name ? `${addr.first_name} ${addr.last_name || ''}`.trim() : 'Customer'),
+                customer_orders_count: realOrdersCount,
                 phone,
                 clean_phone: cleanPhone,
                 price: so.current_total_price || so.total_price || '',
@@ -960,8 +985,32 @@ router.get('/extension-order-info', async (req, res) => {
             const addr = so.shipping_address || {};
             const cust = so.customer || {};
             if (!phone) phone = addr.phone || so.phone || cust.phone || '';
-            if (cust.orders_count) liveCustOrdersCount = cust.orders_count;
             if (cust.first_name) liveCustName = `${cust.first_name} ${cust.last_name || ''}`.trim();
+
+            if (cust.id) {
+              try {
+                const custRes = await axios.get(
+                  `https://${shopDomain}/admin/api/2024-01/customers/${cust.id}.json`,
+                  { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
+                );
+                if (custRes.data?.customer?.orders_count) {
+                  liveCustOrdersCount = custRes.data.customer.orders_count;
+                }
+              } catch (_) {}
+
+              if (!liveCustOrdersCount || liveCustOrdersCount <= 1) {
+                try {
+                  const custOrdersRes = await axios.get(
+                    `https://${shopDomain}/admin/api/2024-01/orders.json?status=any&customer_id=${cust.id}&limit=250`,
+                    { headers: { 'X-Shopify-Access-Token': store.access_token }, timeout: 3000 }
+                  );
+                  if (custOrdersRes.data?.orders?.length) {
+                    liveCustOrdersCount = Math.max(liveCustOrdersCount || 0, custOrdersRes.data.orders.length);
+                  }
+                } catch (_) {}
+              }
+            }
+            if (!liveCustOrdersCount && cust.orders_count) liveCustOrdersCount = cust.orders_count;
 
             if (phone && !order.phone) {
               try { db.db.prepare('UPDATE orders SET phone = ? WHERE id = ?').run(phone, order.id); } catch (_) {}
