@@ -934,11 +934,36 @@
         </div>
       `;
 
-      // Click handlers for new WA buttons (native app protocol)
+      let rowOrd = null;
+
+      // Click handlers for WA Confirm button (auto screenshot + note sync + WhatsApp launch)
       const confirmBtn = actionContainer.querySelector('.trace-row-confirm-btn');
       const shipBtn = actionContainer.querySelector('.trace-row-ship-btn');
       if (confirmBtn) {
-        confirmBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const u = confirmBtn.getAttribute('href'); if (u && u !== '#') window.location.href = u; });
+        confirmBtn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const targetUrl = confirmBtn.getAttribute('href');
+
+          // 1. Auto Sync "Sent WhatsApp Confirmation" Note to Shopify & TRACE ERP
+          try {
+            fetch(ERP_NOTE_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shopify_order_id: shopifyOrderId, note: 'Sent WhatsApp Confirmation' })
+            });
+          } catch (_) {}
+
+          // 2. 1-Click: Auto Copy Order Receipt Card Screenshot to Clipboard
+          await copyOrderCardToClipboard(rowOrd, orderText);
+
+          // 3. Launch WhatsApp Desktop
+          setTimeout(() => {
+            if (targetUrl && targetUrl !== '#') {
+              window.location.href = targetUrl;
+            }
+          }, 150);
+        });
       }
       if (shipBtn) {
         shipBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); const u = shipBtn.getAttribute('href'); if (u && u !== '#') window.location.href = u; });
@@ -964,6 +989,15 @@
               createNotificationToast(`✅ Order ${orderText}: Tag "${tag}" applied!`, 'success');
               bookBtn.style.background = '#10b981';
               bookBtn.style.color = '#ffffff';
+
+              // Auto-remove "Sent WhatsApp Confirmation" note from Shopify
+              try {
+                fetch(ERP_NOTE_URL, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ shopify_order_id: shopifyOrderId, mode: 'remove_keyword', remove_keyword: 'Sent WhatsApp Confirmation' })
+                });
+              } catch (_) {}
             } else {
               createNotificationToast(`⚠️ ${data.error || 'Failed'}`, 'error');
             }
@@ -989,7 +1023,7 @@
       fetch(`${ERP_INFO_URL}?shopify_order_id=${shopifyOrderId}&ref_number=${encodeURIComponent(orderText)}`)
         .then(res => res.json())
         .then(infoData => {
-          const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
+          rowOrd = (infoData && infoData.success && infoData.order) ? infoData.order : null;
           if (confirmBtnEl) confirmBtnEl.href = buildConfirmLink(ord, orderText);
           if (shipBtnEl) {
             shipBtnEl.href = buildShippingLink(ord, orderText);
