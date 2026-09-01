@@ -425,9 +425,12 @@
     html += `
         </div>
 
-        <div id="trace-cs-wa-container" style="display: block !important; margin-top: 4px !important;">
-          <a id="trace-cs-wa-btn" href="${initialWaUrl}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px !important; font-size: 10.5px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important;">
-            💬 Open WhatsApp Native App
+        <div id="trace-cs-actions-container" style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; margin-top: 6px !important;">
+          <a id="trace-cs-wa-btn" href="${initialWaUrl}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 7px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important; white-space: nowrap !important;" title="Open WhatsApp Native Desktop App">
+            💬 WhatsApp App
+          </a>
+          <a id="trace-cs-sim-btn" href="tel:" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #2563eb !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 7px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important; white-space: nowrap !important;" title="Direct Cellular SIM Phone Call">
+            📞 Direct SIM Call
           </a>
         </div>
       </div>
@@ -514,6 +517,13 @@
 
       if (liveWaBtn) {
         liveWaBtn.href = buildRichWhatsAppLink(ord, orderName);
+      }
+
+      const liveSimBtn = liveBar.querySelector('#trace-cs-sim-btn');
+      let phoneNum = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : extractOrderDetailsFromShopifyDOM().phone;
+      if (phoneNum && liveSimBtn) {
+        let cleanTel = phoneNum.startsWith('+') ? phoneNum : '+' + phoneNum;
+        liveSimBtn.href = `tel:${cleanTel}`;
       }
     } catch (err) {
       console.warn('[TRACE CS Tagger Info Error]:', err);
