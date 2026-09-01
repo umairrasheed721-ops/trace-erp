@@ -1010,6 +1010,11 @@ router.get('/extension-order-info', async (req, res) => {
         courier_name: order.courier_name || '',
         delivery_status: order.delivery_status || 'Pending',
         courier_status: order.courier_status || 'N/A',
+        line_items: (function() {
+          try {
+            return typeof order.line_items === 'string' ? JSON.parse(order.line_items) : (order.line_items || []);
+          } catch(e) { return []; }
+        })(),
         tags: order.tags || '',
         notes: [order.notes, order.cs_notes].filter(Boolean).join(' | ') || ''
       }

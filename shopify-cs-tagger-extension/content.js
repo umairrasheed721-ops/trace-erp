@@ -90,6 +90,15 @@
       if (custEl && custEl.innerText) {
         details.customerName = custEl.innerText.trim();
       }
+
+      // Product Images from DOM
+      details.productImages = [];
+      const imgEls = document.querySelectorAll('img[src*="/products/"], img[src*="cdn.shopify.com/s/files/"]');
+      imgEls.forEach(img => {
+        if (img.src && !img.src.includes('avatar') && !img.src.includes('icon') && details.productImages.length < 3) {
+          details.productImages.push(img.src);
+        }
+      });
     } catch (e) {}
 
     return details;
@@ -171,6 +180,17 @@
     return rawPhone ? `whatsapp://send?phone=${rawPhone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
   }
 
+  function loadCardImage(url) {
+    return new Promise((resolve) => {
+      if (!url) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    });
+  }
+
   // Canvas Order Receipt Card Generator & Clipboard Writer (1-Click Screenshot)
   async function copyOrderCardToClipboard(ord, fallbackOrderName) {
     try {
@@ -183,8 +203,20 @@
       const products = (ord && ord.product_titles) ? ord.product_titles : '';
       const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
+      // Resolve Product Image URL
+      let prodImgUrl = '';
+      if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
+        const itemWithImg = ord.line_items.find(i => i.image_url || i.src || i.image);
+        if (itemWithImg) prodImgUrl = itemWithImg.image_url || itemWithImg.src || itemWithImg.image;
+      }
+      if (!prodImgUrl && domDetails.productImages && domDetails.productImages.length > 0) {
+        prodImgUrl = domDetails.productImages[0];
+      }
+
+      const loadedImg = await loadCardImage(prodImgUrl);
+
       const width = 600;
-      const height = 360;
+      const height = 380;
       const canvas = document.createElement('canvas');
       canvas.width = width * 2;
       canvas.height = height * 2;
@@ -256,10 +288,39 @@
       y += 24;
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      const truncProd = products.length > 55 ? products.slice(0, 52) + '...' : (products || 'N/A');
+      const truncProd = products.length > 44 ? products.slice(0, 41) + '...' : (products || 'N/A');
       ctx.fillText(`📦 ${truncProd}`, 20, y);
 
-      y += 40;
+      // Render Product Thumbnail Image (if loaded)
+      if (loadedImg) {
+        const thumbX = width - 95;
+        const thumbY = y - 30;
+        const thumbW = 75;
+        const thumbH = 75;
+
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
+        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
+        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
+        ctx.clip();
+        ctx.drawImage(loadedImg, thumbX, thumbY, thumbW, thumbH);
+        ctx.restore();
+
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
+        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
+        ctx.stroke();
+      }
+
+      y += 50;
       // Address
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
