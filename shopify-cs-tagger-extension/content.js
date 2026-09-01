@@ -140,13 +140,14 @@
     return items.slice(0, 2).join(', ') + '... (' + items.length + ' items)';
   }
 
-  // Order Confirmation Message — Rich format with products, address, reply options
+  // Order Confirmation Message — Rich format matching exact user template
   function buildConfirmLink(ord, fallbackOrderName) {
-    const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
+    const domDetails = extractOrderDetailsFromShopifyDOM();
+    const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : (domDetails.customerName || 'Customer');
     const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
-    const phone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : '';
-    const displayPhone = phone ? phone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') : '';
-    const price = (ord && ord.price) ? `Rs. ${Math.round(ord.price)}` : '';
+    const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : domDetails.phone;
+    const displayPhone = rawPhone ? rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') : '';
+    const price = (ord && ord.price) ? `${Math.round(ord.price)}` : '';
     const products = (ord && ord.product_titles) ? ord.product_titles : '';
     const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
@@ -154,20 +155,20 @@
       `👋 Hello ${customerName} from Trace ERP!`,
       displayPhone ? displayPhone : '',
       ``,
-      `We have received your COD order #${orderName}${price ? ` for ${price}` : ''}.`,
+      `We have received your COD order #${orderName}${price ? ` for Rs. ${price}` : ''}.`,
       ``,
       `Order Details:`,
-      products ? `📦 Products: ${products}` : '',
-      address ? `📍 Delivery Address: ${address}` : '',
+      products ? `📦 Products: ${products}` : `📦 Products: N/A`,
+      address ? `📍 Delivery Address: ${address}` : `📍 Delivery Address: N/A`,
       ``,
       `Please reply with:`,
       `1 - ✅ Confirm Order`,
       `2 - ❌ Cancel Order`,
       `3 - ✏️ Edit Address/Size`
-    ].filter(l => l !== null && l !== undefined);
+    ];
 
     const encoded = encodeURIComponent(lines.join('\n'));
-    return phone ? `whatsapp://send?phone=${phone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
+    return rawPhone ? `whatsapp://send?phone=${rawPhone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
   }
 
   // Shipping Update Message
@@ -425,11 +426,17 @@
     html += `
         </div>
 
-        <div id="trace-cs-actions-container" style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; margin-top: 6px !important;">
-          <a id="trace-cs-wa-btn" href="${initialWaUrl}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 7px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important; white-space: nowrap !important;" title="Open WhatsApp Native Desktop App">
+        <div id="trace-cs-confirm-container" style="display: block !important; margin-top: 6px !important;">
+          <a id="trace-cs-confirm-btn" href="#" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 6px !important; background: #1d4ed8 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 7px !important; font-size: 10.5px !important; font-weight: 800 !important; box-shadow: 0 4px 12px rgba(29, 78, 216, 0.3) !important;" title="Send Pre-loaded Order Confirmation Message via WhatsApp">
+            📦 Send Order Confirmation
+          </a>
+        </div>
+
+        <div id="trace-cs-actions-container" style="display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; margin-top: 4px !important;">
+          <a id="trace-cs-wa-btn" href="${initialWaUrl}" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #059669 !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3) !important; white-space: nowrap !important;" title="Open WhatsApp Native Desktop App">
             💬 WhatsApp App
           </a>
-          <a id="trace-cs-sim-btn" href="tel:" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #2563eb !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 7px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important; white-space: nowrap !important;" title="Direct Cellular SIM Phone Call">
+          <a id="trace-cs-sim-btn" href="tel:" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #2563eb !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important; white-space: nowrap !important;" title="Direct Cellular SIM Phone Call">
             📞 Direct SIM Call
           </a>
         </div>
@@ -475,6 +482,19 @@
       });
     });
 
+    // Order Confirmation Button Click Listener
+    const confirmBtn = bar.querySelector('#trace-cs-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetUrl = confirmBtn.getAttribute('href');
+        if (targetUrl && targetUrl !== '#') {
+          window.location.href = targetUrl;
+        }
+      });
+    }
+
     // WhatsApp Button Click Listener
     const waBtn = bar.querySelector('#trace-cs-wa-btn');
     if (waBtn) {
@@ -488,7 +508,7 @@
       });
     }
 
-    // Safe Fetch ERP Order Details & Enrich WhatsApp Link
+    // Safe Fetch ERP Order Details & Enrich Links
     try {
       const infoRes = await fetch(`${ERP_INFO_URL}?shopify_order_id=${encodeURIComponent(orderId)}&ref_number=${encodeURIComponent(orderName)}`);
       const infoData = await infoRes.json();
@@ -498,6 +518,7 @@
 
       const banner = liveBar.querySelector('#trace-cs-tracking-banner');
       const orderNameSpan = liveBar.querySelector('#trace-cs-order-name');
+      const liveConfirmBtn = liveBar.querySelector('#trace-cs-confirm-btn');
       const liveWaBtn = liveBar.querySelector('#trace-cs-wa-btn');
 
       const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
@@ -513,6 +534,10 @@
         }
       } else {
         if (banner) banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;
+      }
+
+      if (liveConfirmBtn) {
+        liveConfirmBtn.href = buildConfirmLink(ord, orderName);
       }
 
       if (liveWaBtn) {
