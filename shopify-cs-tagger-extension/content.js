@@ -55,12 +55,24 @@
     return clean; // e.g. "923225867200" — NO leading + sign
   }
 
-  function isProductImage(url) {
+  function isGenuineProductImage(url) {
     if (!url) return false;
     const lower = url.toLowerCase();
-    const blackList = ['postex', 'instaworld', 'insta-app', 'leopard', 'tcsexpress', 'trax.pk', 'callcourier', 'favicon.ico', 'store_logo', 'app_icon', 'avatar_placeholder'];
+
+    // Blacklist non-product icons/logos/apps
+    const blackList = [
+      'postex', 'insta', 'leopard', 'tcs', 'trax', 'courier',
+      'icon', 'badge', 'banner', 'avatar', 'store', 'app',
+      'svg', 'favicon', 'placeholder', 'merchant', 'widget',
+      'shopifycloud', 'gravatar', 'whatsapp', 'shop_logo', 'checkout'
+    ];
     if (blackList.some(k => lower.includes(k))) return false;
-    return lower.includes('/products/') || lower.includes('/files/') || lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('.png') || lower.includes('.webp');
+
+    // Genuine Product Image Signature (Must have /products/ in CDN path)
+    const hasProductsPath = lower.includes('/products/');
+    const isStandardImg = lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('.png') || lower.includes('.webp');
+
+    return hasProductsPath && isStandardImg;
   }
 
   function extractOrderDetailsFromShopifyDOM() {
@@ -99,12 +111,12 @@
         details.customerName = custEl.innerText.trim();
       }
 
-      // Product Images from DOM — Target line item table thumbnails & product images
+      // Product Images from DOM — Target ONLY genuine product links & images containing /products/
       details.productImages = [];
-      const imgEls = document.querySelectorAll('tr img, [class*="LineItem"] img, [class*="Thumbnail"] img, img[src*="/products/"], img[src*="cdn.shopify.com/s/files/"]');
+      const imgEls = document.querySelectorAll('a[href*="/products/"] img, img[src*="/products/"]');
       imgEls.forEach(img => {
         const src = img.src || img.getAttribute('src') || img.getAttribute('data-src');
-        if (src && isProductImage(src) && details.productImages.length < 9 && !details.productImages.includes(src)) {
+        if (src && isGenuineProductImage(src) && details.productImages.length < 9 && !details.productImages.includes(src)) {
           details.productImages.push(src);
         }
       });
@@ -217,17 +229,21 @@
       const products = (ord && ord.product_titles) ? ord.product_titles : '';
       const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
-      // Collect Multiple Product Image URLs (Max 9 thumbnails in 3x3 Grid — STRICT FILTERING)
+      // Collect Multiple Product Image URLs (Max 9 thumbnails in 3x3 Grid — STRICT GENUINE PRODUCT FILTERING)
       let prodImgUrls = [];
       if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
         ord.line_items.forEach(i => {
           const url = i.image_url || i.src || i.image || (i.image && i.image.src);
-          if (url && isProductImage(url) && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+          if (url && !prodImgUrls.includes(url)) {
+            const lower = url.toLowerCase();
+            const isBad = ['postex', 'insta', 'leopard', 'tcs', 'trax', 'icon', 'badge', 'banner', 'avatar', 'store', 'app', 'svg', 'favicon', 'whatsapp'].some(k => lower.includes(k));
+            if (!isBad) prodImgUrls.push(url);
+          }
         });
       }
       if (domDetails.productImages && domDetails.productImages.length > 0) {
         domDetails.productImages.forEach(url => {
-          if (url && isProductImage(url) && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+          if (url && isGenuineProductImage(url) && !prodImgUrls.includes(url)) prodImgUrls.push(url);
         });
       }
       prodImgUrls = prodImgUrls.slice(0, 9); // Up to 9 thumbnails
