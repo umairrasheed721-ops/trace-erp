@@ -58,8 +58,9 @@
   function isProductImage(url) {
     if (!url) return false;
     const lower = url.toLowerCase();
-    const blackList = ['postex', 'insta', 'leopard', 'tcs', 'trax', 'courier', 'logo', 'icon', 'badge', 'banner', 'avatar', 'store', 'app', 'svg', 'favicon', 'placeholder', 'shop_logo', 'merchant'];
-    return !blackList.some(k => lower.includes(k));
+    const blackList = ['postex', 'instaworld', 'insta-app', 'leopard', 'tcsexpress', 'trax.pk', 'callcourier', 'favicon.ico', 'store_logo', 'app_icon', 'avatar_placeholder'];
+    if (blackList.some(k => lower.includes(k))) return false;
+    return lower.includes('/products/') || lower.includes('/files/') || lower.includes('.jpg') || lower.includes('.jpeg') || lower.includes('.png') || lower.includes('.webp');
   }
 
   function extractOrderDetailsFromShopifyDOM() {
@@ -98,12 +99,13 @@
         details.customerName = custEl.innerText.trim();
       }
 
-      // Product Images from DOM — STRICT filtering
+      // Product Images from DOM — Target line item table thumbnails & product images
       details.productImages = [];
-      const imgEls = document.querySelectorAll('img[src*="/products/"]');
+      const imgEls = document.querySelectorAll('tr img, [class*="LineItem"] img, [class*="Thumbnail"] img, img[src*="/products/"], img[src*="cdn.shopify.com/s/files/"]');
       imgEls.forEach(img => {
-        if (img.src && isProductImage(img.src) && details.productImages.length < 9 && !details.productImages.includes(img.src)) {
-          details.productImages.push(img.src);
+        const src = img.src || img.getAttribute('src') || img.getAttribute('data-src');
+        if (src && isProductImage(src) && details.productImages.length < 9 && !details.productImages.includes(src)) {
+          details.productImages.push(src);
         }
       });
     } catch (e) {}
@@ -193,7 +195,12 @@
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
+      img.onerror = () => {
+        const img2 = new Image();
+        img2.onload = () => resolve(img2);
+        img2.onerror = () => resolve(null);
+        img2.src = url;
+      };
       img.src = url;
     });
   }
