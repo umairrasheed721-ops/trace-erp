@@ -203,20 +203,26 @@
       const products = (ord && ord.product_titles) ? ord.product_titles : '';
       const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
-      // Resolve Product Image URL
-      let prodImgUrl = '';
+      // Collect Multiple Product Image URLs (Max 3 thumbnails)
+      let prodImgUrls = [];
       if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
-        const itemWithImg = ord.line_items.find(i => i.image_url || i.src || i.image);
-        if (itemWithImg) prodImgUrl = itemWithImg.image_url || itemWithImg.src || itemWithImg.image;
+        ord.line_items.forEach(i => {
+          const url = i.image_url || i.src || i.image || (i.image && i.image.src);
+          if (url && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+        });
       }
-      if (!prodImgUrl && domDetails.productImages && domDetails.productImages.length > 0) {
-        prodImgUrl = domDetails.productImages[0];
+      if (domDetails.productImages && domDetails.productImages.length > 0) {
+        domDetails.productImages.forEach(url => {
+          if (url && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+        });
       }
+      prodImgUrls = prodImgUrls.slice(0, 3);
 
-      const loadedImg = await loadCardImage(prodImgUrl);
+      const loadedImgs = await Promise.all(prodImgUrls.map(url => loadCardImage(url)));
+      const validImgs = loadedImgs.filter(Boolean);
 
-      const width = 600;
-      const height = 380;
+      const width = 640;
+      const height = 410;
       const canvas = document.createElement('canvas');
       canvas.width = width * 2;
       canvas.height = height * 2;
@@ -229,49 +235,71 @@
       grad.addColorStop(1, '#1e293b');
       ctx.fillStyle = grad;
       ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(0, 0, width, height, 16);
-      } else {
-        ctx.rect(0, 0, width, height);
-      }
+      if (ctx.roundRect) ctx.roundRect(0, 0, width, height, 16);
+      else ctx.rect(0, 0, width, height);
       ctx.fill();
 
-      // Card Border
+      // Card Outer Border
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
-      if (ctx.roundRect) {
-        ctx.roundRect(1, 1, width - 2, height - 2, 16);
-      } else {
-        ctx.rect(1, 1, width - 2, height - 2);
-      }
+      if (ctx.roundRect) ctx.roundRect(1, 1, width - 2, height - 2, 16);
+      else ctx.rect(1, 1, width - 2, height - 2);
       ctx.stroke();
 
       // Header Bar
       ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
-      ctx.fillRect(0, 0, width, 54);
+      ctx.fillRect(0, 0, width, 52);
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.fillText('⚡ TRACE ERP — ORDER RECEIPT', 20, 34);
+      ctx.fillText('⚡ TRACE ERP — ORDER RECEIPT', 20, 33);
 
-      // Order Ref
+      // Order Ref Header
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 16px monospace';
-      ctx.fillText(`#${orderName}`, width - 130, 34);
+      ctx.fillText(`#${orderName}`, width - 140, 33);
 
-      let y = 90;
-      // Customer
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.fillText(`👤 Customer: ${customerName} (${displayPhone || 'N/A'})`, 20, y);
+      let y = 86;
 
-      // Total Price
+      // Total Price Pill Badge (Top Right Aligned — Zero Overlap Guaranteed)
       if (price) {
+        const badgeText = `💰 Total: ${price}`;
+        ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const badgeW = ctx.measureText(badgeText).width + 24;
+        const badgeX = width - 20 - badgeW;
+
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.15)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(badgeX, y - 17, badgeW, 26, 6);
+        else ctx.rect(badgeX, y - 17, badgeW, 26);
+        ctx.fill();
+
+        ctx.strokeStyle = '#34d399';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
         ctx.fillStyle = '#34d399';
-        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillText(`💰 Total: ${price}`, width - 180, y);
+        ctx.fillText(badgeText, badgeX + 12, y);
       }
 
-      y += 35;
+      // Customer Name (Left Side — Safely Truncated if long)
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      const maxCustW = width - 220;
+      let truncCust = customerName;
+      while (ctx.measureText(`👤 Customer: ${truncCust}`).width > maxCustW && truncCust.length > 5) {
+        truncCust = truncCust.slice(0, -1);
+      }
+      if (truncCust !== customerName) truncCust += '...';
+      ctx.fillText(`👤 Customer: ${truncCust}`, 20, y);
+
+      y += 24;
+      // Phone Number (Line 2)
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`📱 Phone: ${displayPhone || 'N/A'}`, 20, y);
+
+      y += 22;
+      // Separator
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -279,49 +307,60 @@
       ctx.lineTo(width - 20, y);
       ctx.stroke();
 
-      y += 30;
-      // Products
+      y += 28;
+      // Products Section Title
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillText('ORDERED PRODUCTS:', 20, y);
 
-      y += 24;
-      ctx.fillStyle = '#e2e8f0';
-      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      const truncProd = products.length > 44 ? products.slice(0, 41) + '...' : (products || 'N/A');
-      ctx.fillText(`📦 ${truncProd}`, 20, y);
+      // Render Multiple Product Thumbnails (Gallery Grid on the Right)
+      if (validImgs.length > 0) {
+        const thumbSize = validImgs.length > 2 ? 60 : 70;
+        const gap = 8;
+        const totalW = (validImgs.length * thumbSize) + ((validImgs.length - 1) * gap);
+        const startX = width - 20 - totalW;
+        const startY = y - 10;
 
-      // Render Product Thumbnail Image (if loaded)
-      if (loadedImg) {
-        const thumbX = width - 95;
-        const thumbY = y - 30;
-        const thumbW = 75;
-        const thumbH = 75;
+        validImgs.forEach((img, idx) => {
+          const thumbX = startX + (idx * (thumbSize + gap));
 
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
-        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
-        ctx.fill();
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          ctx.fill();
 
-        ctx.save();
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
-        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
-        ctx.clip();
-        ctx.drawImage(loadedImg, thumbX, thumbY, thumbW, thumbH);
-        ctx.restore();
+          ctx.save();
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          ctx.clip();
+          ctx.drawImage(img, thumbX, startY, thumbSize, thumbSize);
+          ctx.restore();
 
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbW, thumbH, 8);
-        else ctx.rect(thumbX, thumbY, thumbW, thumbH);
-        ctx.stroke();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          ctx.stroke();
+        });
       }
 
+      y += 24;
+      // Products Text Line (Truncated dynamically based on thumbnails presence)
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      const maxProdW = validImgs.length > 0 ? (width - (validImgs.length * 75) - 60) : (width - 50);
+      let truncProd = products || 'N/A';
+      while (ctx.measureText(`📦 ${truncProd}`).width > maxProdW && truncProd.length > 5) {
+        truncProd = truncProd.slice(0, -1);
+      }
+      if (truncProd !== products) truncProd += '...';
+      ctx.fillText(`📦 ${truncProd}`, 20, y);
+
       y += 50;
-      // Address
+      // Address Title
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillText('DELIVERY ADDRESS:', 20, y);
@@ -329,11 +368,16 @@
       y += 24;
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      const truncAddr = address.length > 65 ? address.slice(0, 62) + '...' : (address || 'N/A');
+      const maxAddrW = width - 40;
+      let truncAddr = address || 'N/A';
+      while (ctx.measureText(`📍 ${truncAddr}`).width > maxAddrW && truncAddr.length > 5) {
+        truncAddr = truncAddr.slice(0, -1);
+      }
+      if (truncAddr !== address) truncAddr += '...';
       ctx.fillText(`📍 ${truncAddr}`, 20, y);
 
       y += 45;
-      // Footer
+      // Footer Bar
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       ctx.fillRect(0, height - 36, width, 36);
       ctx.fillStyle = '#64748b';
