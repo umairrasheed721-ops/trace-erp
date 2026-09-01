@@ -55,6 +55,13 @@
     return clean; // e.g. "923225867200" — NO leading + sign
   }
 
+  function isProductImage(url) {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    const blackList = ['postex', 'insta', 'leopard', 'tcs', 'trax', 'courier', 'logo', 'icon', 'badge', 'banner', 'avatar', 'store', 'app', 'svg', 'favicon', 'placeholder', 'shop_logo', 'merchant'];
+    return !blackList.some(k => lower.includes(k));
+  }
+
   function extractOrderDetailsFromShopifyDOM() {
     const details = {
       customerName: '',
@@ -91,11 +98,11 @@
         details.customerName = custEl.innerText.trim();
       }
 
-      // Product Images from DOM
+      // Product Images from DOM — STRICT filtering
       details.productImages = [];
-      const imgEls = document.querySelectorAll('img[src*="/products/"], img[src*="cdn.shopify.com/s/files/"]');
+      const imgEls = document.querySelectorAll('img[src*="/products/"]');
       imgEls.forEach(img => {
-        if (img.src && !img.src.includes('avatar') && !img.src.includes('icon') && details.productImages.length < 3) {
+        if (img.src && isProductImage(img.src) && details.productImages.length < 9 && !details.productImages.includes(img.src)) {
           details.productImages.push(img.src);
         }
       });
@@ -203,17 +210,17 @@
       const products = (ord && ord.product_titles) ? ord.product_titles : '';
       const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
-      // Collect Multiple Product Image URLs (Max 9 thumbnails in 3x3 Grid)
+      // Collect Multiple Product Image URLs (Max 9 thumbnails in 3x3 Grid — STRICT FILTERING)
       let prodImgUrls = [];
       if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
         ord.line_items.forEach(i => {
           const url = i.image_url || i.src || i.image || (i.image && i.image.src);
-          if (url && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+          if (url && isProductImage(url) && !prodImgUrls.includes(url)) prodImgUrls.push(url);
         });
       }
       if (domDetails.productImages && domDetails.productImages.length > 0) {
         domDetails.productImages.forEach(url => {
-          if (url && !prodImgUrls.includes(url)) prodImgUrls.push(url);
+          if (url && isProductImage(url) && !prodImgUrls.includes(url)) prodImgUrls.push(url);
         });
       }
       prodImgUrls = prodImgUrls.slice(0, 9); // Up to 9 thumbnails
@@ -501,6 +508,18 @@
       const resData = await response.json();
       if (resData.success) {
         createNotificationToast(`✅ Tag <strong>"${tag}"</strong> applied! Reloading...`, 'success');
+
+        // If tagging Ready to Book, auto-remove "Sent WhatsApp Confirmation" from Shopify Order Notes!
+        if (tag === 'Ready to Book') {
+          try {
+            fetch(ERP_NOTE_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shopify_order_id: shopifyOrderId, mode: 'remove_keyword', remove_keyword: 'Sent WhatsApp Confirmation' })
+            });
+          } catch (_) {}
+        }
+
         setTimeout(() => {
           window.location.reload();
         }, 600);
@@ -739,13 +758,22 @@
 
     let currentFetchedOrd = null;
 
-    // Order Confirmation Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp)
+    // Order Confirmation Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp + Log Note)
     const confirmBtn = bar.querySelector('#trace-cs-confirm-btn');
     if (confirmBtn) {
       confirmBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const targetUrl = confirmBtn.getAttribute('href');
+
+        // Auto Sync "Sent WhatsApp Confirmation" Note to Shopify & TRACE ERP
+        try {
+          fetch(ERP_NOTE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shopify_order_id: orderId, note: 'Sent WhatsApp Confirmation' })
+          });
+        } catch (_) {}
 
         // 1-Click: Auto Copy Order Receipt Card Image to Clipboard
         await copyOrderCardToClipboard(currentFetchedOrd, orderName);
@@ -758,13 +786,22 @@
       });
     }
 
-    // WhatsApp Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp)
+    // WhatsApp Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp + Log Note)
     const waBtn = bar.querySelector('#trace-cs-wa-btn');
     if (waBtn) {
       waBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const targetUrl = waBtn.getAttribute('href');
+
+        // Auto Sync "Sent WhatsApp Confirmation" Note to Shopify & TRACE ERP
+        try {
+          fetch(ERP_NOTE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shopify_order_id: orderId, note: 'Sent WhatsApp Confirmation' })
+          });
+        } catch (_) {}
 
         await copyOrderCardToClipboard(currentFetchedOrd, orderName);
 

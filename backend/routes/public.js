@@ -1036,9 +1036,9 @@ router.options('/extension-add-note', (req, res) => {
 // POST /api/public/extension-add-note
 router.post('/extension-add-note', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const { shopify_order_id, note } = req.body;
-  if (!shopify_order_id || !note) {
-    return res.status(400).json({ success: false, error: 'shopify_order_id and note required' });
+  const { shopify_order_id, note, mode, remove_keyword } = req.body;
+  if (!shopify_order_id) {
+    return res.status(400).json({ success: false, error: 'shopify_order_id required' });
   }
 
   try {
@@ -1058,16 +1058,31 @@ router.post('/extension-add-note', async (req, res) => {
 
     if (token && shopDomain) {
       try {
-        const timestamp = new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
-        const noteWithTimestamp = `[CS ${timestamp}]: ${note}`;
-        
+        const axios = require('axios');
+        const shopifyRes = await axios.get(
+          `https://${shopDomain}/admin/api/2024-01/orders/${cleanNum}.json?fields=id,note`,
+          { headers: { 'X-Shopify-Access-Token': token }, timeout: 4000 }
+        );
+        const existingShopifyNote = shopifyRes.data?.order?.note || '';
+        let updatedShopifyNote = existingShopifyNote;
+
+        if (mode === 'remove_keyword' || remove_keyword) {
+          const kw = remove_keyword || 'Sent WhatsApp Confirmation';
+          const lines = existingShopifyNote.split('\n').filter(l => !l.includes(kw));
+          updatedShopifyNote = lines.join('\n').trim();
+        } else if (note) {
+          if (!existingShopifyNote.includes(note)) {
+            updatedShopifyNote = existingShopifyNote ? `${existingShopifyNote}\n[CS]: ${note}` : `[CS]: ${note}`;
+          }
+        }
+
         await fetch(`https://${shopDomain}/admin/api/2024-01/orders/${cleanNum}.json`, {
           method: 'PUT',
           headers: {
             'X-Shopify-Access-Token': token,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ order: { id: cleanNum, note: noteWithTimestamp } })
+          body: JSON.stringify({ order: { id: cleanNum, note: updatedShopifyNote } })
         });
       } catch (shopErr) {
         console.warn('⚠️ [Extension Note Relay] Shopify Note update error:', shopErr.message);
@@ -1075,9 +1090,17 @@ router.post('/extension-add-note', async (req, res) => {
     }
 
     if (localOrder) {
-      const existingNotes = localOrder.notes ? localOrder.notes + '\n' : '';
-      const newNotes = existingNotes + `[CS]: ${note}`;
-      db.db.prepare('UPDATE orders SET notes = ? WHERE id = ?').run(newNotes, localOrder.id);
+      let updatedLocalNote = localOrder.notes || '';
+      if (mode === 'remove_keyword' || remove_keyword) {
+        const kw = remove_keyword || 'Sent WhatsApp Confirmation';
+        const lines = updatedLocalNote.split('\n').filter(l => !l.includes(kw));
+        updatedLocalNote = lines.join('\n').trim();
+      } else if (note) {
+        if (!updatedLocalNote.includes(note)) {
+          updatedLocalNote = updatedLocalNote ? `${updatedLocalNote}\n[CS]: ${note}` : `[CS]: ${note}`;
+        }
+      }
+      db.db.prepare('UPDATE orders SET notes = ? WHERE id = ?').run(updatedLocalNote, localOrder.id);
       
       const { broadcast } = require('../sse');
       broadcast('order_updated', { storeId: localOrder.store_id, shopifyOrderId: localOrder.shopify_order_id });
