@@ -203,7 +203,7 @@
       const products = (ord && ord.product_titles) ? ord.product_titles : '';
       const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
 
-      // Collect Multiple Product Image URLs (Max 3 thumbnails)
+      // Collect Multiple Product Image URLs (Max 9 thumbnails in 3x3 Grid)
       let prodImgUrls = [];
       if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
         ord.line_items.forEach(i => {
@@ -216,13 +216,30 @@
           if (url && !prodImgUrls.includes(url)) prodImgUrls.push(url);
         });
       }
-      prodImgUrls = prodImgUrls.slice(0, 3);
+      prodImgUrls = prodImgUrls.slice(0, 9); // Up to 9 thumbnails
 
       const loadedImgs = await Promise.all(prodImgUrls.map(url => loadCardImage(url)));
       const validImgs = loadedImgs.filter(Boolean);
 
-      const width = 640;
-      const height = 410;
+      // Calculate Total Quantity of Items
+      let totalQty = 0;
+      if (ord && Array.isArray(ord.line_items) && ord.line_items.length > 0) {
+        ord.line_items.forEach(i => { totalQty += (parseInt(i.quantity) || 1); });
+      } else {
+        const matches = (products || '').match(/\(x(\d+)\)/g);
+        if (matches) {
+          matches.forEach(m => { totalQty += parseInt(m.replace(/\D/g, '')) || 1; });
+        } else {
+          totalQty = products ? products.split(',').length : 1;
+        }
+      }
+
+      // Dynamic Canvas Height based on 3x3 Image Grid Rows
+      const gridRows = validImgs.length > 6 ? 3 : validImgs.length > 3 ? 2 : 1;
+      const extraH = (gridRows - 1) * 65;
+      const width = 650;
+      const height = 410 + extraH;
+
       const canvas = document.createElement('canvas');
       canvas.width = width * 2;
       canvas.height = height * 2;
@@ -308,50 +325,54 @@
       ctx.stroke();
 
       y += 28;
-      // Products Section Title
+      // Products Section Title with Total Qty Count Badge
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      ctx.fillText('ORDERED PRODUCTS:', 20, y);
+      ctx.fillText(`ORDERED PRODUCTS (${totalQty} ${totalQty === 1 ? 'ITEM' : 'ITEMS'} TOTAL):`, 20, y);
 
-      // Render Multiple Product Thumbnails (Gallery Grid on the Right)
+      // Render Multiple Product Thumbnails (3x3 Grid on the Right — Up to 9 images)
       if (validImgs.length > 0) {
-        const thumbSize = validImgs.length > 2 ? 60 : 70;
-        const gap = 8;
-        const totalW = (validImgs.length * thumbSize) + ((validImgs.length - 1) * gap);
-        const startX = width - 20 - totalW;
+        const thumbSize = 62;
+        const gap = 6;
+        const gridCols = Math.min(validImgs.length, 3);
+        const gridW = (gridCols * thumbSize) + ((gridCols - 1) * gap);
+        const startX = width - 20 - gridW;
         const startY = y - 10;
 
         validImgs.forEach((img, idx) => {
-          const thumbX = startX + (idx * (thumbSize + gap));
+          const c = idx % 3;
+          const r = Math.floor(idx / 3);
+          const thumbX = startX + (c * (thumbSize + gap));
+          const thumbY = startY + (r * (thumbSize + gap));
 
           ctx.fillStyle = '#1e293b';
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
-          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, thumbY, thumbSize, thumbSize);
           ctx.fill();
 
           ctx.save();
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
-          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, thumbY, thumbSize, thumbSize);
           ctx.clip();
-          ctx.drawImage(img, thumbX, startY, thumbSize, thumbSize);
+          ctx.drawImage(img, thumbX, thumbY, thumbSize, thumbSize);
           ctx.restore();
 
           ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(thumbX, startY, thumbSize, thumbSize, 8);
-          else ctx.rect(thumbX, startY, thumbSize, thumbSize);
+          if (ctx.roundRect) ctx.roundRect(thumbX, thumbY, thumbSize, thumbSize, 8);
+          else ctx.rect(thumbX, thumbY, thumbSize, thumbSize);
           ctx.stroke();
         });
       }
 
       y += 24;
-      // Products Text Line (Truncated dynamically based on thumbnails presence)
+      // Products Text Line (Truncated dynamically based on 3-col Grid)
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      const maxProdW = validImgs.length > 0 ? (width - (validImgs.length * 75) - 60) : (width - 50);
+      const maxProdW = validImgs.length > 0 ? (width - 230 - 30) : (width - 50);
       let truncProd = products || 'N/A';
       while (ctx.measureText(`📦 ${truncProd}`).width > maxProdW && truncProd.length > 5) {
         truncProd = truncProd.slice(0, -1);
@@ -359,7 +380,7 @@
       if (truncProd !== products) truncProd += '...';
       ctx.fillText(`📦 ${truncProd}`, 20, y);
 
-      y += 50;
+      y += (50 + extraH);
       // Address Title
       ctx.fillStyle = '#94a3b8';
       ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
