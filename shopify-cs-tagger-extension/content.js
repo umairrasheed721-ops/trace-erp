@@ -171,6 +171,135 @@
     return rawPhone ? `whatsapp://send?phone=${rawPhone}&text=${encoded}` : `whatsapp://send?text=${encoded}`;
   }
 
+  // Canvas Order Receipt Card Generator & Clipboard Writer (1-Click Screenshot)
+  async function copyOrderCardToClipboard(ord, fallbackOrderName) {
+    try {
+      const domDetails = extractOrderDetailsFromShopifyDOM();
+      const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : (domDetails.customerName || 'Customer');
+      const orderName = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || 'Order');
+      const rawPhone = (ord && ord.clean_phone) ? formatInternationalPhone(ord.clean_phone) : domDetails.phone;
+      const displayPhone = rawPhone ? rawPhone.replace(/^92(3\d{2})(\d{7})$/, '0$1-$2') : '';
+      const price = (ord && ord.price) ? `Rs. ${Math.round(ord.price)}` : '';
+      const products = (ord && ord.product_titles) ? ord.product_titles : '';
+      const address = (ord && ord.address && ord.city) ? `${ord.address}, ${ord.city}` : (ord && ord.city) ? ord.city : '';
+
+      const width = 600;
+      const height = 360;
+      const canvas = document.createElement('canvas');
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(2, 2);
+
+      // Background Card Gradient
+      const grad = ctx.createLinearGradient(0, 0, width, height);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(0, 0, width, height, 16);
+      } else {
+        ctx.rect(0, 0, width, height);
+      }
+      ctx.fill();
+
+      // Card Border
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      if (ctx.roundRect) {
+        ctx.roundRect(1, 1, width - 2, height - 2, 16);
+      } else {
+        ctx.rect(1, 1, width - 2, height - 2);
+      }
+      ctx.stroke();
+
+      // Header Bar
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+      ctx.fillRect(0, 0, width, 54);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('⚡ TRACE ERP — ORDER RECEIPT', 20, 34);
+
+      // Order Ref
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(`#${orderName}`, width - 130, 34);
+
+      let y = 90;
+      // Customer
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText(`👤 Customer: ${customerName} (${displayPhone || 'N/A'})`, 20, y);
+
+      // Total Price
+      if (price) {
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillText(`💰 Total: ${price}`, width - 180, y);
+      }
+
+      y += 35;
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(20, y);
+      ctx.lineTo(width - 20, y);
+      ctx.stroke();
+
+      y += 30;
+      // Products
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('ORDERED PRODUCTS:', 20, y);
+
+      y += 24;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      const truncProd = products.length > 55 ? products.slice(0, 52) + '...' : (products || 'N/A');
+      ctx.fillText(`📦 ${truncProd}`, 20, y);
+
+      y += 40;
+      // Address
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('DELIVERY ADDRESS:', 20, y);
+
+      y += 24;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      const truncAddr = address.length > 65 ? address.slice(0, 62) + '...' : (address || 'N/A');
+      ctx.fillText(`📍 ${truncAddr}`, 20, y);
+
+      y += 45;
+      // Footer
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(0, height - 36, width, 36);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillText('Verified COD Order Dispatch • TRACE E-Commerce System', 20, height - 14);
+
+      return new Promise((resolve) => {
+        canvas.toBlob(async (blob) => {
+          if (!blob) return resolve(false);
+          try {
+            const item = new ClipboardItem({ 'image/png': blob });
+            await navigator.clipboard.write([item]);
+            console.log('✅ Order Receipt Card image copied to clipboard!');
+            createNotificationToast('📋 Order Receipt Card image copied to Clipboard! (Cmd+V)', 'success');
+            resolve(true);
+          } catch (clipErr) {
+            console.warn('Clipboard write error:', clipErr);
+            resolve(false);
+          }
+        }, 'image/png');
+      });
+    } catch (e) {
+      console.warn('Order card copy error:', e);
+      return false;
+    }
+  }
+
   // Shipping Update Message
   function buildShippingLink(ord, fallbackOrderName) {
     const customerName = (ord && ord.customer_name && ord.customer_name !== 'Customer') ? ord.customer_name : 'Customer';
@@ -482,29 +611,42 @@
       });
     });
 
-    // Order Confirmation Button Click Listener
+    let currentFetchedOrd = null;
+
+    // Order Confirmation Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp)
     const confirmBtn = bar.querySelector('#trace-cs-confirm-btn');
     if (confirmBtn) {
-      confirmBtn.addEventListener('click', (e) => {
+      confirmBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const targetUrl = confirmBtn.getAttribute('href');
-        if (targetUrl && targetUrl !== '#') {
-          window.location.href = targetUrl;
-        }
+
+        // 1-Click: Auto Copy Order Receipt Card Image to Clipboard
+        await copyOrderCardToClipboard(currentFetchedOrd, orderName);
+
+        setTimeout(() => {
+          if (targetUrl && targetUrl !== '#') {
+            window.location.href = targetUrl;
+          }
+        }, 150);
       });
     }
 
-    // WhatsApp Button Click Listener
+    // WhatsApp Button Click Listener (Auto Copy Receipt Screenshot + Open WhatsApp)
     const waBtn = bar.querySelector('#trace-cs-wa-btn');
     if (waBtn) {
-      waBtn.addEventListener('click', (e) => {
+      waBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         const targetUrl = waBtn.getAttribute('href');
-        if (targetUrl && targetUrl !== '#') {
-          window.location.href = targetUrl;
-        }
+
+        await copyOrderCardToClipboard(currentFetchedOrd, orderName);
+
+        setTimeout(() => {
+          if (targetUrl && targetUrl !== '#') {
+            window.location.href = targetUrl;
+          }
+        }, 150);
       });
     }
 
@@ -522,6 +664,7 @@
       const liveWaBtn = liveBar.querySelector('#trace-cs-wa-btn');
 
       const ord = (infoData && infoData.success && infoData.order) ? infoData.order : null;
+      currentFetchedOrd = ord;
       if (ord) {
         if (orderNameSpan && ord.ref_number) {
           orderNameSpan.innerText = ord.ref_number;
