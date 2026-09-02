@@ -859,20 +859,6 @@ export default function SearchTool() {
       } else {
         window.open(waLink, '_blank');
       }
-
-      if (useLocalHelper && imageUrls.length > 0) {
-        setTimeout(async () => {
-          try {
-            await fetch('http://127.0.0.1:9099/paste-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ imageUrls })
-            });
-          } catch (err) {
-            console.warn('Local helper not running:', err.message);
-          }
-        }, 1500);
-      }
     }
 
     if (waQueueIndex < selectedIds.length - 1) {
@@ -964,9 +950,6 @@ export default function SearchTool() {
     }
   }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, fetchOrders]);
 
-  const [useLocalHelper, setUseLocalHelper] = useState(() => {
-    return localStorage.getItem('trace_use_local_helper') === 'true';
-  })
   const [useWaWeb, setUseWaWeb] = useState(() => {
     return localStorage.getItem('trace_use_wa_web') === 'true';
   })
@@ -1786,22 +1769,6 @@ export default function SearchTool() {
                   />
                   <label htmlFor="useExtHelper" style={{ fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', color: useExtHelper ? '#4ade80' : 'rgba(255,255,255,0.8)', fontWeight: useExtHelper ? 700 : 400 }}>
                     🔌 Use Extension Helper (Auto-paste in WA Web)
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                  <input 
-                    type="checkbox" 
-                    id="useLocalHelper" 
-                    checked={useLocalHelper} 
-                    onChange={(e) => {
-                      setUseLocalHelper(e.target.checked);
-                      localStorage.setItem('trace_use_local_helper', e.target.checked);
-                    }} 
-                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                  />
-                  <label htmlFor="useLocalHelper" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
-                    🖥️ Use Local Helper (Desktop App auto-paste)
                   </label>
                 </div>
 
