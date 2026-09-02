@@ -827,12 +827,38 @@ export default function SearchTool() {
         }
       }
 
-      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      const waBase = useWaWeb || useExtHelper ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
       let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       if (imageUrls.length > 0) {
         waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
       }
-      window.open(waLink, '_blank');
+
+      // 🔌 EXTENSION HELPER MODE: Send to Chrome Extension background → WhatsApp Web tab
+      if (useExtHelper && window.chrome && window.chrome.runtime) {
+        try {
+          const TRACE_EXT_ID = 'pefngmdcdmelgnphhojcembpdddhdhip';
+          window.chrome.runtime.sendMessage(TRACE_EXT_ID, {
+            type: 'TRACE_OPEN_WA',
+            phone: waPhone,
+            message: msg,
+            imageUrls,
+            orderId: o.id,
+          }, (response) => {
+            if (window.chrome.runtime.lastError) {
+              // Extension not found — fallback to normal WA web open
+              console.warn('[ERP] Extension not available, falling back to window.open:', window.chrome.runtime.lastError.message);
+              window.open(waLink, '_blank');
+            } else {
+              addToast(`🔌 Extension triggered for ${name}`, 'success');
+            }
+          });
+        } catch (extErr) {
+          console.warn('[ERP] Extension messaging failed, fallback:', extErr.message);
+          window.open(waLink, '_blank');
+        }
+      } else {
+        window.open(waLink, '_blank');
+      }
 
       if (useLocalHelper && imageUrls.length > 0) {
         setTimeout(async () => {
@@ -943,6 +969,10 @@ export default function SearchTool() {
   })
   const [useWaWeb, setUseWaWeb] = useState(() => {
     return localStorage.getItem('trace_use_wa_web') === 'true';
+  })
+  // Chrome Extension Helper — auto-pastes into WhatsApp Web via extension
+  const [useExtHelper, setUseExtHelper] = useState(() => {
+    return localStorage.getItem('trace_use_ext_helper') === 'true';
   })
 
 
@@ -1741,6 +1771,27 @@ export default function SearchTool() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
                   <input 
                     type="checkbox" 
+                    id="useExtHelper" 
+                    checked={useExtHelper} 
+                    onChange={(e) => {
+                      setUseExtHelper(e.target.checked);
+                      localStorage.setItem('trace_use_ext_helper', e.target.checked);
+                      // Extension mode implies WA Web mode
+                      if (e.target.checked) {
+                        setUseWaWeb(true);
+                        localStorage.setItem('trace_use_wa_web', 'true');
+                      }
+                    }} 
+                    style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#4ade80' }}
+                  />
+                  <label htmlFor="useExtHelper" style={{ fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', color: useExtHelper ? '#4ade80' : 'rgba(255,255,255,0.8)', fontWeight: useExtHelper ? 700 : 400 }}>
+                    🔌 Use Extension Helper (Auto-paste in WA Web)
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                  <input 
+                    type="checkbox" 
                     id="useLocalHelper" 
                     checked={useLocalHelper} 
                     onChange={(e) => {
@@ -1750,7 +1801,7 @@ export default function SearchTool() {
                     style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                   />
                   <label htmlFor="useLocalHelper" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
-                    🔌 Use Local Helper (For Desktop App auto-paste)
+                    🖥️ Use Local Helper (Desktop App auto-paste)
                   </label>
                 </div>
 
@@ -1766,7 +1817,7 @@ export default function SearchTool() {
                     style={{ width: '14px', height: '14px', cursor: 'pointer' }}
                   />
                   <label htmlFor="useWaWeb" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
-                    🌐 Use WhatsApp Web (Chrome Extension mode)
+                    🌐 Open WhatsApp Web (browser tab)
                   </label>
                 </div>
               </div>

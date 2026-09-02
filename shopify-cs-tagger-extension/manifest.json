@@ -1,14 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "TRACE ERP — CS Quick Tagging Assistant",
-  "version": "1.0.0",
-  "description": "Instant 1-Click Shopify Order Tagging Bar integrated with TRACE ERP.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "name": "Trace ERP WhatsApp Web Helper",
+  "version": "1.1.0",
+  "description": "Auto-paste order messages and product images into WhatsApp Web from TRACE ERP Bulk Queue.",
+  "permissions": ["storage", "activeTab", "scripting", "clipboardWrite", "tabs"],
   "host_permissions": [
     "https://admin.shopify.com/*",
     "https://*.myshopify.com/*",
-    "https://trace-erp-production.up.railway.app/*"
+    "https://trace-erp-production.up.railway.app/*",
+    "https://web.whatsapp.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -18,6 +22,11 @@
       "js": ["content.js"],
       "css": ["styles.css"],
       "run_at": "document_end"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["whatsapp-helper.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
