@@ -827,7 +827,7 @@ export default function SearchTool() {
         }
       }
 
-      const waBase = useWaWeb || useExtHelper ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      const waBase = useExtHelper ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
       let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       if (imageUrls.length > 0) {
         waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
@@ -950,9 +950,6 @@ export default function SearchTool() {
     }
   }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, fetchOrders]);
 
-  const [useWaWeb, setUseWaWeb] = useState(() => {
-    return localStorage.getItem('trace_use_wa_web') === 'true';
-  })
   // Chrome Extension Helper — auto-pastes into WhatsApp Web via extension
   const [useExtHelper, setUseExtHelper] = useState(() => {
     return localStorage.getItem('trace_use_ext_helper') === 'true';
@@ -1705,8 +1702,6 @@ export default function SearchTool() {
             showKPIs={showKPIs}
             toggleKPIs={toggleKPIs}
             onClear={handleClear}
-            useWaWeb={useWaWeb}
-            setUseWaWeb={setUseWaWeb}
           />
         </div>
       )}
@@ -1769,22 +1764,6 @@ export default function SearchTool() {
                   />
                   <label htmlFor="useExtHelper" style={{ fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', color: useExtHelper ? '#4ade80' : 'rgba(255,255,255,0.8)', fontWeight: useExtHelper ? 700 : 400 }}>
                     🔌 Use Extension Helper (Auto-paste in WA Web)
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                  <input 
-                    type="checkbox" 
-                    id="useWaWeb" 
-                    checked={useWaWeb} 
-                    onChange={(e) => {
-                      setUseWaWeb(e.target.checked);
-                      localStorage.setItem('trace_use_wa_web', e.target.checked);
-                    }} 
-                    style={{ width: '14px', height: '14px', cursor: 'pointer' }}
-                  />
-                  <label htmlFor="useWaWeb" style={{ fontSize: '0.75rem', opacity: 0.8, cursor: 'pointer', userSelect: 'none' }}>
-                    🌐 Open WhatsApp Web (browser tab)
                   </label>
                 </div>
               </div>
