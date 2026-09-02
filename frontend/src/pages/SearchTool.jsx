@@ -729,6 +729,43 @@ export default function SearchTool() {
     setShowWAQueue(true);
   }
 
+  // Helper to copy product image to system Clipboard as PNG blob
+  const copyImageToClipboard = async (imageUrl) => {
+    if (!imageUrl) return false;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob(async (blob) => {
+            if (blob) {
+              try {
+                await navigator.clipboard.write([
+                  new ClipboardItem({ 'image/png': blob })
+                ]);
+                resolve(true);
+                return;
+              } catch (err) {
+                console.warn('Clipboard write failed:', err);
+              }
+            }
+            resolve(false);
+          }, 'image/png');
+        } catch (err) {
+          console.warn('Canvas processing error:', err);
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = imageUrl;
+    });
+  };
+
   const sendNextWA = async () => {
     const orderId = selectedIds[waQueueIndex];
     let o = allOrders.find(item => item.id === orderId);
@@ -827,38 +864,19 @@ export default function SearchTool() {
         }
       }
 
-      const waBase = useExtHelper ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
-      let waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      // 📋 Auto-copy product image to System Clipboard
       if (imageUrls.length > 0) {
-        waLink += `&autoImage=${encodeURIComponent(imageUrls.join(','))}`;
+        const copied = await copyImageToClipboard(imageUrls[0]);
+        if (copied) {
+          addToast(`📋 Product image copied to Clipboard! Press Enter then Cmd+V in WhatsApp`, 'success');
+        } else {
+          addToast(`⚠️ Image found but couldn't auto-copy to clipboard.`, 'warning');
+        }
       }
 
-      // 🔌 EXTENSION HELPER MODE: Send to Chrome Extension background → WhatsApp Web tab
-      if (useExtHelper && window.chrome && window.chrome.runtime) {
-        try {
-          const TRACE_EXT_ID = 'pefngmdcdmelgnphhojcembpdddhdhip';
-          window.chrome.runtime.sendMessage(TRACE_EXT_ID, {
-            type: 'TRACE_OPEN_WA',
-            phone: waPhone,
-            message: msg,
-            imageUrls,
-            orderId: o.id,
-          }, (response) => {
-            if (window.chrome.runtime.lastError) {
-              // Extension not found — fallback to normal WA web open
-              console.warn('[ERP] Extension not available, falling back to window.open:', window.chrome.runtime.lastError.message);
-              window.open(waLink, '_blank');
-            } else {
-              addToast(`🔌 Extension triggered for ${name}`, 'success');
-            }
-          });
-        } catch (extErr) {
-          console.warn('[ERP] Extension messaging failed, fallback:', extErr.message);
-          window.open(waLink, '_blank');
-        }
-      } else {
-        window.open(waLink, '_blank');
-      }
+      // 📱 Open Native WhatsApp Desktop App
+      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      window.open(waLink, '_blank');
     }
 
     if (waQueueIndex < selectedIds.length - 1) {
@@ -950,10 +968,6 @@ export default function SearchTool() {
     }
   }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, fetchOrders]);
 
-  // Chrome Extension Helper — auto-pastes into WhatsApp Web via extension
-  const [useExtHelper, setUseExtHelper] = useState(() => {
-    return localStorage.getItem('trace_use_ext_helper') === 'true';
-  })
 
 
   const getAgingBuckets = () => {
@@ -1745,28 +1759,6 @@ export default function SearchTool() {
                 ))}
               </select>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                  <input 
-                    type="checkbox" 
-                    id="useExtHelper" 
-                    checked={useExtHelper} 
-                    onChange={(e) => {
-                      setUseExtHelper(e.target.checked);
-                      localStorage.setItem('trace_use_ext_helper', e.target.checked);
-                      // Extension mode implies WA Web mode
-                      if (e.target.checked) {
-                        setUseWaWeb(true);
-                        localStorage.setItem('trace_use_wa_web', 'true');
-                      }
-                    }} 
-                    style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#4ade80' }}
-                  />
-                  <label htmlFor="useExtHelper" style={{ fontSize: '0.75rem', cursor: 'pointer', userSelect: 'none', color: useExtHelper ? '#4ade80' : 'rgba(255,255,255,0.8)', fontWeight: useExtHelper ? 700 : 400 }}>
-                    🔌 Use Extension Helper (Auto-paste in WA Web)
-                  </label>
-                </div>
-              </div>
             </div>
 
             <div className="queue-progress" style={{ margin: '20px 0' }}>
