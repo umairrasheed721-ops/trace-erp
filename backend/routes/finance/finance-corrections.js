@@ -3,7 +3,8 @@ const router = express.Router();
 const db = require('../../db');
 const { 
   getPrimaryLocationId, 
-  processSmartRestock
+  processSmartRestock,
+  markShopifyOrderDelivered
 } = require('../../engines/shopify_finance');
 const { authenticateToken } = require('../auth');
 const FinanceService = require('../../services/FinanceService');
@@ -1115,6 +1116,12 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
 
             if (transactionResp.ok) {
               shopifyStatus = 'success';
+              // 🛍️ Auto-Mark Order as Delivered on Shopify Admin
+              try {
+                await markShopifyOrderDelivered(store, targetShopifyId);
+              } catch (dErr) {
+                console.warn(`[finance-corrections] Mark as delivered notice for ${targetShopifyId}:`, dErr.message);
+              }
             } else {
               const errJson = await transactionResp.json().catch(() => ({}));
               shopifyError = errJson.errors || `Shopify HTTP ${transactionResp.status}`;

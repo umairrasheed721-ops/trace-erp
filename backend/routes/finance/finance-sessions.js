@@ -6,7 +6,8 @@ const {
   appendShopifyNote, 
   getShopifyFinancials, 
   captureShopifyPayment,
-  removeShopifyNoteLine
+  removeShopifyNoteLine,
+  markShopifyOrderDelivered
 } = require('../../engines/shopify_finance');
 const asyncHandler = require('../../middleware/async');
 const FinanceService = require('../../services/FinanceService');
@@ -247,6 +248,13 @@ router.post('/bulk-update', async (req, res) => {
             }
 
             if (syncToShopify) {
+              // 🛍️ Auto-Mark Order as Delivered on Shopify Admin
+              try {
+                await markShopifyOrderDelivered(store, order.shopify_order_id);
+              } catch (mErr) {
+                console.warn(`[finance-sessions] Mark as delivered failed for ${order.shopify_order_id}:`, mErr.message);
+              }
+
               const feeNote = charges > 0 ? ` | Charges: ${charges}` : '';
               const netAmt = charges > 0 ? Math.round((amount - charges) * 100) / 100 : amount;
               const netNote = charges > 0 ? ` | Net: ${netAmt}` : '';

@@ -367,6 +367,84 @@ async function getShopifyInventoryCosts(store, onBatch) {
   return onBatch ? null : accumulator;
 }
 
+async function markShopifyOrderDelivered(store, orderId) {
+  if (!orderId) return false;
+  try {
+    const res = await shopifyFetch(store, `orders/${orderId}/fulfillments.json`);
+    if (!res.ok) {
+      console.warn(`[shopify_finance] Could not fetch fulfillments for order ${orderId}: ${res.status}`);
+      return false;
+    }
+    const data = await res.json();
+    const fulfillments = data.fulfillments || [];
+    const activeFulfillments = fulfillments.filter(f => f.status !== 'cancelled');
+
+    let fulfillmentIdToMark = null;
+
+    if (activeFulfillments.length > 0) {
+      fulfillmentIdToMark = activeFulfillments[activeFulfillments.length - 1].id;
+    } else {
+      try {
+        const foRes = await shopifyFetch(store, `orders/${orderId}/fulfillment_orders.json`);
+        if (foRes.ok) {
+          const foData = await foRes.json();
+          const openFO = (foData.fulfillment_orders || []).find(fo => fo.status === 'open') || foData.fulfillment_orders?.[0];
+          if (openFO && openFO.line_items && openFO.line_items.length > 0) {
+            const payload = {
+              fulfillment: {
+                line_items_by_fulfillment_order: [
+                  {
+                    fulfillment_order_id: openFO.id,
+                    fulfillment_order_line_items: openFO.line_items.map(li => ({ id: li.id, quantity: li.quantity }))
+                  }
+                ],
+                notify_customer: false
+              }
+            };
+            const createRes = await shopifyFetch(store, 'fulfillments.json', {
+              method: 'POST',
+              body: JSON.stringify(payload)
+            });
+            if (createRes.ok) {
+              const newFData = await createRes.json();
+              fulfillmentIdToMark = newFData.fulfillment?.id;
+              console.log(`[shopify_finance] Created new fulfillment ${fulfillmentIdToMark} for order ${orderId}`);
+            }
+          }
+        }
+      } catch (foErr) {
+        console.warn(`[shopify_finance] Auto-fulfillment creation notice for order ${orderId}:`, foErr.message);
+      }
+    }
+
+    if (!fulfillmentIdToMark) {
+      console.warn(`[shopify_finance] No fulfillment available to mark delivered for order ${orderId}`);
+      return false;
+    }
+
+    const eventRes = await shopifyFetch(store, `fulfillments/${fulfillmentIdToMark}/events.json`, {
+      method: 'POST',
+      body: JSON.stringify({
+        event: {
+          status: 'delivered'
+        }
+      })
+    });
+
+    if (eventRes.ok) {
+      console.log(`✅ [shopify_finance] Successfully marked order ${orderId} as Delivered on Shopify Admin! (Fulfillment: ${fulfillmentIdToMark})`);
+      return true;
+    } else {
+      const errText = await eventRes.text();
+      console.warn(`⚠️ [shopify_finance] Delivered event post returned ${eventRes.status} for order ${orderId}: ${errText}`);
+      return false;
+    }
+  } catch (err) {
+    console.error(`❌ [shopify_finance] markShopifyOrderDelivered error for order ${orderId}:`, err.message);
+    return false;
+  }
+}
+
 module.exports = {
   getPrimaryLocationId,
   processSmartRestock,
@@ -376,5 +454,7 @@ module.exports = {
   getShopifyFinancials,
   captureShopifyPayment,
   getShopifyOrderStatus,
-  getShopifyInventoryCosts
+  getShopifyInventoryCosts,
+  markShopifyOrderDelivered
 };
+
