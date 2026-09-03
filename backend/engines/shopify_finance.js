@@ -367,9 +367,39 @@ async function getShopifyInventoryCosts(store, onBatch) {
   return onBatch ? null : accumulator;
 }
 
-async function markShopifyOrderDelivered(store, orderId) {
-  if (!orderId) return false;
+async function markShopifyOrderDelivered(store, orderIdOrRef) {
+  if (!orderIdOrRef) return false;
   try {
+    let targetShopifyId = orderIdOrRef;
+
+    // 1. Resolve numeric shopify_order_id if ref_number or string (e.g. TR33698) is passed
+    if (typeof targetShopifyId === 'string' && (targetShopifyId.startsWith('TR') || targetShopifyId.startsWith('#') || isNaN(Number(targetShopifyId)))) {
+      const cleanRef = targetShopifyId.replace(/^#/, '');
+      try {
+        const searchResp = await shopifyFetch(store, `orders.json?name=${encodeURIComponent('#' + cleanRef)}&fields=id`);
+        if (searchResp.ok) {
+          const searchData = await searchResp.json();
+          if (searchData.orders && searchData.orders.length > 0) {
+            targetShopifyId = searchData.orders[0].id;
+            console.log(`[shopify_finance] Resolved ref '${cleanRef}' -> Shopify Order ID ${targetShopifyId}`);
+            // Backfill local db
+            try {
+              const { db } = require('../db');
+              db.prepare('UPDATE orders SET shopify_order_id = ? WHERE ref_number = ? OR ref_number = ?').run(String(targetShopifyId), cleanRef, '#' + cleanRef);
+            } catch (_) {}
+          }
+        }
+      } catch (sErr) {
+        console.warn(`[shopify_finance] Search order by ref failed for ${targetShopifyId}:`, sErr.message);
+      }
+    }
+
+    if (!targetShopifyId || isNaN(Number(targetShopifyId))) {
+      console.warn(`[shopify_finance] Could not resolve valid numeric Shopify Order ID for '${orderIdOrRef}'`);
+      return false;
+    }
+
+    const orderId = targetShopifyId;
     const res = await shopifyFetch(store, `orders/${orderId}/fulfillments.json`);
     if (!res.ok) {
       console.warn(`[shopify_finance] Could not fetch fulfillments for order ${orderId}: ${res.status}`);
@@ -422,6 +452,7 @@ async function markShopifyOrderDelivered(store, orderId) {
       return false;
     }
 
+    // 2. Try REST API Fulfillment Event (delivered)
     const eventRes = await shopifyFetch(store, `fulfillments/${fulfillmentIdToMark}/events.json`, {
       method: 'POST',
       body: JSON.stringify({
@@ -432,15 +463,53 @@ async function markShopifyOrderDelivered(store, orderId) {
     });
 
     if (eventRes.ok) {
-      console.log(`✅ [shopify_finance] Successfully marked order ${orderId} as Delivered on Shopify Admin! (Fulfillment: ${fulfillmentIdToMark})`);
+      console.log(`✅ [shopify_finance] Successfully marked order ${orderId} as Delivered via REST API! (Fulfillment: ${fulfillmentIdToMark})`);
       return true;
-    } else {
-      const errText = await eventRes.text();
-      console.warn(`⚠️ [shopify_finance] Delivered event post returned ${eventRes.status} for order ${orderId}: ${errText}`);
-      return false;
     }
+
+    // 3. Fallback: Try GraphQL fulfillmentEventCreate
+    try {
+      const gqlQuery = `
+        mutation fulfillmentEventCreate($fulfillmentEvent: FulfillmentEventInput!) {
+          fulfillmentEventCreate(fulfillmentEvent: $fulfillmentEvent) {
+            fulfillmentEvent {
+              id
+              status
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `;
+      const gqlVariables = {
+        fulfillmentEvent: {
+          fulfillmentId: `gid://shopify/Fulfillment/${fulfillmentIdToMark}`,
+          status: "DELIVERED"
+        }
+      };
+      const gqlRes = await shopifyFetch(store, 'graphql.json', {
+        method: 'POST',
+        body: JSON.stringify({ query: gqlQuery, variables: gqlVariables })
+      });
+      if (gqlRes.ok) {
+        const gqlData = await gqlRes.json();
+        const errors = gqlData.data?.fulfillmentEventCreate?.userErrors;
+        if (!errors || errors.length === 0) {
+          console.log(`✅ [shopify_finance] Successfully marked order ${orderId} as Delivered via GraphQL API! (Fulfillment: ${fulfillmentIdToMark})`);
+          return true;
+        } else {
+          console.warn(`⚠️ [shopify_finance] GraphQL fulfillmentEventCreate userErrors:`, JSON.stringify(errors));
+        }
+      }
+    } catch (gErr) {
+      console.warn(`[shopify_finance] GraphQL fallback notice:`, gErr.message);
+    }
+
+    return false;
   } catch (err) {
-    console.error(`❌ [shopify_finance] markShopifyOrderDelivered error for order ${orderId}:`, err.message);
+    console.error(`❌ [shopify_finance] markShopifyOrderDelivered error for order '${orderIdOrRef}':`, err.message);
     return false;
   }
 }

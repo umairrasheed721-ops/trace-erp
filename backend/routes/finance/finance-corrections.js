@@ -1118,9 +1118,10 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
               shopifyStatus = 'success';
               // 🛍️ Auto-Mark Order as Delivered on Shopify Admin
               try {
-                await markShopifyOrderDelivered(store, targetShopifyId);
+                const targetOrdId = targetShopifyId || order.shopify_order_id || order.ref_number || order.id;
+                await markShopifyOrderDelivered(store, targetOrdId);
               } catch (dErr) {
-                console.warn(`[finance-corrections] Mark as delivered notice for ${targetShopifyId}:`, dErr.message);
+                console.warn(`[finance-corrections] Mark as delivered notice for ${targetShopifyId || order.ref_number}:`, dErr.message);
               }
             } else {
               const errJson = await transactionResp.json().catch(() => ({}));

@@ -250,9 +250,10 @@ router.post('/bulk-update', async (req, res) => {
             if (syncToShopify) {
               // 🛍️ Auto-Mark Order as Delivered on Shopify Admin
               try {
-                await markShopifyOrderDelivered(store, order.shopify_order_id);
+                const targetOrdId = order.shopify_order_id || order.ref_number || order.id;
+                await markShopifyOrderDelivered(store, targetOrdId);
               } catch (mErr) {
-                console.warn(`[finance-sessions] Mark as delivered failed for ${order.shopify_order_id}:`, mErr.message);
+                console.warn(`[finance-sessions] Mark as delivered failed for ${order.shopify_order_id || order.ref_number}:`, mErr.message);
               }
 
               const feeNote = charges > 0 ? ` | Charges: ${charges}` : '';
