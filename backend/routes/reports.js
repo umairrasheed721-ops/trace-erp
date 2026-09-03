@@ -62,7 +62,7 @@ router.get('/daily', (req, res) => {
         -- 📊 SURPLUS_PAYOUT: Excess cash collected from non-delivered orders OR paid_amount > price + 0.9 on delivered orders. Source: paid_amount, price, delivery_status
         SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN (COALESCE(paid_amount, 0) - CASE WHEN LOWER(COALESCE(delivery_status, '')) = 'delivered' THEN COALESCE(price, 0) ELSE 0 END) ELSE 0 END) as surplus_payout,
         SUM(CASE WHEN COALESCE(paid_amount, 0) > 0.9 AND (LOWER(COALESCE(delivery_status, '')) != 'delivered' OR (COALESCE(paid_amount, 0) - COALESCE(price, 0)) > 0.9) THEN 1 ELSE 0 END) as surplus_payout_count,
-        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
+        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' OR LOWER(COALESCE(notes, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' OR LOWER(COALESCE(notes, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders,
         SUM(CASE WHEN (LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' OR LOWER(COALESCE(notes, '')) LIKE '%whatsapp%') AND LOWER(COALESCE(tags, '')) NOT LIKE '%whatsapp%funnel%' AND LOWER(COALESCE(notes, '')) NOT LIKE '%whatsapp%funnel%' THEN 1 ELSE 0 END) as whatsapp_orders
       FROM orders
