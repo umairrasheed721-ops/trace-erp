@@ -245,7 +245,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
     let count = 0;
     for (const order of orders) {
       try {
-        const addr = order.shipping_address || {};
+        const addr = order.shipping_address || order.billing_address || {};
         const customer = order.customer || {};
         const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
 
@@ -262,13 +262,17 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
 
         const firstName = (addr.first_name || '').trim();
         const lastName = (addr.last_name || '').trim();
-        const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim()) || (customer.first_name || '');
-
-        const addressStr = [addr.address1, addr.address2].filter(Boolean).join(' ').trim();
+        const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim())
+          || `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+          || addr.name
+          || customer.name
+          || 'Customer';
 
         const rawCity = addr.city || '';
         const { getCorrectedCity } = require('../../routes/cities');
         const cleanCity = getCorrectedCity(rawCity);
+        const phone = addr.phone || customer.phone || '';
+        const addressStr = [addr.address1, addr.address2].filter(Boolean).join(', ').trim() || cleanCity;
         
         const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
         const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
@@ -277,7 +281,7 @@ async function fetchShopifyOrders(store, onProgress, options = {}) {
           storeId, String(order.id), order.name,
           fullName,
           (order.created_at || '').split('T')[0],
-          addr.phone || customer.phone || '',
+          phone,
           addressStr || '—',
           cleanCity,
           finalPrice, tracking, activeCount, order.note || '',
@@ -510,6 +514,10 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     let count = 0;
     const updateStmt = db.prepare(`
       UPDATE orders SET 
+        customer_name = ?,
+        address = ?,
+        city = ?,
+        phone = ?,
         price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
         items_count = ?,
         notes = ?,
@@ -619,11 +627,28 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
           });
         }
 
+        const addr = fresh.shipping_address || fresh.billing_address || {};
+        const customer = fresh.customer || {};
+        const firstName = (addr.first_name || '').trim();
+        const lastName = (addr.last_name || '').trim();
+        const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim())
+          || `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+          || addr.name
+          || customer.name
+          || 'Customer';
+
+        const rawCity = addr.city || '';
+        const { getCorrectedCity } = require('../../routes/cities');
+        const cleanCity = getCorrectedCity(rawCity);
+        const phone = addr.phone || customer.phone || '';
+        const fullAddress = [addr.address1, addr.address2].filter(Boolean).join(', ').trim() || cleanCity;
+
         const shopifyShipping = fresh.shipping_lines?.[0]?.price ? parseFloat(fresh.shipping_lines[0].price) : 0;
         const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
         const customerEmail = fresh.email || fresh.contact_email || fresh.customer?.email || '';
 
         updateStmt.run(
+          fullName, fullAddress, cleanCity, phone,
           finalPrice, activeCount, fresh.note || '',
           productTitles.join(', '),
           mapShopifyFinancialStatus(fresh.financial_status),
@@ -726,9 +751,23 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       console.warn(`[syncSingleShopifyOrder] Cost lookup skipped for ${shopifyOrderId}:`, costErr.message);
     }
 
-    const addr = order.shipping_address || {};
+    const addr = order.shipping_address || order.billing_address || {};
     const customer = order.customer || {};
     const finalPrice = parseFloat(order.current_total_price || order.total_price || 0);
+
+    const firstName = (addr.first_name || '').trim();
+    const lastName = (addr.last_name || '').trim();
+    const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim())
+      || `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+      || addr.name
+      || customer.name
+      || 'Customer';
+
+    const rawCity = addr.city || '';
+    const { getCorrectedCity } = require('../../routes/cities');
+    const cleanCity = getCorrectedCity(rawCity);
+    const phone = addr.phone || customer.phone || '';
+    const fullAddress = [addr.address1, addr.address2].filter(Boolean).join(', ').trim() || cleanCity;
 
     let totalCost = 0, productTitles = '', activeCount = 0;
     const isCancelled = Boolean(order.cancelled_at);
@@ -799,6 +838,10 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
       db.prepare(`
         UPDATE orders SET 
+          customer_name = ?,
+          address = ?,
+          city = ?,
+          phone = ?,
           price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
           items_count = ?,
           notes = ?,
@@ -820,6 +863,7 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
           status_date = datetime('now')
         WHERE id = ?
       `).run(
+        fullName, fullAddress, cleanCity, phone,
         finalPrice, activeCount, order.note || '', productTitles,
         mapShopifyFinancialStatus(order.financial_status),
         existing.cost_locked ? existing.cost : (totalCost > 0 ? totalCost : (existing.cost || 0)),
@@ -831,12 +875,6 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
       try { require('../../sse').broadcast('order_updated', { storeId, shopifyOrderId }); } catch(e) {}
     } else {
       const token = crypto.randomBytes(16).toString('hex');
-      const fullName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim() || (customer.first_name || '');
-      
-      const rawCity = addr.city || '';
-      const { getCorrectedCity } = require('../../routes/cities');
-      const cleanCity = getCorrectedCity(rawCity);
-      
       const shopifyShipping = order.shipping_lines?.[0]?.price ? parseFloat(order.shipping_lines[0].price) : 0;
       const shopifyDiscount = parseFloat(order.current_total_discounts || order.total_discounts || 0);
       const customerEmail = order.email || order.contact_email || customer.email || addr.email || '';
@@ -851,8 +889,8 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         storeId, String(order.id), order.name,
         fullName,
         (order.created_at || '').split('T')[0],
-        addr.phone || customer.phone || '',
-        `${addr.address1 || ''} ${cleanCity}`.trim(),
+        phone,
+        fullAddress,
         cleanCity,
         finalPrice, tracking, activeCount, order.note || '', productTitles,
         lineItemsJson,
@@ -931,6 +969,10 @@ async function syncSpecificOrders(store, shopifyIds) {
 
     const updateStmt = db.prepare(`
       UPDATE orders SET 
+        customer_name = ?,
+        address = ?,
+        city = ?,
+        phone = ?,
         price = CASE WHEN is_cs_edited = 1 THEN price ELSE ? END,
         items_count = ?,
         notes = ?,
@@ -950,6 +992,22 @@ async function syncSpecificOrders(store, shopifyIds) {
     `);
 
     for (const fresh of shopifyOrders) {
+      const addr = fresh.shipping_address || fresh.billing_address || {};
+      const customer = fresh.customer || {};
+      const firstName = (addr.first_name || '').trim();
+      const lastName = (addr.last_name || '').trim();
+      const fullName = (firstName === lastName ? firstName : `${firstName} ${lastName}`.trim())
+        || `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+        || addr.name
+        || customer.name
+        || 'Customer';
+
+      const rawCity = addr.city || '';
+      const { getCorrectedCity } = require('../../routes/cities');
+      const cleanCity = getCorrectedCity(rawCity);
+      const phone = addr.phone || customer.phone || '';
+      const fullAddress = [addr.address1, addr.address2].filter(Boolean).join(', ').trim() || cleanCity;
+
       const finalPrice = parseFloat(fresh.current_total_price || fresh.total_price || 0);
       let productTitles = [];
       fresh.line_items.forEach(item => {
@@ -967,6 +1025,7 @@ async function syncSpecificOrders(store, shopifyIds) {
       const shopifyDiscount = parseFloat(fresh.current_total_discounts || fresh.total_discounts || 0);
 
       updateStmt.run(
+        fullName, fullAddress, cleanCity, phone,
         finalPrice, fresh.line_items.length, fresh.note || '',
         productTitles.join(', '),
         mapShopifyFinancialStatus(fresh.financial_status),
