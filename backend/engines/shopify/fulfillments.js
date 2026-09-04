@@ -90,6 +90,9 @@ async function updateShopifyAddress(store, shopifyOrderId, newAddress) {
       id: shopifyOrderId,
       shipping_address: {
         address1: newAddress
+      },
+      billing_address: {
+        address1: newAddress
       }
     }
   };

@@ -272,16 +272,20 @@ exports.updateOrder = async (req, res) => {
           }
 
           if (hasAddressChange) {
-            // Build shipping_address from what was changed, falling back to DB values for unset fields
-            shopifyPayload.order.shipping_address = {
-              address1: req.body.address || req.body.address1 || order.address || order.address1 || '',
-              address2: req.body.address2 || order.address2 || '',
-              city:     req.body.city     || order.city     || '',
-              province: req.body.province || order.province || '',
-              zip:      req.body.zip      || order.zip      || '',
-              phone:    req.body.phone    || order.phone    || '',
-              country:  order.country     || 'PK',
+            // Build shipping_address & billing_address from what was changed, falling back to DB values for unset fields
+            const addrPayload = {
+              first_name: req.body.first_name || (order.customer_name ? order.customer_name.split(' ')[0] : ''),
+              last_name:  req.body.last_name  || (order.customer_name ? order.customer_name.split(' ').slice(1).join(' ') : ''),
+              address1:   req.body.address || req.body.address1 || order.address || order.address1 || '',
+              address2:   req.body.address2 || order.address2 || '',
+              city:       req.body.city     || order.city     || '',
+              province:   req.body.province || order.province || '',
+              zip:        req.body.zip      || order.zip      || '',
+              phone:      req.body.phone    || order.phone    || '',
+              country:    order.country     || 'PK',
             };
+            shopifyPayload.order.shipping_address = addrPayload;
+            shopifyPayload.order.billing_address = addrPayload;
           }
 
           console.log(`📦 [ADDRESS_SYNC] Pushing to Shopify order ${order.shopify_order_id}:`, JSON.stringify(shopifyPayload.order.shipping_address || {}));
@@ -401,7 +405,14 @@ exports.updateAddressLiveShopify = async (req, res) => {
 
   try {
     const shopifyUrl = `https://${order.shop_domain}/admin/api/2024-10/orders/${order.shopify_order_id}.json`;
-    const body = { order: { id: order.shopify_order_id, shipping_address: { first_name, last_name, address1, address2, city, phone } } };
+    const addrPayload = { first_name, last_name, address1, address2, city, phone };
+    const body = { 
+      order: { 
+        id: order.shopify_order_id, 
+        shipping_address: addrPayload,
+        billing_address: addrPayload
+      } 
+    };
 
     const sRes = await fetch(shopifyUrl, {
       method: 'PUT',
