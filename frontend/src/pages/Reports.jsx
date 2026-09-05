@@ -104,7 +104,7 @@ export default function Reports() {
     else if (colId === 'whatsappRetPercent') { filters.status = 'Returned,Return Received'; filters.keyword = 'whatsapp'; }
     else if (colId === 'whatsappTotalSale') { filters.status = '[WHATSAPP ONLY]'; }
     else if (colId === 'whatsappDeliveredSale' || colId === 'whatsappAov') { filters.status = 'Delivered'; filters.keyword = 'whatsapp'; }
-    else if (colId === 'whatsappCgs' || colId === 'whatsappAvgCgs') { filters.status = '[WHATSAPP ONLY]'; }
+    else if (colId === 'whatsappCgs' || colId === 'whatsappAvgCgs' || colId === 'whatsappCourier' || colId === 'whatsappAvgCourier') { filters.status = '[WHATSAPP ONLY]'; }
     else if (colId === 'cancelations') filters.status = 'Cancelled';
     else if (colId === 'pending') filters.status = 'Pending';
     else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';
@@ -143,6 +143,8 @@ export default function Reports() {
     { id: 'whatsappAov', label: 'WA AOV', group: 'income' },
     { id: 'whatsappCgs', label: 'WA CGS', group: 'income' },
     { id: 'whatsappAvgCgs', label: 'WA Avg CGS', group: 'income' },
+    { id: 'whatsappCourier', label: 'WA Courier', group: 'income' },
+    { id: 'whatsappAvgCourier', label: 'WA Avg Courier', group: 'income' },
     { id: 'cgs', label: 'CGS', group: 'income' },
     { id: 'cgsPercent', label: 'CGS %', group: 'income' },
     { id: 'taxPaid', label: 'TAX Paid', group: 'income' },

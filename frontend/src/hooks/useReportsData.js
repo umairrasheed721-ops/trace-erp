@@ -301,7 +301,7 @@ export default function useReportsData(activeStoreId, toast) {
           intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
           zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, whatsappOrders: 0,
-          whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0,
+          whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0, whatsappCourier: 0,
           surplusPayout: 0, surplusPayoutCount: 0
         };
       }
@@ -342,6 +342,7 @@ export default function useReportsData(activeStoreId, toast) {
       m.whatsappReturned += row.whatsappReturned || 0;
       m.whatsappDeliveredSale += row.whatsappDeliveredSale || 0;
       m.whatsappCgs += row.whatsappCgs || 0;
+      m.whatsappCourier += row.whatsappCourier || 0;
       m.surplusPayout += row.surplusPayout || 0;
       m.surplusPayoutCount += row.surplusPayoutCount || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
@@ -385,6 +386,8 @@ export default function useReportsData(activeStoreId, toast) {
       const whatsappAov = (m.whatsappDelivered || 0) > 0 ? (m.whatsappDeliveredSale / m.whatsappDelivered) : 0;
       // 📊 WHATSAPP_AVG_CGS: Monthly Average CGS per delivered WhatsApp order. Source: m.whatsappCgs, m.whatsappDelivered
       const whatsappAvgCgs = (m.whatsappDelivered || 0) > 0 ? (m.whatsappCgs / m.whatsappDelivered) : 0;
+      // 📊 WHATSAPP_AVG_COURIER: Monthly Average courier fee per delivered WhatsApp order. Source: m.whatsappCourier, m.whatsappDelivered
+      const whatsappAvgCourier = (m.whatsappDelivered || 0) > 0 ? (m.whatsappCourier / m.whatsappDelivered) : 0;
 
       const finalRow = { 
         ...m, date: m.month, 
@@ -405,6 +408,8 @@ export default function useReportsData(activeStoreId, toast) {
         whatsappAov,
         whatsappCgs: m.whatsappCgs || 0,
         whatsappAvgCgs,
+        whatsappCourier: m.whatsappCourier || 0,
+        whatsappAvgCourier,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
         deliveredRoas: totalMarketing > 0 ? (m.deliveredSale / totalMarketing) : 0,
         ndrRecoveryRate: m.ordersWithFailedAttempts > 0 ? (m.failedButDelivered / m.ordersWithFailedAttempts) * 100 : 0,

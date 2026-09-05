@@ -177,6 +177,16 @@ const COLUMN_INFO = {
     formula: "WhatsApp CGS / WhatsApp Delivered Count",
     example: "If total WhatsApp CGS = Rs 30,000 across 20 orders → WA Avg CGS = Rs 1,500."
   },
+  whatsappCourier: {
+    description: "WhatsApp Courier Fee. Total shipping and return costs incurred on WhatsApp orders.",
+    formula: "SUM(courier_fee) for WhatsApp dispatched orders",
+    example: "Total shipping fees charged by PostEx / Leopards for WhatsApp parcels."
+  },
+  whatsappAvgCourier: {
+    description: "WhatsApp Average Courier. Absorbed shipping fee per delivered WhatsApp order.",
+    formula: "WhatsApp Courier Fee / WhatsApp Delivered Count",
+    example: "If WA Courier = Rs 10,000 across 20 delivered orders → WA Avg Courier = Rs 500."
+  },
   cancelations: {
     description: "Total cancellations before dispatch.",
     formula: "COUNT(id) WHERE status = 'Cancelled'",
@@ -282,8 +292,8 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
-const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs']);
+const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','whatsappCourier','whatsappAvgCourier','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','whatsappCourier','whatsappAvgCourier']);
 const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate','prepaidPercent','whatsappPercent','whatsappDelPercent','whatsappRetPercent']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
 const EDITABLE_IDS = new Set(['marketingSpend','tiktokMarketing','actualExp','diffCorrection']);
