@@ -483,6 +483,7 @@ export default function useReportsData(activeStoreId, toast) {
     setShowCustom,
     activeDateRange,
     hiddenColumns,
+    setHiddenColumns,
     sortConfig,
     showColPicker,
     setShowColPicker,

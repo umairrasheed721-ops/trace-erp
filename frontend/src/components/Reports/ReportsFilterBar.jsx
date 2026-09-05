@@ -14,6 +14,7 @@ export default function ReportsFilterBar({
   setShowColPicker,
   columns,
   hiddenColumns,
+  setHiddenColumns,
   toggleColumn,
   view,
   setView,
@@ -23,6 +24,30 @@ export default function ReportsFilterBar({
   tableLayout,
   setTableLayout
 }) {
+  const whatsappColIds = new Set([
+    'date', 'whatsappOrders', 'whatsappPercent', 'whatsappDelPercent', 'whatsappRetPercent', 
+    'whatsappTotalSale', 'whatsappDeliveredSale', 'whatsappAov', 'whatsappCgs', 'whatsappAvgCgs', 
+    'whatsappCourier', 'whatsappAvgCourier'
+  ]);
+
+  const nonWhatsappCols = (columns || []).filter(c => !whatsappColIds.has(c.id)).map(c => c.id);
+  const isWhatsappView = hiddenColumns && hiddenColumns.length === nonWhatsappCols.length && 
+    nonWhatsappCols.length > 0 && nonWhatsappCols.every(id => hiddenColumns.includes(id));
+  const isAllView = !hiddenColumns || hiddenColumns.length === 0;
+  const activePreset = isWhatsappView ? 'whatsapp' : (isAllView ? 'all' : 'custom');
+
+  const setWhatsappView = () => {
+    if (typeof setHiddenColumns === 'function') {
+      setHiddenColumns(nonWhatsappCols);
+    }
+  };
+
+  const setAllColumnsView = () => {
+    if (typeof setHiddenColumns === 'function') {
+      setHiddenColumns([]);
+    }
+  };
+
   return (
     <>
       {/* ─── Date Range Filter Bar ─── */}
@@ -88,6 +113,71 @@ export default function ReportsFilterBar({
             </div>
           )}
         </div>
+
+        {/* 💬 View Preset Mode Switcher */}
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-active)', padding: 4, borderRadius: 10, border: '1px solid var(--border)' }}>
+          <button
+            className={`btn ${activePreset === 'all' ? 'btn-primary' : ''}`}
+            onClick={setAllColumnsView}
+            title="Show all PnL columns (Normal View)"
+            style={{ padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700 }}
+          >
+            👁️ Normal View
+          </button>
+          <button
+            className={`btn ${activePreset === 'whatsapp' ? 'btn-primary' : ''}`}
+            onClick={setWhatsappView}
+            title="Focus ONLY on WhatsApp metrics & hide all other noise"
+            style={{ 
+              padding: '6px 14px', 
+              fontSize: '0.76rem', 
+              fontWeight: 700, 
+              background: activePreset === 'whatsapp' ? '#25D366' : 'transparent', 
+              color: activePreset === 'whatsapp' ? '#ffffff' : '#25D366',
+              border: activePreset === 'whatsapp' ? 'none' : '1px solid rgba(37,211,102,0.4)',
+              boxShadow: activePreset === 'whatsapp' ? '0 0 10px rgba(37,211,102,0.3)' : 'none'
+            }}
+          >
+            💬 WhatsApp View
+          </button>
+        </div>
+
+        {isWhatsappView && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 12px',
+            borderRadius: 20,
+            background: 'rgba(37,211,102,0.12)',
+            border: '1px solid rgba(37,211,102,0.3)',
+            color: '#25D366',
+            fontSize: '0.72rem',
+            fontWeight: 700
+          }}>
+            <span>💬 WhatsApp Focus Mode Active (11 Metrics)</span>
+            <button
+              onClick={setAllColumnsView}
+              style={{
+                background: 'rgba(37,211,102,0.25)',
+                border: 'none',
+                color: '#25D366',
+                borderRadius: '50%',
+                width: 18,
+                height: 18,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 10,
+                fontWeight: 900
+              }}
+              title="Exit WhatsApp View & Restore All Columns"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {view === 'daily' && filteredDaily.length > 0 && (
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
