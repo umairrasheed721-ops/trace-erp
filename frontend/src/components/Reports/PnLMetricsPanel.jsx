@@ -137,6 +137,11 @@ const COLUMN_INFO = {
     formula: "COUNT(id) WHERE (tags LIKE '%whatsapp%' OR notes LIKE '%whatsapp%') AND tags NOT LIKE '%whatsapp%funnel%'",
     example: "Total count of orders tagged or noted with whatsapp (excluding WhatsApp-In-Funnel)."
   },
+  whatsappPercent: {
+    description: "WhatsApp Share Percentage. Percentage of total dispatched orders that originated from WhatsApp.",
+    formula: "(WhatsApp Orders / Total Dispatched) * 100",
+    example: "If 100 WhatsApp orders were placed out of 1,000 total dispatches → WA% = 10%."
+  },
   whatsappDelPercent: {
     description: "WhatsApp Delivery Rate. The percentage of WhatsApp-tagged orders that were successfully delivered.",
     formula: "(WhatsApp Delivered / WhatsApp Total Orders) * 100",
@@ -252,9 +257,9 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappDelPercent','whatsappRetPercent','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
 const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit']);
-const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate','prepaidPercent','whatsappDelPercent','whatsappRetPercent']);
+const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate','prepaidPercent','whatsappPercent','whatsappDelPercent','whatsappRetPercent']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
 const EDITABLE_IDS = new Set(['marketingSpend','tiktokMarketing','actualExp','diffCorrection']);
 

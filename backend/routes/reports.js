@@ -248,6 +248,8 @@ router.get('/daily', (req, res) => {
         prepaidPercent: totalDispatched > 0 ? ((day.prepaid_orders || 0) / totalDispatched) * 100 : 0,
         claimOrders: day.claim_orders || 0,
         whatsappOrders: day.whatsapp_orders || 0,
+        // 📊 WHATSAPP_PCT: Percentage of total dispatched orders that are WhatsApp-tagged. Source: day.whatsapp_orders, totalDispatched
+        whatsappPercent: totalDispatched > 0 ? ((day.whatsapp_orders || 0) / totalDispatched) * 100 : 0,
         whatsappDelivered: day.whatsapp_delivered || 0,
         whatsappReturned: day.whatsapp_returned || 0,
         // 📊 WHATSAPP_DEL_PCT: Delivery percentage of WhatsApp-tagged orders. Source: day.whatsapp_delivered, day.whatsapp_orders
@@ -291,7 +293,7 @@ router.get('/daily', (req, res) => {
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, mathCounter: 0, cashInTransit: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
             deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, prepaidPercent: 0, claimOrders: 0,
-            whatsappOrders: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDelPercent: 0, whatsappRetPercent: 0,
+            whatsappOrders: 0, whatsappPercent: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDelPercent: 0, whatsappRetPercent: 0,
             surplusPayout: 0, surplusPayoutCount: 0
           });
         }
