@@ -152,6 +152,11 @@ const COLUMN_INFO = {
     formula: "(WhatsApp Returned / WhatsApp Total Orders) * 100",
     example: "If 100 orders were tagged with WhatsApp and 15 were returned/restocked → WA RET% = 15%."
   },
+  whatsappTotalSale: {
+    description: "WhatsApp Total Sales (Landed Sales). Gross revenue value of all landed WhatsApp-tagged orders.",
+    formula: "SUM(price) WHERE tags LIKE '%whatsapp%'",
+    example: "Total gross sales value of all WhatsApp orders placed, regardless of current delivery status."
+  },
   whatsappDeliveredSale: {
     description: "WhatsApp Delivered Sales. Total revenue collected from delivered WhatsApp-tagged orders.",
     formula: "SUM(price) WHERE tags LIKE '%whatsapp%' AND status = 'Delivered'",
@@ -277,8 +282,8 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
-const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs']);
+const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs']);
 const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate','prepaidPercent','whatsappPercent','whatsappDelPercent','whatsappRetPercent']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
 const EDITABLE_IDS = new Set(['marketingSpend','tiktokMarketing','actualExp','diffCorrection']);

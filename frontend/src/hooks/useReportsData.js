@@ -301,7 +301,7 @@ export default function useReportsData(activeStoreId, toast) {
           intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
           zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, whatsappOrders: 0,
-          whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0,
+          whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0,
           surplusPayout: 0, surplusPayoutCount: 0
         };
       }
@@ -337,6 +337,7 @@ export default function useReportsData(activeStoreId, toast) {
       m.prepaidOrders += row.prepaidOrders || 0;
       m.claimOrders += row.claimOrders || 0;
       m.whatsappOrders += row.whatsappOrders || 0;
+      m.whatsappTotalSale += row.whatsappTotalSale || 0;
       m.whatsappDelivered += row.whatsappDelivered || 0;
       m.whatsappReturned += row.whatsappReturned || 0;
       m.whatsappDeliveredSale += row.whatsappDeliveredSale || 0;
@@ -399,6 +400,7 @@ export default function useReportsData(activeStoreId, toast) {
         whatsappPercent,
         whatsappDelPercent,
         whatsappRetPercent,
+        whatsappTotalSale: m.whatsappTotalSale || 0,
         whatsappDeliveredSale: m.whatsappDeliveredSale || 0,
         whatsappAov,
         whatsappCgs: m.whatsappCgs || 0,
