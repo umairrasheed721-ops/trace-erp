@@ -24,21 +24,33 @@ export default function ReportsFilterBar({
   tableLayout,
   setTableLayout
 }) {
-  const whatsappColIds = new Set([
-    'date', 'whatsappOrders', 'whatsappPercent', 'whatsappDelPercent', 'whatsappRetPercent', 
+  const whatsappColList = [
+    'whatsappOrders', 'whatsappPercent', 'whatsappDelPercent', 'whatsappRetPercent', 
     'whatsappTotalSale', 'whatsappDeliveredSale', 'whatsappAov', 'whatsappCgs', 'whatsappAvgCgs', 
     'whatsappCourier', 'whatsappAvgCourier'
-  ]);
+  ];
+  const whatsappColIds = new Set(['date', ...whatsappColList]);
 
   const nonWhatsappCols = (columns || []).filter(c => !whatsappColIds.has(c.id)).map(c => c.id);
+  
   const isWhatsappView = hiddenColumns && hiddenColumns.length === nonWhatsappCols.length && 
     nonWhatsappCols.length > 0 && nonWhatsappCols.every(id => hiddenColumns.includes(id));
+  
+  const isNoWhatsappView = hiddenColumns && hiddenColumns.length === whatsappColList.length &&
+    whatsappColList.every(id => hiddenColumns.includes(id));
+
   const isAllView = !hiddenColumns || hiddenColumns.length === 0;
-  const activePreset = isWhatsappView ? 'whatsapp' : (isAllView ? 'all' : 'custom');
+  const activePreset = isWhatsappView ? 'whatsapp' : (isNoWhatsappView ? 'no_whatsapp' : (isAllView ? 'all' : 'custom'));
 
   const setWhatsappView = () => {
     if (typeof setHiddenColumns === 'function') {
       setHiddenColumns(nonWhatsappCols);
+    }
+  };
+
+  const setNoWhatsappView = () => {
+    if (typeof setHiddenColumns === 'function') {
+      setHiddenColumns(whatsappColList);
     }
   };
 
@@ -119,17 +131,25 @@ export default function ReportsFilterBar({
           <button
             className={`btn ${activePreset === 'all' ? 'btn-primary' : ''}`}
             onClick={setAllColumnsView}
-            title="Show all PnL columns (Normal View)"
-            style={{ padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700 }}
+            title="Show all PnL columns including WhatsApp (Full View)"
+            style={{ padding: '6px 12px', fontSize: '0.76rem', fontWeight: 700 }}
           >
             👁️ Normal View
+          </button>
+          <button
+            className={`btn ${activePreset === 'no_whatsapp' ? 'btn-primary' : ''}`}
+            onClick={setNoWhatsappView}
+            title="Standard PnL View without WhatsApp columns"
+            style={{ padding: '6px 12px', fontSize: '0.76rem', fontWeight: 700 }}
+          >
+            🚫 w/o WhatsApp
           </button>
           <button
             className={`btn ${activePreset === 'whatsapp' ? 'btn-primary' : ''}`}
             onClick={setWhatsappView}
             title="Focus ONLY on WhatsApp metrics & hide all other noise"
             style={{ 
-              padding: '6px 14px', 
+              padding: '6px 12px', 
               fontSize: '0.76rem', 
               fontWeight: 700, 
               background: activePreset === 'whatsapp' ? '#25D366' : 'transparent', 
@@ -173,6 +193,43 @@ export default function ReportsFilterBar({
                 fontWeight: 900
               }}
               title="Exit WhatsApp View & Restore All Columns"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {isNoWhatsappView && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 12px',
+            borderRadius: 20,
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#ef4444',
+            fontSize: '0.72rem',
+            fontWeight: 700
+          }}>
+            <span>🚫 Standard PnL Mode (WhatsApp Hidden)</span>
+            <button
+              onClick={setAllColumnsView}
+              style={{
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: 'none',
+                color: '#ef4444',
+                borderRadius: '50%',
+                width: 18,
+                height: 18,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: 10,
+                fontWeight: 900
+              }}
+              title="Show All Columns"
             >
               ✕
             </button>
