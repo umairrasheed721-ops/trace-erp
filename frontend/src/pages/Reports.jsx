@@ -96,6 +96,7 @@ export default function Reports() {
 
     if (colId === 'landedOrders') filters.status = 'All Statuses';
     else if (colId === 'prepaidOrders') { filters.status = 'All Statuses'; filters.keyword = 'prepaid'; }
+    else if (colId === 'prepaidPercent') { filters.status = 'All Statuses'; filters.keyword = 'prepaid'; }
     else if (colId === 'claimOrders') { filters.status = 'All Statuses'; filters.keyword = 'claim'; }
     else if (colId === 'whatsappOrders') { filters.status = '[WHATSAPP ONLY]'; }
     else if (colId === 'whatsappDelPercent') { filters.status = 'Delivered'; filters.keyword = 'whatsapp'; }
@@ -127,6 +128,7 @@ export default function Reports() {
     { id: 'aov', label: 'AOV', group: 'income' },
     { id: 'deliveredSale', label: 'Delivered Sale', group: 'income' },
     { id: 'prepaidOrders', label: 'Prepaid', group: 'income' },
+    { id: 'prepaidPercent', label: 'Prepaid %', group: 'income' },
     { id: 'claimOrders', label: 'Claim', group: 'income' },
     { id: 'whatsappOrders', label: 'WhatsApp', group: 'income' },
     { id: 'whatsappDelPercent', label: 'WA DEL %', group: 'income' },

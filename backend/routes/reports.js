@@ -244,6 +244,8 @@ router.get('/daily', (req, res) => {
         ordersWithFailedAttempts: day.orders_with_failed_attempts || 0,
         failedButDelivered: day.failed_but_delivered || 0,
         prepaidOrders: day.prepaid_orders || 0,
+        // 📊 PREPAID_PCT: Percentage of dispatched orders that are prepaid. Source: day.prepaid_orders, totalDispatched
+        prepaidPercent: totalDispatched > 0 ? ((day.prepaid_orders || 0) / totalDispatched) * 100 : 0,
         claimOrders: day.claim_orders || 0,
         whatsappOrders: day.whatsapp_orders || 0,
         whatsappDelivered: day.whatsapp_delivered || 0,
@@ -288,7 +290,7 @@ router.get('/daily', (req, res) => {
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, mathCounter: 0, cashInTransit: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
-            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, claimOrders: 0,
+            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, prepaidPercent: 0, claimOrders: 0,
             whatsappOrders: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDelPercent: 0, whatsappRetPercent: 0,
             surplusPayout: 0, surplusPayoutCount: 0
           });

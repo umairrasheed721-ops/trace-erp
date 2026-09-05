@@ -370,6 +370,8 @@ export default function useReportsData(activeStoreId, toast) {
       const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
       const canPercent = landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0;
 
+      // 📊 PREPAID_PCT: Monthly percentage of dispatched orders that are prepaid. Source: m.prepaidOrders, m.totalDispatched
+      const prepaidPercent = m.totalDispatched > 0 ? ((m.prepaidOrders || 0) / m.totalDispatched) * 100 : 0;
       // 📊 WHATSAPP_DEL_PCT: Monthly delivery percentage of WhatsApp-tagged orders. Source: m.whatsappDelivered, m.whatsappOrders
       const whatsappDelPercent = (m.whatsappOrders || 0) > 0 ? (m.whatsappDelivered / m.whatsappOrders) * 100 : 0;
       // 📊 WHATSAPP_RET_PCT: Monthly return percentage of WhatsApp-tagged orders. Source: m.whatsappReturned, m.whatsappOrders
@@ -385,6 +387,7 @@ export default function useReportsData(activeStoreId, toast) {
         actualPnl,
         canPercent,
         delPercent,
+        prepaidPercent,
         whatsappDelPercent,
         whatsappRetPercent,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
