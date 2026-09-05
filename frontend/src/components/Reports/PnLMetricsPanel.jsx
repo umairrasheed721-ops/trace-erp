@@ -132,6 +132,16 @@ const COLUMN_INFO = {
     formula: "COUNT(id) WHERE (tags LIKE '%whatsapp%' OR notes LIKE '%whatsapp%') AND tags NOT LIKE '%whatsapp%funnel%'",
     example: "Total count of orders tagged or noted with whatsapp (excluding WhatsApp-In-Funnel)."
   },
+  whatsappDelPercent: {
+    description: "WhatsApp Delivery Rate. The percentage of WhatsApp-tagged orders that were successfully delivered.",
+    formula: "(WhatsApp Delivered / WhatsApp Total Orders) * 100",
+    example: "If 100 orders were tagged with WhatsApp and 80 were delivered → WA DEL% = 80%."
+  },
+  whatsappRetPercent: {
+    description: "WhatsApp Return Rate. The percentage of WhatsApp-tagged orders that were returned or restocked.",
+    formula: "(WhatsApp Returned / WhatsApp Total Orders) * 100",
+    example: "If 100 orders were tagged with WhatsApp and 15 were returned/restocked → WA RET% = 15%."
+  },
   cancelations: {
     description: "Total cancellations before dispatch.",
     formula: "COUNT(id) WHERE status = 'Cancelled'",

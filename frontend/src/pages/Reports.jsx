@@ -98,6 +98,8 @@ export default function Reports() {
     else if (colId === 'prepaidOrders') { filters.status = 'All Statuses'; filters.keyword = 'prepaid'; }
     else if (colId === 'claimOrders') { filters.status = 'All Statuses'; filters.keyword = 'claim'; }
     else if (colId === 'whatsappOrders') { filters.status = '[WHATSAPP ONLY]'; }
+    else if (colId === 'whatsappDelPercent') { filters.status = 'Delivered'; filters.keyword = 'whatsapp'; }
+    else if (colId === 'whatsappRetPercent') { filters.status = 'Returned,Return Received'; filters.keyword = 'whatsapp'; }
     else if (colId === 'cancelations') filters.status = 'Cancelled';
     else if (colId === 'pending') filters.status = 'Pending';
     else if (colId === 'booked') filters.status = 'Booked,Picked Up,Unassigned';
@@ -127,6 +129,8 @@ export default function Reports() {
     { id: 'prepaidOrders', label: 'Prepaid', group: 'income' },
     { id: 'claimOrders', label: 'Claim', group: 'income' },
     { id: 'whatsappOrders', label: 'WhatsApp', group: 'income' },
+    { id: 'whatsappDelPercent', label: 'WA DEL %', group: 'income' },
+    { id: 'whatsappRetPercent', label: 'WA RET %', group: 'income' },
     { id: 'cgs', label: 'CGS', group: 'income' },
     { id: 'cgsPercent', label: 'CGS %', group: 'income' },
     { id: 'taxPaid', label: 'TAX Paid', group: 'income' },

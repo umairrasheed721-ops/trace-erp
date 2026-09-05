@@ -151,6 +151,7 @@ router.get('/api/public/sync-metafields-all', async (req, res) => {
     { name: 'Size Chart', key: 'size_chart', type: 'file_reference', description: 'Size Chart Image' },
     { name: 'Product Video', key: 'product_video', type: 'file_reference', description: 'Product Video MP4 file' },
     { name: 'Advance Only', key: 'advance_only', type: 'boolean', description: 'Require 100% advance payment' },
+    { name: 'COD Only', key: 'cod_only', type: 'boolean', description: 'Disable Advance Payment and allow Cash on Delivery only' },
     { name: 'Hide Bundles', key: 'hide_bundles', type: 'boolean', description: 'Hide package bundle deals for product' }
   ];
 

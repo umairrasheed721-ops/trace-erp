@@ -301,6 +301,7 @@ export default function useReportsData(activeStoreId, toast) {
           intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
           zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, whatsappOrders: 0,
+          whatsappDelivered: 0, whatsappReturned: 0,
           surplusPayout: 0, surplusPayoutCount: 0
         };
       }
@@ -336,6 +337,8 @@ export default function useReportsData(activeStoreId, toast) {
       m.prepaidOrders += row.prepaidOrders || 0;
       m.claimOrders += row.claimOrders || 0;
       m.whatsappOrders += row.whatsappOrders || 0;
+      m.whatsappDelivered += row.whatsappDelivered || 0;
+      m.whatsappReturned += row.whatsappReturned || 0;
       m.surplusPayout += row.surplusPayout || 0;
       m.surplusPayoutCount += row.surplusPayoutCount || 0;
       const totalMarketing = (row.marketingSpend || 0) + (row.tiktokMarketing || 0);
@@ -367,6 +370,11 @@ export default function useReportsData(activeStoreId, toast) {
       const delPercent = m.totalDispatched > 0 ? (m.delivered / m.totalDispatched) * 100 : 0;
       const canPercent = landedOrders > 0 ? (m.cancelations / landedOrders) * 100 : 0;
 
+      // 📊 WHATSAPP_DEL_PCT: Monthly delivery percentage of WhatsApp-tagged orders. Source: m.whatsappDelivered, m.whatsappOrders
+      const whatsappDelPercent = (m.whatsappOrders || 0) > 0 ? (m.whatsappDelivered / m.whatsappOrders) * 100 : 0;
+      // 📊 WHATSAPP_RET_PCT: Monthly return percentage of WhatsApp-tagged orders. Source: m.whatsappReturned, m.whatsappOrders
+      const whatsappRetPercent = (m.whatsappOrders || 0) > 0 ? (m.whatsappReturned / m.whatsappOrders) * 100 : 0;
+
       const finalRow = { 
         ...m, date: m.month, 
         aov: m.delivered > 0 ? (m.deliveredSale / m.delivered) : 0,
@@ -377,6 +385,8 @@ export default function useReportsData(activeStoreId, toast) {
         actualPnl,
         canPercent,
         delPercent,
+        whatsappDelPercent,
+        whatsappRetPercent,
         roasMeta: totalMarketing > 0 ? (m.totalSale / totalMarketing) : 0,
         deliveredRoas: totalMarketing > 0 ? (m.deliveredSale / totalMarketing) : 0,
         ndrRecoveryRate: m.ordersWithFailedAttempts > 0 ? (m.failedButDelivered / m.ordersWithFailedAttempts) * 100 : 0,
