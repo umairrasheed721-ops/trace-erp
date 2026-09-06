@@ -31,7 +31,8 @@ function parseNoteBlocks(notes) {
     l.split(/\|\s*(?=\[)/).map(s => s.trim()).filter(Boolean)
   )
 
-  const blocks = []
+  const adviceTags = []
+  const otherBlocks = []
 
   lines.forEach(line => {
     // 🛡️ Filter out generic system shipping confirmation logs
@@ -49,9 +50,25 @@ function parseNoteBlocks(notes) {
       .join(' • ')
 
     if (joinedLine) {
-      blocks.push(joinedLine)
+      if (joinedLine.includes('[Shipper Advice')) {
+        adviceTags.push(joinedLine)
+      } else {
+        otherBlocks.push(joinedLine)
+      }
     }
   })
+
+  const blocks = []
+  if (adviceTags.length > 0) {
+    // Combine all [Shipper Advice ...] notes into one single box
+    const combinedContent = adviceTags
+      .map(t => t.replace(/^\[Shipper Advice\s*-\s*/i, '').replace(/^\[Shipper Advice:\s*/i, '').replace(/\]$/, '').trim())
+      .filter(Boolean)
+      .join(' • ')
+    blocks.push(`[Shipper Advice - ${combinedContent}]`)
+  }
+
+  otherBlocks.forEach(b => blocks.push(b))
 
   return blocks
 }
