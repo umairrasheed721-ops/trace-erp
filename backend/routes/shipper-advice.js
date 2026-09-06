@@ -89,6 +89,7 @@ router.get('/', (req, res) => {
       WHERE store_id = ?
       AND COALESCE(status_date, order_date) IS NOT NULL AND COALESCE(status_date, order_date) != ''
       AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-180 days')
+      AND datetime(COALESCE(status_date, order_date)) <= datetime('now')
       ORDER BY m_val DESC
       LIMIT 6
     `).all(store_id);
