@@ -103,7 +103,11 @@ router.get('/', (req, res) => {
     const returnsRequested = [];
 
     orders.forEach(o => {
-      if (blacklistSet.has(o.tracking_number)) return;
+      if (
+        (o.tracking_number && blacklistSet.has(o.tracking_number)) ||
+        (o.ref_number && blacklistSet.has(o.ref_number)) ||
+        (o.id && blacklistSet.has(String(o.id)))
+      ) return;
 
       const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
       const notesLower = (o.notes || '').toLowerCase().trim();
@@ -340,16 +344,21 @@ router.post('/return', (req, res) => {
 
 /**
  * POST /api/shipper-advice/ignore
- * Action: Blacklist tracking number from Shipper Advice feed
+ * Action: Blacklist parcel by tracking_number, ref_number, or order_id from Shipper Advice feed
  */
 router.post('/ignore', (req, res) => {
-  const { tracking_number, store_id } = req.body;
-  if (!tracking_number || !store_id) return res.status(400).json({ error: 'tracking_number and store_id required' });
+  const { tracking_number, ref_number, order_id, store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  const targets = Array.from(new Set([tracking_number, ref_number, order_id ? String(order_id) : null].filter(Boolean)));
+  if (targets.length === 0) return res.status(400).json({ error: 'tracking_number, ref_number, or order_id required' });
 
   try {
-    db.prepare('INSERT OR IGNORE INTO blacklist (store_id, tracking_number, created_at) VALUES (?, ?, datetime(\'now\'))')
-      .run(store_id, tracking_number);
-    res.json({ success: true, message: 'Tracking number ignored from Shipper Advice' });
+    const stmt = db.prepare('INSERT OR IGNORE INTO blacklist (store_id, tracking_number, created_at) VALUES (?, ?, datetime(\'now\'))');
+    targets.forEach(target => {
+      stmt.run(store_id, target);
+    });
+    res.json({ success: true, message: 'Parcel ignored from Shipper Advice feed' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

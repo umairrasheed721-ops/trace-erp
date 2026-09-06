@@ -122,19 +122,28 @@ export default function ShipperAdvice() {
 
   // Handle Ignore/Blacklist
   const handleIgnore = async (order) => {
-    if (!window.confirm(`Ignore tracking ${order.tracking_number} from Shipper Advice feed?`)) return
+    const identifier = order.ref_number || order.tracking_number || order.id
+    if (!window.confirm(`Ignore order #${identifier} from Shipper Advice feed?`)) return
     try {
       const res = await fetch('/api/shipper-advice/ignore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracking_number: order.tracking_number, store_id: activeStoreId })
+        body: JSON.stringify({
+          tracking_number: order.tracking_number || null,
+          ref_number: order.ref_number || null,
+          order_id: order.id,
+          store_id: activeStoreId
+        })
       })
       if (res.ok) {
-        addToast(`🙈 ${order.tracking_number} ignored`, 'info')
+        addToast(`🙈 Order #${identifier} ignored from feed`, 'info')
         fetchAdviceFeed()
+      } else {
+        const data = await res.json()
+        addToast(`❌ ${data.error || 'Failed to ignore order'}`, 'error')
       }
     } catch {
-      addToast('Failed to ignore tracking', 'error')
+      addToast('Failed to ignore order', 'error')
     }
   }
 
