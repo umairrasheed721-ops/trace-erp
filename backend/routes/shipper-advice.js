@@ -606,7 +606,7 @@ router.post('/group-report', async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const actionNote = `[Shipper Advice - Group Escalation: ${remarks || 'CS Support Group Alerted'}]`;
+    const actionNote = `[Shipper Advice - Group Sent]`;
     const newNotes = order.notes ? `${order.notes} | ${actionNote}` : actionNote;
 
     db.prepare(`

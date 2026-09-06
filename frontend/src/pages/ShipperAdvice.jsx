@@ -346,7 +346,7 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`👥 Group escalation logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
+        addToast(`👥 Group note logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
         fetchAdviceFeed()
       }
     } catch (err) {
