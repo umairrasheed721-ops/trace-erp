@@ -429,7 +429,7 @@ router.post('/ignore', (req, res) => {
   if (targets.length === 0) return res.status(400).json({ error: 'tracking_number, ref_number, or order_id required' });
 
   try {
-    const stmt = db.prepare('INSERT OR IGNORE INTO blacklist (store_id, tracking_number, created_at) VALUES (?, ?, datetime(\'now\'))');
+    const stmt = db.prepare('INSERT OR IGNORE INTO blacklist (store_id, tracking_number) VALUES (?, ?)');
     targets.forEach(target => {
       stmt.run(store_id, target);
     });
