@@ -174,9 +174,8 @@ router.get('/', (req, res) => {
 
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
                               notesLower.includes('[shipper advice - stuck report') ||
-                              notesLower.includes('[shipper advice - wa alert') ||
                               notesLower.includes('[shipper advice - re-escalate') ||
-                              notesLower.includes('[shipper advice - group escalation') ||
+                              notesLower.includes('[shipper advice - group') ||
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
