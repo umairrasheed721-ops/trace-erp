@@ -176,6 +176,7 @@ router.get('/', (req, res) => {
                               notesLower.includes('[shipper advice - stuck report') ||
                               notesLower.includes('[shipper advice - wa alert') ||
                               notesLower.includes('[shipper advice - re-escalate') ||
+                              notesLower.includes('[shipper advice - group escalation') ||
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
@@ -588,6 +589,56 @@ router.post('/re-escalate', async (req, res) => {
 
     broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
     res.json({ success: true, message: 'Urgent escalation logged & synced to Shopify successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/shipper-advice/group-report
+ * Action: Log Group Escalation instruction & sync note to Shopify
+ */
+router.post('/group-report', async (req, res) => {
+  const { id, remarks } = req.body;
+  if (!id) return res.status(400).json({ error: 'order id required' });
+
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const actionNote = `[Shipper Advice - Group Escalation: ${remarks || 'CS Support Group Alerted'}]`;
+    const newNotes = order.notes ? `${order.notes} | ${actionNote}` : actionNote;
+
+    db.prepare(`
+      UPDATE orders 
+      SET notes = ?,
+          status_date = datetime('now')
+      WHERE id = ?
+    `).run(newNotes, id);
+
+    // Sync note directly to Shopify Admin order notes
+    if (order.shopify_order_id && order.store_id) {
+      try {
+        const { appendShopifyNote } = require('../engines/shopify_finance');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
+          const shopifyStore = {
+            ...store,
+            shop_domain: store.shop_domain || store.shopify_domain,
+            access_token: store.access_token || store.shopify_access_token
+          };
+          console.log(`[ShipperAdvice] Appending Group Escalation note to Shopify order ${order.shopify_order_id}...`);
+          await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
+        } else {
+          console.warn(`[ShipperAdvice] Missing store credentials for Shopify note sync (store_id: ${order.store_id})`);
+        }
+      } catch (shErr) {
+        console.warn('[ShipperAdvice] Shopify note sync warning for group report:', shErr.message);
+      }
+    }
+
+    broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
+    res.json({ success: true, message: 'Group escalation logged & synced to Shopify successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -331,12 +331,27 @@ export default function ShipperAdvice() {
     window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  // Share to Courier CS Support Group via WhatsApp (Group Search & Share)
-  const triggerGroupShare = (order) => {
+  // Share to Courier CS Support Group via WhatsApp (Group Search & Share) & sync to Shopify Note
+  const triggerGroupShare = async (order) => {
     const msg = applyTemplate(groupTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
     window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
+
+    try {
+      const res = await fetch('/api/shipper-advice/group-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id, remarks: 'CS Support Group Alerted' })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(`👥 Group escalation logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
+        fetchAdviceFeed()
+      }
+    } catch (err) {
+      console.error('Failed to log group escalation:', err)
+    }
   }
 
   // Report Stuck Parcel via WhatsApp (Group / Contact Search & Share) & sync to Shopify Note
