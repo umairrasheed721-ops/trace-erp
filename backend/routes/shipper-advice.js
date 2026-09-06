@@ -173,6 +173,9 @@ router.get('/', (req, res) => {
       const effectiveStatus = latestHistStatusLower || courierStatusLower;
 
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
+                              notesLower.includes('[shipper advice - stuck report') ||
+                              notesLower.includes('[shipper advice - wa alert') ||
+                              notesLower.includes('[shipper advice - re-escalate') ||
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
@@ -190,7 +193,10 @@ router.get('/', (req, res) => {
                                 effectiveStatus.includes('return to shipper') ||
                                 effectiveStatus.includes('rts');
 
-      const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => combinedFeed.includes(k) || effectiveStatus.includes(k));
+      // ⚠️ Only match advice keywords against courier_status & effectiveStatus — NOT notes
+      // (notes may contain "[Shipper Advice - ...]" text from past actions which would false-trigger adviceRequired)
+      const courierOnlyFeed = `${courierStatusLower} ${effectiveStatus}`;
+      const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => courierOnlyFeed.includes(k));
 
       // Calculate days stuck in current warehouse/status without movement
       const lastDateStr = o.status_date || o.order_date;
