@@ -468,7 +468,7 @@ export default function ShipperAdvice() {
                   </td>
 
                   {/* Raw Courier Remark Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top', maxWidth: 320 }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top', minWidth: 260, maxWidth: 380, whiteSpace: 'normal' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
                       <span style={{
                         padding: '4px 10px',
@@ -496,18 +496,26 @@ export default function ShipperAdvice() {
                       )}
                     </div>
                     {order.notes && (
-                      <div style={{
-                        fontSize: '0.8rem',
-                        color: 'var(--text-primary)',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border)',
-                        padding: '8px 12px',
-                        borderRadius: 10,
-                        lineHeight: 1.4,
-                        wordBreak: 'break-word',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                      }}>
-                        📝 <span style={{ fontWeight: 600 }}>{order.notes}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                        {order.notes.split(/[\|\n]/).map(n => n.trim()).filter(Boolean).map((noteSeg, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              fontSize: '0.78rem',
+                              color: 'var(--text-primary)',
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border)',
+                              padding: '6px 10px',
+                              borderRadius: 8,
+                              lineHeight: 1.45,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                            }}
+                          >
+                            📝 <span style={{ fontWeight: 600 }}>{noteSeg}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </td>

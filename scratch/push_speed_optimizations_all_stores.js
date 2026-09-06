@@ -12,17 +12,23 @@ const themeLiquidPath = path.join(themeDir, 'layout/theme.liquid');
 const baseCssPath = path.join(themeDir, 'assets/base.css');
 const headerLiquidPath = path.join(themeDir, 'sections/header.liquid');
 const cardProductPath = path.join(themeDir, 'snippets/card-product.liquid');
+const settingsSchemaPath = path.join(themeDir, 'config/settings_schema.json');
+const wpPopupPath = path.join(themeDir, 'snippets/trace-whatsapp-community-popup.liquid');
 
 const themeLiquidContent = fs.readFileSync(themeLiquidPath, 'utf8');
 const baseCssContent = fs.readFileSync(baseCssPath, 'utf8');
 const headerLiquidContent = fs.readFileSync(headerLiquidPath, 'utf8');
 const cardProductContent = fs.readFileSync(cardProductPath, 'utf8');
+const settingsSchemaContent = fs.readFileSync(settingsSchemaPath, 'utf8');
+const wpPopupContent = fs.readFileSync(wpPopupPath, 'utf8');
 
 const filesToUpload = [
   { key: 'layout/theme.liquid', value: themeLiquidContent },
   { key: 'assets/base.css', value: baseCssContent },
   { key: 'sections/header.liquid', value: headerLiquidContent },
-  { key: 'snippets/card-product.liquid', value: cardProductContent }
+  { key: 'snippets/card-product.liquid', value: cardProductContent },
+  { key: 'config/settings_schema.json', value: settingsSchemaContent },
+  { key: 'snippets/trace-whatsapp-community-popup.liquid', value: wpPopupContent }
 ];
 
 async function uploadToStore(shopDomain, accessToken, storeName) {
