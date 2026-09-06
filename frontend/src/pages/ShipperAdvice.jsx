@@ -1,9 +1,18 @@
-// Helper: Parse note string into logical single-line blocks (preventing subfield splits like Ref/Fee/Amt from breaking into multiple bubbles)
+import React, { useState, useEffect, useCallback } from 'react'
+import { useApp } from '../context/AppContext'
+
+// Helper: Parse note string into logical single-line blocks & filter out generic fulfillment logs
 function parseNoteBlocks(notes) {
   if (!notes) return []
   const rawSegments = String(notes).split(/\r?\n/).flatMap(line => line.split('|')).map(s => s.trim()).filter(Boolean)
   const blocks = []
   rawSegments.forEach(seg => {
+    // 🛡️ Filter out generic system shipping confirmation logs
+    const isGenericShippingNote = /(?:confirm\s+)?order\s+has\s+been\s+shipped/i.test(seg) ||
+                                  /order\s+fulfilled/i.test(seg) ||
+                                  /fulfillment\s+created/i.test(seg)
+    if (isGenericShippingNote) return
+
     const isSubField = /^(Ref|Fee|Amt|Amount|Net|Charges|Charge|Status|Date|Rider|Reason):/i.test(seg)
     if (isSubField && blocks.length > 0) {
       blocks[blocks.length - 1] += ` • ${seg}`
