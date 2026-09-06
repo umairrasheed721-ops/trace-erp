@@ -775,9 +775,11 @@ export default function ShipperAdvice() {
 
                   {/* Product Details Column */}
                   <td style={{ padding: '14px 16px', verticalAlign: 'top', maxWidth: 260 }}>
-                    <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                      {order.product_titles || 'N/A'}
-                    </div>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: '0.83rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                      {(order.product_titles || 'N/A').split(',').map((p, i) => (
+                        <li key={i} style={{ marginBottom: 2 }}>{p.trim()}</li>
+                      ))}
+                    </ol>
                   </td>
 
                   {/* Raw Courier Remark Column */}
