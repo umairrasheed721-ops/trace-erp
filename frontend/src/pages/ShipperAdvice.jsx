@@ -480,52 +480,6 @@ export default function ShipperAdvice() {
         </div>
       </div>
 
-      {/* 💥 Monthly Courier Damage & Risk Impact Banner */}
-      <div style={{
-        padding: '18px 24px',
-        borderRadius: 16,
-        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(168, 85, 247, 0.08))',
-        border: '1px solid rgba(239, 68, 68, 0.3)',
-        marginBottom: 20,
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 16
-      }}>
-        <div style={{ flex: '1 1 300px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: '1.1rem' }}>💥</span>
-            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Monthly Courier Damage & Financial Impact
-            </h4>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', fontWeight: 700 }}>
-              {selectedMonth === 'all' ? 'Active 45 Days' : (availableMonths.find(m => m.value === selectedMonth)?.label || selectedMonth)}
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Audit metrics to present to courier account managers for SLA compliance & penalty negotiation.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Affected Parcels</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#fb923c' }}>{financialImpact.total_problem_parcels || 0}</div>
-          </div>
-
-          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>COD at Risk</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#f87171' }}>Rs. {(financialImpact.total_cod_at_risk || 0).toLocaleString()}</div>
-          </div>
-
-          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Courier Ignored / SLA Failed</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#c084fc' }}>{financialImpact.total_ignored_parcels || 0}</div>
-          </div>
-        </div>
-      </div>
-
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(251, 146, 60, 0.05))', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
@@ -604,6 +558,42 @@ export default function ShipperAdvice() {
           <option value="trax">Trax</option>
           <option value="leopard">Leopards</option>
         </select>
+      </div>
+
+      {/* 💥 Monthly Courier Damage & Risk Impact Banner */}
+      <div style={{
+        padding: '14px 20px',
+        borderRadius: 14,
+        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(168, 85, 247, 0.08))',
+        border: '1px solid rgba(239, 68, 68, 0.3)',
+        marginBottom: 16,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '1rem' }}>💥</span>
+          <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-primary)' }}>Courier Damage Impact</span>
+          <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', fontWeight: 700 }}>
+            {selectedMonth === 'all' ? 'Last 45 Days' : (availableMonths.find(m => m.value === selectedMonth)?.label || selectedMonth)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-surface)', padding: '6px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Affected</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fb923c' }}>{financialImpact.total_problem_parcels || 0}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-surface)', padding: '6px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>COD at Risk</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#f87171' }}>Rs. {(financialImpact.total_cod_at_risk || 0).toLocaleString()}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-surface)', padding: '6px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Courier Ignored</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: 900, color: '#c084fc' }}>{financialImpact.total_ignored_parcels || 0}</span>
+          </div>
+        </div>
       </div>
 
       {/* Category Tabs */}
