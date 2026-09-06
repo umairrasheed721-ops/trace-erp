@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 function parseNoteBlocks(notes) {
   if (!notes) return []
 
-  // First: merge any lines that start with ] back into the previous line (split mid-bracket)
+  // Merge continuation lines that are inside an unclosed [ ... ] bracket
   const rawLines = String(notes)
     .split(/\r?\n/)
     .map(l => l.trim())
@@ -13,15 +13,20 @@ function parseNoteBlocks(notes) {
 
   const mergedLines = []
   rawLines.forEach(line => {
-    // If line starts with ] it's an orphaned closing bracket from a mid-newline bracket note
-    if (line.startsWith(']') && mergedLines.length > 0) {
-      mergedLines[mergedLines.length - 1] += line
-    } else {
-      mergedLines.push(line)
+    const last = mergedLines[mergedLines.length - 1]
+    // If last line has an unclosed '[', merge this line into it
+    if (last !== undefined) {
+      const openCount = (last.match(/\[/g) || []).length
+      const closeCount = (last.match(/\]/g) || []).length
+      if (openCount > closeCount) {
+        mergedLines[mergedLines.length - 1] = last + ' ' + line
+        return
+      }
     }
+    mergedLines.push(line)
   })
 
-  // Now split merged lines by pipe before [ (i.e., separate ERP action notes from merchant notes)
+  // Split merged lines by pipe before [ to separate ERP action notes from merchant notes
   const lines = mergedLines.flatMap(l =>
     l.split(/\|\s*(?=\[)/).map(s => s.trim()).filter(Boolean)
   )
