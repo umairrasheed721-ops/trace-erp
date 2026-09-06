@@ -36,6 +36,37 @@ function parseNoteBlocks(notes) {
   return blocks
 }
 
+// Helper: Format raw date string into clean Pakistani ERP date format
+function formatOrderDate(dateStr, includeTime = false) {
+  if (!dateStr) return ''
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) {
+      const parts = String(dateStr).split('T')[0].split('-')
+      if (parts.length === 3) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        const mIdx = parseInt(parts[1], 10) - 1
+        return `${parts[2]} ${months[mIdx] || parts[1]} ${parts[0]}`
+      }
+      return dateStr
+    }
+    const day = String(d.getDate()).padStart(2, '0')
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const month = months[d.getMonth()]
+    const year = d.getFullYear()
+    if (!includeTime) {
+      return `${day} ${month} ${year}`
+    }
+    const hours = d.getHours()
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    const formattedHours = hours % 12 || 12
+    return `${day} ${month} ${year}, ${String(formattedHours).padStart(2, '0')}:${minutes} ${ampm}`
+  } catch (_) {
+    return dateStr
+  }
+}
+
 export default function ShipperAdvice() {
   const { activeStoreId, addToast } = useApp()
   const [loading, setLoading] = useState(true)
@@ -690,8 +721,21 @@ export default function ShipperAdvice() {
                     <div style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: 'var(--text-primary)', marginTop: 2 }}>
                       {order.tracking_number}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                      {order.courier || 'PostEx'}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>{order.courier || 'PostEx'}</span>
+                      {order.order_date && (
+                        <span style={{
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                          background: 'rgba(255, 255, 255, 0.06)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border)',
+                          fontSize: '0.71rem',
+                          fontWeight: 600
+                        }} title="Order Placement Date">
+                          📅 {formatOrderDate(order.order_date)}
+                        </span>
+                      )}
                     </div>
                     {order.line_items_parsed && order.line_items_parsed.length > 0 && (
                       <button
@@ -732,6 +776,19 @@ export default function ShipperAdvice() {
                       }}>
                         ⚠️ {getLatestCourierStatus(order)}
                       </span>
+                      {order.status_date && (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          background: 'rgba(168, 85, 247, 0.12)',
+                          color: '#c084fc',
+                          border: '1px solid rgba(168, 85, 247, 0.3)',
+                          fontSize: '0.73rem',
+                          fontWeight: 700
+                        }} title="Last Courier Status Scan/Update Date">
+                          🕒 {formatOrderDate(order.status_date, true)}
+                        </span>
+                      )}
                       {order.action_status === 'ignored' && (
                         <span style={{
                           padding: '3px 8px',
