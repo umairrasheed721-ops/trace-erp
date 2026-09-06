@@ -878,21 +878,21 @@ export default function ShipperAdvice() {
                       )}
                     </div>
                     {order.notes && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 6 }}>
                         {parseNoteBlocks(order.notes).map((noteSeg, idx) => (
                           <div
                             key={idx}
                             style={{
-                              fontSize: '0.78rem',
+                              fontSize: '0.76rem',
                               color: 'var(--text-primary)',
                               background: 'var(--bg-elevated)',
                               border: '1px solid var(--border)',
-                              padding: '6px 10px',
+                              padding: '4px 8px',
                               borderRadius: 8,
-                              lineHeight: 1.45,
+                              lineHeight: 1.4,
                               whiteSpace: 'pre-wrap',
                               wordBreak: 'break-word',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                             }}
                           >
                             📝 <span style={{ fontWeight: 600 }}>{noteSeg}</span>
