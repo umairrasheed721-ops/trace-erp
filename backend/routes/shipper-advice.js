@@ -338,6 +338,7 @@ router.post('/reattempt', async (req, res) => {
                      trackingNum.startsWith('20') || 
                      !courierLower || courierLower === '—';
 
+    let courierApiMessage = '';
     if (isPostEx && trackingNum) {
       try {
         const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
@@ -357,6 +358,11 @@ router.post('/reattempt', async (req, res) => {
           });
           const postexData = await postexRes.json().catch(() => ({}));
           console.log(`[ShipperAdvice] PostEx Reattempt API response for ${trackingNum}:`, postexData);
+          if (postexData.statusCode === '200' || postexData.dist) {
+            courierApiMessage = ' & PostEx Courier Portal Updated';
+          } else if (postexData.statusMessage) {
+            courierApiMessage = ` (PostEx API: ${postexData.statusMessage})`;
+          }
         } else {
           console.warn(`[ShipperAdvice] Missing PostEx API token for store ${order.store_id}`);
         }
@@ -387,7 +393,7 @@ router.post('/reattempt', async (req, res) => {
     }
 
     broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
-    res.json({ success: true, message: 'Reattempt action logged successfully' });
+    res.json({ success: true, message: `Reattempt instruction logged${courierApiMessage} & synced to Shopify` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -395,9 +401,9 @@ router.post('/reattempt', async (req, res) => {
 
 /**
  * POST /api/shipper-advice/return
- * Action: Mark Return Requested in Shipper Advice
+ * Action: Mark Return Requested in Shipper Advice & trigger Courier API
  */
-router.post('/return', (req, res) => {
+router.post('/return', async (req, res) => {
   const { id, reason } = req.body;
   if (!id) return res.status(400).json({ error: 'order id required' });
 
@@ -416,8 +422,50 @@ router.post('/return', (req, res) => {
       WHERE id = ?
     `).run(newNotes, id);
 
+    // Call Courier Cancel/Return API for PostEx
+    const trackingNum = (order.tracking_number || '').trim();
+    const courierLower = (order.courier || '').toLowerCase();
+    const isPostEx = courierLower.includes('postex') || 
+                     trackingNum.startsWith('27') || 
+                     trackingNum.startsWith('20') || 
+                     !courierLower || courierLower === '—';
+
+    let courierApiMessage = '';
+    if (isPostEx && trackingNum) {
+      try {
+        const { cancelPostExOrder } = require('../engines/postex');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && store.postex_token) {
+          const ok = await cancelPostExOrder(store, trackingNum);
+          if (ok) {
+            courierApiMessage = ' & PostEx Courier Portal Updated';
+          }
+        }
+      } catch (postexErr) {
+        console.warn('[ShipperAdvice] PostEx Return API warning:', postexErr.message);
+      }
+    }
+
+    // Also sync note directly to Shopify Admin order notes
+    if (order.shopify_order_id && order.store_id) {
+      try {
+        const { appendShopifyNote } = require('../engines/shopify_finance');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
+          const shopifyStore = {
+            ...store,
+            shop_domain: store.shop_domain || store.shopify_domain,
+            access_token: store.access_token || store.shopify_access_token
+          };
+          await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
+        }
+      } catch (shErr) {
+        console.warn('[ShipperAdvice] Shopify note sync warning:', shErr.message);
+      }
+    }
+
     broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
-    res.json({ success: true, message: 'Return action logged successfully' });
+    res.json({ success: true, message: `Return requested${courierApiMessage} & synced to Shopify` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -183,7 +183,7 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`⚡ Reattempt instruction logged for #${reattemptModalOrder.ref_number || reattemptModalOrder.tracking_number} & synced to Shopify!`, 'success')
+        addToast(`⚡ #${reattemptModalOrder.ref_number || reattemptModalOrder.tracking_number}: ${data.message || 'Reattempt logged!'}`, 'success')
         setReattemptModalOrder(null)
         setReattemptRemark('')
         fetchAdviceFeed()
@@ -208,7 +208,7 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`↩️ Return requested for ${order.ref_number || order.tracking_number}!`, 'info')
+        addToast(`↩️ #${order.ref_number || order.tracking_number}: ${data.message || 'Return requested!'}`, 'info')
         fetchAdviceFeed()
       }
     } catch {
