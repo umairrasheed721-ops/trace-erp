@@ -312,6 +312,23 @@ export default function ShipperAdvice() {
     }
   }
 
+  // Dynamic Category Stage Metadata Helper
+  const getOrderCategoryMeta = (order) => {
+    const cat = order.stage_badge ? null : (order.advice_category || activeTab)
+    if (order.stage_badge === '🚨 Advice Required' || cat === 'advice_required') {
+      return { label: '🚨 Advice Required', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.35)' }
+    } else if (order.stage_badge === '📦 Stuck Parcel' || cat === 'stuck_parcels') {
+      return { label: '📦 Stuck Parcel', color: '#c084fc', bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.35)' }
+    } else if (order.stage_badge === '🔄 Reattempt Sent' || cat === 'reattempts') {
+      return { label: '🔄 Reattempt Sent', color: '#818cf8', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)' }
+    } else if (order.stage_badge === '📦 Return Requested' || cat === 'returns') {
+      return { label: '📦 Return Requested', color: '#f87171', bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.35)' }
+    } else if (order.stage_badge === '📜 Actioned History' || cat === 'history') {
+      return { label: '📜 Actioned History', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.35)' }
+    }
+    return { label: '📦 Shipper Advice', color: 'var(--brand)', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)' }
+  }
+
   // Filter Logic: Global Cross-Stage Search across all tabs
   const allCategorizedOrders = [
     ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
@@ -562,8 +579,27 @@ export default function ShipperAdvice() {
                 <tr key={order.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   {/* Order / Parcel Column */}
                   <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
-                    <div style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
-                      #{order.ref_number || order.id}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
+                        #{order.ref_number || order.id}
+                      </span>
+                      {(() => {
+                        const meta = getOrderCategoryMeta(order)
+                        return (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '2px 7px',
+                            borderRadius: 6,
+                            color: meta.color,
+                            background: meta.bg,
+                            border: `1px solid ${meta.border}`,
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {meta.label}
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: 'var(--text-primary)', marginTop: 2 }}>
                       {order.tracking_number}
