@@ -175,7 +175,6 @@ router.get('/', (req, res) => {
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
                               notesLower.includes('[shipper advice - stuck report') ||
                               notesLower.includes('[shipper advice - re-escalate') ||
-                              notesLower.includes('[shipper advice - group') ||
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
@@ -219,7 +218,7 @@ router.get('/', (req, res) => {
     // Sort stuck parcels by days_stuck DESC
     stuckParcels.sort((a, b) => (b.days_stuck || 0) - (a.days_stuck || 0));
 
-    // Fetch History: Actioned parcels with shipper advice logs
+    // Fetch History: Actioned parcels with reattempt/return shipper advice logs only
     const history = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
@@ -227,7 +226,15 @@ router.get('/', (req, res) => {
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
-      AND (LOWER(COALESCE(notes, '')) LIKE '%[shipper advice%' OR LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR LOWER(COALESCE(courier_status, '')) LIKE '%return requested%')
+      AND (
+        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - reattempt%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - return%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - stuck report%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - re-escalate%' OR 
+        LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR 
+        LOWER(COALESCE(courier_status, '')) LIKE '%return requested%' OR
+        LOWER(COALESCE(courier_status, '')) LIKE '%merchant requested return%'
+      )
       ${dateWhereClause}
       ORDER BY COALESCE(status_date, order_date) DESC
       LIMIT 150
