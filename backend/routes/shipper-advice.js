@@ -74,7 +74,7 @@ const ADVICE_COURIER_KEYWORDS = [
  * Completely ignores delivery_status (Cancelled, Booked, Pending, etc. have 0 impact!).
  */
 router.get('/', (req, res) => {
-  const { store_id } = req.query;
+  const { store_id, month } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
 
   try {
@@ -82,7 +82,37 @@ router.get('/', (req, res) => {
       db.prepare('SELECT tracking_number FROM blacklist WHERE store_id = ?').all(store_id).map(r => r.tracking_number)
     );
 
-    // Fetch all active tracked non-terminal parcels for store (Last 45 days window)
+    // Dynamic available months list for last 6 months
+    const monthRows = db.prepare(`
+      SELECT DISTINCT strftime('%Y-%m', COALESCE(status_date, order_date)) as m_val
+      FROM orders
+      WHERE store_id = ?
+      AND COALESCE(status_date, order_date) IS NOT NULL AND COALESCE(status_date, order_date) != ''
+      AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-180 days')
+      ORDER BY m_val DESC
+      LIMIT 6
+    `).all(store_id);
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const availableMonths = [
+      { value: 'all', label: '📅 All Active (Last 45 Days)' },
+      ...monthRows.filter(r => r.m_val).map(r => {
+        const [y, m] = r.m_val.split('-');
+        const monthIndex = parseInt(m, 10) - 1;
+        const name = monthNames[monthIndex] || m;
+        return { value: r.m_val, label: `📅 ${name} ${y}` };
+      })
+    ];
+
+    let dateWhereClause = "AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')";
+    let queryParams = [store_id];
+
+    if (month && month !== 'all' && /^\d{4}-\d{2}$/.test(month)) {
+      dateWhereClause = "AND strftime('%Y-%m', COALESCE(status_date, order_date)) = ?";
+      queryParams = [store_id, month];
+    }
+
+    // Fetch active tracked non-terminal parcels for store
     const orders = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
@@ -93,9 +123,9 @@ router.get('/', (req, res) => {
       AND LOWER(COALESCE(courier_status, '')) NOT LIKE '%delivered%'
       AND LOWER(COALESCE(courier_status, '')) NOT IN ('return received', 'returned', 'rto received', 'return received at hub', 'return received at warehouse')
       AND LOWER(COALESCE(delivery_status, '')) NOT IN ('delivered', 'return received', 'returned', 'cancelled')
-      AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')
+      ${dateWhereClause}
       ORDER BY COALESCE(status_date, order_date) DESC
-    `).all(store_id);
+    `).all(...queryParams);
 
     const adviceRequired = [];
     const stuckParcels = [];
@@ -182,7 +212,7 @@ router.get('/', (req, res) => {
     // Sort stuck parcels by days_stuck DESC
     stuckParcels.sort((a, b) => (b.days_stuck || 0) - (a.days_stuck || 0));
 
-    // Fetch History: Actioned parcels with shipper advice logs in last 45 days
+    // Fetch History: Actioned parcels with shipper advice logs
     const history = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
@@ -191,10 +221,10 @@ router.get('/', (req, res) => {
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND (LOWER(COALESCE(notes, '')) LIKE '%[shipper advice%' OR LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR LOWER(COALESCE(courier_status, '')) LIKE '%return requested%')
-      AND datetime(COALESCE(status_date, order_date)) >= datetime('now', '-45 days')
+      ${dateWhereClause}
       ORDER BY COALESCE(status_date, order_date) DESC
-      LIMIT 100
-    `).all(store_id);
+      LIMIT 150
+    `).all(...queryParams);
 
     let historyResolvedCount = 0;
     let historyIgnoredCount = 0;
@@ -234,8 +264,19 @@ router.get('/', (req, res) => {
 
     enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...historyItems], store_id);
 
+    const allProblemOrders = [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested];
+    const totalCODAtRisk = allProblemOrders.reduce((sum, o) => sum + (parseFloat(o.price) || 0), 0);
+    const totalProblemParcels = adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length;
+
     res.json({
       success: true,
+      available_months: availableMonths,
+      selected_month: month || 'all',
+      financial_impact: {
+        total_problem_parcels: totalProblemParcels,
+        total_cod_at_risk: totalCODAtRisk,
+        total_ignored_parcels: historyIgnoredCount
+      },
       counts: {
         advice_required: adviceRequired.length,
         stuck_parcels: stuckParcels.length,

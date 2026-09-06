@@ -42,6 +42,9 @@ export default function ShipperAdvice() {
   const [activeTab, setActiveTab] = useState('advice_required')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourier, setSelectedCourier] = useState('all')
+  const [selectedMonth, setSelectedMonth] = useState('all')
+  const [availableMonths, setAvailableMonths] = useState([{ value: 'all', label: '📅 All Active (Last 45 Days)' }])
+  const [financialImpact, setFinancialImpact] = useState({ total_problem_parcels: 0, total_cod_at_risk: 0, total_ignored_parcels: 0 })
 
   const [adviceRequired, setAdviceRequired] = useState([])
   const [stuckParcels, setStuckParcels] = useState([])
@@ -87,7 +90,7 @@ export default function ShipperAdvice() {
     if (!activeStoreId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/shipper-advice?store_id=${activeStoreId}`)
+      const res = await fetch(`/api/shipper-advice?store_id=${activeStoreId}&month=${selectedMonth}`)
       if (!res.ok) throw new Error('Failed to load Shipper Advice data')
       const data = await res.json()
 
@@ -96,13 +99,19 @@ export default function ShipperAdvice() {
       setReattemptsSent(data.reattempts_sent || [])
       setReturnsRequested(data.returns_requested || [])
       setHistoryList(data.history || [])
+      if (Array.isArray(data.available_months) && data.available_months.length > 0) {
+        setAvailableMonths(data.available_months)
+      }
+      if (data.financial_impact) {
+        setFinancialImpact(data.financial_impact)
+      }
       setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
     } catch (err) {
       addToast(`❌ ${err.message}`, 'error')
     } finally {
       setLoading(false)
     }
-  }, [activeStoreId, addToast])
+  }, [activeStoreId, selectedMonth, addToast])
 
   useEffect(() => {
     fetchAdviceFeed()
@@ -420,6 +429,52 @@ export default function ShipperAdvice() {
         </div>
       </div>
 
+      {/* 💥 Monthly Courier Damage & Risk Impact Banner */}
+      <div style={{
+        padding: '18px 24px',
+        borderRadius: 16,
+        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(168, 85, 247, 0.08))',
+        border: '1px solid rgba(239, 68, 68, 0.3)',
+        marginBottom: 20,
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 16
+      }}>
+        <div style={{ flex: '1 1 300px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: '1.1rem' }}>💥</span>
+            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              Monthly Courier Damage & Financial Impact
+            </h4>
+            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: 10, background: 'rgba(239,68,68,0.2)', color: '#f87171', fontWeight: 700 }}>
+              {selectedMonth === 'all' ? 'Active 45 Days' : (availableMonths.find(m => m.value === selectedMonth)?.label || selectedMonth)}
+            </span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            Audit metrics to present to courier account managers for SLA compliance & penalty negotiation.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Affected Parcels</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#fb923c' }}>{financialImpact.total_problem_parcels || 0}</div>
+          </div>
+
+          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>COD at Risk</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#f87171' }}>Rs. {(financialImpact.total_cod_at_risk || 0).toLocaleString()}</div>
+          </div>
+
+          <div style={{ textAlign: 'center', background: 'var(--bg-surface)', padding: '10px 16px', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Courier Ignored / SLA Failed</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#c084fc' }}>{financialImpact.total_ignored_parcels || 0}</div>
+          </div>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
         <div style={{ padding: 18, borderRadius: 16, background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(251, 146, 60, 0.05))', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
@@ -443,7 +498,7 @@ export default function ShipperAdvice() {
         </div>
       </div>
 
-      {/* Controls Bar: Search & Courier Filter */}
+      {/* Controls Bar: Search, Month Filter & Courier Filter */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 280, position: 'relative' }}>
           <input
@@ -462,6 +517,24 @@ export default function ShipperAdvice() {
             }}
           />
         </div>
+        <select
+          value={selectedMonth}
+          onChange={e => setSelectedMonth(e.target.value)}
+          style={{
+            padding: '12px 16px',
+            borderRadius: 12,
+            border: '1px solid rgba(168, 85, 247, 0.4)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}
+        >
+          {availableMonths.map(m => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
         <select
           value={selectedCourier}
           onChange={e => setSelectedCourier(e.target.value)}
