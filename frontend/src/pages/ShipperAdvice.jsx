@@ -1,5 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { useApp } from '../context/AppContext'
+// Helper: Parse note string into logical single-line blocks (preventing subfield splits like Ref/Fee/Amt from breaking into multiple bubbles)
+function parseNoteBlocks(notes) {
+  if (!notes) return []
+  const rawSegments = String(notes).split(/\r?\n/).flatMap(line => line.split('|')).map(s => s.trim()).filter(Boolean)
+  const blocks = []
+  rawSegments.forEach(seg => {
+    const isSubField = /^(Ref|Fee|Amt|Amount|Net|Charges|Charge|Status|Date|Rider|Reason):/i.test(seg)
+    if (isSubField && blocks.length > 0) {
+      blocks[blocks.length - 1] += ` • ${seg}`
+    } else {
+      blocks.push(seg)
+    }
+  })
+  return blocks
+}
 
 export default function ShipperAdvice() {
   const { activeStoreId, addToast } = useApp()
@@ -643,7 +656,7 @@ export default function ShipperAdvice() {
                     </div>
                     {order.notes && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-                        {order.notes.split(/[\|\n]/).map(n => n.trim()).filter(Boolean).map((noteSeg, idx) => (
+                        {parseNoteBlocks(order.notes).map((noteSeg, idx) => (
                           <div
                             key={idx}
                             style={{
