@@ -545,6 +545,43 @@ router.post('/stuck-report', async (req, res) => {
 });
 
 /**
+ * POST /api/shipper-advice/wa-alert
+ * Action: Log WA Alert Sent in ERP order notes (DB track only, no Shopify note sync per user request)
+ */
+router.post('/wa-alert', async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: 'order id required' });
+
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    let newNotes = order.notes || '';
+    if (!newNotes.toLowerCase().includes('wa alert sent')) {
+      if (newNotes.includes('[Shipper Advice')) {
+        newNotes = newNotes.replace(/\]\s*$/, ' • WA Alert Sent]');
+      } else {
+        const actionNote = `[Shipper Advice - WA Alert Sent]`;
+        newNotes = newNotes ? `${newNotes} | ${actionNote}` : actionNote;
+      }
+
+      db.prepare(`
+        UPDATE orders 
+        SET notes = ?,
+            status_date = datetime('now')
+        WHERE id = ?
+      `).run(newNotes, id);
+
+      broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
+    }
+
+    res.json({ success: true, message: 'WA Alert logged in ERP successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /api/shipper-advice/re-escalate
  * Action: Log Urgent Escalation instruction & sync note to Shopify
  */

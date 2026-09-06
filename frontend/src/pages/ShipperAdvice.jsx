@@ -338,14 +338,38 @@ export default function ShipperAdvice() {
     addToast('🔄 Message templates reset to default presets!', 'info')
   }
 
-  // WhatsApp Alert Builder for Customer
-  const triggerWhatsAppAlert = (order) => {
+  // WhatsApp Alert Builder for Customer & track in ERP
+  const triggerWhatsAppAlert = async (order) => {
     const msg = applyTemplate(customerTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
     const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
     window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+
+    try {
+      const res = await fetch('/api/shipper-advice/wa-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(`💬 WA Alert logged for #${order.ref_number || order.tracking_number}`, 'success')
+        fetchAdviceFeed()
+      }
+    } catch (err) {
+      console.error('Failed to log WA alert:', err)
+    }
+  }
+
+  // Open Direct WhatsApp Chat with Customer (No template text — to view customer replies)
+  const triggerViewChat = (order) => {
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
+    const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
+    const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
+    const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
+    window.open(`${baseUrl}?phone=${targetPhone}`, '_blank')
   }
 
   // Share to Courier CS Support Group via WhatsApp (Group Search & Share) & sync to Shopify Note
@@ -972,13 +996,32 @@ export default function ShipperAdvice() {
                             🔥 Re-Escalate
                           </button>
                         )}
+                        {order.notes && order.notes.toLowerCase().includes('wa alert sent') ? (
+                          <button
+                            onClick={() => triggerWhatsAppAlert(order)}
+                            className="btn btn-xs btn-secondary"
+                            style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#22c55e', fontWeight: 800, borderColor: 'rgba(34,197,94,0.4)', background: 'rgba(34,197,94,0.12)' }}
+                            title="WhatsApp Customer Alert sent! Click to re-send alert"
+                          >
+                            ✅ WA Alert Sent
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => triggerWhatsAppAlert(order)}
+                            className="btn btn-xs btn-secondary"
+                            style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#25D366', fontWeight: 700 }}
+                            title="Direct WhatsApp alert to customer phone number"
+                          >
+                            💬 WA Alert
+                          </button>
+                        )}
                         <button
-                          onClick={() => triggerWhatsAppAlert(order)}
+                          onClick={() => triggerViewChat(order)}
                           className="btn btn-xs btn-secondary"
-                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#25D366', fontWeight: 700 }}
-                          title="Direct WhatsApp alert to customer phone number"
+                          style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#10b981', fontWeight: 700, borderColor: 'rgba(16,185,129,0.35)', background: 'rgba(16,185,129,0.08)' }}
+                          title="Open direct WhatsApp conversation with customer to check for customer replies"
                         >
-                          💬 WA Alert
+                          💬 View Chat
                         </button>
                         <button
                           onClick={() => triggerGroupShare(order)}
