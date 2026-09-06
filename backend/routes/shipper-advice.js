@@ -196,10 +196,40 @@ router.get('/', (req, res) => {
       LIMIT 100
     `).all(store_id);
 
+    let historyResolvedCount = 0;
+    let historyIgnoredCount = 0;
+    let historyPendingCount = 0;
+
     const historyItems = history.map(o => {
       const lastDateStr = o.status_date || o.order_date;
-      const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
-      return { ...o, days_stuck: daysStuck, advice_category: 'history' };
+      const hoursSinceAction = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60))) : 0;
+      const daysSinceAction = Math.floor(hoursSinceAction / 24);
+
+      const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
+      const deliveryStatusLower = (o.delivery_status || '').toLowerCase().trim();
+      const isDelivered = deliveryStatusLower === 'delivered' || courierStatusLower.includes('delivered');
+
+      let actionStatus = 'pending';
+      if (isDelivered) {
+        actionStatus = 'resolved';
+        historyResolvedCount++;
+      } else if (hoursSinceAction >= 24) {
+        actionStatus = 'ignored';
+        historyIgnoredCount++;
+      } else {
+        actionStatus = 'pending';
+        historyPendingCount++;
+      }
+
+      return {
+        ...o,
+        days_stuck: daysSinceAction,
+        hours_since_action: hoursSinceAction,
+        days_since_action: daysSinceAction,
+        action_status: actionStatus,
+        is_action_ignored: actionStatus === 'ignored',
+        advice_category: 'history'
+      };
     });
 
     enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...historyItems], store_id);
@@ -212,6 +242,9 @@ router.get('/', (req, res) => {
         reattempts_sent: reattemptsSent.length,
         returns_requested: returnsRequested.length,
         history: historyItems.length,
+        history_resolved: historyResolvedCount,
+        history_ignored: historyIgnoredCount,
+        history_pending: historyPendingCount,
         total: adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length
       },
       advice_required: adviceRequired,
@@ -409,6 +442,56 @@ router.post('/stuck-report', async (req, res) => {
 
     broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
     res.json({ success: true, message: 'Stuck report logged & synced to Shopify successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/shipper-advice/re-escalate
+ * Action: Log Urgent Escalation instruction & sync note to Shopify
+ */
+router.post('/re-escalate', async (req, res) => {
+  const { id, remarks } = req.body;
+  if (!id) return res.status(400).json({ error: 'order id required' });
+
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const actionNote = `[Shipper Advice - Urgent Escalation: ${remarks || 'Courier Ignored Action - Escalated to Management'}]`;
+    const newNotes = order.notes ? `${order.notes} | ${actionNote}` : actionNote;
+
+    db.prepare(`
+      UPDATE orders 
+      SET notes = ?,
+          status_date = datetime('now')
+      WHERE id = ?
+    `).run(newNotes, id);
+
+    // Sync note directly to Shopify Admin order notes
+    if (order.shopify_order_id && order.store_id) {
+      try {
+        const { appendShopifyNote } = require('../engines/shopify_finance');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
+          const shopifyStore = {
+            ...store,
+            shop_domain: store.shop_domain || store.shopify_domain,
+            access_token: store.access_token || store.shopify_access_token
+          };
+          console.log(`[ShipperAdvice] Appending Escalation note to Shopify order ${order.shopify_order_id}...`);
+          await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
+        } else {
+          console.warn(`[ShipperAdvice] Missing store credentials for Shopify note sync (store_id: ${order.store_id})`);
+        }
+      } catch (shErr) {
+        console.warn('[ShipperAdvice] Shopify note sync warning for escalation:', shErr.message);
+      }
+    }
+
+    broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
+    res.json({ success: true, message: 'Urgent escalation logged & synced to Shopify successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

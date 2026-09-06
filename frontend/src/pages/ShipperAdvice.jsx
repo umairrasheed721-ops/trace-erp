@@ -13,7 +13,8 @@ export default function ShipperAdvice() {
   const [reattemptsSent, setReattemptsSent] = useState([])
   const [returnsRequested, setReturnsRequested] = useState([])
   const [historyList, setHistoryList] = useState([])
-  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
+  const [historySubTab, setHistorySubTab] = useState('all') // 'all' | 'ignored' | 'pending' | 'resolved'
+  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, history_resolved: 0, history_ignored: 0, history_pending: 0, total: 0 })
 
   // Modal States
   const [reattemptModalOrder, setReattemptModalOrder] = useState(null)
@@ -151,13 +152,15 @@ export default function ShipperAdvice() {
   const DEFAULT_CUSTOMER_TEMPLATE = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Order:* {order_ref}\n🚚 *Tracking:* {tracking}\n🛍️ *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n⚠️ *Courier Status:* {courier_status}\n💰 *Amount:* {price}`
   const DEFAULT_GROUP_TEMPLATE = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n👤 *Customer:* {customer_name}\n📞 *Phone:* {phone}\n📍 *Address/City:* {address}\n💰 *COD Price:* {price}\n⚠️ *Courier Status:* {courier_status}\n📝 *Notes:* {notes}\n🛍️ *Items:* {items}\n\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
   const DEFAULT_STUCK_TEMPLATE = `🚨 *STUCK PARCEL ESCALATION REPORT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Days Stuck:* {days_stuck} Days\n👤 *Customer:* {customer_name} ({phone})\n📍 *City/Address:* {address}\n💰 *COD Value:* {price}\n⚠️ *Last Courier Status:* {courier_status}\n📝 *Remarks:* {notes}\n🛍️ *Items:* {items}\n\n⚠️ *Urgent Action Requested:* This parcel has been stuck at hub for {days_stuck} days without movement. Please dispatch rider immediately or provide status update!`
+  const DEFAULT_ESCALATE_TEMPLATE = `🔥 *URGENT COURIER ESCALATION ~ AREA MANAGER ALERT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Ignored Duration:* {days_since_action} Days ({hours_since_action} Hours)\n👤 *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n💰 *COD Price:* {price}\n⚠️ *Current Status:* {courier_status}\n📝 *Previous Merchant Action:* {notes}\n\n🚨 *ATTENTION AREA MANAGER:* Merchant submitted action {days_since_action} days ago, but courier has NOT processed delivery or status movement. Please investigate and clear immediately!`
 
   const [customerTemplate, setCustomerTemplate] = useState(() => localStorage.getItem('shipper_template_customer') || DEFAULT_CUSTOMER_TEMPLATE)
   const [groupTemplate, setGroupTemplate] = useState(() => localStorage.getItem('shipper_template_group') || DEFAULT_GROUP_TEMPLATE)
   const [stuckTemplate, setStuckTemplate] = useState(() => localStorage.getItem('shipper_template_stuck') || DEFAULT_STUCK_TEMPLATE)
+  const [escalateTemplate, setEscalateTemplate] = useState(() => localStorage.getItem('shipper_template_escalate') || DEFAULT_ESCALATE_TEMPLATE)
 
   const [templateEditModalOpen, setTemplateEditModalOpen] = useState(false)
-  const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck'
+  const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck' | 'escalate'
 
   // Extract latest status from tracking_history JSON (fallback to courier_status)
   // Keys match PostEx/Instaworld history format (same as liveHistory modal at line ~719)
@@ -194,6 +197,8 @@ export default function ShipperAdvice() {
       .replace(/{price}/g, `Rs ${parseInt(order.price || 0).toLocaleString()}`)
       .replace(/{courier_status}/g, rawStatus)
       .replace(/{days_stuck}/g, order.days_stuck || 0)
+      .replace(/{days_since_action}/g, order.days_since_action || order.days_stuck || 0)
+      .replace(/{hours_since_action}/g, order.hours_since_action || 0)
       .replace(/{notes}/g, order.notes || 'None')
       .replace(/{items}/g, order.product_titles || 'N/A')
   }
@@ -203,6 +208,7 @@ export default function ShipperAdvice() {
     localStorage.setItem('shipper_template_customer', customerTemplate)
     localStorage.setItem('shipper_template_group', groupTemplate)
     localStorage.setItem('shipper_template_stuck', stuckTemplate)
+    localStorage.setItem('shipper_template_escalate', escalateTemplate)
     addToast('✅ Shipper Message Templates saved successfully!', 'success')
     setTemplateEditModalOpen(false)
   }
@@ -212,9 +218,11 @@ export default function ShipperAdvice() {
     setCustomerTemplate(DEFAULT_CUSTOMER_TEMPLATE)
     setGroupTemplate(DEFAULT_GROUP_TEMPLATE)
     setStuckTemplate(DEFAULT_STUCK_TEMPLATE)
+    setEscalateTemplate(DEFAULT_ESCALATE_TEMPLATE)
     localStorage.removeItem('shipper_template_customer')
     localStorage.removeItem('shipper_template_group')
     localStorage.removeItem('shipper_template_stuck')
+    localStorage.removeItem('shipper_template_escalate')
     addToast('🔄 Message templates reset to default presets!', 'info')
   }
 
@@ -259,6 +267,29 @@ export default function ShipperAdvice() {
     }
   }
 
+  // Urgent Area Manager Escalation via WhatsApp & sync note to Shopify
+  const triggerEscalateShare = async (order) => {
+    const msg = applyTemplate(escalateTemplate, order)
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
+    const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
+    window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
+
+    try {
+      const res = await fetch('/api/shipper-advice/re-escalate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id, remarks: `Ignored ${order.days_since_action || 1} Days - Escalated to Area Manager` })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(`🔥 Urgent Escalation logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
+        fetchAdviceFeed()
+      }
+    } catch (err) {
+      console.error('Failed to log escalation:', err)
+    }
+  }
+
   // Filter Logic: Global Cross-Stage Search across all tabs
   const allCategorizedOrders = [
     ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
@@ -280,7 +311,15 @@ export default function ShipperAdvice() {
   } else if (activeTab === 'returns') {
     baseOrders = returnsRequested
   } else if (activeTab === 'history') {
-    baseOrders = historyList
+    if (historySubTab === 'ignored') {
+      baseOrders = historyList.filter(o => o.action_status === 'ignored')
+    } else if (historySubTab === 'pending') {
+      baseOrders = historyList.filter(o => o.action_status === 'pending')
+    } else if (historySubTab === 'resolved') {
+      baseOrders = historyList.filter(o => o.action_status === 'resolved')
+    } else {
+      baseOrders = historyList
+    }
   }
 
   const displayOrders = baseOrders.filter(o => {
@@ -430,6 +469,50 @@ export default function ShipperAdvice() {
         </button>
       </div>
 
+      {/* Actioned History Sub-Filters Bar */}
+      {activeTab === 'history' && !searchQuery.trim() && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, background: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: 12, border: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginRight: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            🎯 Sub-Filter:
+          </span>
+          <button
+            onClick={() => setHistorySubTab('all')}
+            className={`btn btn-xs ${historySubTab === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ borderRadius: 12, padding: '4px 12px', fontWeight: 700 }}
+          >
+            All Actioned ({counts.history || 0})
+          </button>
+          <button
+            onClick={() => setHistorySubTab('ignored')}
+            className={`btn btn-xs ${historySubTab === 'ignored' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              borderRadius: 12,
+              padding: '4px 12px',
+              fontWeight: 800,
+              color: historySubTab === 'ignored' ? '#fff' : '#ef4444',
+              borderColor: 'rgba(239, 68, 68, 0.4)',
+              background: historySubTab === 'ignored' ? '#ef4444' : 'rgba(239, 68, 68, 0.1)'
+            }}
+          >
+            🚨 Courier Ignored ({counts.history_ignored || 0})
+          </button>
+          <button
+            onClick={() => setHistorySubTab('pending')}
+            className={`btn btn-xs ${historySubTab === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ borderRadius: 12, padding: '4px 12px', fontWeight: 700, color: historySubTab === 'pending' ? '#fff' : '#38bdf8' }}
+          >
+            ⏳ SLA Pending (&lt;24h) ({counts.history_pending || 0})
+          </button>
+          <button
+            onClick={() => setHistorySubTab('resolved')}
+            className={`btn btn-xs ${historySubTab === 'resolved' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ borderRadius: 12, padding: '4px 12px', fontWeight: 700, color: historySubTab === 'resolved' ? '#fff' : '#10b981' }}
+          >
+            ✅ Delivered / Resolved ({counts.history_resolved || 0})
+          </button>
+        </div>
+      )}
+
       {/* Main Data Table */}
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>⚡ Loading Shipper Advice Feed...</div>
@@ -505,7 +588,46 @@ export default function ShipperAdvice() {
                       }}>
                         ⚠️ {getLatestCourierStatus(order)}
                       </span>
-                      {order.days_stuck >= 2 && (
+                      {order.action_status === 'ignored' && (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          background: 'rgba(239, 68, 68, 0.2)',
+                          color: '#ef4444',
+                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                          fontSize: '0.74rem',
+                          fontWeight: 800
+                        }} title="Merchant took action >= 24h ago but courier has zero status movement or delivery">
+                          🚨 Courier Ignored ({order.days_since_action} Days)
+                        </span>
+                      )}
+                      {order.action_status === 'resolved' && (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#10b981',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700
+                        }}>
+                          ✅ Delivered / Resolved
+                        </span>
+                      )}
+                      {order.action_status === 'pending' && activeTab === 'history' && (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: 8,
+                          background: 'rgba(56, 189, 248, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          fontSize: '0.74rem',
+                          fontWeight: 700
+                        }}>
+                          ⏳ SLA Pending (&lt;24h)
+                        </span>
+                      )}
+                      {order.days_stuck >= 2 && activeTab !== 'history' && (
                         <span style={{
                           padding: '3px 8px',
                           borderRadius: 8,
@@ -587,6 +709,16 @@ export default function ShipperAdvice() {
                       </div>
 
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {(order.action_status === 'ignored' || activeTab === 'history') && (
+                          <button
+                            onClick={() => triggerEscalateShare(order)}
+                            className="btn btn-xs btn-secondary"
+                            style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#ef4444', fontWeight: 800, borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)' }}
+                            title="Send Urgent Escalation Report to Courier Area Manager on WhatsApp & log note to Shopify Admin"
+                          >
+                            🔥 Re-Escalate
+                          </button>
+                        )}
                         <button
                           onClick={() => triggerWhatsAppAlert(order)}
                           className="btn btn-xs btn-secondary"
@@ -839,7 +971,7 @@ export default function ShipperAdvice() {
             </div>
 
             {/* Template Type Tabs */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 10, flexWrap: 'wrap' }}>
               <button
                 onClick={() => setActiveTemplateTab('customer')}
                 className={`btn btn-sm ${activeTemplateTab === 'customer' ? 'btn-primary' : 'btn-secondary'}`}
@@ -861,6 +993,13 @@ export default function ShipperAdvice() {
               >
                 📦 Report Stuck Escalation
               </button>
+              <button
+                onClick={() => setActiveTemplateTab('escalate')}
+                className={`btn btn-sm ${activeTemplateTab === 'escalate' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderRadius: 10, fontWeight: 700, padding: '6px 14px', color: activeTemplateTab === 'escalate' ? '#fff' : '#ef4444' }}
+              >
+                🔥 Area Manager Escalation
+              </button>
             </div>
 
             {/* Available Placeholders Chips */}
@@ -872,7 +1011,7 @@ export default function ShipperAdvice() {
                 {[
                   '{order_ref}', '{tracking}', '{courier}', '{customer_name}',
                   '{phone}', '{city}', '{address}', '{price}',
-                  '{courier_status}', '{days_stuck}', '{notes}', '{items}'
+                  '{courier_status}', '{days_stuck}', '{days_since_action}', '{hours_since_action}', '{notes}', '{items}'
                 ].map((chip) => (
                   <button
                     key={chip}
@@ -881,6 +1020,7 @@ export default function ShipperAdvice() {
                       if (activeTemplateTab === 'customer') setCustomerTemplate(prev => `${prev} ${chip}`)
                       else if (activeTemplateTab === 'group') setGroupTemplate(prev => `${prev} ${chip}`)
                       else if (activeTemplateTab === 'stuck') setStuckTemplate(prev => `${prev} ${chip}`)
+                      else if (activeTemplateTab === 'escalate') setEscalateTemplate(prev => `${prev} ${chip}`)
                     }}
                     style={{
                       fontSize: '0.72rem',
@@ -907,18 +1047,21 @@ export default function ShipperAdvice() {
                 {activeTemplateTab === 'customer' && '💬 CUSTOMER WA ALERT TEMPLATE:'}
                 {activeTemplateTab === 'group' && '👥 CS GROUP ESCALATION TEMPLATE:'}
                 {activeTemplateTab === 'stuck' && '📦 REPORT STUCK PARCEL TEMPLATE:'}
+                {activeTemplateTab === 'escalate' && '🔥 AREA MANAGER ESCALATION TEMPLATE:'}
               </label>
               <textarea
                 rows={7}
                 value={
                   activeTemplateTab === 'customer' ? customerTemplate :
-                  activeTemplateTab === 'group' ? groupTemplate : stuckTemplate
+                  activeTemplateTab === 'group' ? groupTemplate :
+                  activeTemplateTab === 'stuck' ? stuckTemplate : escalateTemplate
                 }
                 onChange={(e) => {
                   const val = e.target.value
                   if (activeTemplateTab === 'customer') setCustomerTemplate(val)
                   else if (activeTemplateTab === 'group') setGroupTemplate(val)
                   else if (activeTemplateTab === 'stuck') setStuckTemplate(val)
+                  else if (activeTemplateTab === 'escalate') setEscalateTemplate(val)
                 }}
                 style={{
                   width: '100%',
@@ -943,7 +1086,8 @@ export default function ShipperAdvice() {
               <div style={{ fontSize: '0.82rem', whiteSpace: 'pre-wrap', color: 'var(--text-primary)', lineHeight: 1.4, fontFamily: 'sans-serif' }}>
                 {applyTemplate(
                   activeTemplateTab === 'customer' ? customerTemplate :
-                  activeTemplateTab === 'group' ? groupTemplate : stuckTemplate,
+                  activeTemplateTab === 'group' ? groupTemplate :
+                  activeTemplateTab === 'stuck' ? stuckTemplate : escalateTemplate,
                   {
                     ref_number: 'TR33353',
                     tracking_number: '24120050025611',
@@ -955,6 +1099,8 @@ export default function ShipperAdvice() {
                     price: 2098,
                     courier_status: 'Attempted',
                     days_stuck: 4,
+                    days_since_action: 2,
+                    hours_since_action: 52,
                     notes: 'confirm Order has been shipped via PostEx',
                     product_titles: 'Multi ref Pro-active - 4XL / White (x1)'
                   }
