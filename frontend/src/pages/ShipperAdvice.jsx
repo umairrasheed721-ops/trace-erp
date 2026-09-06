@@ -227,12 +227,27 @@ export default function ShipperAdvice() {
     window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  // Report Stuck Parcel via WhatsApp (Group / Contact Search & Share)
-  const triggerStuckShare = (order) => {
+  // Report Stuck Parcel via WhatsApp (Group / Contact Search & Share) & sync to Shopify Note
+  const triggerStuckShare = async (order) => {
     const msg = applyTemplate(stuckTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
     window.open(`${baseUrl}?text=${encodeURIComponent(msg)}`, '_blank')
+
+    try {
+      const res = await fetch('/api/shipper-advice/stuck-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id, remarks: 'Stuck Report Sent to Courier' })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(`📦 Stuck report logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
+        fetchAdviceFeed()
+      }
+    } catch (err) {
+      console.error('Failed to log stuck report:', err)
+    }
   }
 
   // Filter Logic: Global Cross-Stage Search across all tabs
