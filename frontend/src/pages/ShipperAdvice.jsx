@@ -402,14 +402,22 @@ export default function ShipperAdvice() {
     return { label: '📦 Shipper Advice', color: 'var(--brand)', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)' }
   }
 
-  // Filter Logic: Global Cross-Stage Search across all tabs
-  const allCategorizedOrders = [
-    ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
-    ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
-    ...reattemptsSent.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' })),
-    ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' })),
-    ...historyList.map(o => ({ ...o, stage_badge: '📜 Actioned History' }))
-  ]
+  // Filter Logic: Global Cross-Stage Search across all tabs (deduplicated by order id — active tabs take priority over history)
+  const allCategorizedOrders = (() => {
+    const seen = new Set()
+    return [
+      ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
+      ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
+      ...reattemptsSent.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' })),
+      ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' })),
+      ...historyList.map(o => ({ ...o, stage_badge: '📜 Actioned History' }))
+    ].filter(o => {
+      const key = o.id || o.tracking_number
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })()
 
   let baseOrders = []
   if (searchQuery.trim().length > 0) {
