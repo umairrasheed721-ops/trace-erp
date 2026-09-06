@@ -914,5 +914,24 @@ module.exports = [
     } catch (e) {
       console.error('Failed to run Migration #36:', e.message);
     }
+  },
+
+  // 37. Add store_id and tracking_number columns to blacklist table (for Shipper Advice ignore feature)
+  (db) => {
+    try {
+      const cols = db.prepare("PRAGMA table_info(blacklist)").all().map(c => c.name);
+
+      if (!cols.includes('store_id')) {
+        db.prepare("ALTER TABLE blacklist ADD COLUMN store_id INTEGER").run();
+        console.log('✅ [Migration #37a] Added store_id column to blacklist table.');
+      }
+
+      if (!cols.includes('tracking_number')) {
+        db.prepare("ALTER TABLE blacklist ADD COLUMN tracking_number TEXT").run();
+        console.log('✅ [Migration #37b] Added tracking_number column to blacklist table.');
+      }
+    } catch (e) {
+      console.error('Migration #37 failed:', e.message);
+    }
   }
 ];
