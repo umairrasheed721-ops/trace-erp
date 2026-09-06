@@ -4,12 +4,27 @@ import { useApp } from '../context/AppContext'
 // Helper: Parse note string into logical single-line blocks & filter out generic fulfillment logs
 function parseNoteBlocks(notes) {
   if (!notes) return []
-  
-  // Split by newline (\n) or by bracketed boundaries like " | ["
-  const lines = String(notes)
-    .split(/\r?\n|\|\s*(?=\[)/)
+
+  // First: merge any lines that start with ] back into the previous line (split mid-bracket)
+  const rawLines = String(notes)
+    .split(/\r?\n/)
     .map(l => l.trim())
     .filter(Boolean)
+
+  const mergedLines = []
+  rawLines.forEach(line => {
+    // If line starts with ] it's an orphaned closing bracket from a mid-newline bracket note
+    if (line.startsWith(']') && mergedLines.length > 0) {
+      mergedLines[mergedLines.length - 1] += line
+    } else {
+      mergedLines.push(line)
+    }
+  })
+
+  // Now split merged lines by pipe before [ (i.e., separate ERP action notes from merchant notes)
+  const lines = mergedLines.flatMap(l =>
+    l.split(/\|\s*(?=\[)/).map(s => s.trim()).filter(Boolean)
+  )
 
   const blocks = []
 
@@ -20,7 +35,7 @@ function parseNoteBlocks(notes) {
                                   /fulfillment\s+created/i.test(line)
     if (isGenericShippingNote && !line.includes('[')) return
 
-    // Replace any inner pipes '|' with ' • ' and clean up leading/trailing pipes/bullets
+    // Replace any inner pipes '|' with ' • ' and clean up
     const joinedLine = line
       .split('|')
       .map(s => s.trim())
