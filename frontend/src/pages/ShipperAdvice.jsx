@@ -4,22 +4,35 @@ import { useApp } from '../context/AppContext'
 // Helper: Parse note string into logical single-line blocks & filter out generic fulfillment logs
 function parseNoteBlocks(notes) {
   if (!notes) return []
-  const rawSegments = String(notes).split(/\r?\n/).flatMap(line => line.split('|')).map(s => s.trim()).filter(Boolean)
-  const blocks = []
-  rawSegments.forEach(seg => {
-    // 🛡️ Filter out generic system shipping confirmation logs
-    const isGenericShippingNote = /(?:confirm\s+)?order\s+has\s+been\s+shipped/i.test(seg) ||
-                                  /order\s+fulfilled/i.test(seg) ||
-                                  /fulfillment\s+created/i.test(seg)
-    if (isGenericShippingNote) return
+  
+  // Split by newline (\n) or by bracketed boundaries like " | ["
+  const lines = String(notes)
+    .split(/\r?\n|\|\s*(?=\[)/)
+    .map(l => l.trim())
+    .filter(Boolean)
 
-    const isSubField = /^(Ref|Fee|Amt|Amount|Net|Charges|Charge|Status|Date|Rider|Reason):/i.test(seg)
-    if (isSubField && blocks.length > 0) {
-      blocks[blocks.length - 1] += ` • ${seg}`
-    } else {
-      blocks.push(seg)
+  const blocks = []
+
+  lines.forEach(line => {
+    // 🛡️ Filter out generic system shipping confirmation logs
+    const isGenericShippingNote = /(?:confirm\s+)?order\s+has\s+been\s+shipped/i.test(line) ||
+                                  /order\s+fulfilled/i.test(line) ||
+                                  /fulfillment\s+created/i.test(line)
+    if (isGenericShippingNote && !line.includes('[')) return
+
+    // Replace any inner pipes '|' with ' • ' and clean up leading/trailing pipes/bullets
+    const joinedLine = line
+      .split('|')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .filter(s => !/(?:confirm\s+)?order\s+has\s+been\s+shipped/i.test(s) && !/order\s+fulfilled/i.test(s))
+      .join(' • ')
+
+    if (joinedLine) {
+      blocks.push(joinedLine)
     }
   })
+
   return blocks
 }
 
