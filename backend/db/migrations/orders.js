@@ -933,5 +933,24 @@ module.exports = [
     } catch (e) {
       console.error('Migration #37 failed:', e.message);
     }
+  },
+
+  // 38. Auto-heal status_date for orders whose status_date was overwritten by shipper advice note actions
+  (db) => {
+    try {
+      const result = db.prepare(`
+        UPDATE orders
+        SET status_date = order_date
+        WHERE notes LIKE '%[Shipper Advice%'
+        AND LOWER(COALESCE(courier_status, '')) NOT IN ('reattempt requested', 'merchant requested return')
+        AND DATE(status_date) >= DATE('now', '-1 day')
+        AND DATE(order_date) < DATE('now')
+      `).run();
+      if (result.changes > 0) {
+        console.log(`✅ [Migration #38] Auto-healed ${result.changes} orders whose status_date was overwritten by note actions.`);
+      }
+    } catch (e) {
+      console.error('Migration #38 failed:', e.message);
+    }
   }
 ];

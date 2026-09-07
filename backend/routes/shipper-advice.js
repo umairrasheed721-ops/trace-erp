@@ -517,8 +517,7 @@ router.post('/stuck-report', async (req, res) => {
 
     db.prepare(`
       UPDATE orders 
-      SET notes = ?,
-          status_date = datetime('now')
+      SET notes = ?
       WHERE id = ?
     `).run(newNotes, id);
 
@@ -573,8 +572,7 @@ router.post('/wa-alert', async (req, res) => {
 
       db.prepare(`
         UPDATE orders 
-        SET notes = ?,
-            status_date = datetime('now')
+        SET notes = ?
         WHERE id = ?
       `).run(newNotes, id);
 
@@ -604,8 +602,7 @@ router.post('/re-escalate', async (req, res) => {
 
     db.prepare(`
       UPDATE orders 
-      SET notes = ?,
-          status_date = datetime('now')
+      SET notes = ?
       WHERE id = ?
     `).run(newNotes, id);
 
@@ -654,8 +651,7 @@ router.post('/group-report', async (req, res) => {
 
     db.prepare(`
       UPDATE orders 
-      SET notes = ?,
-          status_date = datetime('now')
+      SET notes = ?
       WHERE id = ?
     `).run(newNotes, id);
 
