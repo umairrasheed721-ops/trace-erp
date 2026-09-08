@@ -444,6 +444,18 @@ export default function SearchTool() {
     }
   }, [loading, activeRowId, allOrders]);
 
+  // Listen for global copy events to auto-set activeRowId
+  useEffect(() => {
+    const handleSelectActiveRow = (e) => {
+      if (e.detail && e.detail.orderId) {
+        const parsedId = isNaN(Number(e.detail.orderId)) ? e.detail.orderId : Number(e.detail.orderId);
+        setActiveRowId(parsedId);
+      }
+    };
+    window.addEventListener('select-active-order-row', handleSelectActiveRow);
+    return () => window.removeEventListener('select-active-order-row', handleSelectActiveRow);
+  }, []);
+
   // Reset page to 1 when filters change, but skip during initial cache restoration
   useEffect(() => {
     if (ignoreFilterChangesRef.current) return

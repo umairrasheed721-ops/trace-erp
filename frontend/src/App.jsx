@@ -200,6 +200,15 @@ function AppContent() {
       if (['BUTTON', 'INPUT', 'SELECT', 'A', 'TEXTAREA'].includes(targetEl.tagName)) return;
       if (targetEl.closest('button, input, select, a, textarea')) return;
 
+      // Auto-select active order row on copy
+      const rowEl = targetEl.closest('tr[data-order-id]');
+      if (rowEl) {
+        const orderId = rowEl.getAttribute('data-order-id');
+        if (orderId) {
+          window.dispatchEvent(new CustomEvent('select-active-order-row', { detail: { orderId } }));
+        }
+      }
+
       // 1. If user highlighted specific text, copy that exact selection first
       const selText = window.getSelection() ? window.getSelection().toString().trim() : '';
       if (selText.length > 0) {

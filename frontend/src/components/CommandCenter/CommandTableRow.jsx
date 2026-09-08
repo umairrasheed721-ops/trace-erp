@@ -132,6 +132,7 @@ const CommandTableRow = React.memo(({
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
+                      setActiveRowId(o.id);
                       copyWithTooltip(o.ref_number || o.shopify_order_id, e);
                       addToast('Order reference copied!', 'success');
                     }}
@@ -574,6 +575,7 @@ const CommandTableRow = React.memo(({
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
+                          setActiveRowId(o.id);
                           copyWithTooltip(phone, e);
                           addToast('Phone number copied!', 'success');
                         }}
@@ -796,6 +798,7 @@ const CommandTableRow = React.memo(({
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
+                        setActiveRowId(o.id);
                         copyWithTooltip(o.tracking_number, e);
                         addToast('Tracking number copied!', 'success');
                       }}
