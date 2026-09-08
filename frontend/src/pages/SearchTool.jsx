@@ -399,6 +399,15 @@ export default function SearchTool() {
     }
   }, [setSidebarCollapsed])
 
+  // Save state immediately prior to browser reload / tab teardown
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveState();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveState]);
+
   // Restore scroll positions once data loading is complete and component is rendered
   useEffect(() => {
     if (!loading) {
@@ -418,6 +427,19 @@ export default function SearchTool() {
       }
     }
   }, [loading])
+
+  // Smoothly scroll to active selected row on hydration or selection update
+  useEffect(() => {
+    if (!loading && activeRowId && allOrders.length > 0) {
+      const timer = setTimeout(() => {
+        const activeRowEl = document.querySelector(`tr[data-order-id="${activeRowId}"], tr.row-active`);
+        if (activeRowEl) {
+          activeRowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, activeRowId, allOrders]);
 
   // Reset page to 1 when filters change, but skip during initial cache restoration
   useEffect(() => {

@@ -66,7 +66,7 @@ const CommandTableRow = React.memo(({
   }, [isSelected, activeRowId, o.id, o.payment_status]);
 
   return (
-    <tr key={o.id} className={rowClassName}>
+    <tr key={o.id} className={rowClassName} data-order-id={o.id}>
       <td style={{ textAlign: 'center' }}>
         <input 
           type="checkbox" 
