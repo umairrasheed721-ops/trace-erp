@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { AppContext } from './AppContext'
 
 export default function AppProvider({ children }) {
@@ -25,11 +25,11 @@ export default function AppProvider({ children }) {
     })
   }
 
-  const addToast = (message, type = 'info', duration = 3500) => {
+  const addToast = useCallback((message, type = 'info', duration = 3500) => {
     const id = Date.now()
     setToasts(prev => [...prev, { id, message, type }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), duration)
-  }
+  }, [])
 
   const logout = () => {
     localStorage.removeItem('trace_token')

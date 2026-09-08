@@ -233,11 +233,20 @@ export default function SearchTool() {
     }
 
     lastFetchedUrlRef.current = urlWithoutTimestamp;
-    setLoading(true);
+
+    // ⚡ Silent Refresh: If data is already displayed, keep existing rows visible (no full-table loading unmount)
+    const isSilent = allOrders.length > 0 && !options.forceHardLoad;
+    if (!isSilent) {
+      setLoading(true);
+    }
+
+    const currentScrollY = window.scrollY;
+    const tableWrapper = document.querySelector('.table-wrapper');
+    const currentScrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0;
 
     const url = `/api/orders?store_id=${storeId}&limit=${limit}&page=${page}&status=${encodeURIComponent(queryStatus||'')}&search=${encodeURIComponent(kw)}&start_date=${startDate}&end_date=${endDate}&sort=${sCol}&sort_dir=${sortDir}${colFilterParams}${globalSearchParam}&t=${Date.now()}`;
 
-    console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw);
+    console.log('📡 [SearchTool] fetchOrders executing query. isRefresh:', isRefresh, 'wasProgrammatic:', wasProgrammatic, 'keyword:', kw, 'isSilent:', isSilent);
     
     try {
       const authToken = token || localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
@@ -253,6 +262,13 @@ export default function SearchTool() {
       setAllOrders(data.orders || []);
       setTotalCount(data.total || 0);
       setDebugWhere(data.debugWhere || '');
+
+      // Preserve window scroll & table horizontal scroll position seamlessly
+      requestAnimationFrame(() => {
+        window.scrollTo(0, currentScrollY);
+        const tw = document.querySelector('.table-wrapper');
+        if (tw) tw.scrollLeft = currentScrollLeft;
+      });
       
       if (isClearingRef.current) {
         console.log('🧹 [SearchTool] Clear fetch complete. Resetting clear flags.');
@@ -1389,14 +1405,14 @@ export default function SearchTool() {
       isClearingStageRef.current = 'fetching';
     }
 
-    // Hybrid Logic: Detect if ONLY sort changed
-    const searchConfig = JSON.stringify({ activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters });
-    const isSortOnlyChange = lastSearchRef.current === searchConfig;
-    lastSearchRef.current = searchConfig;
-
-    if (sortMode === 'instant' && isSortOnlyChange) {
-      return; // Skip server fetch, useMemo will handle local re-sort
+    // Guard against unchanged search config (prevents redundant re-fetching on parent re-renders/copy toasts)
+    const searchConfig = JSON.stringify({ activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, page, debouncedColFilters, sortKey, sortDir });
+    const isUnchanged = lastSearchRef.current === searchConfig;
+    if (isUnchanged && !isClearingFetch && !isProgrammaticRef.current) {
+      console.log('📡 [SearchTool] Skipping redundant fetch watcher effect execution: searchConfig unchanged');
+      return;
     }
+    lastSearchRef.current = searchConfig;
 
     let fetchTimeoutId;
     if (isClearingFetch) {

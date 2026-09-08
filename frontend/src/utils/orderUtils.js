@@ -47,6 +47,7 @@ export function copyWithTooltip(text, event, label = 'Copied! ✓') {
 
 function fallbackCopyTextToClipboard(text) {
   try {
+    const activeEl = document.activeElement;
     const textArea = document.createElement('textarea');
     textArea.value = text;
     textArea.style.position = 'fixed';
@@ -57,6 +58,9 @@ function fallbackCopyTextToClipboard(text) {
     textArea.select();
     document.execCommand('copy');
     textArea.remove();
+    if (activeEl && typeof activeEl.focus === 'function') {
+      activeEl.focus();
+    }
   } catch (e) {
     console.warn('Fallback copy failed:', e.message);
   }

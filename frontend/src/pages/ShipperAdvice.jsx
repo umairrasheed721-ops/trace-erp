@@ -153,10 +153,12 @@ export default function ShipperAdvice() {
     }
   }
 
-  // Fetch Shipper Advice Feed
-  const fetchAdviceFeed = useCallback(async () => {
+  const [lastActionedOrderId, setLastActionedOrderId] = useState(null)
+
+  // Fetch Shipper Advice Feed (isSilent = true prevents full-page loading spinner so table focus & scroll stay intact)
+  const fetchAdviceFeed = useCallback(async (isSilent = false) => {
     if (!activeStoreId) return
-    setLoading(true)
+    if (!isSilent) setLoading(true)
     try {
       const res = await fetch(`/api/shipper-advice?store_id=${activeStoreId}&month=${selectedMonth}`)
       if (!res.ok) throw new Error('Failed to load Shipper Advice data')
@@ -175,9 +177,9 @@ export default function ShipperAdvice() {
       }
       setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
     } catch (err) {
-      addToast(`❌ ${err.message}`, 'error')
+      if (!isSilent) addToast(`❌ ${err.message}`, 'error')
     } finally {
-      setLoading(false)
+      if (!isSilent) setLoading(false)
     }
   }, [activeStoreId, selectedMonth, addToast])
 
@@ -188,13 +190,15 @@ export default function ShipperAdvice() {
   // Handle Reattempt Submit
   const handleReattemptSubmit = async () => {
     if (!reattemptModalOrder) return
+    const targetId = reattemptModalOrder.id
+    setLastActionedOrderId(targetId)
     setModalLoading(true)
     try {
       const res = await fetch('/api/shipper-advice/reattempt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: reattemptModalOrder.id,
+          id: targetId,
           remarks: reattemptRemark
         })
       })
@@ -203,7 +207,7 @@ export default function ShipperAdvice() {
         addToast(`⚡ #${reattemptModalOrder.ref_number || reattemptModalOrder.tracking_number}: ${data.message || 'Reattempt logged!'}`, 'success')
         setReattemptModalOrder(null)
         setReattemptRemark('')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       } else {
         addToast(`❌ ${data.error || 'Failed to submit reattempt'}`, 'error')
       }
@@ -217,6 +221,7 @@ export default function ShipperAdvice() {
   // Handle Return Submit
   const handleReturnSubmit = async (order) => {
     if (!window.confirm(`Mark Return Requested for ${order.ref_number || order.tracking_number}?`)) return
+    setLastActionedOrderId(order.id)
     try {
       const res = await fetch('/api/shipper-advice/return', {
         method: 'POST',
@@ -226,7 +231,7 @@ export default function ShipperAdvice() {
       const data = await res.json()
       if (res.ok && data.success) {
         addToast(`↩️ #${order.ref_number || order.tracking_number}: ${data.message || 'Return requested!'}`, 'info')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       }
     } catch {
       addToast('Failed to log return request', 'error')
@@ -340,6 +345,7 @@ export default function ShipperAdvice() {
 
   // WhatsApp Alert Builder for Customer & track in ERP
   const triggerWhatsAppAlert = async (order) => {
+    setLastActionedOrderId(order.id)
     const msg = applyTemplate(customerTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
@@ -356,7 +362,7 @@ export default function ShipperAdvice() {
       const data = await res.json()
       if (res.ok && data.success) {
         addToast(`💬 WA Alert logged for #${order.ref_number || order.tracking_number}`, 'success')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       }
     } catch (err) {
       console.error('Failed to log WA alert:', err)
@@ -365,6 +371,7 @@ export default function ShipperAdvice() {
 
   // Open Direct WhatsApp Chat with Customer (No template text — to view customer replies)
   const triggerViewChat = (order) => {
+    setLastActionedOrderId(order.id)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
@@ -374,6 +381,7 @@ export default function ShipperAdvice() {
 
   // Share to Courier CS Support Group via WhatsApp (Group Search & Share) & sync to Shopify Note
   const triggerGroupShare = async (order) => {
+    setLastActionedOrderId(order.id)
     const msg = applyTemplate(groupTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
@@ -388,7 +396,7 @@ export default function ShipperAdvice() {
       const data = await res.json()
       if (res.ok && data.success) {
         addToast(`👥 Group note logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       }
     } catch (err) {
       console.error('Failed to log group escalation:', err)
@@ -397,6 +405,7 @@ export default function ShipperAdvice() {
 
   // Report Stuck Parcel via WhatsApp (Group / Contact Search & Share) & sync to Shopify Note
   const triggerStuckShare = async (order) => {
+    setLastActionedOrderId(order.id)
     const msg = applyTemplate(stuckTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
@@ -411,7 +420,7 @@ export default function ShipperAdvice() {
       const data = await res.json()
       if (res.ok && data.success) {
         addToast(`📦 Stuck report logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       }
     } catch (err) {
       console.error('Failed to log stuck report:', err)
@@ -420,6 +429,7 @@ export default function ShipperAdvice() {
 
   // Urgent Area Manager Escalation via WhatsApp & sync note to Shopify
   const triggerEscalateShare = async (order) => {
+    setLastActionedOrderId(order.id)
     const msg = applyTemplate(escalateTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://api.whatsapp.com/send' : 'whatsapp://send'
@@ -434,7 +444,7 @@ export default function ShipperAdvice() {
       const data = await res.json()
       if (res.ok && data.success) {
         addToast(`🔥 Urgent Escalation logged for #${order.ref_number || order.tracking_number} & synced to Shopify!`, 'success')
-        fetchAdviceFeed()
+        fetchAdviceFeed(true)
       }
     } catch (err) {
       console.error('Failed to log escalation:', err)
@@ -766,14 +776,40 @@ export default function ShipperAdvice() {
               </tr>
             </thead>
             <tbody>
-              {displayOrders.map(order => (
-                <tr key={order.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  {/* Order / Parcel Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
-                        #{order.ref_number || order.id}
-                      </span>
+              {displayOrders.map(order => {
+                const isLastActioned = lastActionedOrderId === order.id
+                return (
+                  <tr
+                    key={order.id}
+                    id={`order-row-${order.id}`}
+                    style={{
+                      borderBottom: '1px solid var(--border)',
+                      background: isLastActioned ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                      boxShadow: isLastActioned ? 'inset 4px 0 0 #6366f1' : 'none',
+                      transition: 'background 0.3s ease'
+                    }}
+                  >
+                    {/* Order / Parcel Column */}
+                    <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
+                          #{order.ref_number || order.id}
+                        </span>
+                        {isLastActioned && (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            color: '#6366f1',
+                            background: 'rgba(99, 102, 241, 0.18)',
+                            border: '1px solid rgba(99, 102, 241, 0.4)',
+                            whiteSpace: 'nowrap',
+                            boxShadow: '0 0 8px rgba(99,102,241,0.3)'
+                          }}>
+                            🎯 Last Actioned
+                          </span>
+                        )}
                       {(() => {
                         const meta = getOrderCategoryMeta(order)
                         return (
@@ -1059,7 +1095,8 @@ export default function ShipperAdvice() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
