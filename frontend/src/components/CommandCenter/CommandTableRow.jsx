@@ -66,7 +66,7 @@ const CommandTableRow = React.memo(({
   }, [isSelected, activeRowId, o.id, o.payment_status]);
 
   return (
-    <tr key={o.id} className={rowClassName} data-order-id={o.id}>
+    <tr key={o.id} className={rowClassName} data-order-id={o.id} onClick={() => setActiveRowId(o.id)} style={{ cursor: 'pointer' }}>
       <td style={{ textAlign: 'center' }}>
         <input 
           type="checkbox" 

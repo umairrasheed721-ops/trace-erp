@@ -428,16 +428,19 @@ export default function SearchTool() {
     }
   }, [loading])
 
-  // Smoothly scroll to active selected row on hydration or selection update
+  // Smoothly scroll to active selected row on hydration or selection update (multi-stage retry timeline)
   useEffect(() => {
     if (!loading && activeRowId && allOrders.length > 0) {
-      const timer = setTimeout(() => {
-        const activeRowEl = document.querySelector(`tr[data-order-id="${activeRowId}"], tr.row-active`);
-        if (activeRowEl) {
-          activeRowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 150);
-      return () => clearTimeout(timer);
+      const delays = [50, 150, 350, 650];
+      const timers = delays.map(delay =>
+        setTimeout(() => {
+          const activeRowEl = document.querySelector(`tr[data-order-id="${activeRowId}"], tr.row-active`);
+          if (activeRowEl) {
+            activeRowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, delay)
+      );
+      return () => timers.forEach(t => clearTimeout(t));
     }
   }, [loading, activeRowId, allOrders]);
 
