@@ -173,8 +173,6 @@ router.get('/', (req, res) => {
       const effectiveStatus = latestHistStatusLower || courierStatusLower;
 
       const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
-                              notesLower.includes('[shipper advice - stuck report') ||
-                              notesLower.includes('[shipper advice - re-escalate') ||
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
@@ -229,8 +227,6 @@ router.get('/', (req, res) => {
       AND (
         LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - reattempt%' OR 
         LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - return%' OR 
-        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - stuck report%' OR 
-        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - re-escalate%' OR 
         LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR 
         LOWER(COALESCE(courier_status, '')) LIKE '%return requested%' OR
         LOWER(COALESCE(courier_status, '')) LIKE '%merchant requested return%'
@@ -564,11 +560,7 @@ router.post('/wa-alert', async (req, res) => {
     const actionNote = `[Shipper Advice - WA Alert Sent]`;
     let newNotes = order.notes || '';
     if (!newNotes.toLowerCase().includes('wa alert sent')) {
-      if (newNotes.includes('[Shipper Advice')) {
-        newNotes = newNotes.replace(/\]\s*$/, ' • WA Alert Sent]');
-      } else {
-        newNotes = newNotes ? `${newNotes} | ${actionNote}` : actionNote;
-      }
+      newNotes = newNotes ? `${newNotes} | ${actionNote}` : actionNote;
 
       db.prepare(`
         UPDATE orders 
