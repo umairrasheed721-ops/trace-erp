@@ -551,7 +551,7 @@ router.post('/stuck-report', async (req, res) => {
 
 /**
  * POST /api/shipper-advice/wa-alert
- * Action: Log WA Alert Sent in ERP order notes (DB track only, no Shopify note sync per user request)
+ * Action: Log WA Alert Sent in ERP order notes & sync note to Shopify Admin
  */
 router.post('/wa-alert', async (req, res) => {
   const { id } = req.body;
@@ -561,12 +561,12 @@ router.post('/wa-alert', async (req, res) => {
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
+    const actionNote = `[Shipper Advice - WA Alert Sent]`;
     let newNotes = order.notes || '';
     if (!newNotes.toLowerCase().includes('wa alert sent')) {
       if (newNotes.includes('[Shipper Advice')) {
         newNotes = newNotes.replace(/\]\s*$/, ' • WA Alert Sent]');
       } else {
-        const actionNote = `[Shipper Advice - WA Alert Sent]`;
         newNotes = newNotes ? `${newNotes} | ${actionNote}` : actionNote;
       }
 
@@ -576,10 +576,31 @@ router.post('/wa-alert', async (req, res) => {
         WHERE id = ?
       `).run(newNotes, id);
 
+      // Sync note directly to Shopify Admin order notes
+      if (order.shopify_order_id && order.store_id) {
+        try {
+          const { appendShopifyNote } = require('../engines/shopify_finance');
+          const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+          if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
+            const shopifyStore = {
+              ...store,
+              shop_domain: store.shop_domain || store.shopify_domain,
+              access_token: store.access_token || store.shopify_access_token
+            };
+            console.log(`[ShipperAdvice] Appending WA Alert note to Shopify order ${order.shopify_order_id}...`);
+            await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
+          } else {
+            console.warn(`[ShipperAdvice] Missing store credentials for Shopify note sync (store_id: ${order.store_id})`);
+          }
+        } catch (shErr) {
+          console.warn('[ShipperAdvice] Shopify note sync warning for WA alert:', shErr.message);
+        }
+      }
+
       broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
     }
 
-    res.json({ success: true, message: 'WA Alert logged in ERP successfully' });
+    res.json({ success: true, message: 'WA Alert logged & synced to Shopify successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
