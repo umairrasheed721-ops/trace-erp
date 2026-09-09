@@ -139,6 +139,9 @@ async function appendShopifyNote(store, orderId, fullNoteText) {
           continue;
         }
         seenRefsInThisBatch.add(cleanRef);
+      } else if (currentNote.includes(line.trim())) {
+        console.log(`[ShopifyNote] Skip duplicate line "${line.trim()}" for order ${orderId}`);
+        continue;
       }
 
       newLines.push(line.trim());

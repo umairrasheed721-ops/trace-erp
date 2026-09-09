@@ -575,30 +575,30 @@ router.post('/wa-alert', async (req, res) => {
         SET notes = ?
         WHERE id = ?
       `).run(newNotes, id);
-
-      // Sync note directly to Shopify Admin order notes
-      if (order.shopify_order_id && order.store_id) {
-        try {
-          const { appendShopifyNote } = require('../engines/shopify_finance');
-          const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
-          if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
-            const shopifyStore = {
-              ...store,
-              shop_domain: store.shop_domain || store.shopify_domain,
-              access_token: store.access_token || store.shopify_access_token
-            };
-            console.log(`[ShipperAdvice] Appending WA Alert note to Shopify order ${order.shopify_order_id}...`);
-            await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
-          } else {
-            console.warn(`[ShipperAdvice] Missing store credentials for Shopify note sync (store_id: ${order.store_id})`);
-          }
-        } catch (shErr) {
-          console.warn('[ShipperAdvice] Shopify note sync warning for WA alert:', shErr.message);
-        }
-      }
-
-      broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
     }
+
+    // Sync note directly to Shopify Admin order notes (guaranteed sync even if local note existed)
+    if (order.shopify_order_id && order.store_id) {
+      try {
+        const { appendShopifyNote } = require('../engines/shopify_finance');
+        const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(order.store_id);
+        if (store && (store.shop_domain || store.shopify_domain) && (store.access_token || store.shopify_access_token)) {
+          const shopifyStore = {
+            ...store,
+            shop_domain: store.shop_domain || store.shopify_domain,
+            access_token: store.access_token || store.shopify_access_token
+          };
+          console.log(`[ShipperAdvice] Appending WA Alert note to Shopify order ${order.shopify_order_id}...`);
+          await appendShopifyNote(shopifyStore, order.shopify_order_id, actionNote);
+        } else {
+          console.warn(`[ShipperAdvice] Missing store credentials for Shopify note sync (store_id: ${order.store_id})`);
+        }
+      } catch (shErr) {
+        console.warn('[ShipperAdvice] Shopify note sync warning for WA alert:', shErr.message);
+      }
+    }
+
+    broadcast('order_updated', { storeId: order.store_id, orderId: order.id });
 
     res.json({ success: true, message: 'WA Alert logged & synced to Shopify successfully' });
   } catch (err) {
