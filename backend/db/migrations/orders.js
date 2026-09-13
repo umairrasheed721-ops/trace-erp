@@ -974,5 +974,19 @@ module.exports = [
     } catch (e) {
       console.error('Migration #38 failed:', e.message);
     }
+  },
+
+  // 39. Add view_type column to saved_views table if it doesn't exist
+  (db) => {
+    try {
+      const cols = db.prepare("PRAGMA table_info(saved_views)").all().map(c => c.name);
+      if (!cols.includes('view_type')) {
+        db.prepare("ALTER TABLE saved_views ADD COLUMN view_type TEXT DEFAULT 'orders'").run();
+        console.log('✅ [Migration #39] Added view_type column to saved_views table.');
+      }
+    } catch (e) {
+      console.error('Migration #39 failed:', e.message);
+    }
   }
 ];
+
