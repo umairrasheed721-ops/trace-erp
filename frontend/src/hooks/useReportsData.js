@@ -81,17 +81,142 @@ export default function useReportsData(activeStoreId, toast) {
   const [showColPicker, setShowColPicker] = useState(false);
   const [tableLayout, setTableLayout] = useState(() => localStorage.getItem('reports_table_layout') || 'horizontal');
 
+  const [savedViews, setSavedViews] = useState([]);
+  const [selectedReportViewId, setSelectedReportViewId] = useState('');
+  const [showSaveViewModal, setShowSaveViewModal] = useState(false);
+  const [reportViewName, setReportViewName] = useState('');
+  const [isReportViewLocked, setIsReportViewLocked] = useState(false);
+
   useEffect(() => {
     localStorage.setItem('reports_table_layout', tableLayout);
   }, [tableLayout]);
 
+  // Sync active hidden columns to backend DB so prefs stay identical across all browsers/devices
   useEffect(() => {
     localStorage.setItem('reports_hidden_columns', JSON.stringify(hiddenColumns));
-  }, [hiddenColumns]);
+    if (!activeStoreId) return;
+    const timer = setTimeout(() => {
+      fetch('/api/reports/preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
+        },
+        body: JSON.stringify({ store_id: activeStoreId, hiddenColumns })
+      }).catch(err => console.warn('Failed to sync report column preferences:', err));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [hiddenColumns, activeStoreId]);
 
   useEffect(() => {
     localStorage.setItem('reports_sort_config', JSON.stringify(sortConfig));
   }, [sortConfig]);
+
+  // Fetch cross-browser user preferences & custom saved report views from DB
+  const fetchReportPreferencesAndViews = useCallback(async () => {
+    if (!activeStoreId) return;
+    const token = localStorage.getItem('trace_token') || '';
+    
+    // 1. Fetch user preferences (for new browser auto-hydration)
+    try {
+      const prefRes = await fetch(`/api/reports/preferences?store_id=${activeStoreId}&t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (prefRes.ok) {
+        const prefData = await prefRes.json();
+        if (Array.isArray(prefData.hiddenColumns)) {
+          setHiddenColumns(prefData.hiddenColumns);
+          localStorage.setItem('reports_hidden_columns', JSON.stringify(prefData.hiddenColumns));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch DB report column preferences:', err);
+    }
+
+    // 2. Fetch saved report views
+    try {
+      const viewsRes = await fetch(`/api/stores/${activeStoreId}/views?type=reports&t=${Date.now()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (viewsRes.ok) {
+        const viewsData = await viewsRes.json();
+        setSavedViews(Array.isArray(viewsData) ? viewsData : []);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch saved report views:', err);
+    }
+  }, [activeStoreId]);
+
+  useEffect(() => {
+    fetchReportPreferencesAndViews();
+  }, [fetchReportPreferencesAndViews]);
+
+  const saveReportView = useCallback(async () => {
+    if (!reportViewName.trim() || !activeStoreId) return;
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
+        },
+        body: JSON.stringify({
+          view_name: reportViewName.trim(),
+          view_type: 'reports',
+          column_config: hiddenColumns,
+          is_locked: isReportViewLocked
+        })
+      });
+      if (res.ok) {
+        toast(`✅ Saved Custom View "${reportViewName}"`, 'success');
+        setShowSaveViewModal(false);
+        setReportViewName('');
+        fetchReportPreferencesAndViews();
+      } else {
+        const data = await res.json();
+        toast(`❌ Failed to save view: ${data.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      toast('Failed to save custom view: ' + err.message, 'error');
+    }
+  }, [reportViewName, activeStoreId, hiddenColumns, isReportViewLocked, fetchReportPreferencesAndViews, toast]);
+
+  const applyReportView = useCallback((view) => {
+    if (!view) return;
+    try {
+      const cols = typeof view.column_config === 'string' ? JSON.parse(view.column_config) : view.column_config;
+      if (Array.isArray(cols)) {
+        setHiddenColumns(cols);
+        setSelectedReportViewId(String(view.id));
+        toast(`👁️ Applied Custom View "${view.view_name}"`, 'info');
+      }
+    } catch (e) {
+      toast('Error parsing view configuration', 'error');
+    }
+  }, [toast]);
+
+  const deleteReportView = useCallback(async (viewId) => {
+    if (!viewId || !activeStoreId) return;
+    if (!window.confirm('Delete this custom view?')) return;
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views/${viewId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
+        }
+      });
+      if (res.ok) {
+        toast('🗑️ Custom view deleted', 'info');
+        setSelectedReportViewId('');
+        fetchReportPreferencesAndViews();
+      } else {
+        const data = await res.json();
+        toast(`❌ Delete failed: ${data.error || 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      toast('Delete failed: ' + err.message, 'error');
+    }
+  }, [activeStoreId, fetchReportPreferencesAndViews, toast]);
 
   const fetchData = useCallback(async () => {
     if (!activeStoreId) return;
@@ -503,6 +628,19 @@ export default function useReportsData(activeStoreId, toast) {
     toggleColumn,
     fetchData,
     tableLayout,
-    setTableLayout
+    setTableLayout,
+    savedViews,
+    setSavedViews,
+    selectedReportViewId,
+    setSelectedReportViewId,
+    showSaveViewModal,
+    setShowSaveViewModal,
+    reportViewName,
+    setReportViewName,
+    isReportViewLocked,
+    setIsReportViewLocked,
+    saveReportView,
+    applyReportView,
+    deleteReportView
   };
 }

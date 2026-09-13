@@ -235,6 +235,28 @@ module.exports = [
   `CREATE INDEX IF NOT EXISTS idx_sync_audit_store ON sync_audit(store_id);`,
   `CREATE INDEX IF NOT EXISTS idx_sync_audit_level ON sync_audit(level);`,
 
+  // 15. CREATE saved_views TABLE
+  `CREATE TABLE IF NOT EXISTS saved_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    view_name TEXT NOT NULL,
+    view_type TEXT DEFAULT 'orders',
+    column_config TEXT NOT NULL,
+    is_locked INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );`,
+
+  // 16. CREATE user_preferences TABLE
+  `CREATE TABLE IF NOT EXISTS user_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    store_id INTEGER NOT NULL,
+    pref_key TEXT NOT NULL,
+    pref_value TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );`,
+
   // 13. INDEXES ON orders
   `CREATE INDEX IF NOT EXISTS idx_orders_store_id ON orders(store_id);`,
   `CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(phone);`,

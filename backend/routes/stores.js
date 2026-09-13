@@ -185,23 +185,34 @@ router.get('/:id/stats', (req, res) => {
 
 // ─── SAVED VIEWS ───
 router.get('/:id/views', (req, res) => {
-  const views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? ORDER BY v.created_at DESC').all(req.params.id);
+  const { type } = req.query;
+  let views;
+  if (type) {
+    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? AND (v.view_type = ? OR (v.view_type IS NULL AND ? = \'orders\')) ORDER BY v.created_at DESC').all(req.params.id, type, type);
+  } else {
+    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? ORDER BY v.created_at DESC').all(req.params.id);
+  }
   res.json(views);
 });
 
 router.post('/:id/views', (req, res) => {
-  const { view_name, column_config, is_locked } = req.body;
+  const { view_name, column_config, is_locked, view_type = 'orders' } = req.body;
   if (!view_name || !column_config) return res.status(400).json({ error: 'view_name and column_config required' });
 
   try {
-    db.prepare(`
-      INSERT INTO saved_views (store_id, user_id, view_name, column_config, is_locked)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(store_id, view_name) DO UPDATE SET
-        column_config = excluded.column_config,
-        is_locked = excluded.is_locked,
-        user_id = excluded.user_id
-    `).run(req.params.id, req.user.id, view_name, JSON.stringify(column_config), is_locked ? 1 : 0);
+    const existing = db.prepare('SELECT id FROM saved_views WHERE store_id = ? AND view_name = ? AND (view_type = ? OR (view_type IS NULL AND ? = \'orders\'))').get(req.params.id, view_name, view_type, view_type);
+    if (existing) {
+      db.prepare(`
+        UPDATE saved_views 
+        SET column_config = ?, is_locked = ?, user_id = ?, view_type = ?
+        WHERE id = ?
+      `).run(JSON.stringify(column_config), is_locked ? 1 : 0, req.user ? req.user.id : 1, view_type, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO saved_views (store_id, user_id, view_name, view_type, column_config, is_locked)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(req.params.id, req.user ? req.user.id : 1, view_name, view_type, JSON.stringify(column_config), is_locked ? 1 : 0);
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

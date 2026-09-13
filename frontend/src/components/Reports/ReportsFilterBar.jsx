@@ -22,8 +22,28 @@ export default function ReportsFilterBar({
   monthlyData,
   setShowBulkModal,
   tableLayout,
-  setTableLayout
+  setTableLayout,
+  savedViews = [],
+  activeSavedView = null,
+  saveReportView,
+  applyReportView,
+  deleteReportView
 }) {
+  const [showSaveModal, setShowSaveModal] = React.useState(false);
+  const [newViewName, setNewViewName] = React.useState('');
+  const [isDefaultView, setIsDefaultView] = React.useState(false);
+
+  const handleSaveSubmit = (e) => {
+    e.preventDefault();
+    if (!newViewName.trim()) return;
+    if (typeof saveReportView === 'function') {
+      saveReportView(newViewName.trim(), isDefaultView);
+    }
+    setNewViewName('');
+    setIsDefaultView(false);
+    setShowSaveModal(false);
+  };
+
   const whatsappColList = [
     'whatsappOrders', 'whatsappPercent', 'whatsappDelPercent', 'whatsappRetPercent', 
     'whatsappTotalSale', 'whatsappDeliveredSale', 'whatsappAov', 'whatsappCgs', 'whatsappAvgCgs', 
@@ -111,7 +131,7 @@ export default function ReportsFilterBar({
         )}
       </div>
 
-      <div className="view-controls">
+      <div className="view-controls" style={{ flexWrap: 'wrap', gap: 10 }}>
         <div style={{ position: 'relative' }}>
           <button className="btn" onClick={() => setShowColPicker(!showColPicker)} style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>⚙️ Columns</button>
           {showColPicker && (
@@ -123,6 +143,73 @@ export default function ReportsFilterBar({
                 </label>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* 💾 Saved Views Dropdown & Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <select
+            value={activeSavedView || ''}
+            onChange={(e) => {
+              if (e.target.value === '__save_new__') {
+                setShowSaveModal(true);
+              } else if (typeof applyReportView === 'function') {
+                applyReportView(e.target.value ? Number(e.target.value) : null);
+              }
+            }}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border)',
+              fontSize: '0.76rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none'
+            }}
+          >
+            <option value="">📁 Saved Views...</option>
+            {savedViews && savedViews.map(v => (
+              <option key={v.id} value={v.id}>
+                {v.is_default ? '⭐ ' : '📑 '}{v.name}
+              </option>
+            ))}
+            <option value="__save_new__">➕ Save Current View...</option>
+          </select>
+
+          <button
+            className="btn"
+            onClick={() => setShowSaveModal(true)}
+            title="Save current column visibility as custom view"
+            style={{
+              padding: '6px 10px',
+              fontSize: '0.76rem',
+              background: 'var(--brand-glow)',
+              color: 'var(--brand)',
+              border: '1px solid var(--brand)',
+              fontWeight: 700
+            }}
+          >
+            💾 Save View
+          </button>
+
+          {activeSavedView && typeof deleteReportView === 'function' && (
+            <button
+              className="btn"
+              onClick={() => deleteReportView(activeSavedView)}
+              title="Delete active custom view"
+              style={{
+                padding: '6px 10px',
+                fontSize: '0.76rem',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: '#ef4444',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                fontWeight: 700
+              }}
+            >
+              🗑️
+            </button>
           )}
         </div>
 
@@ -273,6 +360,72 @@ export default function ReportsFilterBar({
           </button>
         </div>
       </div>
+
+      {/* Save Custom View Modal */}
+      {showSaveModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, width: 400, boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              💾 Save Custom View
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Save your active column preferences (hidden/shown) as a reusable preset across all browsers and devices.
+            </p>
+
+            <form onSubmit={handleSaveSubmit}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  VIEW NAME
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Executive PnL Summary, WA Sales..."
+                  value={newViewName}
+                  onChange={(e) => setNewViewName(e.target.value)}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.85rem'
+                  }}
+                />
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer', marginBottom: 20 }}>
+                <input
+                  type="checkbox"
+                  checked={isDefaultView}
+                  onChange={(e) => setIsDefaultView(e.target.checked)}
+                />
+                <span>Set as default view for PnL Reports</span>
+              </label>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setShowSaveModal(false)}
+                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!newViewName.trim()}
+                >
+                  Save View
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+

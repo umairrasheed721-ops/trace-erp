@@ -777,5 +777,58 @@ router.post('/snapshots-24h', (req, res) => {
   }
 });
 
+// GET /api/reports/preferences?store_id=1
+router.get('/preferences', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id is required' });
+  const userId = req.user ? req.user.id : 1;
+
+  try {
+    const row = db.prepare(`
+      SELECT pref_value FROM user_preferences 
+      WHERE user_id = ? AND store_id = ? AND pref_key = 'reports_hidden_columns'
+    `).get(userId, Number(store_id));
+
+    let hiddenColumns = [];
+    if (row && row.pref_value) {
+      try { hiddenColumns = JSON.parse(row.pref_value); } catch (_) {}
+    }
+    res.json({ hiddenColumns });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/reports/preferences
+router.post('/preferences', (req, res) => {
+  const { store_id, hiddenColumns } = req.body;
+  if (!store_id || !Array.isArray(hiddenColumns)) return res.status(400).json({ error: 'store_id and hiddenColumns array required' });
+  const userId = req.user ? req.user.id : 1;
+
+  try {
+    const jsonVal = JSON.stringify(hiddenColumns);
+    const existing = db.prepare(`
+      SELECT id FROM user_preferences 
+      WHERE user_id = ? AND store_id = ? AND pref_key = 'reports_hidden_columns'
+    `).get(userId, Number(store_id));
+
+    if (existing) {
+      db.prepare(`
+        UPDATE user_preferences 
+        SET pref_value = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(jsonVal, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO user_preferences (user_id, store_id, pref_key, pref_value)
+        VALUES (?, ?, 'reports_hidden_columns', ?)
+      `).run(userId, Number(store_id), jsonVal);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 
