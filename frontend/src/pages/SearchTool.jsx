@@ -110,8 +110,12 @@ export default function SearchTool() {
   }
 
   const displayedOrders = useMemo(() => {
-    if (sortMode === 'deep') return allOrders;
-    return [...allOrders].sort((a, b) => {
+    let source = allOrders;
+    if (!globalSearch && activeStoreId) {
+      source = allOrders.filter(o => !o.store_id || Number(o.store_id) === Number(activeStoreId));
+    }
+    if (sortMode === 'deep') return source;
+    return [...source].sort((a, b) => {
       let valA = a[sortKey], valB = b[sortKey];
       
       if (['price', 'cost', 'courier_fee', 'paid_amount', 'postex_weight'].includes(sortKey)) {
@@ -996,6 +1000,7 @@ export default function SearchTool() {
       setCustomEnd('');
       setColFilters(emptyColFilters);
       setActiveAgingBucket(bucketLabel);
+      setGlobalSearch(false);
       setPage(1);
 
       // Trigger immediate fetch bypassing debounced state updates delay
@@ -1006,6 +1011,7 @@ export default function SearchTool() {
         customEnd: '',
         keyword: '',
         colFilters: emptyColFilters,
+        globalSearch: false,
         isRefresh: true,
         wasProgrammatic: true,
         clearKeyword: true,
@@ -1019,7 +1025,7 @@ export default function SearchTool() {
     } else {
       setActiveAgingBucket(null);
     }
-  }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, fetchOrders]);
+  }, [setStatus, setKeyword, setPreset, setCustomStart, setCustomEnd, setColFilters, setActiveAgingBucket, setGlobalSearch, fetchOrders]);
 
 
 
@@ -1472,8 +1478,9 @@ export default function SearchTool() {
   ]);
 
   useEffect(() => {
+    setGlobalSearch(false);
     fetchBacklogDates();
-  }, [activeStoreId, refreshTrigger, fetchBacklogDates]);
+  }, [activeStoreId, refreshTrigger, fetchBacklogDates, setGlobalSearch]);
 
   // Live Updates Connection (SSE)
   useEffect(() => {
@@ -1591,6 +1598,7 @@ export default function SearchTool() {
         const todayVal = new Date(); todayVal.setHours(0,0,0,0);
         result = result.filter(o => {
           if (!o.order_date || !isBacklogOrder(o)) return false;
+          if (!globalSearch && activeStoreId && o.store_id && Number(o.store_id) !== Number(activeStoreId)) return false;
           const d = new Date(o.order_date); d.setHours(0,0,0,0);
           const diff = Math.floor((todayVal - d) / 86400000);
           return diff >= bucket.min && diff <= bucket.max;
@@ -1929,7 +1937,13 @@ export default function SearchTool() {
         onClose={() => setShowAgingConfig(false)}
         agingConfig={agingConfig}
         setAgingConfig={setAgingConfig}
-        onConfirm={() => { localStorage.setItem('trace_aging_config', JSON.stringify(agingConfig)); setShowAgingConfig(false); }}
+        onConfirm={() => { 
+          localStorage.setItem('trace_aging_config', JSON.stringify(agingConfig)); 
+          setShowAgingConfig(false); 
+          setGlobalSearch(false);
+          fetchBacklogDates();
+          fetchOrders({ isRefresh: true, wasProgrammatic: true, globalSearch: false });
+        }}
       />
 
       <NameRulesModal
