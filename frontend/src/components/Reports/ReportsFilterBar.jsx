@@ -172,7 +172,7 @@ export default function ReportsFilterBar({
             <option value="">📁 Saved Views...</option>
             {savedViews && savedViews.map(v => (
               <option key={v.id} value={v.id}>
-                {v.is_default ? '⭐ ' : '📑 '}{v.name}
+                {v.is_locked || v.is_default ? '⭐ ' : '📑 '}{v.view_name || v.name}
               </option>
             ))}
             <option value="__save_new__">➕ Save Current View...</option>

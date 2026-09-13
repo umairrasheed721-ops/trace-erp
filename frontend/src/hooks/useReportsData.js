@@ -151,8 +151,14 @@ export default function useReportsData(activeStoreId, toast) {
     fetchReportPreferencesAndViews();
   }, [fetchReportPreferencesAndViews]);
 
-  const saveReportView = useCallback(async () => {
-    if (!reportViewName.trim() || !activeStoreId) return;
+  const saveReportView = useCallback(async (nameParam, isDefaultParam = false) => {
+    const viewName = (typeof nameParam === 'string' && nameParam.trim()) ? nameParam.trim() : reportViewName.trim();
+    if (!viewName || !activeStoreId) {
+      if (typeof toast === 'function') toast('Please enter a view name', 'warning');
+      return;
+    }
+    const isLocked = typeof isDefaultParam === 'boolean' ? isDefaultParam : isReportViewLocked;
+
     try {
       const res = await fetch(`/api/stores/${activeStoreId}/views`, {
         method: 'POST',
@@ -161,39 +167,48 @@ export default function useReportsData(activeStoreId, toast) {
           'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
         },
         body: JSON.stringify({
-          view_name: reportViewName.trim(),
+          view_name: viewName,
           view_type: 'reports',
           column_config: hiddenColumns,
-          is_locked: isReportViewLocked
+          is_locked: isLocked ? 1 : 0
         })
       });
       if (res.ok) {
-        toast(`✅ Saved Custom View "${reportViewName}"`, 'success');
+        if (typeof toast === 'function') toast(`✅ Saved Custom View "${viewName}"`, 'success');
         setShowSaveViewModal(false);
         setReportViewName('');
-        fetchReportPreferencesAndViews();
+        await fetchReportPreferencesAndViews();
       } else {
         const data = await res.json();
-        toast(`❌ Failed to save view: ${data.error || 'Unknown error'}`, 'error');
+        if (typeof toast === 'function') toast(`❌ Failed to save view: ${data.error || 'Unknown error'}`, 'error');
       }
     } catch (err) {
-      toast('Failed to save custom view: ' + err.message, 'error');
+      if (typeof toast === 'function') toast('Failed to save custom view: ' + err.message, 'error');
     }
   }, [reportViewName, activeStoreId, hiddenColumns, isReportViewLocked, fetchReportPreferencesAndViews, toast]);
 
-  const applyReportView = useCallback((view) => {
-    if (!view) return;
+  const applyReportView = useCallback((target) => {
+    if (!target) {
+      setSelectedReportViewId('');
+      return;
+    }
+    let viewObj = target;
+    if (typeof target === 'number' || typeof target === 'string') {
+      viewObj = savedViews.find(v => String(v.id) === String(target));
+    }
+    if (!viewObj) return;
+
     try {
-      const cols = typeof view.column_config === 'string' ? JSON.parse(view.column_config) : view.column_config;
+      const cols = typeof viewObj.column_config === 'string' ? JSON.parse(viewObj.column_config) : viewObj.column_config;
       if (Array.isArray(cols)) {
         setHiddenColumns(cols);
-        setSelectedReportViewId(String(view.id));
-        toast(`👁️ Applied Custom View "${view.view_name}"`, 'info');
+        setSelectedReportViewId(String(viewObj.id));
+        if (typeof toast === 'function') toast(`👁️ Applied Custom View "${viewObj.view_name}"`, 'info');
       }
     } catch (e) {
-      toast('Error parsing view configuration', 'error');
+      if (typeof toast === 'function') toast('Error parsing view configuration', 'error');
     }
-  }, [toast]);
+  }, [savedViews, toast]);
 
   const deleteReportView = useCallback(async (viewId) => {
     if (!viewId || !activeStoreId) return;
@@ -632,6 +647,7 @@ export default function useReportsData(activeStoreId, toast) {
     savedViews,
     setSavedViews,
     selectedReportViewId,
+    activeSavedView: selectedReportViewId,
     setSelectedReportViewId,
     showSaveViewModal,
     setShowSaveViewModal,

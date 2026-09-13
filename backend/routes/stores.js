@@ -188,9 +188,9 @@ router.get('/:id/views', (req, res) => {
   const { type } = req.query;
   let views;
   if (type) {
-    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? AND (v.view_type = ? OR (v.view_type IS NULL AND ? = \'orders\')) ORDER BY v.created_at DESC').all(req.params.id, type, type);
+    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v LEFT JOIN users u ON v.user_id = u.id WHERE v.store_id = ? AND (v.view_type = ? OR (v.view_type IS NULL AND ? = \'orders\')) ORDER BY v.created_at DESC').all(req.params.id, type, type);
   } else {
-    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v JOIN users u ON v.user_id = u.id WHERE v.store_id = ? ORDER BY v.created_at DESC').all(req.params.id);
+    views = db.prepare('SELECT v.*, u.username as creator FROM saved_views v LEFT JOIN users u ON v.user_id = u.id WHERE v.store_id = ? ORDER BY v.created_at DESC').all(req.params.id);
   }
   res.json(views);
 });
