@@ -68,7 +68,10 @@ function parseNoteBlocks(notes) {
     blocks.push(`[Shipper Advice - ${combinedContent}]`)
   }
 
-  otherBlocks.forEach(b => blocks.push(b))
+  if (otherBlocks.length > 0) {
+    // Combine all customer/merchant notes into one single unified box on one line
+    blocks.push(otherBlocks.join(' • '))
+  }
 
   return blocks
 }
@@ -1019,7 +1022,7 @@ export default function ShipperAdvice() {
                               padding: '4px 8px',
                               borderRadius: 8,
                               lineHeight: 1.4,
-                              whiteSpace: 'pre-wrap',
+                              whiteSpace: 'normal',
                               wordBreak: 'break-word',
                               boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                             }}
