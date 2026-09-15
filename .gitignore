@@ -69,4 +69,8 @@ whatsapp-local-helper/helper-app/temp_img_*
 whatsapp-local-helper/helper-app/macro.*
 whatsapp-local-helper/helper-app/cache/
 
+# Scratch directory
+scratch/
+
+
 

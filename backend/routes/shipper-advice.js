@@ -67,6 +67,17 @@ const ADVICE_COURIER_KEYWORDS = [
   'consignee wants open parcel'
 ];
 
+const REFUSAL_KEYWORDS = [
+  'refused to receive',
+  'rfd(refused',
+  'consignee refused delivery',
+  'refused by customer',
+  'customer refused',
+  'consignee refused',
+  'refusal',
+  'rejected by customer'
+];
+
 /**
  * GET /api/shipper-advice?store_id=1
  * ZERO ERP STATUS DEPENDENCY ENGINE:
@@ -132,6 +143,7 @@ router.get('/', (req, res) => {
     const stuckParcels = [];
     const reattemptsSent = [];
     const returnsRequested = [];
+    const refusedVerification = [];
 
     orders.forEach(o => {
       if (
@@ -184,16 +196,13 @@ router.get('/', (req, res) => {
                                 effectiveStatus.includes('return in process') ||
                                 effectiveStatus.includes('return initiated') ||
                                 effectiveStatus.includes('return in transit') ||
-                                effectiveStatus.includes('refused to receive') ||
-                                effectiveStatus.includes('rfd(refused') ||
-                                effectiveStatus.includes('consignee refused delivery') ||
                                 effectiveStatus.includes('return to shipper') ||
                                 effectiveStatus.includes('rts');
 
       // ⚠️ Only match advice keywords against courier_status & effectiveStatus — NOT notes
-      // (notes may contain "[Shipper Advice - ...]" text from past actions which would false-trigger adviceRequired)
       const courierOnlyFeed = `${courierStatusLower} ${effectiveStatus}`;
       const matchesAdviceKeyword = ADVICE_COURIER_KEYWORDS.some(k => courierOnlyFeed.includes(k));
+      const isRefusalReported = REFUSAL_KEYWORDS.some(k => courierOnlyFeed.includes(k));
 
       // Calculate days stuck in current warehouse/status without movement
       const lastDateStr = o.status_date || o.order_date;
@@ -206,6 +215,8 @@ router.get('/', (req, res) => {
         reattemptsSent.push({ ...itemWithStuck, advice_category: 'reattempts' });
       } else if (isReturnRequested) {
         returnsRequested.push({ ...itemWithStuck, advice_category: 'returns' });
+      } else if (isRefusalReported) {
+        refusedVerification.push({ ...itemWithStuck, advice_category: 'refused_verification' });
       } else if (matchesAdviceKeyword) {
         adviceRequired.push({ ...itemWithStuck, advice_category: 'advice_required' });
       } else if (isStuck) {
@@ -272,11 +283,11 @@ router.get('/', (req, res) => {
       };
     });
 
-    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...historyItems], store_id);
+    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification, ...historyItems], store_id);
 
-    const allProblemOrders = [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested];
+    const allProblemOrders = [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification];
     const totalCODAtRisk = allProblemOrders.reduce((sum, o) => sum + (parseFloat(o.price) || 0), 0);
-    const totalProblemParcels = adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length;
+    const totalProblemParcels = adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length + refusedVerification.length;
 
     res.json({
       success: true,
@@ -292,16 +303,18 @@ router.get('/', (req, res) => {
         stuck_parcels: stuckParcels.length,
         reattempts_sent: reattemptsSent.length,
         returns_requested: returnsRequested.length,
+        refused_verification: refusedVerification.length,
         history: historyItems.length,
         history_resolved: historyResolvedCount,
         history_ignored: historyIgnoredCount,
         history_pending: historyPendingCount,
-        total: adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length
+        total: adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length + refusedVerification.length
       },
       advice_required: adviceRequired,
       stuck_parcels: stuckParcels,
       reattempts_sent: reattemptsSent,
       returns_requested: returnsRequested,
+      refused_verification: refusedVerification,
       history: historyItems
     });
   } catch (err) {

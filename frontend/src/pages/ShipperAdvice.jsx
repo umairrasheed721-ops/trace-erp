@@ -116,11 +116,12 @@ export default function ShipperAdvice() {
 
   const [adviceRequired, setAdviceRequired] = useState([])
   const [stuckParcels, setStuckParcels] = useState([])
+  const [refusedVerification, setRefusedVerification] = useState([])
   const [reattemptsSent, setReattemptsSent] = useState([])
   const [returnsRequested, setReturnsRequested] = useState([])
   const [historyList, setHistoryList] = useState([])
   const [historySubTab, setHistorySubTab] = useState('all') // 'all' | 'ignored' | 'pending' | 'resolved'
-  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, history_resolved: 0, history_ignored: 0, history_pending: 0, total: 0 })
+  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, history: 0, history_resolved: 0, history_ignored: 0, history_pending: 0, total: 0 })
 
   // Modal States
   const [reattemptModalOrder, setReattemptModalOrder] = useState(null)
@@ -166,6 +167,7 @@ export default function ShipperAdvice() {
 
       setAdviceRequired(data.advice_required || [])
       setStuckParcels(data.stuck_parcels || [])
+      setRefusedVerification(data.refused_verification || [])
       setReattemptsSent(data.reattempts_sent || [])
       setReturnsRequested(data.returns_requested || [])
       setHistoryList(data.history || [])
@@ -175,7 +177,7 @@ export default function ShipperAdvice() {
       if (data.financial_impact) {
         setFinancialImpact(data.financial_impact)
       }
-      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
+      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
     } catch (err) {
       if (!isSilent) addToast(`❌ ${err.message}`, 'error')
     } finally {
@@ -267,17 +269,19 @@ export default function ShipperAdvice() {
 
   // Template Defaults & States
   const DEFAULT_CUSTOMER_TEMPLATE = `📢 *SHIPPER ADVICE ALERT ~ TRACE ERP*\n📦 *Order:* {order_ref}\n🚚 *Tracking:* {tracking}\n🛍️ *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n⚠️ *Courier Status:* {courier_status}\n💰 *Amount:* {price}`
+  const DEFAULT_REFUSAL_TEMPLATE = `🛑 *CUSTOMER REFUSAL VERIFICATION ~ TRACE ERP*\n📦 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n👤 *Customer:* {customer_name}\n💰 *Amount:* {price}\n⚠️ *Courier Status:* {courier_status}\n\nAssalamu Alaikum {customer_name}! Courier rider ne aapka order 'Refused to Receive' mark kiya hai. Kya aapne delivery lene se inkaar kiya tha ya rider ne attempt kiye bagair status mark kiya? Kindly confirm karein taake hum re-attempt dispatch karwayein!`
   const DEFAULT_GROUP_TEMPLATE = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n👤 *Customer:* {customer_name}\n📞 *Phone:* {phone}\n📍 *Address/City:* {address}\n💰 *COD Price:* {price}\n⚠️ *Courier Status:* {courier_status}\n📝 *Notes:* {notes}\n🛍️ *Items:* {items}\n\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
   const DEFAULT_STUCK_TEMPLATE = `🚨 *STUCK PARCEL ESCALATION REPORT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Days Stuck:* {days_stuck} Days\n👤 *Customer:* {customer_name} ({phone})\n📍 *City/Address:* {address}\n💰 *COD Value:* {price}\n⚠️ *Last Courier Status:* {courier_status}\n📝 *Remarks:* {notes}\n🛍️ *Items:* {items}\n\n⚠️ *Urgent Action Requested:* This parcel has been stuck at hub for {days_stuck} days without movement. Please dispatch rider immediately or provide status update!`
   const DEFAULT_ESCALATE_TEMPLATE = `🔥 *URGENT COURIER ESCALATION ~ AREA MANAGER ALERT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Ignored Duration:* {days_since_action} Days ({hours_since_action} Hours)\n👤 *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n💰 *COD Price:* {price}\n⚠️ *Current Status:* {courier_status}\n📝 *Previous Merchant Action:* {notes}\n\n🚨 *ATTENTION AREA MANAGER:* Merchant submitted action {days_since_action} days ago, but courier has NOT processed delivery or status movement. Please investigate and clear immediately!`
 
   const [customerTemplate, setCustomerTemplate] = useState(() => localStorage.getItem('shipper_template_customer') || DEFAULT_CUSTOMER_TEMPLATE)
+  const [refusalTemplate, setRefusalTemplate] = useState(() => localStorage.getItem('shipper_template_refusal') || DEFAULT_REFUSAL_TEMPLATE)
   const [groupTemplate, setGroupTemplate] = useState(() => localStorage.getItem('shipper_template_group') || DEFAULT_GROUP_TEMPLATE)
   const [stuckTemplate, setStuckTemplate] = useState(() => localStorage.getItem('shipper_template_stuck') || DEFAULT_STUCK_TEMPLATE)
   const [escalateTemplate, setEscalateTemplate] = useState(() => localStorage.getItem('shipper_template_escalate') || DEFAULT_ESCALATE_TEMPLATE)
 
   const [templateEditModalOpen, setTemplateEditModalOpen] = useState(false)
-  const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'group' | 'stuck' | 'escalate'
+  const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'refusal' | 'group' | 'stuck' | 'escalate'
 
   // Extract latest status from tracking_history JSON (fallback to courier_status)
   // Keys match PostEx/Instaworld history format (same as liveHistory modal at line ~719)
@@ -323,6 +327,7 @@ export default function ShipperAdvice() {
   // Save Templates Handler
   const handleSaveTemplates = () => {
     localStorage.setItem('shipper_template_customer', customerTemplate)
+    localStorage.setItem('shipper_template_refusal', refusalTemplate)
     localStorage.setItem('shipper_template_group', groupTemplate)
     localStorage.setItem('shipper_template_stuck', stuckTemplate)
     localStorage.setItem('shipper_template_escalate', escalateTemplate)
@@ -333,14 +338,42 @@ export default function ShipperAdvice() {
   // Reset Templates Handler
   const handleResetTemplates = () => {
     setCustomerTemplate(DEFAULT_CUSTOMER_TEMPLATE)
+    setRefusalTemplate(DEFAULT_REFUSAL_TEMPLATE)
     setGroupTemplate(DEFAULT_GROUP_TEMPLATE)
     setStuckTemplate(DEFAULT_STUCK_TEMPLATE)
     setEscalateTemplate(DEFAULT_ESCALATE_TEMPLATE)
     localStorage.removeItem('shipper_template_customer')
+    localStorage.removeItem('shipper_template_refusal')
     localStorage.removeItem('shipper_template_group')
     localStorage.removeItem('shipper_template_stuck')
     localStorage.removeItem('shipper_template_escalate')
     addToast('🔄 Message templates reset to default presets!', 'info')
+  }
+
+  // WhatsApp Refusal Verification Alert for Customer
+  const triggerRefusalWhatsAppAlert = async (order) => {
+    setLastActionedOrderId(order.id)
+    const msg = applyTemplate(refusalTemplate, order)
+    const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
+    const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
+    const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
+    const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
+    window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+
+    try {
+      const res = await fetch('/api/shipper-advice/wa-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id, type: 'refusal_verify' })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(`💬 Refusal Verification WA Alert logged for #${order.ref_number || order.tracking_number}`, 'success')
+        fetchAdviceFeed(true)
+      }
+    } catch (err) {
+      console.error('Failed to log WA alert:', err)
+    }
   }
 
   // WhatsApp Alert Builder for Customer & track in ERP
@@ -458,6 +491,8 @@ export default function ShipperAdvice() {
       return { label: '🚨 Advice Required', color: '#fb923c', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.35)' }
     } else if (order.stage_badge === '📦 Stuck Parcel' || cat === 'stuck_parcels') {
       return { label: '📦 Stuck Parcel', color: '#c084fc', bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.35)' }
+    } else if (order.stage_badge === '🛑 Refusal Verification' || cat === 'refused_verification') {
+      return { label: '🛑 Refusal Verification', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.35)' }
     } else if (order.stage_badge === '🔄 Reattempt Sent' || cat === 'reattempts') {
       return { label: '🔄 Reattempt Sent', color: '#818cf8', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)' }
     } else if (order.stage_badge === '📦 Return Requested' || cat === 'returns') {
@@ -474,6 +509,7 @@ export default function ShipperAdvice() {
     return [
       ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
       ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
+      ...refusedVerification.map(o => ({ ...o, stage_badge: '🛑 Refusal Verification' })),
       ...reattemptsSent.map(o => ({ ...o, stage_badge: '🔄 Reattempt Sent' })),
       ...returnsRequested.map(o => ({ ...o, stage_badge: '📦 Return Requested' })),
       ...historyList.map(o => ({ ...o, stage_badge: '📜 Actioned History' }))
@@ -492,6 +528,8 @@ export default function ShipperAdvice() {
     baseOrders = adviceRequired
   } else if (activeTab === 'stuck_parcels') {
     baseOrders = stuckParcels
+  } else if (activeTab === 'refused_verification') {
+    baseOrders = refusedVerification
   } else if (activeTab === 'reattempts') {
     baseOrders = reattemptsSent
   } else if (activeTab === 'returns') {
@@ -685,6 +723,20 @@ export default function ShipperAdvice() {
           style={{ borderRadius: 20, padding: '8px 18px', fontWeight: 700, color: activeTab === 'stuck_parcels' ? '#fff' : '#c084fc' }}
         >
           📦 Stuck Parcels ({counts.stuck_parcels || 0})
+        </button>
+        <button
+          onClick={() => setActiveTab('refused_verification')}
+          className={`btn ${activeTab === 'refused_verification' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
+          style={{
+            borderRadius: 20,
+            padding: '8px 18px',
+            fontWeight: 700,
+            color: activeTab === 'refused_verification' ? '#fff' : '#f97316',
+            borderColor: activeTab === 'refused_verification' ? 'transparent' : 'rgba(249, 115, 22, 0.4)',
+            background: activeTab === 'refused_verification' ? '#f97316' : 'rgba(249, 115, 22, 0.1)'
+          }}
+        >
+          🛑 Refused Verification ({counts.refused_verification || 0})
         </button>
         <button
           onClick={() => setActiveTab('reattempts')}
@@ -1009,19 +1061,44 @@ export default function ShipperAdvice() {
                         >
                           📜 History Log
                         </button>
-                        <button
-                          onClick={() => {
-                            setReattemptModalOrder(order)
-                            setReattemptRemark('Customer requested reattempt')
-                          }}
-                          className="btn btn-sm btn-primary"
-                          style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                        >
-                          ⚡ Reattempt
-                        </button>
+
+                        {(activeTab === 'refused_verification' || order.advice_category === 'refused_verification') ? (
+                          <button
+                            onClick={() => {
+                              setReattemptModalOrder(order)
+                              setReattemptRemark('Fake attempt report by rider. Customer verified ready to receive parcel.')
+                            }}
+                            className="btn btn-sm"
+                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, background: '#f97316', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title="Escalate fake refusal attempt to courier & request immediate re-dispatch"
+                          >
+                            🚨 Escalate Fake Refusal
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setReattemptModalOrder(order)
+                              setReattemptRemark('Customer requested reattempt')
+                            }}
+                            className="btn btn-sm btn-primary"
+                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            ⚡ Reattempt
+                          </button>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {(activeTab === 'refused_verification' || order.advice_category === 'refused_verification') && (
+                          <button
+                            onClick={() => triggerRefusalWhatsAppAlert(order)}
+                            className="btn btn-xs btn-secondary"
+                            style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#f97316', fontWeight: 800, borderColor: 'rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.12)' }}
+                            title="Send 1-click WhatsApp Refusal Verification message to customer"
+                          >
+                            📱 WA Refusal Verify
+                          </button>
+                        )}
                         {(order.action_status === 'ignored' || activeTab === 'history') && (
                           <button
                             onClick={() => triggerEscalateShare(order)}
