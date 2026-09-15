@@ -987,6 +987,23 @@ module.exports = [
     } catch (e) {
       console.error('Migration #39 failed:', e.message);
     }
+  },
+
+  // 40. Add is_priority and rider_contact columns to orders table for Shipper Advice Priority module
+  (db) => {
+    try {
+      const cols = db.prepare("PRAGMA table_info(orders)").all().map(c => c.name);
+      if (!cols.includes('is_priority')) {
+        db.prepare("ALTER TABLE orders ADD COLUMN is_priority INTEGER DEFAULT 0").run();
+        console.log('✅ [Migration #40a] Added is_priority column to orders table.');
+      }
+      if (!cols.includes('rider_contact')) {
+        db.prepare("ALTER TABLE orders ADD COLUMN rider_contact TEXT DEFAULT NULL").run();
+        console.log('✅ [Migration #40b] Added rider_contact column to orders table.');
+      }
+    } catch (e) {
+      console.error('Migration #40 failed:', e.message);
+    }
   }
 ];
 

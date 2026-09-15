@@ -122,9 +122,10 @@ export default function ShipperAdvice() {
   const [refusedVerification, setRefusedVerification] = useState([])
   const [reattemptsSent, setReattemptsSent] = useState([])
   const [returnsRequested, setReturnsRequested] = useState([])
+  const [priorityParcels, setPriorityParcels] = useState([])
   const [historyList, setHistoryList] = useState([])
   const [historySubTab, setHistorySubTab] = useState('all') // 'all' | 'ignored' | 'pending' | 'resolved'
-  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, history: 0, history_resolved: 0, history_ignored: 0, history_pending: 0, total: 0 })
+  const [counts, setCounts] = useState({ advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, priority_parcels: 0, history: 0, history_resolved: 0, history_ignored: 0, history_pending: 0, total: 0 })
 
   // Modal States
   const [reattemptModalOrder, setReattemptModalOrder] = useState(null)
@@ -136,6 +137,9 @@ export default function ShipperAdvice() {
   const [historyModalOrder, setHistoryModalOrder] = useState(null)
   const [liveHistory, setLiveHistory] = useState([])
   const [liveHistoryLoading, setLiveHistoryLoading] = useState(false)
+
+  const [riderModalOrder, setRiderModalOrder] = useState(null)
+  const [riderInputContact, setRiderInputContact] = useState('')
 
   const openHistoryModal = async (order) => {
     setHistoryModalOrder(order)
@@ -173,6 +177,7 @@ export default function ShipperAdvice() {
       setRefusedVerification(data.refused_verification || [])
       setReattemptsSent(data.reattempts_sent || [])
       setReturnsRequested(data.returns_requested || [])
+      setPriorityParcels(data.priority_parcels || [])
       setHistoryList(data.history || [])
       if (Array.isArray(data.available_months) && data.available_months.length > 0) {
         setAvailableMonths(data.available_months)
@@ -180,7 +185,7 @@ export default function ShipperAdvice() {
       if (data.financial_impact) {
         setFinancialImpact(data.financial_impact)
       }
-      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, history: 0, total: 0 })
+      setCounts(data.counts || { advice_required: 0, stuck_parcels: 0, refused_verification: 0, reattempts_sent: 0, returns_requested: 0, priority_parcels: 0, history: 0, total: 0 })
     } catch (err) {
       if (!isSilent) addToast(`❌ ${err.message}`, 'error')
     } finally {
@@ -191,6 +196,48 @@ export default function ShipperAdvice() {
   useEffect(() => {
     fetchAdviceFeed()
   }, [fetchAdviceFeed])
+
+  // Handle Toggle Priority
+  const handleTogglePriority = async (order) => {
+    try {
+      const res = await fetch('/api/shipper-advice/toggle-priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.id })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(data.message || (data.is_priority ? '⭐ Marked as Priority' : 'Unmarked Priority'), 'success')
+        fetchAdviceFeed(true)
+      } else {
+        addToast(`❌ ${data.error || 'Failed to toggle priority'}`, 'error')
+      }
+    } catch {
+      addToast('Failed to toggle priority', 'error')
+    }
+  }
+
+  // Handle Save Rider Contact
+  const handleSaveRiderContact = async (orderId, riderContact) => {
+    try {
+      const res = await fetch('/api/shipper-advice/update-rider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: orderId, rider_contact: riderContact })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        addToast(data.message || '✅ Rider contact saved!', 'success')
+        setRiderModalOrder(null)
+        setRiderInputContact('')
+        fetchAdviceFeed(true)
+      } else {
+        addToast(`❌ ${data.error || 'Failed to save rider contact'}`, 'error')
+      }
+    } catch {
+      addToast('Failed to save rider contact', 'error')
+    }
+  }
 
   // Handle Reattempt Submit
   const handleReattemptSubmit = async () => {
@@ -276,6 +323,8 @@ export default function ShipperAdvice() {
   const DEFAULT_GROUP_TEMPLATE = `📦 *SHIPPER ADVICE / COURIER CS ESCALATION*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n👤 *Customer:* {customer_name}\n📞 *Phone:* {phone}\n📍 *Address/City:* {address}\n💰 *COD Price:* {price}\n⚠️ *Courier Status:* {courier_status}\n📝 *Notes:* {notes}\n🛍️ *Items:* {items}\n\n🙏 Please assist in reattempting delivery at earliest. Thank you!`
   const DEFAULT_STUCK_TEMPLATE = `🚨 *STUCK PARCEL ESCALATION REPORT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Days Stuck:* {days_stuck} Days\n👤 *Customer:* {customer_name} ({phone})\n📍 *City/Address:* {address}\n💰 *COD Value:* {price}\n⚠️ *Last Courier Status:* {courier_status}\n📝 *Remarks:* {notes}\n🛍️ *Items:* {items}\n\n⚠️ *Urgent Action Requested:* This parcel has been stuck at hub for {days_stuck} days without movement. Please dispatch rider immediately or provide status update!`
   const DEFAULT_ESCALATE_TEMPLATE = `🔥 *URGENT COURIER ESCALATION ~ AREA MANAGER ALERT*\n🔖 *Order #:* {order_ref}\n🚚 *Courier:* {courier}\n🔢 *Tracking #:* {tracking}\n⏳ *Ignored Duration:* {days_since_action} Days ({hours_since_action} Hours)\n👤 *Customer:* {customer_name} ({phone})\n📍 *City:* {city}\n💰 *COD Price:* {price}\n⚠️ *Current Status:* {courier_status}\n📝 *Previous Merchant Action:* {notes}\n\n🚨 *ATTENTION AREA MANAGER:* Merchant submitted action {days_since_action} days ago, but courier has NOT processed delivery or status movement. Please investigate and clear immediately!`
+  const DEFAULT_RIDER_TEMPLATE = `🚚 *PRIORITY PARCEL DELIVERY FOLLOW-UP ~ TRACE ERP*\n📦 *Order #:* {order_ref}\n👤 *Customer:* {customer_name}\n📞 *Customer Phone:* {phone}\n📍 *Address:* {address}, {city}\n💰 *COD Amount:* Rs {price}\n\nAssalamu Alaikum! Yeh parcel priority delivery ke liye mark hai. Kindly is order ki delivery aaj confirm karein. Thank you!`
+  const DEFAULT_CONNECT_TEMPLATE = `🚨 *DELIVERY UPDATE ~ TRACE ERP*\n📦 *Order #:* {order_ref}\n\nAssalamu Alaikum {customer_name}! Aapka order dispatch ho chuka hai aur courier rider delivery ke liye out hai.\n\n👤 *Rider Info:* {rider_contact}\n💰 *COD Amount:* Rs {price}\n\nKindly phone reachable rakhein taake rider aasaani se contact kar sake!`
 
   const [customerTemplate, setCustomerTemplate] = useState(() => localStorage.getItem('shipper_template_customer') || DEFAULT_CUSTOMER_TEMPLATE)
   const [refusalTemplate, setRefusalTemplate] = useState(() => localStorage.getItem('shipper_template_refusal') || DEFAULT_REFUSAL_TEMPLATE)
@@ -285,6 +334,44 @@ export default function ShipperAdvice() {
 
   const [templateEditModalOpen, setTemplateEditModalOpen] = useState(false)
   const [activeTemplateTab, setActiveTemplateTab] = useState('customer') // 'customer' | 'refusal' | 'group' | 'stuck' | 'escalate'
+
+  // Trigger Rider WhatsApp Dispatch
+  const triggerRiderWhatsApp = (order) => {
+    if (!order.rider_contact) return addToast('No Rider Contact saved', 'warning')
+    const digits = order.rider_contact.replace(/\D/g, '')
+    if (!digits) return addToast('Invalid Rider Phone Number', 'error')
+    
+    let cleanPhone = digits
+    if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1)
+    if (!cleanPhone.startsWith('92') && cleanPhone.length === 10) cleanPhone = '92' + cleanPhone
+
+    const msg = DEFAULT_RIDER_TEMPLATE
+      .replace(/{order_ref}/g, order.ref_number || order.tracking_number || order.id || '')
+      .replace(/{customer_name}/g, order.customer_name || 'Customer')
+      .replace(/{phone}/g, order.phone || '')
+      .replace(/{address}/g, order.address || '')
+      .replace(/{city}/g, order.city || '')
+      .replace(/{price}/g, parseInt(order.price || 0).toLocaleString())
+      .replace(/{rider_contact}/g, order.rider_contact || '')
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
+
+  // Trigger Connect Customer & Rider
+  const triggerConnectCustomerRider = (order) => {
+    if (!order.phone) return addToast('No Customer Phone number available', 'warning')
+    const digits = order.phone.replace(/\D/g, '')
+    let cleanPhone = digits
+    if (cleanPhone.startsWith('0')) cleanPhone = '92' + cleanPhone.slice(1)
+
+    const msg = DEFAULT_CONNECT_TEMPLATE
+      .replace(/{order_ref}/g, order.ref_number || order.tracking_number || order.id || '')
+      .replace(/{customer_name}/g, order.customer_name || 'Customer')
+      .replace(/{price}/g, parseInt(order.price || 0).toLocaleString())
+      .replace(/{rider_contact}/g, order.rider_contact || 'Courier Rider')
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
 
   // Extract latest status from tracking_history JSON (fallback to courier_status)
   // Keys match PostEx/Instaworld history format (same as liveHistory modal at line ~719)
@@ -496,6 +583,8 @@ export default function ShipperAdvice() {
       return { label: '📦 Stuck Parcel', color: '#c084fc', bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.35)' }
     } else if (order.stage_badge === '🛑 Refusal Verification' || cat === 'refused_verification') {
       return { label: '🛑 Refusal Verification', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.35)' }
+    } else if (order.stage_badge === '⭐ Priority Parcel' || cat === 'priority_parcels') {
+      return { label: '⭐ Priority Parcel', color: '#eab308', bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.35)' }
     } else if (order.stage_badge === '🔄 Reattempt Sent' || cat === 'reattempts') {
       return { label: '🔄 Reattempt Sent', color: '#818cf8', bg: 'rgba(99, 102, 241, 0.15)', border: 'rgba(99, 102, 241, 0.35)' }
     } else if (order.stage_badge === '📦 Return Requested' || cat === 'returns') {
@@ -510,6 +599,7 @@ export default function ShipperAdvice() {
   const allCategorizedOrders = (() => {
     const seen = new Set()
     return [
+      ...priorityParcels.map(o => ({ ...o, stage_badge: '⭐ Priority Parcel' })),
       ...adviceRequired.map(o => ({ ...o, stage_badge: '🚨 Advice Required' })),
       ...stuckParcels.map(o => ({ ...o, stage_badge: '📦 Stuck Parcel' })),
       ...refusedVerification.map(o => ({ ...o, stage_badge: '🛑 Refusal Verification' })),
@@ -533,6 +623,8 @@ export default function ShipperAdvice() {
     baseOrders = stuckParcels
   } else if (activeTab === 'refused_verification') {
     baseOrders = refusedVerification
+  } else if (activeTab === 'priority_parcels') {
+    baseOrders = priorityParcels
   } else if (activeTab === 'reattempts') {
     baseOrders = reattemptsSent
   } else if (activeTab === 'returns') {
@@ -756,6 +848,20 @@ export default function ShipperAdvice() {
           📦 Returns Requested ({counts.returns_requested})
         </button>
         <button
+          onClick={() => setActiveTab('priority_parcels')}
+          className={`btn ${activeTab === 'priority_parcels' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
+          style={{
+            borderRadius: 20,
+            padding: '8px 18px',
+            fontWeight: 700,
+            color: activeTab === 'priority_parcels' ? '#fff' : '#eab308',
+            borderColor: activeTab === 'priority_parcels' ? 'transparent' : 'rgba(234, 179, 8, 0.4)',
+            background: activeTab === 'priority_parcels' ? '#eab308' : 'rgba(234, 179, 8, 0.12)'
+          }}
+        >
+          ⭐ Priority Parcels ({counts.priority_parcels || 0})
+        </button>
+        <button
           onClick={() => setActiveTab('history')}
           className={`btn ${activeTab === 'history' && !searchQuery.trim() ? 'btn-primary' : 'btn-secondary'}`}
           style={{ borderRadius: 20, padding: '8px 18px', fontWeight: 700, color: activeTab === 'history' ? '#fff' : '#38bdf8' }}
@@ -850,6 +956,23 @@ export default function ShipperAdvice() {
                         <span style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
                           #{order.ref_number || order.id}
                         </span>
+                        <button
+                          onClick={() => handleTogglePriority(order)}
+                          style={{
+                            background: order.is_priority ? 'rgba(234, 179, 8, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                            color: order.is_priority ? '#eab308' : 'var(--text-muted)',
+                            border: order.is_priority ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid var(--border)',
+                            borderRadius: 6,
+                            padding: '2px 7px',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                          title={order.is_priority ? 'Unmark Priority' : 'Mark Priority Parcel'}
+                        >
+                          {order.is_priority ? '⭐ Priority' : '☆ Mark Priority'}
+                        </button>
                         {isLastActioned && (
                           <span style={{
                             fontSize: '0.68rem',
@@ -932,6 +1055,29 @@ export default function ShipperAdvice() {
                   {/* Raw Courier Remark Column */}
                   <td style={{ padding: '14px 16px', verticalAlign: 'top', minWidth: 260, maxWidth: 380, whiteSpace: 'normal' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {(() => {
+                        const statusLow = ((order.courier_status || '') + ' ' + (getLatestCourierStatus(order) || '')).toLowerCase()
+                        const isOutForDelivery = statusLow.includes('out for delivery') || statusLow.includes('en route to customer') || statusLow.includes('dispatch for delivery') || statusLow.includes('with rider')
+                        if (isOutForDelivery) {
+                          return (
+                            <span style={{
+                              padding: '3px 9px',
+                              borderRadius: 8,
+                              background: 'linear-gradient(135deg, #ef4444, #f97316)',
+                              color: '#fff',
+                              fontWeight: 900,
+                              fontSize: '0.73rem',
+                              boxShadow: '0 0 10px rgba(239, 68, 68, 0.6)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}>
+                              🚨 OUT FOR DELIVERY NOW
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                       <span style={{
                         padding: '4px 10px',
                         borderRadius: 8,
@@ -1007,6 +1153,53 @@ export default function ShipperAdvice() {
                         }} title="No status update movement from courier for >= 2 days">
                           ⏳ Stuck {order.days_stuck} Days
                         </span>
+                      )}
+                    </div>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {order.rider_contact ? (
+                        <div style={{
+                          fontSize: '0.74rem',
+                          background: 'rgba(234, 179, 8, 0.12)',
+                          border: '1px solid rgba(234, 179, 8, 0.35)',
+                          color: '#eab308',
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontWeight: 700
+                        }}>
+                          👤 Rider: {order.rider_contact}
+                          <button
+                            onClick={() => {
+                              setRiderModalOrder(order)
+                              setRiderInputContact(order.rider_contact || '')
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer', padding: '0 2px', fontSize: '0.75rem' }}
+                            title="Edit Rider Contact"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setRiderModalOrder(order)
+                            setRiderInputContact('')
+                          }}
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: '0.71rem',
+                            borderRadius: 6,
+                            background: 'rgba(255,255,255,0.05)',
+                            color: 'var(--text-muted)',
+                            border: '1px dashed var(--border)',
+                            cursor: 'pointer'
+                          }}
+                          title="Save Courier Rider Contact Details"
+                        >
+                          + Rider Contact
+                        </button>
                       )}
                     </div>
                     {order.notes && (
@@ -1140,6 +1333,34 @@ export default function ShipperAdvice() {
                         >
                           💬 View Chat
                         </button>
+                        {order.rider_contact && (
+                          <>
+                            <a
+                              href={`tel:${order.rider_contact.replace(/\D/g, '')}`}
+                              className="btn btn-xs btn-secondary"
+                              style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#eab308', fontWeight: 800, borderColor: 'rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.12)', textDecoration: 'none' }}
+                              title="Call Rider directly"
+                            >
+                              📞 Call Rider
+                            </a>
+                            <button
+                              onClick={() => triggerRiderWhatsApp(order)}
+                              className="btn btn-xs btn-secondary"
+                              style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#25D366', fontWeight: 800, borderColor: 'rgba(37,211,102,0.4)', background: 'rgba(37,211,102,0.12)' }}
+                              title="Send WhatsApp message to Rider"
+                            >
+                              💬 WA Rider
+                            </button>
+                            <button
+                              onClick={() => triggerConnectCustomerRider(order)}
+                              className="btn btn-xs btn-secondary"
+                              style={{ padding: '4px 8px', borderRadius: 6, fontSize: '0.72rem', color: '#38bdf8', fontWeight: 800, borderColor: 'rgba(56,189,248,0.4)', background: 'rgba(56,189,248,0.12)' }}
+                              title="Send WhatsApp update to customer with Rider contact info"
+                            >
+                              📲 Connect Cust & Rider
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => triggerGroupShare(order)}
                           className="btn btn-xs btn-secondary"
@@ -1535,6 +1756,44 @@ export default function ShipperAdvice() {
                   💾 Save Templates
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 Rider Contact Edit Modal */}
+      {riderModalOrder && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 440, padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              📱 Rider Contact — #{riderModalOrder.ref_number || riderModalOrder.tracking_number}
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '6px 0 16px' }}>
+              Enter Courier Rider Name & Phone Number (e.g. <i>Kashif - 03001234567</i>):
+            </p>
+            <input
+              type="text"
+              value={riderInputContact}
+              onChange={e => setRiderInputContact(e.target.value)}
+              placeholder="e.g. Kashif (03001234567)"
+              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: '0.9rem', marginBottom: 20 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setRiderModalOrder(null)}
+                className="btn btn-secondary"
+                style={{ borderRadius: 8, padding: '8px 16px' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveRiderContact(riderModalOrder.id, riderInputContact)}
+                className="btn btn-primary"
+                style={{ borderRadius: 8, padding: '8px 18px', fontWeight: 800 }}
+              >
+                💾 Save Rider Contact
+              </button>
             </div>
           </div>
         </div>

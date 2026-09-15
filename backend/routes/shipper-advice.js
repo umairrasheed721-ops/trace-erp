@@ -128,7 +128,8 @@ router.get('/', (req, res) => {
     const orders = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
-             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history
+             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history,
+             COALESCE(is_priority, 0) as is_priority, rider_contact
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
@@ -144,6 +145,7 @@ router.get('/', (req, res) => {
     const reattemptsSent = [];
     const returnsRequested = [];
     const refusedVerification = [];
+    const priorityParcels = [];
 
     orders.forEach(o => {
       if (
@@ -209,7 +211,12 @@ router.get('/', (req, res) => {
       const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
       const isStuck = daysStuck >= 2;
 
-      const itemWithStuck = { ...o, days_stuck: daysStuck };
+      const isPriority = Number(o.is_priority) === 1 || notesLower.includes('[priority]');
+      const itemWithStuck = { ...o, days_stuck: daysStuck, is_priority: isPriority ? 1 : 0 };
+
+      if (isPriority) {
+        priorityParcels.push({ ...itemWithStuck, advice_category: 'priority_parcels' });
+      }
 
       if (isReattemptSent) {
         reattemptsSent.push({ ...itemWithStuck, advice_category: 'reattempts' });
@@ -237,7 +244,8 @@ router.get('/', (req, res) => {
     const history = db.prepare(`
       SELECT id, ref_number, tracking_number, customer_name, phone, address, city, 
              delivery_status, courier_status, notes, price, product_titles, line_items, courier, 
-             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history
+             COALESCE(failed_attempts, 0) as failed_attempts, status_date, order_date, tracking_history,
+             COALESCE(is_priority, 0) as is_priority, rider_contact
       FROM orders 
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
@@ -289,11 +297,11 @@ router.get('/', (req, res) => {
       };
     });
 
-    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification, ...historyItems], store_id);
+    enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification, ...priorityParcels, ...historyItems], store_id);
 
     // Deduplicate problem orders for accurate financial metrics
     const uniqueProblemOrderMap = new Map();
-    [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification].forEach(o => {
+    [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification, ...priorityParcels].forEach(o => {
       if (o.id) uniqueProblemOrderMap.set(String(o.id), o);
     });
     const uniqueProblemOrders = Array.from(uniqueProblemOrderMap.values());
@@ -315,6 +323,7 @@ router.get('/', (req, res) => {
         reattempts_sent: reattemptsSent.length,
         returns_requested: returnsRequested.length,
         refused_verification: refusedVerification.length,
+        priority_parcels: priorityParcels.length,
         history: historyItems.length,
         history_resolved: historyResolvedCount,
         history_ignored: historyIgnoredCount,
@@ -326,6 +335,7 @@ router.get('/', (req, res) => {
       reattempts_sent: reattemptsSent,
       returns_requested: returnsRequested,
       refused_verification: refusedVerification,
+      priority_parcels: priorityParcels,
       history: historyItems
     });
   } catch (err) {
@@ -876,6 +886,67 @@ router.get('/live-tracking-history', async (req, res) => {
   } catch (err) {
     console.error('Live tracking fetch error:', err.message);
     res.status(500).json({ error: err.message, tracking_history: [] });
+  }
+});
+
+/**
+ * POST /api/shipper-advice/toggle-priority
+ * Body: { id: order_id, is_priority?: 0|1 }
+ * Toggles or sets priority flag on an order
+ */
+router.post('/toggle-priority', (req, res) => {
+  const { id, is_priority } = req.body;
+  if (!id) return res.status(400).json({ error: 'Order ID required' });
+
+  try {
+    const existing = db.prepare('SELECT id, is_priority, notes FROM orders WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    let newPriority = is_priority !== undefined ? Number(is_priority) : (Number(existing.is_priority) === 1 ? 0 : 1);
+
+    db.prepare('UPDATE orders SET is_priority = ? WHERE id = ?').run(newPriority, id);
+
+    res.json({
+      success: true,
+      is_priority: newPriority,
+      message: newPriority === 1 ? '⭐ Marked as Priority Parcel' : 'Unmarked from Priority'
+    });
+  } catch (err) {
+    console.error('Toggle priority error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/shipper-advice/update-rider
+ * Body: { id: order_id, rider_contact: 'Kashif (03001234567)' }
+ * Saves rider contact info for a priority parcel
+ */
+router.post('/update-rider', (req, res) => {
+  const { id, rider_contact } = req.body;
+  if (!id) return res.status(400).json({ error: 'Order ID required' });
+
+  try {
+    const existing = db.prepare('SELECT id, notes FROM orders WHERE id = ?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Order not found' });
+
+    const cleanContact = (rider_contact || '').trim();
+    db.prepare('UPDATE orders SET rider_contact = ? WHERE id = ?').run(cleanContact || null, id);
+
+    // If cleanContact is provided, append note tag [Rider: ...] to notes if not already tagged
+    if (cleanContact && !existing.notes?.includes(`[Rider: ${cleanContact}]`)) {
+      const updatedNotes = existing.notes ? `${existing.notes} | [Rider: ${cleanContact}]` : `[Rider: ${cleanContact}]`;
+      db.prepare('UPDATE orders SET notes = ? WHERE id = ?').run(updatedNotes, id);
+    }
+
+    res.json({
+      success: true,
+      rider_contact: cleanContact,
+      message: '✅ Rider contact saved successfully'
+    });
+  } catch (err) {
+    console.error('Update rider contact error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
