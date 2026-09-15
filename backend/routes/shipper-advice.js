@@ -217,8 +217,14 @@ router.get('/', (req, res) => {
         returnsRequested.push({ ...itemWithStuck, advice_category: 'returns' });
       } else if (isRefusalReported) {
         refusedVerification.push({ ...itemWithStuck, advice_category: 'refused_verification' });
+        if (isStuck) {
+          stuckParcels.push({ ...itemWithStuck, advice_category: 'stuck_parcels' });
+        }
       } else if (matchesAdviceKeyword) {
         adviceRequired.push({ ...itemWithStuck, advice_category: 'advice_required' });
+        if (isStuck) {
+          stuckParcels.push({ ...itemWithStuck, advice_category: 'stuck_parcels' });
+        }
       } else if (isStuck) {
         stuckParcels.push({ ...itemWithStuck, advice_category: 'stuck_parcels' });
       }
@@ -285,9 +291,14 @@ router.get('/', (req, res) => {
 
     enrichOrderImages([...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification, ...historyItems], store_id);
 
-    const allProblemOrders = [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification];
-    const totalCODAtRisk = allProblemOrders.reduce((sum, o) => sum + (parseFloat(o.price) || 0), 0);
-    const totalProblemParcels = adviceRequired.length + stuckParcels.length + reattemptsSent.length + returnsRequested.length + refusedVerification.length;
+    // Deduplicate problem orders for accurate financial metrics
+    const uniqueProblemOrderMap = new Map();
+    [...adviceRequired, ...stuckParcels, ...reattemptsSent, ...returnsRequested, ...refusedVerification].forEach(o => {
+      if (o.id) uniqueProblemOrderMap.set(String(o.id), o);
+    });
+    const uniqueProblemOrders = Array.from(uniqueProblemOrderMap.values());
+    const totalCODAtRisk = uniqueProblemOrders.reduce((sum, o) => sum + (parseFloat(o.price) || 0), 0);
+    const totalProblemParcels = uniqueProblemOrders.length;
 
     res.json({
       success: true,
