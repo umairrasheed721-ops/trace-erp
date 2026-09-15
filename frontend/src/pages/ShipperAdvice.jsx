@@ -819,12 +819,12 @@ export default function ShipperAdvice() {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '14px 16px' }}>ORDER / PARCEL</th>
-                <th style={{ padding: '14px 16px' }}>CUSTOMER</th>
-                <th style={{ padding: '14px 16px' }}>PRODUCT DETAILS</th>
-                <th style={{ padding: '14px 16px' }}>RAW COURIER REMARK</th>
-                <th style={{ padding: '14px 16px' }}>PRICE</th>
-                <th style={{ padding: '14px 16px', textAlign: 'right' }}>ACTIONS</th>
+                <th style={{ padding: '14px 16px', minWidth: 160 }}>ORDER / PARCEL</th>
+                <th style={{ padding: '14px 16px', minWidth: 140 }}>CUSTOMER</th>
+                <th style={{ padding: '14px 16px', minWidth: 200 }}>PRODUCT DETAILS</th>
+                <th style={{ padding: '14px 16px', minWidth: 200 }}>RAW COURIER REMARK</th>
+                <th style={{ padding: '14px 16px', width: 100, whiteSpace: 'nowrap' }}>PRICE</th>
+                <th style={{ padding: '14px 16px', textAlign: 'right', minWidth: 340, width: 340 }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -1032,16 +1032,16 @@ export default function ShipperAdvice() {
                   </td>
 
                   {/* Price Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
-                    <div style={{ fontWeight: 800, color: '#10b981' }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.92rem' }}>
                       Rs {parseInt(order.price || 0).toLocaleString()}
                     </div>
                   </td>
 
                   {/* Actions Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', minWidth: 200 }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', width: 340 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', minWidth: 320, width: '100%' }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button
                           onClick={() => openHistoryModal(order)}
                           className="btn btn-sm btn-secondary"
@@ -1055,7 +1055,8 @@ export default function ShipperAdvice() {
                             background: 'rgba(99,102,241,0.08)',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: 4
+                            gap: 4,
+                            whiteSpace: 'nowrap'
                           }}
                           title="Live fetch real-time courier status history log"
                         >
@@ -1069,7 +1070,7 @@ export default function ShipperAdvice() {
                               setReattemptRemark('Fake attempt report by rider. Customer verified ready to receive parcel.')
                             }}
                             className="btn btn-sm"
-                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, background: '#f97316', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, background: '#f97316', color: '#fff', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
                             title="Escalate fake refusal attempt to courier & request immediate re-dispatch"
                           >
                             🚨 Escalate Fake Refusal
@@ -1081,7 +1082,7 @@ export default function ShipperAdvice() {
                               setReattemptRemark('Customer requested reattempt')
                             }}
                             className="btn btn-sm btn-primary"
-                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            style={{ padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
                           >
                             ⚡ Reattempt
                           </button>
