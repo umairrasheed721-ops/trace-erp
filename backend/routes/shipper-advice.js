@@ -186,11 +186,13 @@ router.get('/', (req, res) => {
       // Effective courier status = latest history event OR stale courier_status
       const effectiveStatus = latestHistStatusLower || courierStatusLower;
 
-      const isReattemptSent = notesLower.includes('[shipper advice - reattempt') || 
+      const isReattemptSent = notesLower.includes('reattempt') || 
                               courierStatusLower.includes('reattempt requested') ||
                               courierStatusLower.includes('re-attempt requested');
 
-      const isReturnRequested = notesLower.includes('[shipper advice - return') || 
+      const isReturnRequested = notesLower.includes('return requested by merchant') ||
+                                notesLower.includes('return:') ||
+                                notesLower.includes('return requested') ||
                                 effectiveStatus.includes('return requested') ||
                                 effectiveStatus.includes('merchant requested return') ||
                                 effectiveStatus.includes('waiting for return') ||
@@ -250,10 +252,13 @@ router.get('/', (req, res) => {
       WHERE store_id = ?
       AND tracking_number IS NOT NULL AND tracking_number != '' AND tracking_number != '—'
       AND (
-        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - reattempt%' OR 
-        LOWER(COALESCE(notes, '')) LIKE '%[shipper advice - return%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%reattempt%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%return requested%' OR 
+        LOWER(COALESCE(notes, '')) LIKE '%return:%' OR 
         LOWER(COALESCE(courier_status, '')) LIKE '%reattempt%' OR 
         LOWER(COALESCE(courier_status, '')) LIKE '%return requested%' OR
+        LOWER(COALESCE(courier_status, '')) LIKE '%return process initiated%' OR
+        LOWER(COALESCE(courier_status, '')) LIKE '%return initiated%' OR
         LOWER(COALESCE(courier_status, '')) LIKE '%merchant requested return%'
       )
       ${dateWhereClause}
