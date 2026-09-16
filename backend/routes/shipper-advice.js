@@ -3,6 +3,31 @@ const router = express.Router();
 const { db } = require('../db');
 const { broadcast } = require('../sse');
 
+// Helper: Parse flexible date helper for Pakistani API date formats (DD/MM/YYYY hh:mm AM/PM, ISO, etc.)
+function parseFlexibleDate(dateVal) {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+  const str = String(dateVal).trim();
+  if (!str) return null;
+
+  // DD/MM/YYYY or DD-MM-YYYY format matching (Pakistani API standard)
+  const pakMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
+  if (pakMatch) {
+    let [, d, m, y, hh, mm, ss, ampm] = pakMatch;
+    let hour = hh ? parseInt(hh, 10) : 0;
+    if (ampm) {
+      const isPm = ampm.toUpperCase() === 'PM';
+      if (isPm && hour < 12) hour += 12;
+      if (!isPm && hour === 12) hour = 0;
+    }
+    const parsed = new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10), hour, mm ? parseInt(mm, 10) : 0, ss ? parseInt(ss, 10) : 0);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 // Helper: Enrich product variant images from product_master_costs
 function enrichOrderImages(orders, storeId) {
   try {
@@ -189,7 +214,7 @@ router.get('/', (req, res) => {
                             last.transactionStatus || last.status || last.activity ||
                             last.description || last.remarks || '';
             latestHistStatusLower = lastMsg.toLowerCase().trim();
-            latestHistDateStr = last.transactionStatusDate || last.statusDate || last.created_at || last.date || last.timestamp || '';
+            latestHistDateStr = last.transactionStatusDate || last.statusDate || last.entryDate || last.createdDate || last.transactionDate || last.dateTime || last.created_at || last.date || last.timestamp || last.time || last.createdAt || last.updatedAt || '';
           }
         } catch (_) {}
       }
@@ -199,10 +224,13 @@ router.get('/', (req, res) => {
       const combinedHistoryFeed = `${courierStatusLower} ${effectiveStatus} ${fullHistFeedLower} ${notesLower}`;
 
       const isReattemptSent = notesLower.includes('reattempt') || 
-                              courierStatusLower.includes('reattempt requested') ||
-                              courierStatusLower.includes('re-attempt requested') ||
-                              fullHistFeedLower.includes('reattempt requested') ||
-                              fullHistFeedLower.includes('re-attempt requested');
+                              notesLower.includes('re-attempt') ||
+                              courierStatusLower.includes('reattempt') ||
+                              courierStatusLower.includes('re-attempt') ||
+                              fullHistFeedLower.includes('reattempt') ||
+                              fullHistFeedLower.includes('re-attempt') ||
+                              combinedHistoryFeed.includes('reattempt') ||
+                              combinedHistoryFeed.includes('re-attempt');
 
       const isReturnRequested = notesLower.includes('return requested by merchant') ||
                                 notesLower.includes('return:') ||
@@ -225,16 +253,13 @@ router.get('/', (req, res) => {
       const isRefusalReported = REFUSAL_KEYWORDS.some(k => courierOnlyFeed.includes(k));
 
       // Calculate days stuck in current warehouse/status without movement
-      // Prioritize latest scan date from tracking_history if available
-      let lastDateStr = o.status_date || o.order_date;
-      if (latestHistDateStr) {
-        const parsedHistDate = new Date(latestHistDateStr);
-        if (!isNaN(parsedHistDate.getTime())) {
-          lastDateStr = latestHistDateStr;
-        }
-      }
+      // Prioritize latest scan date from tracking_history if available using flexible parser
+      const parsedHistDate = parseFlexibleDate(latestHistDateStr);
+      const parsedStatusDate = parseFlexibleDate(o.status_date);
+      const parsedOrderDate = parseFlexibleDate(o.order_date);
 
-      const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
+      const effectiveLastDate = parsedHistDate || parsedStatusDate || parsedOrderDate;
+      const daysStuck = effectiveLastDate ? Math.max(0, Math.floor((Date.now() - effectiveLastDate.getTime()) / (1000 * 60 * 60 * 24))) : 0;
       const isStuck = daysStuck >= 2;
 
       const isPriority = Number(o.is_priority) === 1 || notesLower.includes('[priority]');
@@ -295,8 +320,21 @@ router.get('/', (req, res) => {
     let historyPendingCount = 0;
 
     const historyItems = history.map(o => {
-      const lastDateStr = o.status_date || o.order_date;
-      const hoursSinceAction = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60))) : 0;
+      let latestHistDateStr = '';
+      if (o.tracking_history) {
+        try {
+          const hist = typeof o.tracking_history === 'string' ? JSON.parse(o.tracking_history) : o.tracking_history;
+          if (Array.isArray(hist) && hist.length > 0) {
+            const last = hist[hist.length - 1];
+            latestHistDateStr = last.transactionStatusDate || last.statusDate || last.entryDate || last.createdDate || last.transactionDate || last.dateTime || last.created_at || last.date || last.timestamp || last.time || last.createdAt || last.updatedAt || '';
+          }
+        } catch (_) {}
+      }
+      const parsedHistDate = parseFlexibleDate(latestHistDateStr);
+      const parsedStatusDate = parseFlexibleDate(o.status_date);
+      const parsedOrderDate = parseFlexibleDate(o.order_date);
+      const effectiveLastDate = parsedHistDate || parsedStatusDate || parsedOrderDate;
+      const hoursSinceAction = effectiveLastDate ? Math.max(0, Math.floor((Date.now() - effectiveLastDate.getTime()) / (1000 * 60 * 60))) : 0;
       const daysSinceAction = Math.floor(hoursSinceAction / 24);
 
       const courierStatusLower = (o.courier_status || '').toLowerCase().trim();
