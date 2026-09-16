@@ -168,40 +168,56 @@ router.get('/', (req, res) => {
 
       const combinedFeed = `${courierStatusLower} ${notesLower}`;
 
-      // Extract latest tracking_history event to catch stale courier_status
+      // Extract latest tracking_history event, date & full journey feed
       let latestHistStatusLower = '';
+      let latestHistDateStr = '';
+      let fullHistFeedLower = '';
       if (o.tracking_history) {
         try {
           const hist = typeof o.tracking_history === 'string' ? JSON.parse(o.tracking_history) : o.tracking_history;
           if (Array.isArray(hist) && hist.length > 0) {
+            const messages = hist.map(h => 
+              h.transactionStatusMessage || h.statusMessage || h.message ||
+              h.transactionStatus || h.status || h.activity ||
+              h.description || h.remarks || ''
+            ).filter(Boolean);
+
+            fullHistFeedLower = messages.join(' ').toLowerCase().trim();
+
             const last = hist[hist.length - 1];
-            const s = last.transactionStatusMessage || last.statusMessage || last.message ||
-                      last.transactionStatus || last.status || last.activity ||
-                      last.description || last.remarks || '';
-            latestHistStatusLower = s.toLowerCase().trim();
+            const lastMsg = last.transactionStatusMessage || last.statusMessage || last.message ||
+                            last.transactionStatus || last.status || last.activity ||
+                            last.description || last.remarks || '';
+            latestHistStatusLower = lastMsg.toLowerCase().trim();
+            latestHistDateStr = last.transactionStatusDate || last.statusDate || last.created_at || last.date || last.timestamp || '';
           }
         } catch (_) {}
       }
 
-      // Effective courier status = latest history event OR stale courier_status
+      // Effective courier status & combined history feed
       const effectiveStatus = latestHistStatusLower || courierStatusLower;
+      const combinedHistoryFeed = `${courierStatusLower} ${effectiveStatus} ${fullHistFeedLower} ${notesLower}`;
 
       const isReattemptSent = notesLower.includes('reattempt') || 
                               courierStatusLower.includes('reattempt requested') ||
-                              courierStatusLower.includes('re-attempt requested');
+                              courierStatusLower.includes('re-attempt requested') ||
+                              fullHistFeedLower.includes('reattempt requested') ||
+                              fullHistFeedLower.includes('re-attempt requested');
 
       const isReturnRequested = notesLower.includes('return requested by merchant') ||
                                 notesLower.includes('return:') ||
                                 notesLower.includes('return requested') ||
-                                effectiveStatus.includes('return requested') ||
-                                effectiveStatus.includes('merchant requested return') ||
-                                effectiveStatus.includes('waiting for return') ||
-                                effectiveStatus.includes('return process initiated') ||
-                                effectiveStatus.includes('return in process') ||
-                                effectiveStatus.includes('return initiated') ||
-                                effectiveStatus.includes('return in transit') ||
-                                effectiveStatus.includes('return to shipper') ||
-                                effectiveStatus.includes('rts');
+                                combinedHistoryFeed.includes('return requested') ||
+                                combinedHistoryFeed.includes('merchant requested return') ||
+                                combinedHistoryFeed.includes('merchant request for return') ||
+                                combinedHistoryFeed.includes('waiting for return') ||
+                                combinedHistoryFeed.includes('return process initiated') ||
+                                combinedHistoryFeed.includes('return in process') ||
+                                combinedHistoryFeed.includes('return initiated') ||
+                                combinedHistoryFeed.includes('return in transit') ||
+                                combinedHistoryFeed.includes('return to shipper') ||
+                                combinedHistoryFeed.includes('return to ') ||
+                                combinedHistoryFeed.includes('rts');
 
       // ⚠️ Only match advice keywords against courier_status & effectiveStatus — NOT notes
       const courierOnlyFeed = `${courierStatusLower} ${effectiveStatus}`;
@@ -209,7 +225,15 @@ router.get('/', (req, res) => {
       const isRefusalReported = REFUSAL_KEYWORDS.some(k => courierOnlyFeed.includes(k));
 
       // Calculate days stuck in current warehouse/status without movement
-      const lastDateStr = o.status_date || o.order_date;
+      // Prioritize latest scan date from tracking_history if available
+      let lastDateStr = o.status_date || o.order_date;
+      if (latestHistDateStr) {
+        const parsedHistDate = new Date(latestHistDateStr);
+        if (!isNaN(parsedHistDate.getTime())) {
+          lastDateStr = latestHistDateStr;
+        }
+      }
+
       const daysStuck = lastDateStr ? Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24))) : 0;
       const isStuck = daysStuck >= 2;
 
