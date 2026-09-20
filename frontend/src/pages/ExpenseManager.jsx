@@ -84,6 +84,43 @@ export default function ExpenseManager() {
     setShowModal(true);
   };
 
+  const getNextMonthDate = (dateStr) => {
+    if (!dateStr) return new Date().toISOString().split('T')[0];
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      let year = parseInt(parts[0], 10);
+      let month = parseInt(parts[1], 10);
+      let day = parseInt(parts[2], 10);
+      
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+      
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${year}-${pad(month)}-${pad(day)}`;
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  const handleDuplicateNextMonth = (exp) => {
+    setEditingExpense(null);
+    setFormData({
+      title: exp.title,
+      category: exp.category,
+      amount: exp.amount,
+      frequency: exp.frequency || 'one_time',
+      expense_date: getNextMonthDate(exp.expense_date),
+      payment_method: exp.payment_method || 'Bank',
+      notes: exp.notes || ''
+    });
+    setShowModal(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title || !formData.amount || !formData.expense_date) {
@@ -307,6 +344,7 @@ export default function ExpenseManager() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-secondary btn-xs" onClick={() => handleDuplicateNextMonth(exp)} style={{ color: 'var(--brand)', borderColor: 'rgba(99,102,241,0.4)', fontWeight: 600 }} title="Duplicate expense for next month (+1 Month)">📋 Duplicate</button>
                         <button className="btn btn-secondary btn-xs" onClick={() => handleOpenEditModal(exp)}>✏️ Edit</button>
                         <button className="btn btn-danger btn-xs" onClick={() => handleDelete(exp.id)}>🗑️</button>
                       </div>
