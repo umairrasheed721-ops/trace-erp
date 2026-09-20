@@ -591,6 +591,11 @@ export default function useReportsData(activeStoreId, toast) {
     return sortData(rawMonthly, sortConfig);
   }, [dailyData, isInRange, sortConfig, snapshots24h]);
 
+  const filteredDaily = useMemo(() => {
+    let data = dailyData.filter(r => isInRange(r.date));
+    return sortData(data, sortConfig);
+  }, [dailyData, isInRange, sortConfig]);
+
   // Auto-post today's monthly snapshot to backend for future 24h comparisons
   useEffect(() => {
     if (monthlyData && monthlyData.length > 0 && activeStoreId) {
