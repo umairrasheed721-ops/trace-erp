@@ -47,6 +47,14 @@ export default function useReportsData(activeStoreId, toast) {
       }
       case 'This Year':  return { start: `${y}-01-01`, end: fmt(now) };
       case 'Last Year':  return { start: `${y-1}-01-01`, end: `${y-1}-12-31` };
+      case 'Current Tax Year': {
+        const taxStartYear = m >= 6 ? y : y - 1;
+        return { start: `${taxStartYear}-07-01`, end: fmt(now) };
+      }
+      case 'Last Tax Year': {
+        const taxStartYear = m >= 6 ? y - 1 : y - 2;
+        return { start: `${taxStartYear}-07-01`, end: `${taxStartYear + 1}-06-30` };
+      }
       case 'All Time':   return { start: '2010-01-01', end: fmt(now) };
       default:           return { start: '', end: '' };
     }
@@ -594,10 +602,103 @@ export default function useReportsData(activeStoreId, toast) {
     }
   }, [monthlyData, activeStoreId]);
 
-  const filteredDaily = useMemo(() => {
-    let data = dailyData.filter(r => isInRange(r.date));
-    return sortData(data, sortConfig);
-  }, [dailyData, isInRange, sortConfig]);
+  const summaryRow = useMemo(() => {
+    const dataset = view === 'daily' ? filteredDaily : monthlyData;
+    if (!dataset || dataset.length === 0) return null;
+
+    const totals = {
+      date: '📊 TOTAL / AVERAGE',
+      month: '📊 TOTAL / AVERAGE',
+      isSummaryRow: true,
+      deliveredSale: 0, cgs: 0, marketingSpend: 0, tiktokMarketing: 0,
+      estCourier: 0, actualCourier: 0, hybridCourier: 0, actualExp: 0, landedOrders: 0, cancelations: 0,
+      pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
+      intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
+      paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
+      zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, whatsappOrders: 0,
+      whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0, whatsappCourier: 0,
+      surplusPayout: 0, surplusPayoutCount: 0
+    };
+
+    dataset.forEach(row => {
+      totals.deliveredSale += row.deliveredSale || 0;
+      totals.cgs += row.cgs || 0;
+      totals.marketingSpend += row.marketingSpend || 0;
+      totals.tiktokMarketing += row.tiktokMarketing || 0;
+      totals.estCourier += row.estCourier || 0;
+      totals.actualCourier += row.actualCourier || 0;
+      totals.hybridCourier += row.hybridCourier || 0;
+      totals.actualExp += row.actualExp || 0;
+      totals.landedOrders += row.landedOrders || 0;
+      totals.cancelations += row.cancelations || 0;
+      totals.pending += row.pending || 0;
+      totals.booked += row.booked || 0;
+      totals.totalDispatched += row.totalDispatched || 0;
+      totals.delivered += row.delivered || 0;
+      totals.restock += row.restock || 0;
+      totals.missingParcel += row.missingParcel || 0;
+      totals.intransit += row.intransit || 0;
+      totals.cashInTransit += row.cashInTransit || 0;
+      totals.withoutTrackingId += row.withoutTrackingId || 0;
+      totals.paymentPaid += row.paymentPaid || 0;
+      totals.diffCorrection += row.diffCorrection || 0;
+      totals.deliveredPaymentPending += row.deliveredPaymentPending || 0;
+      totals.totalSale += row.totalSale || 0;
+      totals.costGaps += row.costGaps || 0;
+      totals.unpaidAmount += row.unpaidAmount || 0;
+      totals.overduePayoutCount += row.overduePayoutCount || 0;
+      totals.zeroExpenseCount += row.zeroExpenseCount || 0;
+      totals.ordersWithFailedAttempts += row.ordersWithFailedAttempts || 0;
+      totals.failedButDelivered += row.failedButDelivered || 0;
+      totals.prepaidOrders += row.prepaidOrders || 0;
+      totals.claimOrders += row.claimOrders || 0;
+      totals.whatsappOrders += row.whatsappOrders || 0;
+      totals.whatsappTotalSale += row.whatsappTotalSale || 0;
+      totals.whatsappDelivered += row.whatsappDelivered || 0;
+      totals.whatsappReturned += row.whatsappReturned || 0;
+      totals.whatsappDeliveredSale += row.whatsappDeliveredSale || 0;
+      totals.whatsappCgs += row.whatsappCgs || 0;
+      totals.whatsappCourier += row.whatsappCourier || 0;
+      totals.surplusPayout += row.surplusPayout || 0;
+      totals.surplusPayoutCount += row.surplusPayoutCount || 0;
+    });
+
+    const totalMarketing = totals.marketingSpend + totals.tiktokMarketing;
+    const taxPaid = totals.deliveredSale * 0.04;
+    const grossProfit = totals.deliveredSale - totals.cgs;
+    const pnl = grossProfit - totalMarketing - totals.hybridCourier - totals.actualExp;
+    const actualGrossProfit = totals.paymentPaid - totals.cgs;
+    const actualPnl = actualGrossProfit - totalMarketing - totals.actualCourier - totals.actualExp;
+    const landedOrders = totals.landedOrders || 0;
+    const netOrders = landedOrders - totals.cancelations;
+
+    return {
+      ...totals,
+      aov: totals.delivered > 0 ? (totals.deliveredSale / totals.delivered) : 0,
+      cgsPercent: totals.deliveredSale > 0 ? (totals.cgs / totals.deliveredSale) * 100 : 0,
+      taxPaid,
+      grossProfit,
+      marPercent: totals.deliveredSale > 0 ? (totalMarketing / totals.deliveredSale) * 100 : 0,
+      pnl,
+      actualPnl,
+      canPercent: landedOrders > 0 ? (totals.cancelations / landedOrders) * 100 : 0,
+      delPercent: totals.totalDispatched > 0 ? (totals.delivered / totals.totalDispatched) * 100 : 0,
+      prepaidPercent: totals.totalDispatched > 0 ? ((totals.prepaidOrders || 0) / totals.totalDispatched) * 100 : 0,
+      whatsappPercent: totals.totalDispatched > 0 ? ((totals.whatsappOrders || 0) / totals.totalDispatched) * 100 : 0,
+      whatsappDelPercent: totals.whatsappOrders > 0 ? (totals.whatsappDelivered / totals.whatsappOrders) * 100 : 0,
+      whatsappRetPercent: totals.whatsappOrders > 0 ? (totals.whatsappReturned / totals.whatsappOrders) * 100 : 0,
+      whatsappAov: totals.whatsappDelivered > 0 ? (totals.whatsappDeliveredSale / totals.whatsappDelivered) : 0,
+      whatsappAvgCgs: totals.whatsappDelivered > 0 ? (totals.whatsappCgs / totals.whatsappDelivered) : 0,
+      whatsappAvgCourier: totals.whatsappDelivered > 0 ? (totals.whatsappCourier / totals.whatsappDelivered) : 0,
+      roasMeta: totalMarketing > 0 ? (totals.totalSale / totalMarketing) : 0,
+      deliveredRoas: totalMarketing > 0 ? (totals.deliveredSale / totalMarketing) : 0,
+      ndrRecoveryRate: totals.ordersWithFailedAttempts > 0 ? (totals.failedButDelivered / totals.ordersWithFailedAttempts) * 100 : 0,
+      cpaAvg: landedOrders > 0 ? (totalMarketing / landedOrders) : 0,
+      netCpaAvg: netOrders > 0 ? (totalMarketing / netOrders) : 0,
+      courierDiff: totals.actualCourier - totals.estCourier,
+      mathCounter: landedOrders - ((totals.cancelations || 0) + (totals.pending || 0) + (totals.booked || 0) + (totals.delivered || 0) + (totals.restock || 0) + (totals.missingParcel || 0))
+    };
+  }, [view, filteredDaily, monthlyData]);
 
   const requestSort = (key) => {
     let direction = 'desc';
@@ -639,6 +740,7 @@ export default function useReportsData(activeStoreId, toast) {
     handlePaste,
     monthlyData,
     filteredDaily,
+    summaryRow,
     requestSort,
     toggleColumn,
     fetchData,

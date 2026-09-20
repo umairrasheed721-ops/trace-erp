@@ -303,6 +303,7 @@ export default function PnLMetricsPanel({
   view,
   filteredDaily,
   monthlyData,
+  summaryRow,
   visibleCols,
   sortConfig,
   requestSort,
@@ -397,10 +398,11 @@ export default function PnLMetricsPanel({
   // ─── Vertical Layout ────────────────────────────────────────────────────────
   if (tableLayout === 'vertical' && dataset.length > 0) {
     const metricCols = visibleCols.filter(c => c.id !== 'date');
-    const periods = dataset.map(r => r.date || r.month);
+    const vtDataset = summaryRow ? [summaryRow, ...dataset] : dataset;
+    const periods = vtDataset.map(r => r.date || r.month);
 
     const getCellContent = (col, row) => {
-      if (view === 'daily' && EDITABLE_IDS.has(col.id)) return renderEditable(row, col.id);
+      if (view === 'daily' && EDITABLE_IDS.has(col.id) && !row.isSummaryRow) return renderEditable(row, col.id);
       let content = row[col.id];
       if (CURRENCY_IDS.has(col.id)) content = formatCurrency(row[col.id]);
       if (PERCENT_IDS.has(col.id))  content = formatPercent(row[col.id]);
@@ -494,7 +496,7 @@ export default function PnLMetricsPanel({
               <tr>
                 <th className="vt-corner">METRIC</th>
                 {periods.map(p => (
-                  <th key={p} className="vt-period">{p}</th>
+                  <th key={p} className="vt-period" style={p === '📊 TOTAL / AVERAGE' ? { background: 'var(--brand-glow)', color: 'var(--brand)', fontWeight: 900, borderLeft: '2px solid var(--brand)', borderRight: '2px solid var(--brand)' } : undefined}>{p}</th>
                 ))}
               </tr>
             </thead>
@@ -532,27 +534,30 @@ export default function PnLMetricsPanel({
                     </td>
 
                     {/* Data cells */}
-                    {dataset.map(row => {
+                    {vtDataset.map(row => {
                       const content = getCellContent(col, row);
-                      const clickable = CLICKABLE_IDS.has(col.id);
+                      const clickable = CLICKABLE_IDS.has(col.id) && !row.isSummaryRow;
                       const isMathCounter = col.id === 'mathCounter';
                       const isMathMismatch = isMathCounter && (row.mathCounter !== row.intransit);
-                      const isAlert = (
+                      const isAlert = !row.isSummaryRow && (
                         (col.id === 'costGaps'          && row.costGaps > 0) ||
                         (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
                         (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0) ||
                         isMathMismatch
                       );
                       const pnlColor = isPnl ? (row[col.id] >= 0 ? '#10b981' : '#ef4444') : (isMathCounter ? (isMathMismatch ? '#ef4444' : '#10b981') : undefined);
+                      const isSummary = row.isSummaryRow;
 
                       return (
                         <td
                           key={row.date || row.month}
                           className={`vt-cell${clickable ? ' clickable' : ''}`}
                           style={{
-                            color:      pnlColor || (isAlert ? '#ef4444' : undefined),
-                            fontWeight: (isPnl || isMathMismatch) ? 800 : isAlert ? 700 : undefined,
-                            borderLeft: `2px solid ${gs.border}`,
+                            color:      pnlColor || (isAlert ? '#ef4444' : (isSummary ? 'var(--brand)' : undefined)),
+                            fontWeight: (isPnl || isMathMismatch || isSummary) ? 800 : isAlert ? 700 : undefined,
+                            borderLeft: isSummary ? '2px solid var(--brand)' : `2px solid ${gs.border}`,
+                            borderRight: isSummary ? '2px solid var(--brand)' : undefined,
+                            background: isSummary ? 'var(--brand-glow)' : undefined
                           }}
                           onClick={() => clickable && handleDrilldown(row, col.id)}
                         >
@@ -560,7 +565,7 @@ export default function PnLMetricsPanel({
                             ? <span style={{ borderBottom: isMathMismatch ? '2px dashed #ef4444' : '1px dashed var(--text-muted)' }}>{isMathMismatch ? `⚠️ ${content}` : content}</span>
                             : content
                           }
-                          {render24hBadge(col.id, row)}
+                          {!isSummary && render24hBadge(col.id, row)}
                         </td>
                       );
                     })}
@@ -665,6 +670,37 @@ export default function PnLMetricsPanel({
             </tr>
           ))}
         </tbody>
+        {summaryRow && (
+          <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 15, background: 'var(--bg-elevated)', borderTop: '2px solid var(--brand)', boxShadow: '0 -4px 12px rgba(0,0,0,0.4)' }}>
+            <tr style={{ height: 42, background: 'var(--brand-glow)' }}>
+              {visibleCols.map(col => {
+                let content = summaryRow[col.id];
+                let style = { fontWeight: 800, padding: '10px 14px', textAlign: col.id === 'date' ? 'left' : 'right' };
+                if (col.id === 'date') return (
+                  <td key={col.id} className="sticky-col" style={{ fontWeight: 900, color: 'var(--brand)', background: 'var(--bg-elevated)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                    📊 TOTAL / AVERAGE
+                  </td>
+                );
+                if (CURRENCY_IDS.has(col.id)) content = formatCurrency(summaryRow[col.id]);
+                if (PERCENT_IDS.has(col.id))  content = formatPercent(summaryRow[col.id]);
+                if (NUMBER_IDS.has(col.id))   content = formatNumber(summaryRow[col.id]);
+
+                const isMathCounter = col.id === 'mathCounter';
+                const isMathMismatch = isMathCounter && (summaryRow.mathCounter !== summaryRow.intransit);
+
+                if (col.id === 'pnl')      style = { ...style, color: summaryRow.pnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '0.9rem' };
+                if (col.id === 'actualPnl') style = { ...style, color: summaryRow.actualPnl >= 0 ? 'var(--green)' : 'var(--red)', fontSize: '0.9rem' };
+                if (isMathCounter)          style = { ...style, color: isMathMismatch ? 'var(--red)' : 'var(--green)' };
+
+                return (
+                  <td key={col.id} style={style}>
+                    {content}
+                  </td>
+                );
+              })}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
 

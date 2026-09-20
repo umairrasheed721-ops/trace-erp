@@ -85,7 +85,7 @@ export default function ReportsFilterBar({
       {/* ─── Date Range Filter Bar ─── */}
       <div style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em' }}>DATE RANGE</span>
-        {['This Month', 'Last Month', 'This Quarter', 'This Year', 'Last Year', 'All Time', 'Custom'].map(p => (
+        {['This Month', 'Last Month', 'This Quarter', 'This Year', 'Last Year', 'Current Tax Year', 'Last Tax Year', 'All Time', 'Custom'].map(p => (
           <button
             key={p}
             onClick={() => { setDatePreset(p); if (p === 'Custom') setShowCustom(true); else setShowCustom(false); }}
