@@ -671,13 +671,27 @@ export default function PnLMetricsPanel({
           ))}
         </tbody>
         {summaryRow && (
-          <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 15, background: 'var(--bg-elevated)', borderTop: '2px solid var(--brand)', boxShadow: '0 -4px 12px rgba(0,0,0,0.4)' }}>
+          <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 25, borderTop: '2px solid var(--brand)', boxShadow: '0 -4px 12px rgba(0,0,0,0.12)' }}>
             <tr style={{ height: 42, background: 'var(--brand-glow)' }}>
               {visibleCols.map(col => {
                 let content = summaryRow[col.id];
-                let style = { fontWeight: 800, padding: '10px 14px', textAlign: col.id === 'date' ? 'left' : 'right' };
+                let style = { fontWeight: 800, padding: '10px 14px', textAlign: col.id === 'date' ? 'left' : 'right', background: 'var(--brand-glow)' };
                 if (col.id === 'date') return (
-                  <td key={col.id} className="sticky-col" style={{ fontWeight: 900, color: 'var(--brand)', background: 'var(--bg-elevated)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                  <td
+                    key={col.id}
+                    className="sticky-col"
+                    style={{
+                      fontWeight: 900,
+                      color: 'var(--brand)',
+                      background: 'var(--bg-elevated)',
+                      fontSize: '0.85rem',
+                      whiteSpace: 'nowrap',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 30,
+                      boxShadow: '2px 0 4px rgba(0,0,0,0.06)'
+                    }}
+                  >
                     📊 TOTAL / AVERAGE
                   </td>
                 );

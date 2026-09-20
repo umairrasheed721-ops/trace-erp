@@ -203,7 +203,7 @@ export default function Reports() {
         .head-out { background-color: #6b21a8 !important; color: white !important; border-right: 1px solid rgba(255,255,255,0.1); }
         .head-pnl { background-color: #065f46 !important; color: white !important; border-right: 1px solid rgba(255,255,255,0.1); }
         .head-kpi { background-color: var(--bg-active) !important; color: var(--text-primary) !important; }
-        .sticky-col { position: sticky; left: 0; background-color: var(--bg-surface) !important; z-index: 20; border-right: 3px solid var(--border); text-align: left !important; font-weight: 800; color: var(--text-primary); box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+        .sticky-col { position: sticky; left: 0; background-color: var(--bg-surface); z-index: 20; border-right: 3px solid var(--border); text-align: left !important; font-weight: 800; color: var(--text-primary); box-shadow: 2px 0 4px rgba(0,0,0,0.06); }
         .column-picker { position: absolute; top: 100%; left: 0; z-index: 100; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; width: 250px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 400px; overflow-y: auto; }
         .view-controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
       `}</style>
