@@ -148,7 +148,12 @@ export const PaidAmountCell = React.memo(function PaidAmountCell({ order, onSave
   let surplusAmt = 0
   if (paidAmt > 0.9) {
     if (isReturned) {
-      surplusAmt = paidAmt
+      // Safety Guard: If paidAmt matches orderPrice (within 0.9 PKR tolerance), this is full payment of order price, NOT a surplus!
+      if (Math.abs(paidAmt - orderPrice) <= 0.9) {
+        surplusAmt = 0
+      } else {
+        surplusAmt = paidAmt
+      }
     } else if (paidAmt - orderPrice > 0.9) {
       surplusAmt = paidAmt - orderPrice
     }

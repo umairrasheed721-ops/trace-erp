@@ -1004,6 +1004,24 @@ module.exports = [
     } catch (e) {
       console.error('Migration #40 failed:', e.message);
     }
+  },
+
+  // 41. Auto-heal orders with paid_amount matching order price (full payment received) that are stuck at Returned or non-Delivered status
+  (db) => {
+    try {
+      const resultPaidDelivered = db.prepare(`
+        UPDATE orders
+        SET delivery_status = 'Delivered'
+        WHERE COALESCE(paid_amount, 0) > 0.9
+        AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) <= 0.9
+        AND LOWER(COALESCE(delivery_status, '')) IN ('returned', 'return received', 'in transit', 'booked', 'pending')
+      `).run();
+      if (resultPaidDelivered.changes > 0) {
+        console.log(`✅ [Migration #41] Auto-healed ${resultPaidDelivered.changes} fully-paid orders from Returned/In Transit to 'Delivered'.`);
+      }
+    } catch (e) {
+      console.error('Migration #41 failed:', e.message);
+    }
   }
 ];
 
