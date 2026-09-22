@@ -382,7 +382,7 @@ export default function ReviewsManager() {
           {/* Controls Bar */}
           <div style={{
             display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between',
-            flexWrap: 'wrap', marginBottom: 24, background: 'var(--surface)',
+            flexWrap: 'wrap', marginBottom: 24, background: 'var(--bg-surface)',
             padding: '14px 20px', borderRadius: 14, border: '1px solid var(--border)'
           }}>
             {/* Filter Pills */}
@@ -393,11 +393,12 @@ export default function ReviewsManager() {
                   onClick={() => { setFilter(f); setPage(1) }}
                   style={{
                     padding: '7px 16px', borderRadius: 8, border: '1px solid',
-                    borderColor: filter === f ? 'var(--accent)' : 'transparent',
-                    background: filter === f ? 'rgba(255,255,255,0.08)' : 'transparent',
-                    color: filter === f ? '#fff' : 'var(--text-muted)',
+                    borderColor: filter === f ? 'var(--brand)' : 'var(--border)',
+                    background: filter === f ? 'var(--brand)' : 'var(--bg-elevated)',
+                    color: filter === f ? '#fff' : 'var(--text-primary)',
                     fontWeight: 700, fontSize: 12, cursor: 'pointer', textTransform: 'capitalize',
-                    transition: 'all 0.15s'
+                    transition: 'all 0.15s',
+                    boxShadow: filter === f ? '0 2px 8px rgba(99, 102, 241, 0.3)' : 'none'
                   }}
                 >
                   {f === 'pending' ? '⏳ Pending' : f === 'approved' ? '✅ Approved' : f === 'rejected' ? '❌ Rejected' : 'All Reviews'}
@@ -413,12 +414,12 @@ export default function ReviewsManager() {
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1) }}
                 style={{
-                  background: '#141414', border: '1px solid var(--border)', borderRadius: 8,
-                  padding: '7px 14px', color: '#fff', fontSize: 13, outline: 'none', width: 220
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8,
+                  padding: '7px 14px', color: 'var(--text-primary)', fontSize: 13, outline: 'none', width: 220
                 }}
               />
               <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
-                Total: <strong style={{ color: '#fff' }}>{total}</strong>
+                Total: <strong style={{ color: 'var(--text-primary)' }}>{total}</strong>
               </span>
             </div>
           </div>
@@ -431,11 +432,11 @@ export default function ReviewsManager() {
             </div>
           ) : reviews.length === 0 ? (
             <div style={{
-              background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 16,
+              background: 'var(--bg-surface)', border: '1px dashed var(--border)', borderRadius: 16,
               padding: 64, textAlign: 'center', color: 'var(--text-muted)'
             }}>
               <div style={{ fontSize: 44, marginBottom: 12 }}>💬</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 4 }}>No reviews found</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>No reviews found</div>
               <div style={{ fontSize: 13 }}>No product reviews match the current filter criteria.</div>
             </div>
           ) : (
@@ -444,28 +445,28 @@ export default function ReviewsManager() {
                 <div
                   key={r.id}
                   style={{
-                    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14,
+                    background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14,
                     padding: 20, transition: 'transform 0.15s, border-color 0.15s',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.05)'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                         <StarDisplay rating={r.rating} size={16} />
-                        <span style={{ fontWeight: 700, fontSize: 15, color: '#fff' }}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--text-primary)' }}>
                           {r.customer_name || 'Anonymous Customer'}
                         </span>
                         {r.verified && (
-                          <span style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99 }}>
+                          <span style={{ background: 'rgba(74,222,128,0.15)', color: '#16a34a', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 99, border: '1px solid rgba(74,222,128,0.3)' }}>
                             VERIFIED BUYER
                           </span>
                         )}
                       </div>
 
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        <span>Product: <strong style={{ color: '#fff' }}>{r.product_handle}</strong></span>
-                        {r.email && <span>Email: <strong style={{ color: '#fff' }}>{r.email}</strong></span>}
+                        <span>Product: <strong style={{ color: 'var(--text-primary)' }}>{r.product_handle}</strong></span>
+                        {r.email && <span>Email: <strong style={{ color: 'var(--text-primary)' }}>{r.email}</strong></span>}
                         <span>Date: {new Date(r.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -476,8 +477,8 @@ export default function ReviewsManager() {
                   {/* Body Text */}
                   {r.body && (
                     <p style={{
-                      margin: '0 0 14px', fontSize: 14, color: '#ddd', lineHeight: 1.6,
-                      background: 'rgba(0,0,0,0.25)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)'
+                      margin: '0 0 14px', fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.6,
+                      background: 'var(--bg-elevated)', padding: 12, borderRadius: 8, border: '1px solid var(--border)'
                     }}>
                       "{r.body}"
                     </p>
@@ -502,14 +503,14 @@ export default function ReviewsManager() {
                   )}
 
                   {/* Action Controls */}
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
                     {r.status !== 'approved' && (
                       <button
                         onClick={() => doAction(r.id, 'approve')}
                         disabled={actionLoading[r.id] === 'approve'}
                         style={{
-                          padding: '6px 14px', borderRadius: 8, border: 'none',
-                          background: 'rgba(74,222,128,0.15)', color: '#4ade80',
+                          padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(74,222,128,0.3)',
+                          background: 'rgba(74,222,128,0.15)', color: '#16a34a',
                           fontSize: 12, fontWeight: 700, cursor: 'pointer'
                         }}
                       >
@@ -522,8 +523,8 @@ export default function ReviewsManager() {
                         onClick={() => doAction(r.id, 'reject')}
                         disabled={actionLoading[r.id] === 'reject'}
                         style={{
-                          padding: '6px 14px', borderRadius: 8, border: 'none',
-                          background: 'rgba(251,191,36,0.15)', color: '#fbbf24',
+                          padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(251,191,36,0.3)',
+                          background: 'rgba(251,191,36,0.15)', color: '#d97706',
                           fontSize: 12, fontWeight: 700, cursor: 'pointer'
                         }}
                       >
@@ -535,8 +536,8 @@ export default function ReviewsManager() {
                       onClick={() => doAction(r.id, 'delete')}
                       disabled={actionLoading[r.id] === 'delete'}
                       style={{
-                        padding: '6px 14px', borderRadius: 8, border: 'none',
-                        background: 'rgba(248,113,113,0.15)', color: '#f87171',
+                        padding: '6px 14px', borderRadius: 8, border: '1px solid rgba(248,113,113,0.3)',
+                        background: 'rgba(248,113,113,0.15)', color: '#dc2626',
                         fontSize: 12, fontWeight: 700, cursor: 'pointer'
                       }}
                     >
@@ -554,9 +555,9 @@ export default function ReviewsManager() {
                       key={idx}
                       onClick={() => setPage(idx + 1)}
                       style={{
-                        width: 36, height: 36, borderRadius: 8, border: 'none',
-                        background: page === idx + 1 ? 'var(--accent)' : 'var(--surface)',
-                        color: page === idx + 1 ? '#000' : '#fff', fontWeight: 700, cursor: 'pointer'
+                        width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
+                        background: page === idx + 1 ? 'var(--brand)' : 'var(--bg-surface)',
+                        color: page === idx + 1 ? '#fff' : 'var(--text-primary)', fontWeight: 700, cursor: 'pointer'
                       }}
                     >
                       {idx + 1}
@@ -578,21 +579,21 @@ export default function ReviewsManager() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
             
             <div style={{
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.2)'
+              background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 📦 Delivered Orders ({daysWindow}D)
               </div>
-              <div style={{ fontSize: 32, fontWeight: 900, marginTop: 6, color: '#fff' }}>
+              <div style={{ fontSize: 32, fontWeight: 900, marginTop: 6, color: 'var(--text-primary)' }}>
                 {campaignStats.totalDelivered}
               </div>
             </div>
 
             <div style={{
-              background: 'linear-gradient(135deg, rgba(74,222,128,0.08) 0%, rgba(20,20,25,0.95) 100%)',
+              background: 'linear-gradient(135deg, rgba(74,222,128,0.08) 0%, var(--bg-surface) 100%)',
               border: '1px solid rgba(74,222,128,0.25)', borderRadius: 16, padding: 20,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.2)'
+              boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#4ade80', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 🟢 Review Emails Sent
@@ -603,9 +604,9 @@ export default function ReviewsManager() {
             </div>
 
             <div style={{
-              background: 'linear-gradient(135deg, rgba(251,191,36,0.08) 0%, rgba(20,20,25,0.95) 100%)',
+              background: 'linear-gradient(135deg, rgba(251,191,36,0.08) 0%, var(--bg-surface) 100%)',
               border: '1px solid rgba(251,191,36,0.25)', borderRadius: 16, padding: 20,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.2)'
+              boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 ⏳ Pending Email Scan
@@ -616,8 +617,8 @@ export default function ReviewsManager() {
             </div>
 
             <div style={{
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20,
-              boxShadow: '0 8px 20px rgba(0,0,0,0.2)'
+              background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 20,
+              boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 ⚪ Skipped (No Email)
@@ -632,7 +633,7 @@ export default function ReviewsManager() {
           {/* Action Bar */}
           <div style={{
             display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between',
-            flexWrap: 'wrap', marginBottom: 20, background: 'var(--surface)', padding: '14px 20px',
+            flexWrap: 'wrap', marginBottom: 20, background: 'var(--bg-surface)', padding: '14px 20px',
             borderRadius: 14, border: '1px solid var(--border)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -641,8 +642,8 @@ export default function ReviewsManager() {
                 value={daysWindow}
                 onChange={e => { setDaysWindow(parseInt(e.target.value)); setCampaignPage(1) }}
                 style={{
-                  background: '#141414', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: '8px 14px', color: '#fff',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                  borderRadius: 8, padding: '8px 14px', color: 'var(--text-primary)',
                   fontSize: 13, fontWeight: 700, outline: 'none'
                 }}
               >
@@ -668,7 +669,7 @@ export default function ReviewsManager() {
           </div>
 
           {/* Delivered Orders Table */}
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
             {campaignLoading ? (
               <div style={{ padding: 64, textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div className="loading-spinner" style={{ margin: '0 auto 12px' }} />
@@ -677,7 +678,7 @@ export default function ReviewsManager() {
             ) : campaignOrders.length === 0 ? (
               <div style={{ padding: 64, textAlign: 'center', color: 'var(--text-muted)' }}>
                 <div style={{ fontSize: 44, marginBottom: 12 }}>📦</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>No delivered orders found</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>No delivered orders found</div>
               </div>
             ) : (
               <div>
@@ -685,7 +686,7 @@ export default function ReviewsManager() {
                   display: 'grid', gridTemplateColumns: '130px 180px 1fr 150px 130px 140px',
                   padding: '14px 20px', borderBottom: '1px solid var(--border)',
                   fontSize: 11, fontWeight: 800, letterSpacing: 1,
-                  color: 'var(--text-muted)', textTransform: 'uppercase', background: 'rgba(0,0,0,0.2)'
+                  color: 'var(--text-muted)', textTransform: 'uppercase', background: 'var(--bg-elevated)'
                 }}>
                   <span>Order Ref</span>
                   <span>Customer</span>
@@ -713,7 +714,7 @@ export default function ReviewsManager() {
                         {o.ref_number || `#${o.id}`}
                       </span>
 
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
                         {o.customer_name || 'Customer'}
                       </span>
 
@@ -729,8 +730,8 @@ export default function ReviewsManager() {
                             value={inputEmails[o.id] || ''}
                             onChange={e => setInputEmails({ ...inputEmails, [o.id]: e.target.value })}
                             style={{
-                              background: '#141414', border: '1px solid #333', borderRadius: 6,
-                              padding: '6px 10px', fontSize: 12, color: '#fff', width: '90%', outline: 'none'
+                              background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6,
+                              padding: '6px 10px', fontSize: 12, color: 'var(--text-primary)', width: '90%', outline: 'none'
                             }}
                           />
                         )}
@@ -748,7 +749,7 @@ export default function ReviewsManager() {
                             🟢 Sent
                           </span>
                         ) : isNoEmail ? (
-                          <span style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 99, padding: '4px 10px', fontSize: 11, fontWeight: 800 }}>
+                          <span style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 99, padding: '4px 10px', fontSize: 11, fontWeight: 800 }}>
                             ⚪ No Email
                           </span>
                         ) : (
@@ -764,8 +765,8 @@ export default function ReviewsManager() {
                           disabled={sendingSingle[o.id]}
                           style={{
                             padding: '6px 14px', borderRadius: 8, border: 'none',
-                            background: isSent ? 'rgba(255,255,255,0.1)' : 'var(--accent)',
-                            color: isSent ? 'var(--text-muted)' : '#000',
+                            background: isSent ? 'var(--bg-elevated)' : 'var(--brand)',
+                            color: isSent ? 'var(--text-muted)' : '#fff',
                             fontSize: 12, fontWeight: 800, cursor: 'pointer',
                             opacity: sendingSingle[o.id] ? 0.5 : 1
                           }}
@@ -796,9 +797,9 @@ export default function ReviewsManager() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
               
               {/* Left Column: Template Code Editor */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#fff' }}>📝 Review Request Template Code</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>📝 Review Request Template Code</h3>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       onClick={resetTemplate}
@@ -826,7 +827,7 @@ export default function ReviewsManager() {
                 </div>
 
                 {/* Available Variables Pills */}
-                <div style={{ marginBottom: 18, background: '#111116', padding: 14, borderRadius: 12, border: '1px dashed #333' }}>
+                <div style={{ marginBottom: 18, background: 'var(--bg-elevated)', padding: 14, borderRadius: 12, border: '1px dashed var(--border)' }}>
                   <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, letterSpacing: 0.5 }}>
                     Available Placeholders (Click to insert):
                   </div>
@@ -861,8 +862,8 @@ export default function ReviewsManager() {
                     onChange={e => setTemplateSubject(e.target.value)}
                     placeholder="e.g. How was your TRACE order, {{first_name}}? ⭐"
                     style={{
-                      width: '100%', background: '#101014', border: '1px solid var(--border)',
-                      borderRadius: 10, padding: '12px 14px', color: '#fff', fontSize: 13,
+                      width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                      borderRadius: 10, padding: '12px 14px', color: 'var(--text-primary)', fontSize: 13,
                       fontWeight: 700, outline: 'none'
                     }}
                   />
@@ -878,8 +879,8 @@ export default function ReviewsManager() {
                     onChange={e => setTemplateHtml(e.target.value)}
                     rows={18}
                     style={{
-                      width: '100%', background: '#0a0a0d', border: '1px solid var(--border)',
-                      borderRadius: 10, padding: '14px', color: '#38bdf8', fontSize: 12,
+                      width: '100%', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                      borderRadius: 10, padding: '14px', color: 'var(--text-primary)', fontSize: 12,
                       fontFamily: 'monospace', lineHeight: 1.6, outline: 'none', resize: 'vertical'
                     }}
                   />
@@ -887,18 +888,18 @@ export default function ReviewsManager() {
               </div>
 
               {/* Right Column: Interactive Device Email Preview */}
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#fff' }}>👁️ Live Email Device Preview</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>👁️ Live Email Device Preview</h3>
                   
                   {/* Device View Mode Toggle */}
-                  <div style={{ display: 'flex', background: '#141414', padding: 3, borderRadius: 8, border: '1px solid #333' }}>
+                  <div style={{ display: 'flex', background: 'var(--bg-elevated)', padding: 3, borderRadius: 8, border: '1px solid var(--border)' }}>
                     <button
                       onClick={() => setPreviewDevice('desktop')}
                       style={{
                         padding: '4px 10px', borderRadius: 6, border: 'none',
-                        background: previewDevice === 'desktop' ? '#333' : 'transparent',
-                        color: previewDevice === 'desktop' ? '#fff' : '#888',
+                        background: previewDevice === 'desktop' ? 'var(--brand)' : 'transparent',
+                        color: previewDevice === 'desktop' ? '#fff' : 'var(--text-muted)',
                         fontSize: 11, fontWeight: 700, cursor: 'pointer'
                       }}
                     >
@@ -908,8 +909,8 @@ export default function ReviewsManager() {
                       onClick={() => setPreviewDevice('mobile')}
                       style={{
                         padding: '4px 10px', borderRadius: 6, border: 'none',
-                        background: previewDevice === 'mobile' ? '#333' : 'transparent',
-                        color: previewDevice === 'mobile' ? '#fff' : '#888',
+                        background: previewDevice === 'mobile' ? 'var(--brand)' : 'transparent',
+                        color: previewDevice === 'mobile' ? '#fff' : 'var(--text-muted)',
                         fontSize: 11, fontWeight: 700, cursor: 'pointer'
                       }}
                     >
@@ -922,8 +923,8 @@ export default function ReviewsManager() {
                 <div style={{
                   maxWidth: previewDevice === 'mobile' ? 380 : '100%',
                   margin: '0 auto',
-                  border: '1px solid #333', borderRadius: 14, overflow: 'hidden', background: '#0a0a0a',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.5)', transition: 'max-width 0.3s ease'
+                  border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', background: '#0a0a0a',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.3)', transition: 'max-width 0.3s ease'
                 }}>
                   {/* Apple Mail Bar */}
                   <div style={{ background: '#1e1e24', padding: '12px 16px', borderBottom: '1px solid #2a2a30', fontSize: 12, color: '#aaa' }}>
