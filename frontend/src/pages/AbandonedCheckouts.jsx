@@ -13,6 +13,8 @@ export default function AbandonedCheckouts() {
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({ stats: {}, checkouts: [] })
   const [activeTab, setActiveTab] = useState('TRUE_ABANDONED') // Default directly to True Abandoned for maximum ease!
+  const [contactFilter, setContactFilter] = useState('ALL') // ALL | WA_DOABLE | EMAIL_DOABLE
+  const [sortKey, setSortKey] = useState('DATE_DESC') // DATE_DESC | DATE_ASC | WA_FIRST | EMAIL_FIRST | PRICE_DESC | PRICE_ASC
   const [searchQuery, setSearchQuery] = useState('')
   const [datePreset, setDatePreset] = useState('LAST_30_DAYS')
   const [startDate, setStartDate] = useState('')
@@ -140,7 +142,28 @@ export default function AbandonedCheckouts() {
   const stats = data.stats || {}
   const allCheckouts = data.checkouts || []
 
-  // Filter checkouts by active tab, dismissed state, & search query
+  // Compute WhatsApp & Email Doable counts for active tab
+  const waDoableCount = allCheckouts.filter(c => {
+    const isDismissed = dismissedIds.includes(String(c.id))
+    if (activeTab === 'DISMISSED') return isDismissed && !!c.phone
+    if (isDismissed && activeTab !== 'ALL') return false
+    if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
+    if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
+    if (activeTab === 'EXISTING_CUSTOMER' && c.reconciliation_status !== 'EXISTING_CUSTOMER') return false
+    return !!c.phone
+  }).length
+
+  const emailDoableCount = allCheckouts.filter(c => {
+    const isDismissed = dismissedIds.includes(String(c.id))
+    if (activeTab === 'DISMISSED') return isDismissed && !!c.email
+    if (isDismissed && activeTab !== 'ALL') return false
+    if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
+    if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
+    if (activeTab === 'EXISTING_CUSTOMER' && c.reconciliation_status !== 'EXISTING_CUSTOMER') return false
+    return !!c.email
+  }).length
+
+  // Filter & Sort checkouts by active tab, contact channel filter, dismissed state, & search query
   const filteredCheckouts = allCheckouts.filter(c => {
     // Dismissed filter (unless viewing ALL or DISMISSED)
     const isDismissed = dismissedIds.includes(String(c.id))
@@ -151,6 +174,10 @@ export default function AbandonedCheckouts() {
     if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
     if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
     if (activeTab === 'EXISTING_CUSTOMER' && c.reconciliation_status !== 'EXISTING_CUSTOMER') return false
+
+    // Contact Doable Sub-Filter
+    if (contactFilter === 'WA_DOABLE' && !c.phone) return false
+    if (contactFilter === 'EMAIL_DOABLE' && !c.email) return false
 
     // Search query filter
     if (searchQuery.trim()) {
@@ -163,6 +190,28 @@ export default function AbandonedCheckouts() {
     }
 
     return true
+  }).sort((a, b) => {
+    if (sortKey === 'WA_FIRST') {
+      const aHasPhone = a.phone ? 1 : 0
+      const bHasPhone = b.phone ? 1 : 0
+      if (aHasPhone !== bHasPhone) return bHasPhone - aHasPhone // Has phone first
+    }
+    if (sortKey === 'EMAIL_FIRST') {
+      const aHasEmailOnly = (!a.phone && a.email) ? 1 : 0
+      const bHasEmailOnly = (!b.phone && b.email) ? 1 : 0
+      if (aHasEmailOnly !== bHasEmailOnly) return bHasEmailOnly - aHasEmailOnly // Email only first
+    }
+    if (sortKey === 'PRICE_DESC') {
+      return (parseFloat(b.total_price) || 0) - (parseFloat(a.total_price) || 0)
+    }
+    if (sortKey === 'PRICE_ASC') {
+      return (parseFloat(a.total_price) || 0) - (parseFloat(b.total_price) || 0)
+    }
+    if (sortKey === 'DATE_ASC') {
+      return new Date(a.created_at || 0) - new Date(b.created_at || 0)
+    }
+    // Default DATE_DESC (Newest first)
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0)
   })
 
   // Format currency
@@ -264,51 +313,68 @@ export default function AbandonedCheckouts() {
 
   return (
     <div style={{ paddingBottom: 40 }}>
-      {/* Page Header */}
-      <div className="page-header" style={{ marginBottom: 24 }}>
+      {/* Top Glassmorphic Card Container */}
+      <div className="card" style={{
+        padding: '20px 24px',
+        marginBottom: 24,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 16
+      }}>
         <div>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             🛒 Abandoned Checkouts
           </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            Reconciled Shopify checkouts. 1-click WhatsApp / Call, template presets, and zero-confusion matching.
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
+            Reconciled Shopify checkouts with 1-click WhatsApp / Email outreach, template presets, and smart doable sorting.
           </p>
         </div>
 
-        {/* Top Controls */}
+        {/* Clean Controls Toolbar */}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* WhatsApp Web Mode Toggle Button */}
+          {/* WhatsApp Mode Toggle */}
           <button
             className="btn btn-secondary btn-sm"
             onClick={toggleWaWeb}
             title="Click to toggle between WhatsApp Web browser tab vs WhatsApp App"
             style={{
-              height: 36,
-              padding: '0 12px',
+              height: 38,
+              padding: '0 14px',
               fontSize: '0.8rem',
               fontWeight: 700,
-              background: useWaWeb ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-surface)',
+              borderRadius: 10,
+              background: useWaWeb ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-elevated)',
               color: useWaWeb ? '#4ade80' : 'var(--text-primary)',
-              border: useWaWeb ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid var(--border)'
+              border: useWaWeb ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid var(--border)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
             }}
           >
             {useWaWeb ? '💻 WA Web' : '📱 WA App'}
           </button>
 
-          {/* WhatsApp Message Template Preset */}
+          {/* Template Preset Selector */}
           <select
             value={msgTemplate}
             onChange={(e) => setMsgTemplate(e.target.value)}
             className="form-select"
             title="Choose template message for WhatsApp"
             style={{
-              height: 36,
+              height: 38,
               fontSize: '0.8rem',
-              padding: '0 10px',
-              borderRadius: 8,
-              background: 'var(--bg-surface)',
+              padding: '0 12px',
+              borderRadius: 10,
+              background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
-              fontWeight: 600
+              fontWeight: 600,
+              color: 'var(--text-primary)'
             }}
           >
             <option value="REMINDER">💬 Gentle Reminder</option>
@@ -317,7 +383,7 @@ export default function AbandonedCheckouts() {
             <option value="CUSTOM">⭐ Custom Template</option>
           </select>
 
-          {/* WhatsApp Template Customizer Trigger Button */}
+          {/* Customize Templates Button */}
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => {
@@ -327,14 +393,14 @@ export default function AbandonedCheckouts() {
             }}
             title="Customize WhatsApp message templates & variable placeholders"
             style={{
-              height: 36,
-              padding: '0 12px',
+              height: 38,
+              padding: '0 14px',
               fontSize: '0.8rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              borderRadius: 8,
+              borderRadius: 10,
               background: 'rgba(99, 102, 241, 0.12)',
               border: '1px solid rgba(99, 102, 241, 0.3)',
               color: 'var(--brand)'
@@ -343,19 +409,22 @@ export default function AbandonedCheckouts() {
             <span>⚙️</span> Customize
           </button>
 
-          {/* Date Filter Preset Dropdown */}
+          <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 2px' }} />
+
+          {/* Date Filter Preset */}
           <select
             value={datePreset}
             onChange={(e) => handlePresetChange(e.target.value)}
             className="form-select"
             style={{
-              height: 36,
+              height: 38,
               fontSize: '0.8rem',
-              padding: '0 10px',
-              borderRadius: 8,
-              background: 'var(--bg-surface)',
+              padding: '0 12px',
+              borderRadius: 10,
+              background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
-              fontWeight: 600
+              fontWeight: 600,
+              color: 'var(--text-primary)'
             }}
           >
             <option value="TODAY">📅 Today</option>
@@ -375,7 +444,7 @@ export default function AbandonedCheckouts() {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="form-control"
-                style={{ height: 36, fontSize: '0.8rem', padding: '0 8px', borderRadius: 8 }}
+                style={{ height: 38, fontSize: '0.8rem', padding: '0 8px', borderRadius: 10 }}
               />
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>to</span>
               <input
@@ -383,16 +452,17 @@ export default function AbandonedCheckouts() {
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="form-control"
-                style={{ height: 36, fontSize: '0.8rem', padding: '0 8px', borderRadius: 8 }}
+                style={{ height: 38, fontSize: '0.8rem', padding: '0 8px', borderRadius: 10 }}
               />
             </div>
           )}
 
+          {/* Refresh Button */}
           <button
             className="btn btn-secondary btn-sm"
             onClick={fetchAbandoned}
             disabled={loading}
-            style={{ height: 36, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ height: 38, padding: '0 16px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
           >
             {loading ? <span className="loading-spinner" /> : '🔄'} Refresh
           </button>
@@ -406,7 +476,7 @@ export default function AbandonedCheckouts() {
         gap: 16,
         marginBottom: 24
       }}>
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14 }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             Total Value (Abandoned)
           </div>
@@ -418,7 +488,7 @@ export default function AbandonedCheckouts() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, borderTop: '3px solid #f87171' }}>
           <div style={{ fontSize: '0.72rem', color: '#f87171', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🔴 True Abandoned
           </div>
@@ -430,7 +500,7 @@ export default function AbandonedCheckouts() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, borderTop: '3px solid #4ade80' }}>
           <div style={{ fontSize: '0.72rem', color: '#4ade80', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🟢 Recovered / Placed
           </div>
@@ -442,7 +512,7 @@ export default function AbandonedCheckouts() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, borderTop: '3px solid #fbbf24' }}>
           <div style={{ fontSize: '0.72rem', color: '#fbbf24', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             🟡 Existing Customers
           </div>
@@ -454,7 +524,7 @@ export default function AbandonedCheckouts() {
           </div>
         </div>
 
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, borderTop: '3px solid var(--brand)' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--brand)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             Recovery Rate
           </div>
@@ -467,13 +537,13 @@ export default function AbandonedCheckouts() {
         </div>
       </div>
 
-      {/* Filter Tabs & Search Control */}
+      {/* Main Tab Navigation */}
       <div style={{
         display: 'flex',
         justify: 'space-between',
         alignItems: 'center',
         borderBottom: '1px solid var(--border)',
-        marginBottom: 20,
+        marginBottom: 16,
         flexWrap: 'wrap',
         gap: 12
       }}>
@@ -489,17 +559,17 @@ export default function AbandonedCheckouts() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               style={{
-                padding: '12px 16px',
+                padding: '12px 18px',
                 background: 'none',
                 border: 'none',
-                borderBottom: activeTab === tab.key ? '2px solid var(--brand)' : '2px solid transparent',
+                borderBottom: activeTab === tab.key ? '3px solid var(--brand)' : '3px solid transparent',
                 color: activeTab === tab.key ? 'var(--brand)' : 'var(--text-secondary)',
-                fontWeight: activeTab === tab.key ? 700 : 500,
+                fontWeight: activeTab === tab.key ? 800 : 500,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                fontSize: '0.85rem',
+                fontSize: '0.88rem',
                 transition: 'all 0.2s'
               }}
             >
@@ -510,31 +580,106 @@ export default function AbandonedCheckouts() {
                 color: activeTab === tab.key ? '#fff' : 'var(--text-muted)',
                 padding: '2px 8px',
                 borderRadius: 20,
-                fontWeight: 600
+                fontWeight: 700
               }}>
                 {tab.badge}
               </span>
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Search Bar */}
-        <div style={{ minWidth: 240 }}>
-          <input
-            type="text"
-            placeholder="🔍 Search name, phone, email, city..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="form-control"
+      {/* Actionability Filter Chips Bar + Search & Sorting Controls */}
+      <div style={{
+        display: 'flex',
+        justify: 'space-between',
+        alignItems: 'center',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 14,
+        padding: '12px 16px',
+        marginBottom: 20,
+        flexWrap: 'wrap',
+        gap: 14
+      }}>
+        {/* Contact Channel Actionability Chips */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginRight: 4 }}>
+            Filter Contact:
+          </span>
+          {[
+            { key: 'ALL', label: '👥 All Contacts' },
+            { key: 'WA_DOABLE', label: `💬 WhatsApp Doable (${waDoableCount})` },
+            { key: 'EMAIL_DOABLE', label: `✉️ Email Doable (${emailDoableCount})` }
+          ].map(chip => (
+            <button
+              key={chip.key}
+              onClick={() => setContactFilter(chip.key)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: 20,
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: contactFilter === chip.key ? '1px solid var(--brand)' : '1px solid var(--border)',
+                background: contactFilter === chip.key ? 'var(--brand)' : 'var(--bg-elevated)',
+                color: contactFilter === chip.key ? '#fff' : 'var(--text-primary)',
+                transition: 'all 0.15s ease',
+                boxShadow: contactFilter === chip.key ? '0 2px 8px rgba(99, 102, 241, 0.3)' : 'none'
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search Input & Sort Selector Controls */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end', minWidth: 300 }}>
+          {/* Easy Sorting Dropdown */}
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value)}
+            className="form-select"
+            title="Sort abandoned checkouts list"
             style={{
-              height: 36,
+              height: 38,
               fontSize: '0.8rem',
               padding: '0 12px',
-              borderRadius: 8,
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border)'
+              borderRadius: 10,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              fontWeight: 700,
+              color: 'var(--brand)',
+              cursor: 'pointer',
+              minWidth: 220
             }}
-          />
+          >
+            <option value="WA_FIRST">💬 Sort: WhatsApp Doable First</option>
+            <option value="EMAIL_FIRST">✉️ Sort: Email Doable First</option>
+            <option value="DATE_DESC">📅 Sort: Newest First</option>
+            <option value="DATE_ASC">⏳ Sort: Oldest First</option>
+            <option value="PRICE_DESC">💰 Sort: Highest Price</option>
+            <option value="PRICE_ASC">💵 Sort: Lowest Price</option>
+          </select>
+
+          {/* Search Input */}
+          <div style={{ minWidth: 220, flex: '1 1 220px', maxWidth: 320 }}>
+            <input
+              type="text"
+              placeholder="🔍 Search name, phone, email, city..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="form-control"
+              style={{
+                height: 38,
+                fontSize: '0.8rem',
+                padding: '0 12px',
+                borderRadius: 10,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)'
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -548,21 +693,39 @@ export default function AbandonedCheckouts() {
           <div className="empty-icon" style={{ fontSize: '2.5rem', marginBottom: 12 }}>🛒</div>
           <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>No Abandoned Checkouts Found</h3>
           <p style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: '0.85rem' }}>
-            No checkouts match the current tab filter or search query.
+            No checkouts match the current tab, contact filter, or search query.
           </p>
         </div>
       ) : (
-        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+        <div className="table-wrapper" style={{ overflowX: 'auto', borderRadius: 14, border: '1px solid var(--border)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px' }}>Customer</th>
-                <th style={{ padding: '12px 16px' }}>Contact Info</th>
-                <th style={{ padding: '12px 16px' }}>Cart Items</th>
-                <th style={{ padding: '12px 16px' }}>Total Price</th>
-                <th style={{ padding: '12px 16px' }}>Reconciliation Status</th>
-                <th style={{ padding: '12px 16px' }}>Abandoned Date</th>
-                <th style={{ padding: '12px 16px', textAlign: 'right' }}>Quick Actions</th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Customer</th>
+                <th
+                  onClick={() => setSortKey(prev => prev === 'WA_FIRST' ? 'EMAIL_FIRST' : 'WA_FIRST')}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to toggle sorting between WhatsApp Doable and Email Doable"
+                >
+                  Contact Info {sortKey === 'WA_FIRST' ? '💬↓' : sortKey === 'EMAIL_FIRST' ? '✉️↓' : '↕️'}
+                </th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cart Items</th>
+                <th
+                  onClick={() => setSortKey(prev => prev === 'PRICE_DESC' ? 'PRICE_ASC' : 'PRICE_DESC')}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by total cart price"
+                >
+                  Total Price {sortKey === 'PRICE_DESC' ? '↓' : sortKey === 'PRICE_ASC' ? '↑' : '↕️'}
+                </th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Reconciliation Status</th>
+                <th
+                  onClick={() => setSortKey(prev => prev === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  title="Click to sort by date"
+                >
+                  Abandoned Date {sortKey === 'DATE_DESC' ? '↓' : sortKey === 'DATE_ASC' ? '↑' : '↕️'}
+                </th>
+                <th style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -790,6 +953,18 @@ export default function AbandonedCheckouts() {
                             title="Call Customer"
                           >
                             📞 Call
+                          </a>
+                        ) : null}
+
+                        {/* 1-Click Email Button */}
+                        {c.email ? (
+                          <a
+                            href={`mailto:${c.email}?subject=${encodeURIComponent(`Complete your order at ${activeStore?.store_name || 'TRACE'}`)}&body=${encodeURIComponent(`Assalam-o-Alaikum ${c.customer_name || 'Customer'},\n\nAapka cart checkout par wapas aapka intezar kar raha hai (Total: ${formatRs(c.total_price)}).\n\nComplete link: ${c.abandoned_checkout_url || ''}`)}`}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none', background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}
+                            title="Send Email to Customer"
+                          >
+                            ✉️ Email
                           </a>
                         ) : null}
 
