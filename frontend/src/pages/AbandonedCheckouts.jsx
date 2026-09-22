@@ -697,35 +697,35 @@ export default function AbandonedCheckouts() {
           </p>
         </div>
       ) : (
-        <div className="table-wrapper" style={{ overflowX: 'auto', borderRadius: 14, border: '1px solid var(--border)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="table-wrapper" style={{ overflowX: 'auto', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1250 }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
-                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Customer</th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 150 }}>Customer</th>
                 <th
                   onClick={() => setSortKey(prev => prev === 'WA_FIRST' ? 'EMAIL_FIRST' : 'WA_FIRST')}
-                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none', minWidth: 160 }}
                   title="Click to toggle sorting between WhatsApp Doable and Email Doable"
                 >
                   Contact Info {sortKey === 'WA_FIRST' ? '💬↓' : sortKey === 'EMAIL_FIRST' ? '✉️↓' : '↕️'}
                 </th>
-                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cart Items</th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 240 }}>Cart Items</th>
                 <th
                   onClick={() => setSortKey(prev => prev === 'PRICE_DESC' ? 'PRICE_ASC' : 'PRICE_DESC')}
-                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none', minWidth: 120 }}
                   title="Click to sort by total cart price"
                 >
                   Total Price {sortKey === 'PRICE_DESC' ? '↓' : sortKey === 'PRICE_ASC' ? '↑' : '↕️'}
                 </th>
-                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Reconciliation Status</th>
+                <th style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 170 }}>Reconciliation Status</th>
                 <th
                   onClick={() => setSortKey(prev => prev === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
-                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none' }}
+                  style={{ padding: '12px 16px', color: 'var(--brand)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, cursor: 'pointer', userSelect: 'none', minWidth: 130 }}
                   title="Click to sort by date"
                 >
                   Abandoned Date {sortKey === 'DATE_DESC' ? '↓' : sortKey === 'DATE_ASC' ? '↑' : '↕️'}
                 </th>
-                <th style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick Actions</th>
+                <th style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 320, whiteSpace: 'nowrap' }}>Quick Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -739,7 +739,7 @@ export default function AbandonedCheckouts() {
                     key={c.id}
                     style={{
                       borderBottom: '1px solid var(--border)',
-                      background: isRecovered ? 'rgba(74, 222, 128, 0.03)' : isDismissed ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
+                      background: isRecovered ? 'rgba(74, 222, 128, 0.04)' : isDismissed ? 'rgba(255, 255, 255, 0.02)' : 'var(--bg-surface)',
                       opacity: isDismissed ? 0.6 : 1
                     }}
                   >
@@ -926,19 +926,29 @@ export default function AbandonedCheckouts() {
                     </td>
 
                     {/* Actions */}
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 320 }}>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
                         {/* WhatsApp Button */}
                         <button
-                          className="btn btn-secondary btn-sm"
+                          className="btn btn-sm"
                           onClick={() => handleWhatsApp(c)}
                           disabled={isRecovered || !c.phone}
                           title={isRecovered ? 'Customer already placed an order - WhatsApp disabled' : 'Open WhatsApp Chat'}
                           style={{
-                            padding: '4px 10px',
-                            fontSize: '0.75rem',
+                            padding: '5px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            borderRadius: 8,
+                            border: isRecovered || !c.phone ? '1px solid var(--border)' : '1px solid rgba(34, 197, 94, 0.35)',
+                            background: isRecovered || !c.phone ? 'var(--bg-elevated)' : 'rgba(34, 197, 94, 0.15)',
+                            color: isRecovered || !c.phone ? 'var(--text-muted)' : '#22c55e',
                             opacity: isRecovered || !c.phone ? 0.4 : 1,
-                            cursor: isRecovered || !c.phone ? 'not-allowed' : 'pointer'
+                            cursor: isRecovered || !c.phone ? 'not-allowed' : 'pointer',
+                            flexShrink: 0,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
                           }}
                         >
                           💬 WhatsApp
@@ -949,7 +959,7 @@ export default function AbandonedCheckouts() {
                           <a
                             href={`tel:${c.phone}`}
                             className="btn btn-secondary btn-sm"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none' }}
+                            style={{ padding: '5px 10px', fontSize: '0.78rem', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 8 }}
                             title="Call Customer"
                           >
                             📞 Call
@@ -961,7 +971,7 @@ export default function AbandonedCheckouts() {
                           <a
                             href={`mailto:${c.email}?subject=${encodeURIComponent(`Complete your order at ${activeStore?.store_name || 'TRACE'}`)}&body=${encodeURIComponent(`Assalam-o-Alaikum ${c.customer_name || 'Customer'},\n\nAapka cart checkout par wapas aapka intezar kar raha hai (Total: ${formatRs(c.total_price)}).\n\nComplete link: ${c.abandoned_checkout_url || ''}`)}`}
                             className="btn btn-secondary btn-sm"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none', background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}
+                            style={{ padding: '5px 10px', fontSize: '0.78rem', textDecoration: 'none', background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 8 }}
                             title="Send Email to Customer"
                           >
                             ✉️ Email
@@ -975,7 +985,7 @@ export default function AbandonedCheckouts() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="btn btn-primary btn-sm"
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', textDecoration: 'none' }}
+                            style={{ padding: '5px 10px', fontSize: '0.78rem', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 8 }}
                             title="Open Shopify Checkout Link"
                           >
                             🔗 Link
@@ -988,7 +998,7 @@ export default function AbandonedCheckouts() {
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleRestore(c.id)}
                             title="Restore checkout"
-                            style={{ padding: '4px 8px', fontSize: '0.72rem' }}
+                            style={{ padding: '5px 8px', fontSize: '0.72rem', flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 8 }}
                           >
                             ↩️ Restore
                           </button>
@@ -997,7 +1007,7 @@ export default function AbandonedCheckouts() {
                             className="btn btn-secondary btn-sm"
                             onClick={() => handleDismiss(c.id)}
                             title="Mark as handled / dismiss"
-                            style={{ padding: '4px 8px', fontSize: '0.72rem', opacity: 0.7 }}
+                            style={{ padding: '5px 8px', fontSize: '0.72rem', opacity: 0.7, flexShrink: 0, whiteSpace: 'nowrap', borderRadius: 8 }}
                           >
                             ✕ Dismiss
                           </button>
