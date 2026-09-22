@@ -1135,7 +1135,6 @@ export default function AbandonedCheckouts() {
                     )}
                     <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: '0.8rem', fontWeight: 600 }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Qty: x{item.quantity}</span>
-                      <span style={{ color: '#22c55e' }}>{formatRs(item.price)} each</span>
                     </div>
                   </div>
 
