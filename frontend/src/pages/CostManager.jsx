@@ -67,20 +67,14 @@ export default function CostManager() {
     }
   }, [activeStoreId])
 
-  // Parse query parameters on mount
+  // Parse query parameters on mount & sync search queries across tabs
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const searchParam = params.get('search')
     const tabParam = params.get('tab')
     if (searchParam) {
-      if (tabParam === 'ghosts') {
-        setGhostSearch(searchParam)
-        setSearch('')
-      } else {
-        setSearch(searchParam)
-        setGhostSearch('')
-      }
-      
+      setSearch(searchParam)
+      setGhostSearch(searchParam)
       if (tabParam) {
         setActiveTab(tabParam)
       } else {
@@ -1006,11 +1000,19 @@ export default function CostManager() {
 
       {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'unlisted' || activeTab === 'archived') && (
         <>
-          {/* ── Smart Toolbar ── */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          {/*             <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>🔍</span>
-              <input type="text" className="form-input" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 36, width: '100%' }} />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search products..."
+                value={search}
+                onChange={e => {
+                  setSearch(e.target.value)
+                  setGhostSearch(e.target.value)
+                }}
+                style={{ paddingLeft: 36, width: '100%' }}
+              />
             </div>
             <select
               className="form-input"
@@ -1048,7 +1050,7 @@ export default function CostManager() {
               <button
                 className="btn btn-secondary"
                 style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-                onClick={() => { setSearch(''); setFilterMargin('all') }}
+                onClick={() => { setSearch(''); setGhostSearch(''); setFilterMargin('all') }}
               >✕ Clear</button>
             )}
           </div>
@@ -1105,6 +1107,91 @@ export default function CostManager() {
                 {isSyncing ? '⌛ Syncing...' : '🔄 Sync from Shopify Now'}
               </button>
             </div>
+          )}
+
+          {/* ── Universal Cross-Tab Search Match Alert Banner ── */}
+          {!loading && !loadError && search.trim() && (
+            (() => {
+              const q = search.toLowerCase().trim();
+              const ghostMatches = ghosts.filter(g => (g.name || g.parent_title || '').toLowerCase().includes(q));
+              const pendingMatches = lists.pending.length;
+              const verifiedMatches = lists.verified.length;
+              const activeMatches = lists.active.length;
+              const watchdogMatches = (auditData.missingInRegistry || []).filter(a => (a.parent_title || '').toLowerCase().includes(q)).length;
+              
+              const currentMatches = currentList.length;
+
+              if (currentMatches === 0 && (ghostMatches.length > 0 || pendingMatches > 0 || verifiedMatches > 0 || activeMatches > 0 || watchdogMatches > 0)) {
+                return (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(99,102,241,0.08) 100%)',
+                    border: '1.5px solid var(--brand)',
+                    borderRadius: 14,
+                    padding: '20px 24px',
+                    marginBottom: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justify: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 16,
+                    boxShadow: '0 8px 24px rgba(99,102,241,0.15)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: 12,
+                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 20, fontWeight: 900
+                      }}>🔍</div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                          No matches in <strong>"{activeTab.toUpperCase()}"</strong> tab for <em>"{search}"</em>
+                        </div>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                          {ghostMatches.length > 0 && `Found ${ghostMatches.length} matching item(s) in 👻 Ghosts tab. `}
+                          {pendingMatches > 0 && activeTab !== 'pending' && `Found ${pendingMatches} matching item(s) in ⏳ Pending tab. `}
+                          {verifiedMatches > 0 && activeTab !== 'verified' && `Found ${verifiedMatches} matching item(s) in ✅ Verified tab. `}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {ghostMatches.length > 0 && activeTab !== 'ghosts' && (
+                        <button
+                          onClick={() => {
+                            setActiveTab('ghosts');
+                            setGhostSearch(search);
+                          }}
+                          className="btn btn-primary"
+                          style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#8b5cf6', borderColor: '#8b5cf6', fontWeight: 700 }}
+                        >
+                          👻 Jump to Ghosts Tab ({ghostMatches.length})
+                        </button>
+                      )}
+                      {pendingMatches > 0 && activeTab !== 'pending' && (
+                        <button
+                          onClick={() => setActiveTab('pending')}
+                          className="btn btn-primary"
+                          style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#f59e0b', borderColor: '#f59e0b', fontWeight: 700 }}
+                        >
+                          ⏳ Jump to Pending Tab ({pendingMatches})
+                        </button>
+                      )}
+                      {verifiedMatches > 0 && activeTab !== 'verified' && (
+                        <button
+                          onClick={() => setActiveTab('verified')}
+                          className="btn btn-primary"
+                          style={{ padding: '8px 16px', fontSize: '0.82rem', background: '#22c55e', borderColor: '#22c55e', fontWeight: 700 }}
+                        >
+                          ✅ Jump to Verified Tab ({verifiedMatches})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()
           )}
 
           {/* ── Current Tab Empty State ── */}
