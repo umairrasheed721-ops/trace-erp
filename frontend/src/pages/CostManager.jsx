@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function CostManager() {
   const { activeStoreId, token, addToast } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
   const [costs, setCosts] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -69,19 +70,17 @@ export default function CostManager() {
 
   // Parse query parameters on mount & sync search queries across tabs
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(location.search)
     const searchParam = params.get('search')
     const tabParam = params.get('tab')
-    if (searchParam) {
+    if (tabParam) {
+      setActiveTab(tabParam)
+    }
+    if (searchParam !== null && searchParam !== undefined) {
       setSearch(searchParam)
       setGhostSearch(searchParam)
-      if (tabParam) {
-        setActiveTab(tabParam)
-      } else {
-        setActiveTab('pending')
-      }
     }
-  }, [])
+  }, [location.search])
 
   // Auto-expand matching parent products when search is active
   useEffect(() => {
@@ -2020,7 +2019,10 @@ export default function CostManager() {
                 placeholder="Search ghost products..." 
                 style={{ paddingLeft: 35, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
                 value={ghostSearch}
-                onChange={e => setGhostSearch(e.target.value)}
+                onChange={e => {
+                  setGhostSearch(e.target.value)
+                  setSearch(e.target.value)
+                }}
               />
             </div>
             <div style={{ color: 'var(--brand)', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>

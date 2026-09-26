@@ -129,9 +129,11 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
                   onClick={(e) => {
                     e.stopPropagation();
                     const title = item.title ? item.title.trim() : '';
-                    const isGhost = item.match_type === 'Unknown' || !item.match_type || item.match_type === 'fallback';
-                    const tab = isGhost ? 'ghosts' : (item.landed_cost > 0 ? 'verified' : 'pending');
-                    navigate(`/costing?search=${encodeURIComponent(title)}&tab=${tab}`);
+                    const matchType = (item.match_type || '').toLowerCase();
+                    const isGhost = matchType === 'unknown' || matchType === 'ghost' || matchType === 'fallback' || matchType === 'none' || !item.match_type || Number(item.landed_cost) === 0;
+                    const tab = isGhost ? 'ghosts' : 'verified';
+                    const searchTerm = item.sku ? item.sku.trim() : title;
+                    navigate(`/costing?search=${encodeURIComponent(searchTerm)}&tab=${tab}`);
                   }}
                   style={{
                     background: 'rgba(255,255,255,0.1)',
