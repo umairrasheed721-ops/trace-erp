@@ -2,6 +2,61 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
+const isGhostMatch = (ghost, searchQuery) => {
+  if (!searchQuery || !searchQuery.trim()) return true;
+  const q = searchQuery.trim().toLowerCase();
+  const name = (ghost.name || '').toLowerCase();
+
+  // 1. Direct bidirectional inclusion on parent name
+  if (name.includes(q) || q.includes(name)) return true;
+
+  // 2. Check variants inside ghost.variants object
+  if (ghost.variants && typeof ghost.variants === 'object') {
+    const variantKeys = Object.keys(ghost.variants);
+    for (const v of variantKeys) {
+      const fullVariantStr = `${name} ${v}`.toLowerCase();
+      if (fullVariantStr.includes(q) || q.includes(fullVariantStr) || v.toLowerCase().includes(q)) return true;
+    }
+  }
+
+  // 3. Token-based matching
+  const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
+  if (tokens.length > 0) {
+    const nameAndVariants = `${name} ${ghost.variants ? Object.keys(ghost.variants).join(' ') : ''}`.toLowerCase();
+    if (tokens.every(token => nameAndVariants.includes(token))) return true;
+  }
+
+  return false;
+};
+
+const matchesProductSearch = (product, searchQuery) => {
+  if (!searchQuery || !searchQuery.trim()) return true;
+  const q = searchQuery.trim().toLowerCase();
+  const name = (product.name || '').toLowerCase();
+
+  // 1. Direct bidirectional inclusion on parent name
+  if (name.includes(q) || q.includes(name)) return true;
+
+  // 2. Check variants inside product
+  if (product.variants && Array.isArray(product.variants)) {
+    for (const v of product.variants) {
+      const vTitle = (v.variant_title || v.name || '').toLowerCase();
+      const sku = (v.sku || '').toLowerCase();
+      const fullStr = `${name} ${vTitle}`.toLowerCase();
+      if (vTitle.includes(q) || sku.includes(q) || fullStr.includes(q) || q.includes(fullStr)) return true;
+    }
+  }
+
+  // 3. Token-based matching
+  const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
+  if (tokens.length > 0) {
+    const fullText = `${name} ${product.variants ? product.variants.map(v => `${v.variant_title || v.name || ''} ${v.sku || ''}`).join(' ') : ''}`.toLowerCase();
+    if (tokens.every(token => fullText.includes(token))) return true;
+  }
+
+  return false;
+};
+
 export default function CostManager() {
   const { activeStoreId, token, addToast } = useApp()
   const navigate = useNavigate()
@@ -219,7 +274,7 @@ export default function CostManager() {
 
   const allGrouped = useMemo(() => {
     return Object.values(grouped)
-      .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+      .filter(p => matchesProductSearch(p, search))
   }, [grouped, search])
 
   // Apply margin filter
@@ -1112,7 +1167,7 @@ export default function CostManager() {
           {!loading && !loadError && search.trim() && (
             (() => {
               const q = search.toLowerCase().trim();
-              const ghostMatches = ghosts.filter(g => (g.name || g.parent_title || '').toLowerCase().includes(q));
+              const ghostMatches = ghosts.filter(g => isGhostMatch(g, search));
               const pendingMatches = lists.pending.length;
               const verifiedMatches = lists.verified.length;
               const activeMatches = lists.active.length;
@@ -2043,13 +2098,13 @@ export default function CostManager() {
                       type="checkbox" 
                       onChange={(e) => {
                         if (e.target.checked) {
-                          const all = new Set(ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => p.name));
+                          const all = new Set(ghosts.filter(p => isGhostMatch(p, ghostSearch)).map(p => p.name));
                           setSelectedGhosts(all);
                         } else {
                           setSelectedGhosts(new Set());
                         }
                       }}
-                      checked={selectedGhosts.size > 0 && selectedGhosts.size === ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).length}
+                      checked={selectedGhosts.size > 0 && selectedGhosts.size === ghosts.filter(p => isGhostMatch(p, ghostSearch)).length}
                     />
                   </th>
                   <th style={{ padding: 15 }}>Product / Variant</th>
@@ -2059,7 +2114,7 @@ export default function CostManager() {
                 </tr>
               </thead>
               <tbody>
-                {ghosts.filter(p => p.name.toLowerCase().includes(ghostSearch.toLowerCase())).map(p => (
+                {ghosts.filter(p => isGhostMatch(p, ghostSearch)).map(p => (
                   <React.Fragment key={p.name}>
                     <tr 
                       style={{ cursor: 'pointer', background: selectedGhosts.has(p.name) ? 'var(--brand-glow)' : 'transparent', borderBottom: '1px solid var(--border)' }} 
@@ -2071,7 +2126,7 @@ export default function CostManager() {
                           checked={selectedGhosts.has(p.name)} 
                           onClick={(e) => {
                             const checked = e.target.checked;
-                            const filteredGhosts = ghosts.filter(g => g.name.toLowerCase().includes(ghostSearch.toLowerCase()));
+                            const filteredGhosts = ghosts.filter(g => isGhostMatch(g, ghostSearch));
                             const currentIndex = filteredGhosts.findIndex(item => item.name === p.name);
                             
                             if (e.shiftKey && lastSelectedGhostIndex !== null) {
