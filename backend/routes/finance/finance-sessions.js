@@ -291,9 +291,13 @@ router.post('/bulk-update', async (req, res) => {
           }
         } else if (type === 'R') {
           try {
-            if (syncToShopify) {
+            const isAlreadyDelivered = ['delivered', 'return received'].includes((order.delivery_status || '').toLowerCase());
+            if (syncToShopify && !isAlreadyDelivered) {
+              // Only add "Return Charged" note if the order is genuinely in a return state,
+              // NOT if it is already "Delivered" (same tracking re-used in courier billing sheet)
               combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`);
             }
+            // If already Delivered, we silently record the courier fee only (no status change, no misleading Shopify note)
 
             let finalCourierFee = charges;
             if (order.courier_fee > 0 && (order.courier === 'TCS' || order.courier === 'Leopards' || order.courier === 'LCS' || String(order.courier).toLowerCase().includes('insta'))) {
