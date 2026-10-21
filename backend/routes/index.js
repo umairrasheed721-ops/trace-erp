@@ -118,7 +118,7 @@ setInterval(() => {
 
 // --- OTHER SPECIFIC ROUTES FROM index.js ---
 
-router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", time: new Date().toISOString() }));
+router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", version: "v2-multi-store", time: new Date().toISOString() }));
 
 // ⚡ GET RABBI TRENDS ACCESS TOKEN FOR LOCAL SCRIPTS ⚡
 router.get('/api/public/get-rabbi-token', (req, res) => {
@@ -131,7 +131,18 @@ router.get('/api/public/get-rabbi-token', (req, res) => {
   }
 });
 
-// ⚡ GET ALL CONNECTED STORES — For local theme push scripts (protected by deploy key) ⚡
+// ⚡ GET ACE 2 ACCESS TOKEN FOR LOCAL SCRIPTS ⚡
+router.get('/api/public/get-ace2-token', (req, res) => {
+  try {
+    const store = db.prepare("SELECT shop_domain, access_token FROM stores WHERE shop_domain LIKE '%1vhrbj%' AND access_token IS NOT NULL AND access_token != 'PENDING'").get();
+    if (!store) return res.status(404).json({ error: 'ACE 2 store not found or token missing' });
+    res.json({ domain: store.shop_domain, token: store.access_token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ⚡ GET ALL CONNECTED STORES — For local theme push scripts ⚡
 // Usage: GET /api/public/get-all-stores?key=trace-erp-deploy-2024
 router.get('/api/public/get-all-stores', (req, res) => {
   const DEPLOY_KEY = 'trace-erp-deploy-2024';
@@ -148,6 +159,7 @@ router.get('/api/public/get-all-stores', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 // ⚡ AUTOMATIC MULTI-STORE METAFIEILD REGISTRATION ENDPOINT ⚡
