@@ -131,6 +131,25 @@ router.get('/api/public/get-rabbi-token', (req, res) => {
   }
 });
 
+// ⚡ GET ALL CONNECTED STORES — For local theme push scripts (protected by deploy key) ⚡
+// Usage: GET /api/public/get-all-stores  with header  X-ERP-Deploy-Key: trace-erp-deploy-2024
+router.get('/api/public/get-all-stores', (req, res) => {
+  const DEPLOY_KEY = 'trace-erp-deploy-2024';
+  const providedKey = req.headers['x-erp-deploy-key'];
+  if (providedKey !== DEPLOY_KEY) {
+    return res.status(401).json({ error: 'Unauthorized: missing or invalid X-ERP-Deploy-Key header' });
+  }
+  try {
+    const stores = db.prepare(
+      "SELECT id, store_name, shop_domain, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' ORDER BY id"
+    ).all();
+    res.json({ stores });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // ⚡ AUTOMATIC MULTI-STORE METAFIEILD REGISTRATION ENDPOINT ⚡
 router.get('/api/public/sync-metafields-all', async (req, res) => {
   const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
