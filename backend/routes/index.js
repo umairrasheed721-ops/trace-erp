@@ -132,18 +132,18 @@ router.get('/api/public/get-rabbi-token', (req, res) => {
 });
 
 // ⚡ GET ALL CONNECTED STORES — For local theme push scripts (protected by deploy key) ⚡
-// Usage: GET /api/public/get-all-stores  with header  X-ERP-Deploy-Key: trace-erp-deploy-2024
+// Usage: GET /api/public/get-all-stores?key=trace-erp-deploy-2024
 router.get('/api/public/get-all-stores', (req, res) => {
   const DEPLOY_KEY = 'trace-erp-deploy-2024';
-  const providedKey = req.headers['x-erp-deploy-key'];
+  const providedKey = req.query.key || req.headers['x-erp-deploy-key'];
   if (providedKey !== DEPLOY_KEY) {
-    return res.status(401).json({ error: 'Unauthorized: missing or invalid X-ERP-Deploy-Key header' });
+    return res.status(401).json({ error: 'Unauthorized: invalid key' });
   }
   try {
     const stores = db.prepare(
       "SELECT id, store_name, shop_domain, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' ORDER BY id"
     ).all();
-    res.json({ stores });
+    res.json({ stores, count: stores.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
