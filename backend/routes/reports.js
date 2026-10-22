@@ -735,21 +735,23 @@ router.get('/snapshots-24h', (req, res) => {
 
       let hasTodayPrev = false;
       todayRows.forEach(r => {
-        const jsonToUse = r.prev_metrics_json || r.metrics_json;
-        if (r.prev_metrics_json) hasTodayPrev = true;
-        if (jsonToUse && !snapshots[r.month_key]) {
-          try { snapshots[r.month_key] = JSON.parse(jsonToUse); } catch (_) {}
+        if (r.prev_metrics_json) {
+          try {
+            snapshots[r.month_key] = JSON.parse(r.prev_metrics_json);
+            hasTodayPrev = true;
+          } catch (_) {}
         }
       });
 
-      // 2. If no today changes occurred yet, fallback to yesterday's snapshot
+      // 2. If no today changes occurred yet, fallback to yesterday's snapshot or closest prior snapshot
       if (!hasTodayPrev || Object.keys(snapshots).length === 0) {
         resolvedDate = yesterdayDate;
-        const yRows = db.prepare(`
-          SELECT month_key, metrics_json 
+        let yRows = db.prepare(`
+          SELECT month_key, metrics_json, snapshot_date 
           FROM pnl_daily_snapshots 
-          WHERE store_id = ? AND snapshot_date = ?
-        `).all(numericStoreId, yesterdayDate);
+          WHERE store_id = ? AND snapshot_date < ?
+          ORDER BY snapshot_date DESC
+        `).all(numericStoreId, todayDate);
 
         yRows.forEach(r => {
           if (!snapshots[r.month_key]) {
