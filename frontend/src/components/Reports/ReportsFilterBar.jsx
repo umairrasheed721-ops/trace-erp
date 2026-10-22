@@ -27,7 +27,10 @@ export default function ReportsFilterBar({
   activeSavedView = null,
   saveReportView,
   applyReportView,
-  deleteReportView
+  deleteReportView,
+  compareMode = '24h',
+  setCompareMode,
+  compareBaseline = ''
 }) {
   const [showSaveModal, setShowSaveModal] = React.useState(false);
   const [newViewName, setNewViewName] = React.useState('');
@@ -338,6 +341,49 @@ export default function ReportsFilterBar({
           <button className={`btn ${view === 'daily' ? 'btn-primary' : ''}`} onClick={() => setView('daily')}>📅 Daily PNL</button>
           <button className={`btn ${view === 'monthly' ? 'btn-primary' : ''}`} onClick={() => setView('monthly')}>📊 Month Vise</button>
         </div>
+
+        {/* ⚖️ Multi-Timeframe Comparison Controls (Active in Month Vise) */}
+        {view === 'monthly' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--bg-active)', padding: '4px 6px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 800, padding: '0 4px', whiteSpace: 'nowrap' }}>
+              ⚖️ COMPARE:
+            </span>
+            {[
+              { id: 'off', label: 'Off', icon: '🚫', title: 'No Comparison (Hide delta badges)' },
+              { id: 'recent', label: 'Recent Change', icon: '⚡', title: 'Compare against recent change / session' },
+              { id: '24h', label: 'Last 24h', icon: '⏱️', title: 'Compare against 24 hours ago snapshot' },
+              { id: 'yesterday', label: 'Yesterday', icon: '📅', title: 'Compare against yesterday calendar baseline' },
+              { id: '7d', label: 'Last 7 Days', icon: '📈', title: 'Compare against 7 days ago snapshot' },
+              { id: '30d', label: 'Last 30 Days', icon: '📊', title: 'Compare against 30 days ago snapshot' }
+            ].map(m => {
+              const isActive = (compareMode || '24h') === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`btn ${isActive ? 'btn-primary' : ''}`}
+                  onClick={() => typeof setCompareMode === 'function' && setCompareMode(m.id)}
+                  title={m.title}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    borderRadius: 6,
+                    border: isActive ? '1px solid var(--brand)' : '1px solid transparent',
+                    background: isActive ? 'var(--brand)' : 'transparent',
+                    color: isActive ? '#fff' : 'var(--text-secondary)',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ marginRight: 3 }}>{m.icon}</span>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <button className="btn" onClick={() => setShowBulkModal(true)} style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid var(--blue)' }}>🚀 Bulk Sync Spend</button>
 

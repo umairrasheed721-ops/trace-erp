@@ -689,62 +689,147 @@ router.get('/logistics-intelligence', (req, res) => {
   }
 });
 
-// ─── 24-HOUR DELTA SNAPSHOT SYSTEM (Rule 11 — AI-Friendly Comments) ─────────
-// 📊 SNAPSHOT_GET: Fetch 24-hour ago baseline PNL metrics per month for store
+// ─── 24-HOUR / TIMEFRAME DELTA SNAPSHOT SYSTEM (Rule 11 — AI-Friendly Comments) ─────────
+// 📊 SNAPSHOT_GET: Fetch baseline PNL metrics per month for store based on selected comparison timeframe
 router.get('/snapshots-24h', (req, res) => {
-  const { store_id } = req.query;
+  const { store_id, period = '24h' } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id is required' });
+
+  // If comparison is disabled, return empty snapshots immediately
+  if (period === 'off' || period === 'none') {
+    return res.json({ success: true, period: 'off', baselineDate: null, snapshots: {} });
+  }
 
   try {
     const numericStoreId = Number(store_id);
 
-    // 1. Find 24h ago snapshot (yesterday date in PKT) or closest recent snapshot
-    const yesterdayDate = db.prepare(`SELECT date('now', '-1 day', '+5 hours') as d`).get().d;
     const todayDate = db.prepare(`SELECT date('now', '+5 hours') as d`).get().d;
+    const yesterdayDate = db.prepare(`SELECT date('now', '-1 day', '+5 hours') as d`).get().d;
+    const sevenDaysDate = db.prepare(`SELECT date('now', '-7 days', '+5 hours') as d`).get().d;
+    const thirtyDaysDate = db.prepare(`SELECT date('now', '-30 days', '+5 hours') as d`).get().d;
 
-    // Fetch snapshot for yesterday (or fallback to latest snapshot created before today)
-    let rows = db.prepare(`
-      SELECT month_key, metrics_json, snapshot_date 
-      FROM pnl_daily_snapshots 
-      WHERE store_id = ? AND snapshot_date = ?
-    `).all(numericStoreId, yesterdayDate);
+    let targetDate = yesterdayDate;
+    let isRecentMode = false;
 
-    // Fallback: If no snapshot for yesterday, fetch most recent snapshot prior to today
-    if (rows.length === 0) {
-      rows = db.prepare(`
-        SELECT month_key, metrics_json, snapshot_date 
-        FROM pnl_daily_snapshots 
-        WHERE store_id = ? AND snapshot_date < ?
-        ORDER BY snapshot_date DESC
-      `).all(numericStoreId, todayDate);
-    }
-
-    // Fallback 2: If no previous snapshot exists at all, fetch today's snapshot
-    if (rows.length === 0) {
-      rows = db.prepare(`
-        SELECT month_key, metrics_json, snapshot_date 
-        FROM pnl_daily_snapshots 
-        WHERE store_id = ? AND snapshot_date = ?
-      `).all(numericStoreId, todayDate);
+    if (period === 'recent') {
+      isRecentMode = true;
+    } else if (period === 'yesterday' || period === '24h') {
+      targetDate = yesterdayDate;
+    } else if (period === '7d') {
+      targetDate = sevenDaysDate;
+    } else if (period === '30d') {
+      targetDate = thirtyDaysDate;
     }
 
     const snapshots = {};
-    rows.forEach(r => {
-      if (!snapshots[r.month_key]) {
-        try {
-          snapshots[r.month_key] = JSON.parse(r.metrics_json);
-        } catch (_) {}
-      }
-    });
+    let resolvedDate = targetDate;
 
-    res.json({ success: true, yesterdayDate, snapshots });
+    if (isRecentMode) {
+      resolvedDate = 'Recent Change';
+      // 1. First check if today's rows have prev_metrics_json (captured earlier today)
+      const todayRows = db.prepare(`
+        SELECT month_key, metrics_json, prev_metrics_json, snapshot_date 
+        FROM pnl_daily_snapshots 
+        WHERE store_id = ? AND snapshot_date = ?
+      `).all(numericStoreId, todayDate);
+
+      let hasTodayPrev = false;
+      todayRows.forEach(r => {
+        const jsonToUse = r.prev_metrics_json || r.metrics_json;
+        if (r.prev_metrics_json) hasTodayPrev = true;
+        if (jsonToUse && !snapshots[r.month_key]) {
+          try { snapshots[r.month_key] = JSON.parse(jsonToUse); } catch (_) {}
+        }
+      });
+
+      // 2. If no today changes occurred yet, fallback to yesterday's snapshot
+      if (!hasTodayPrev || Object.keys(snapshots).length === 0) {
+        resolvedDate = yesterdayDate;
+        const yRows = db.prepare(`
+          SELECT month_key, metrics_json 
+          FROM pnl_daily_snapshots 
+          WHERE store_id = ? AND snapshot_date = ?
+        `).all(numericStoreId, yesterdayDate);
+
+        yRows.forEach(r => {
+          if (!snapshots[r.month_key]) {
+            try { snapshots[r.month_key] = JSON.parse(r.metrics_json); } catch (_) {}
+          }
+        });
+      }
+    } else {
+      // 1. Fetch snapshot for exact targetDate
+      let rows = db.prepare(`
+        SELECT month_key, metrics_json, snapshot_date 
+        FROM pnl_daily_snapshots 
+        WHERE store_id = ? AND snapshot_date = ?
+      `).all(numericStoreId, targetDate);
+
+      // 2. Fallback: Closest snapshot on or before targetDate
+      if (rows.length === 0) {
+        const closest = db.prepare(`
+          SELECT snapshot_date 
+          FROM pnl_daily_snapshots 
+          WHERE store_id = ? AND snapshot_date <= ?
+          ORDER BY snapshot_date DESC LIMIT 1
+        `).get(numericStoreId, targetDate);
+
+        if (closest && closest.snapshot_date) {
+          resolvedDate = closest.snapshot_date;
+          rows = db.prepare(`
+            SELECT month_key, metrics_json, snapshot_date 
+            FROM pnl_daily_snapshots 
+            WHERE store_id = ? AND snapshot_date = ?
+          `).all(numericStoreId, closest.snapshot_date);
+        }
+      }
+
+      // 3. Fallback: Oldest snapshot in DB prior to today if requested timeframe has no history yet
+      if (rows.length === 0) {
+        const oldest = db.prepare(`
+          SELECT snapshot_date 
+          FROM pnl_daily_snapshots 
+          WHERE store_id = ? AND snapshot_date < ?
+          ORDER BY snapshot_date ASC LIMIT 1
+        `).get(numericStoreId, todayDate);
+
+        if (oldest && oldest.snapshot_date) {
+          resolvedDate = oldest.snapshot_date;
+          rows = db.prepare(`
+            SELECT month_key, metrics_json, snapshot_date 
+            FROM pnl_daily_snapshots 
+            WHERE store_id = ? AND snapshot_date = ?
+          `).all(numericStoreId, oldest.snapshot_date);
+        }
+      }
+
+      // 4. Fallback: If store has only today's data
+      if (rows.length === 0) {
+        resolvedDate = todayDate;
+        rows = db.prepare(`
+          SELECT month_key, metrics_json, snapshot_date 
+          FROM pnl_daily_snapshots 
+          WHERE store_id = ? AND snapshot_date = ?
+        `).all(numericStoreId, todayDate);
+      }
+
+      rows.forEach(r => {
+        if (!snapshots[r.month_key]) {
+          try {
+            snapshots[r.month_key] = JSON.parse(r.metrics_json);
+          } catch (_) {}
+        }
+      });
+    }
+
+    res.json({ success: true, period, baselineDate: resolvedDate, yesterdayDate, snapshots });
   } catch (err) {
-    console.error('24h Snapshot GET Error:', err.message);
+    console.error('Snapshot GET Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 📊 SNAPSHOT_POST: Store today's baseline PNL snapshot per month
+// 📊 SNAPSHOT_POST: Store today's baseline PNL snapshot per month and track prev_metrics_json
 router.post('/snapshots-24h', (req, res) => {
   const { store_id, monthlyData } = req.body;
   if (!store_id || !Array.isArray(monthlyData)) {
@@ -756,9 +841,13 @@ router.post('/snapshots-24h', (req, res) => {
     const todayDate = db.prepare(`SELECT date('now', '+5 hours') as d`).get().d;
 
     const stmt = db.prepare(`
-      INSERT INTO pnl_daily_snapshots (store_id, snapshot_date, month_key, metrics_json)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO pnl_daily_snapshots (store_id, snapshot_date, month_key, metrics_json, prev_metrics_json)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(store_id, snapshot_date, month_key) DO UPDATE SET
+        prev_metrics_json = CASE 
+          WHEN excluded.metrics_json != pnl_daily_snapshots.metrics_json THEN pnl_daily_snapshots.metrics_json 
+          ELSE pnl_daily_snapshots.prev_metrics_json 
+        END,
         metrics_json = excluded.metrics_json,
         created_at = datetime('now', '+5 hours')
     `);
@@ -766,13 +855,14 @@ router.post('/snapshots-24h', (req, res) => {
     db.transaction(() => {
       for (const item of monthlyData) {
         if (!item.month) continue;
-        stmt.run(numericStoreId, todayDate, item.month, JSON.stringify(item));
+        const itemJson = JSON.stringify(item);
+        stmt.run(numericStoreId, todayDate, item.month, itemJson, null);
       }
     })();
 
-    res.json({ success: true, message: `Updated 24h snapshot for ${monthlyData.length} months`, todayDate });
+    res.json({ success: true, message: `Updated snapshot for ${monthlyData.length} months`, todayDate });
   } catch (err) {
-    console.error('24h Snapshot POST Error:', err.message);
+    console.error('Snapshot POST Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

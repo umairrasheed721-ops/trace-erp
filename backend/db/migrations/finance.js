@@ -129,5 +129,12 @@ module.exports = [
     content TEXT DEFAULT '',
     updated_at TEXT DEFAULT (datetime('now', '+5 hours')),
     UNIQUE(store_id) ON CONFLICT REPLACE
-  );`
+  );`,
+
+  // 10. Add prev_metrics_json to pnl_daily_snapshots for Recent Change comparison
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE pnl_daily_snapshots ADD COLUMN prev_metrics_json TEXT;`);
+    } catch (_) {}
+  }
 ];

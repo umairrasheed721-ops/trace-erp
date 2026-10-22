@@ -26,6 +26,8 @@ export default function useReportsData(activeStoreId, toast) {
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState([]);
   const [snapshots24h, setSnapshots24h] = useState({});
+  const [compareMode, setCompareMode] = usePersistentState('reports_compare_mode', '24h');
+  const [compareBaseline, setCompareBaseline] = useState('');
   const [view, setView] = usePersistentState('reports_filters_v1_view', 'daily'); // 'daily' or 'monthly'
 
   // ─── Date Range Filter ───────────────────────────────────────────
@@ -258,19 +260,28 @@ export default function useReportsData(activeStoreId, toast) {
 
   const fetchSnapshots24h = useCallback(async () => {
     if (!activeStoreId) return;
+    if (compareMode === 'off') {
+      setSnapshots24h({});
+      setCompareBaseline('');
+      return;
+    }
     try {
-      const res = await fetch(`/api/reports/snapshots-24h?store_id=${activeStoreId}&t=${Date.now()}`);
+      const res = await fetch(`/api/reports/snapshots-24h?store_id=${activeStoreId}&period=${compareMode}&t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         if (data.snapshots) setSnapshots24h(data.snapshots);
+        if (data.baselineDate) setCompareBaseline(data.baselineDate);
       }
     } catch (_) {}
-  }, [activeStoreId]);
+  }, [activeStoreId, compareMode]);
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
     fetchSnapshots24h();
-  }, [fetchData, fetchSnapshots24h]);
+  }, [fetchSnapshots24h]);
 
   const handleMetricChange = async (date, field, value) => {
     const numValue = parseFloat(value) || 0;
@@ -567,8 +578,8 @@ export default function useReportsData(activeStoreId, toast) {
         mathCounter: landedOrders - ((m.cancelations || 0) + (m.pending || 0) + (m.booked || 0) + (m.delivered || 0) + (m.restock || 0) + (m.missingParcel || 0))
       };
 
-      // 📊 24-HOUR DELTA COMPUTATION: Compare current monthly metrics against 24h baseline snapshot
-      const prev24h = snapshots24h[m.month];
+      // 📊 TIMEFRAME DELTA COMPUTATION: Compare current monthly metrics against baseline snapshot
+      const prev24h = compareMode !== 'off' ? snapshots24h[m.month] : null;
       const deltas24h = {};
       if (prev24h) {
         Object.keys(finalRow).forEach(k => {
@@ -589,7 +600,7 @@ export default function useReportsData(activeStoreId, toast) {
       };
     });
     return sortData(rawMonthly, sortConfig);
-  }, [dailyData, isInRange, sortConfig, snapshots24h]);
+  }, [dailyData, isInRange, sortConfig, snapshots24h, compareMode]);
 
   const filteredDaily = useMemo(() => {
     let data = dailyData.filter(r => isInRange(r.date));
@@ -764,6 +775,10 @@ export default function useReportsData(activeStoreId, toast) {
     setIsReportViewLocked,
     saveReportView,
     applyReportView,
-    deleteReportView
+    deleteReportView,
+    compareMode,
+    setCompareMode,
+    compareBaseline,
+    fetchSnapshots24h
   };
 }

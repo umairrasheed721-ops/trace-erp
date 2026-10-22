@@ -313,7 +313,9 @@ export default function PnLMetricsPanel({
   tableContainerRef,
   hiddenColumns,
   columns,
-  tableLayout
+  tableLayout,
+  compareMode = '24h',
+  compareBaseline = ''
 }) {
   const renderEditable = (row, field) => {
     const rawVal = row[field];
@@ -332,7 +334,7 @@ export default function PnLMetricsPanel({
   const [activeColumnInfo, setActiveColumnInfo] = useState(null);
 
   const render24hBadge = (colId, row) => {
-    if (view !== 'monthly' || !row.deltas24h || !row.deltas24h[colId]) return null;
+    if (view !== 'monthly' || compareMode === 'off' || !row.deltas24h || !row.deltas24h[colId]) return null;
     const { diff, prevVal, curVal } = row.deltas24h[colId];
     if (!diff || Math.abs(diff) < 0.01) return null;
 
@@ -358,7 +360,17 @@ export default function PnLMetricsPanel({
       formattedDiff = `${diff > 0 ? '+' : ''}${Math.round(diff)}`;
     }
 
-    const tooltipText = `⚡ 24-Hour Change: ${diff > 0 ? '+' : ''}${typeof diff === 'number' ? diff.toLocaleString() : diff} in last 24h\n(Previous 24h baseline: ${prevVal?.toLocaleString() || 0} → Current: ${curVal?.toLocaleString() || 0})`;
+    const modeLabels = {
+      recent: 'Recent Change',
+      '24h': 'Last 24-Hour',
+      yesterday: 'Yesterday',
+      '7d': 'Last 7-Day',
+      '30d': 'Last 30-Day'
+    };
+    const activeLabel = modeLabels[compareMode] || 'Change';
+    const baselineInfo = compareBaseline ? ` (Baseline: ${compareBaseline})` : '';
+
+    const tooltipText = `⚡ ${activeLabel} Change: ${diff > 0 ? '+' : ''}${typeof diff === 'number' ? diff.toLocaleString() : diff}\n(${activeLabel}${baselineInfo}: ${prevVal?.toLocaleString() || 0} → Current: ${curVal?.toLocaleString() || 0})`;
 
     return (
       <span
