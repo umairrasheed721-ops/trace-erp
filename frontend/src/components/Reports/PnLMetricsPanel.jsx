@@ -314,7 +314,7 @@ export default function PnLMetricsPanel({
   hiddenColumns,
   columns,
   tableLayout,
-  compareMode = '24h',
+  compareMode = 'yesterday',
   compareBaseline = ''
 }) {
   const renderEditable = (row, field) => {
@@ -361,8 +361,6 @@ export default function PnLMetricsPanel({
     }
 
     const modeLabels = {
-      recent: 'Recent Change',
-      '24h': 'Last 24-Hour',
       yesterday: 'Yesterday',
       '7d': 'Last 7-Day',
       '30d': 'Last 30-Day'

@@ -692,7 +692,7 @@ router.get('/logistics-intelligence', (req, res) => {
 // ─── 24-HOUR / TIMEFRAME DELTA SNAPSHOT SYSTEM (Rule 11 — AI-Friendly Comments) ─────────
 // 📊 SNAPSHOT_GET: Fetch baseline PNL metrics per month for store based on selected comparison timeframe
 router.get('/snapshots-24h', (req, res) => {
-  const { store_id, period = '24h' } = req.query;
+  const { store_id, period = 'yesterday' } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id is required' });
 
   // If comparison is disabled, return empty snapshots immediately

@@ -28,7 +28,7 @@ export default function ReportsFilterBar({
   saveReportView,
   applyReportView,
   deleteReportView,
-  compareMode = '24h',
+  compareMode = 'yesterday',
   setCompareMode,
   compareBaseline = ''
 }) {
@@ -350,13 +350,11 @@ export default function ReportsFilterBar({
             </span>
             {[
               { id: 'off', label: 'Off', icon: '🚫', title: 'No Comparison (Hide delta badges)' },
-              { id: 'recent', label: 'Recent Change', icon: '⚡', title: 'Compare against recent change / session' },
-              { id: '24h', label: 'Last 24h', icon: '⏱️', title: 'Compare against 24 hours ago snapshot' },
               { id: 'yesterday', label: 'Yesterday', icon: '📅', title: 'Compare against yesterday calendar baseline' },
               { id: '7d', label: 'Last 7 Days', icon: '📈', title: 'Compare against 7 days ago snapshot' },
               { id: '30d', label: 'Last 30 Days', icon: '📊', title: 'Compare against 30 days ago snapshot' }
             ].map(m => {
-              const isActive = (compareMode || '24h') === m.id;
+              const isActive = (compareMode || 'yesterday') === m.id;
               return (
                 <button
                   key={m.id}

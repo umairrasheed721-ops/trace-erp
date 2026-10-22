@@ -26,9 +26,12 @@ export default function useReportsData(activeStoreId, toast) {
   const [loading, setLoading] = useState(true);
   const [dailyData, setDailyData] = useState([]);
   const [snapshots24h, setSnapshots24h] = useState({});
-  const [compareMode, setCompareMode] = usePersistentState('reports_compare_mode', '24h');
+  const [rawCompareMode, setRawCompareMode] = usePersistentState('reports_compare_mode', 'yesterday');
+  const compareMode = (rawCompareMode === '24h' || rawCompareMode === 'recent') ? 'yesterday' : rawCompareMode;
+  const setCompareMode = useCallback((val) => {
+    setRawCompareMode(val);
+  }, [setRawCompareMode]);
   const [compareBaseline, setCompareBaseline] = useState('');
-  const [sessionBaseline, setSessionBaseline] = useState(null);
   const [view, setView] = usePersistentState('reports_filters_v1_view', 'daily'); // 'daily' or 'monthly'
 
   // ─── Date Range Filter ───────────────────────────────────────────
@@ -580,12 +583,7 @@ export default function useReportsData(activeStoreId, toast) {
       };
 
       // 📊 TIMEFRAME DELTA COMPUTATION: Compare current monthly metrics against baseline snapshot
-      let prev24h = null;
-      if (compareMode === 'recent') {
-        prev24h = (snapshots24h && snapshots24h[m.month]) || (sessionBaseline && sessionBaseline[m.month]) || null;
-      } else if (compareMode !== 'off') {
-        prev24h = snapshots24h ? snapshots24h[m.month] : null;
-      }
+      const prev24h = compareMode !== 'off' ? (snapshots24h ? snapshots24h[m.month] : null) : null;
 
       const deltas24h = {};
       if (prev24h) {
@@ -607,14 +605,14 @@ export default function useReportsData(activeStoreId, toast) {
       };
     });
     return sortData(rawMonthly, sortConfig);
-  }, [dailyData, isInRange, sortConfig, snapshots24h, compareMode, sessionBaseline]);
+  }, [dailyData, isInRange, sortConfig, snapshots24h, compareMode]);
 
   const filteredDaily = useMemo(() => {
     let data = dailyData.filter(r => isInRange(r.date));
     return sortData(data, sortConfig);
   }, [dailyData, isInRange, sortConfig]);
 
-  // Auto-post today's monthly snapshot to backend for future 24h comparisons
+  // Auto-post today's monthly snapshot to backend for future comparisons
   useEffect(() => {
     if (monthlyData && monthlyData.length > 0 && activeStoreId) {
       fetch('/api/reports/snapshots-24h', {
@@ -622,30 +620,8 @@ export default function useReportsData(activeStoreId, toast) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStoreId, monthlyData })
       }).catch(() => {});
-
-      // Capture initial session baseline in sessionStorage if not already captured
-      try {
-        const key = `reports_session_base_${activeStoreId}`;
-        const saved = sessionStorage.getItem(key);
-        if (saved) {
-          if (!sessionBaseline) setSessionBaseline(JSON.parse(saved));
-        } else {
-          const map = {};
-          monthlyData.forEach(m => {
-            if (m.month) {
-              const plain = {};
-              Object.keys(m).forEach(k => {
-                if (typeof m[k] === 'number') plain[k] = m[k];
-              });
-              map[m.month] = plain;
-            }
-          });
-          sessionStorage.setItem(key, JSON.stringify(map));
-          setSessionBaseline(map);
-        }
-      } catch (_) {}
     }
-  }, [monthlyData, activeStoreId, sessionBaseline]);
+  }, [monthlyData, activeStoreId]);
 
   const summaryRow = useMemo(() => {
     const dataset = view === 'daily' ? filteredDaily : monthlyData;
