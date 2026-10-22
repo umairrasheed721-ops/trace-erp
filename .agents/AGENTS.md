@@ -184,6 +184,27 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - **Empirical Live Bundle Verification**: Before responding that a task is done or deployed, the agent MUST run an empirical `curl` or bundle inspection on the live production endpoint (e.g. `curl -s https://trace-erp-production.up.railway.app/assets/...`) to verify that the compiled code containing the new feature is physically present in the live HTTP response.
     - If the feature is missing from the live bundle, the agent MUST immediately inspect git status, stage untracked `backend/public/` build artifacts, push to main, and verify live HTTP response again before replying to the user.
 
+33. **Dynamic All-Stores Theme Push Protocol (STRICT MANDATORY)**:
+    - The agent has access to ALL stores connected in TRACE ERP. For ANY theme update, Liquid feature, metafield creation, or fix:
+      1. **Auto-Read from DB**: Read all connected stores from TRACE ERP `stores` table (`SELECT id, store_name, shop_domain, access_token FROM stores ORDER BY id`). Rabbi Trends credentials are fetched from `https://trace-erp-production.up.railway.app/api/public/get-rabbi-token` since they are not stored in DB.
+      2. **Confirmation First**: Before pushing, ALWAYS ask user in Roman Urdu to confirm which stores to target (e.g., "Kya yeh update tamam connected stores par push karni hai? 1. Trace Store, 2. ACE Store, 3. Rabbi Trends, 4. Physical ZIP").
+      3. **Use Central Push Script**: Always use `scratch/push_theme_to_all_stores.js` for theme file deployments. Supports any file list via CLI args: `node scratch/push_theme_to_all_stores.js snippets/trace-cro-funnel.liquid assets/cart-drawer.js`. No-args = default files.
+      4. **ZIP Update**: After every push, update master ZIP at `/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip` using `zip -r` command (NOT `package_clean_theme.js` which hangs on git operations).
+      5. **No Hardcoded Tokens**: NEVER hardcode `shpat_` tokens in new scripts. Always read from DB or production API.
+      6. **New Store Auto-Discovery**: If a new store is connected to TRACE ERP (added to `stores` table), it will automatically be included in all future pushes without any script changes.
+
+34. **New-Store Theme Upload Safety — No Store-Hosted File References (STRICT MANDATORY)**:
+    - **Root Cause (ACE 2 incident)**: `templates/index.json` contained `"video": "shopify://files/videos/....mp4"` (Trace store's Files library). On a new store Shopify rejects it (`Setting 'video' value does not point to an applicable shopify-hosted video resource`), `index.json` silently fails to import, and the **homepage returns 404** while other pages (collections, pages) still work.
+    - **Source of truth helper**: `backend/utils/themeJsonSanitizer.js` (`stripStoreFileRefs`, `sanitizeThemeJsonString`, `isInvalidFileRefError`). It blanks `shopify://files/videos|models` and `shopify://shop_videos` refs. ALWAYS reuse it — never write a new sanitizer.
+    - **Where it is enforced (all locations)**:
+      1. Master ZIP `/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip` — JSON in `templates/`, `sections/`, `config/` is sanitized. When refreshing the ZIP use `shopify_theme/package_clean_theme.js` logic OR (if it hangs on git) unzip → run `sanitizeThemeJsonString` on those JSON files → `zip -r`. NEVER ship a ZIP with `shopify://files/videos` refs.
+      2. `backend/routes/index.js` (`upload-theme-asset`, `deploy-theme-all`) — auto-retry once with blanked refs on the Shopify "shopify-hosted" error.
+      3. `scratch/push_theme_to_all_stores.js` — same auto-retry.
+    - **NEVER sanitize the local source `shopify_theme/` or push sanitized JSON to a store that already owns those videos** (e.g. Trace, ACE Store) — that would wipe its homepage videos. Sanitizing is for ZIP / new-store uploads only (the retry only triggers on the Shopify error, so existing stores are safe).
+    - **Post-upload check (mandatory for every NEW store)**: `curl -s -o /dev/null -w "%{http_code}" https://<store-domain>/` MUST be `200`. If `404` while `/collections/all` is `200`, FIRST suspect a rejected `templates/index.json` (check asset error), not caching.
+    - After fixing a new store, tell the user which sections lost their media (e.g. hero video slider) so they can re-add store-specific videos in Theme Editor.
+
+
 
 
 

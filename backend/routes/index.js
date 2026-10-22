@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { db, DB_DIR } = require('../db');
 const startup = require('../startup');
+const { sanitizeThemeJsonString, isInvalidFileRefError } = require('../utils/themeJsonSanitizer');
 
 // --- 🛡️ SAFE ROUTE LOADER ---
 const moduleRegistry = {};
@@ -306,19 +307,31 @@ router.get('/api/public/deploy-theme-all', async (req, res) => {
             payload.asset.value = fs.readFileSync(localPath, 'utf8');
           }
 
-          const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${mainTheme.id}/assets.json`, {
+          const putAsset = (body) => fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${mainTheme.id}/assets.json`, {
             method: 'PUT',
             headers: {
               'X-Shopify-Access-Token': store.access_token,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(body)
           });
+
+          let upRes = await putAsset(payload);
+          let errTxt = upRes.ok ? '' : await upRes.text();
+
+          // 🛡️ New-store safe: retry once with store-specific video/model refs blanked (see utils/themeJsonSanitizer.js)
+          if (!upRes.ok && key.endsWith('.json') && payload.asset.value && isInvalidFileRefError(errTxt)) {
+            const { value, count } = sanitizeThemeJsonString(payload.asset.value);
+            if (count > 0) {
+              upRes = await putAsset({ asset: { key, value } });
+              errTxt = upRes.ok ? '' : await upRes.text();
+              if (upRes.ok) storeRes.errors.push(`${key}: uploaded after blanking ${count} missing store file ref(s)`);
+            }
+          }
 
           if (upRes.ok) {
             storeRes.uploaded.push(key);
           } else {
-            const errTxt = await upRes.text();
             storeRes.errors.push(`${key}: HTTP ${upRes.status} - ${errTxt.slice(0, 80)}`);
           }
         }
@@ -379,18 +392,31 @@ router.post('/api/public/upload-theme-asset', async (req, res) => {
     if (attachment) payload.asset.attachment = attachment;
     else payload.asset.value = value;
 
-    const upRes = await fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${targetThemeId}/assets.json`, {
+    const putAsset = (body) => fetch(`https://${store.shop_domain}/admin/api/2024-10/themes/${targetThemeId}/assets.json`, {
       method: 'PUT',
       headers: {
         'X-Shopify-Access-Token': store.access_token,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(body)
     });
 
-    const upData = await upRes.json();
+    let upRes = await putAsset(payload);
+    let upData = await upRes.json();
+
+    // 🛡️ New-store safe: retry once with store-specific video/model refs blanked (see utils/themeJsonSanitizer.js)
+    let sanitizedRefs = 0;
+    if (!upRes.ok && key.endsWith('.json') && payload.asset.value && isInvalidFileRefError(upData)) {
+      const { value: cleanValue, count } = sanitizeThemeJsonString(payload.asset.value);
+      if (count > 0) {
+        upRes = await putAsset({ asset: { key, value: cleanValue } });
+        upData = await upRes.json();
+        sanitizedRefs = count;
+      }
+    }
+
     if (upRes.ok) {
-      res.json({ success: true, store: store.shop_domain, themeId: targetThemeId, key });
+      res.json({ success: true, store: store.shop_domain, themeId: targetThemeId, key, sanitizedRefs });
     } else {
       res.status(upRes.status).json({ success: false, store: store.shop_domain, themeId: targetThemeId, error: upData });
     }
