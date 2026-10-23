@@ -39,6 +39,7 @@ export default function ReportsFilterBar({
   const [newViewName, setNewViewName] = React.useState('');
   const [isDefaultView, setIsDefaultView] = React.useState(false);
   const [showCopyModal, setShowCopyModal] = React.useState(false);
+  const [selectedViewToCopy, setSelectedViewToCopy] = React.useState('');
   const [selectedTargetStore, setSelectedTargetStore] = React.useState('all');
   const [copyLoading, setCopyLoading] = React.useState(false);
 
@@ -163,10 +164,15 @@ export default function ReportsFilterBar({
           <select
             value={activeSavedView || ''}
             onChange={(e) => {
-              if (e.target.value === '__save_new__') {
+              const val = e.target.value;
+              if (val === '__save_new__') {
                 setShowSaveModal(true);
+              } else if (val === '__copy_view__') {
+                setSelectedViewToCopy(activeSavedView || (savedViews[0] ? String(savedViews[0].id) : ''));
+                setSelectedTargetStore('all');
+                setShowCopyModal(true);
               } else if (typeof applyReportView === 'function') {
-                applyReportView(e.target.value ? Number(e.target.value) : null);
+                applyReportView(val ? Number(val) : null);
               }
             }}
             style={{
@@ -187,6 +193,9 @@ export default function ReportsFilterBar({
                 {v.is_locked || v.is_default ? '⭐ ' : '📑 '}{v.view_name || v.name}
               </option>
             ))}
+            {savedViews && savedViews.length > 0 && (
+              <option value="__copy_view__">📋 Copy View to Other Store...</option>
+            )}
             <option value="__save_new__">➕ Save Current View...</option>
           </select>
 
@@ -206,15 +215,16 @@ export default function ReportsFilterBar({
             💾 Save View
           </button>
 
-          {activeSavedView && typeof copyReportView === 'function' && otherStores.length > 0 && (
+          {savedViews && savedViews.length > 0 && typeof copyReportView === 'function' && (
             <button
               type="button"
               className="btn"
               onClick={() => {
+                setSelectedViewToCopy(activeSavedView || (savedViews[0] ? String(savedViews[0].id) : ''));
                 setSelectedTargetStore('all');
                 setShowCopyModal(true);
               }}
-              title="Copy this view to other connected stores"
+              title="Copy saved view to other connected stores"
               style={{
                 padding: '6px 10px',
                 fontSize: '0.76rem',
@@ -227,7 +237,7 @@ export default function ReportsFilterBar({
                 gap: 4
               }}
             >
-              <span>📋</span> Copy to Store
+              <span>📋</span> Copy View
             </button>
           )}
 
@@ -538,8 +548,36 @@ export default function ReportsFilterBar({
               </button>
             </div>
 
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-              Copy <strong>"{currentViewObj?.view_name || 'Selected View'}"</strong> column layout & configurations to another connected store:
+            {/* View to copy selector */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                Select View to Copy:
+              </label>
+              <select
+                value={selectedViewToCopy || activeSavedView || (savedViews[0] ? String(savedViews[0].id) : '')}
+                onChange={(e) => setSelectedViewToCopy(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: 8,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  outline: 'none'
+                }}
+              >
+                {savedViews.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.is_locked || v.is_default ? '⭐ ' : '📑 '}{v.view_name || v.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+              Choose target connected store to clone this view's column layout:
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
@@ -563,7 +601,7 @@ export default function ReportsFilterBar({
                   checked={selectedTargetStore === 'all'}
                   onChange={() => setSelectedTargetStore('all')}
                 />
-                <span>🌐 All Other Stores ({otherStores.map(s => s.store_name).join(', ')})</span>
+                <span>🌐 All Other Stores {otherStores.length > 0 ? `(${otherStores.map(s => s.store_name).join(', ')})` : ''}</span>
               </label>
 
               {otherStores.map(store => (
@@ -606,9 +644,11 @@ export default function ReportsFilterBar({
                 className="btn btn-primary"
                 disabled={copyLoading}
                 onClick={async () => {
+                  const targetViewId = selectedViewToCopy || activeSavedView || (savedViews[0] ? String(savedViews[0].id) : null);
+                  if (!targetViewId) return;
                   setCopyLoading(true);
                   try {
-                    const success = await copyReportView(activeSavedView, selectedTargetStore);
+                    const success = await copyReportView(targetViewId, selectedTargetStore);
                     if (success) {
                       setShowCopyModal(false);
                     }
