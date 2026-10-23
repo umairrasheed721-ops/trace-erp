@@ -1,4 +1,5 @@
 import React from 'react';
+import { useApp } from '../../context/AppContext';
 
 export default function ReportsFilterBar({
   datePreset,
@@ -28,13 +29,21 @@ export default function ReportsFilterBar({
   saveReportView,
   applyReportView,
   deleteReportView,
+  copyReportView,
   compareMode = 'yesterday',
   setCompareMode,
   compareBaseline = ''
 }) {
+  const { stores = [], activeStoreId } = useApp();
   const [showSaveModal, setShowSaveModal] = React.useState(false);
   const [newViewName, setNewViewName] = React.useState('');
   const [isDefaultView, setIsDefaultView] = React.useState(false);
+  const [showCopyModal, setShowCopyModal] = React.useState(false);
+  const [selectedTargetStore, setSelectedTargetStore] = React.useState('all');
+  const [copyLoading, setCopyLoading] = React.useState(false);
+
+  const otherStores = (stores || []).filter(s => String(s.id) !== String(activeStoreId));
+  const currentViewObj = (savedViews || []).find(v => String(v.id) === String(activeSavedView));
 
   const handleSaveSubmit = (e) => {
     e.preventDefault();
@@ -196,6 +205,31 @@ export default function ReportsFilterBar({
           >
             💾 Save View
           </button>
+
+          {activeSavedView && typeof copyReportView === 'function' && otherStores.length > 0 && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setSelectedTargetStore('all');
+                setShowCopyModal(true);
+              }}
+              title="Copy this view to other connected stores"
+              style={{
+                padding: '6px 10px',
+                fontSize: '0.76rem',
+                background: 'rgba(59, 130, 246, 0.12)',
+                color: '#3b82f6',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+            >
+              <span>📋</span> Copy to Store
+            </button>
+          )}
 
           {activeSavedView && typeof deleteReportView === 'function' && (
             <button
@@ -466,6 +500,127 @@ export default function ReportsFilterBar({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 📋 Copy View to Other Stores Modal */}
+      {showCopyModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: 24,
+            width: 440,
+            maxWidth: '92vw',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>📋</span> Copy View to Other Store
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCopyModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.2rem' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
+              Copy <strong>"{currentViewObj?.view_name || 'Selected View'}"</strong> column layout & configurations to another connected store:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                borderRadius: 8,
+                background: selectedTargetStore === 'all' ? 'var(--brand-glow)' : 'var(--bg-elevated)',
+                border: `1px solid ${selectedTargetStore === 'all' ? 'var(--brand)' : 'var(--border)'}`,
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.85rem',
+                color: 'var(--text-primary)'
+              }}>
+                <input
+                  type="radio"
+                  name="copy_target_store"
+                  value="all"
+                  checked={selectedTargetStore === 'all'}
+                  onChange={() => setSelectedTargetStore('all')}
+                />
+                <span>🌐 All Other Stores ({otherStores.map(s => s.store_name).join(', ')})</span>
+              </label>
+
+              {otherStores.map(store => (
+                <label key={store.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  background: String(selectedTargetStore) === String(store.id) ? 'var(--brand-glow)' : 'var(--bg-elevated)',
+                  border: `1px solid ${String(selectedTargetStore) === String(store.id) ? 'var(--brand)' : 'var(--border)'}`,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  color: 'var(--text-primary)'
+                }}>
+                  <input
+                    type="radio"
+                    name="copy_target_store"
+                    value={store.id}
+                    checked={String(selectedTargetStore) === String(store.id)}
+                    onChange={() => setSelectedTargetStore(String(store.id))}
+                  />
+                  <span>🏪 {store.store_name || `Store #${store.id}`} ({store.shop_domain || 'Shopify'})</span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowCopyModal(false)}
+                style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={copyLoading}
+                onClick={async () => {
+                  setCopyLoading(true);
+                  try {
+                    const success = await copyReportView(activeSavedView, selectedTargetStore);
+                    if (success) {
+                      setShowCopyModal(false);
+                    }
+                  } finally {
+                    setCopyLoading(false);
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span>📋</span> {copyLoading ? 'Copying...' : 'Copy View Now'}
+              </button>
+            </div>
           </div>
         </div>
       )}

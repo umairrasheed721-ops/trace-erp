@@ -247,6 +247,37 @@ export default function useReportsData(activeStoreId, toast) {
     }
   }, [activeStoreId, fetchReportPreferencesAndViews, toast]);
 
+  const copyReportView = useCallback(async (viewId, targetStoreIds) => {
+    if (!viewId || !activeStoreId) return false;
+    try {
+      const res = await fetch(`/api/stores/${activeStoreId}/views/${viewId}/copy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token') || ''}`
+        },
+        body: JSON.stringify({ target_store_ids: targetStoreIds })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (typeof toast === 'function') {
+          toast(`📋 ${data.message || 'View copied successfully!'}`, 'success');
+        }
+        return true;
+      } else {
+        if (typeof toast === 'function') {
+          toast(`❌ Copy failed: ${data.error || 'Unknown error'}`, 'error');
+        }
+        return false;
+      }
+    } catch (err) {
+      if (typeof toast === 'function') {
+        toast('Copy failed: ' + err.message, 'error');
+      }
+      return false;
+    }
+  }, [activeStoreId, toast]);
+
   const fetchData = useCallback(async () => {
     if (!activeStoreId) return;
     setLoading(true);
@@ -781,6 +812,7 @@ export default function useReportsData(activeStoreId, toast) {
     saveReportView,
     applyReportView,
     deleteReportView,
+    copyReportView,
     compareMode,
     setCompareMode,
     compareBaseline,

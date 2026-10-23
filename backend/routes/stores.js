@@ -232,6 +232,60 @@ router.delete('/:store_id/views/:view_id', (req, res) => {
   res.json({ success: true });
 });
 
+router.post('/:store_id/views/:view_id/copy', (req, res) => {
+  const { target_store_ids, target_store_id } = req.body;
+  const sourceView = db.prepare('SELECT * FROM saved_views WHERE id = ?').get(req.params.view_id);
+  if (!sourceView) return res.status(404).json({ error: 'View not found' });
+
+  // Resolve target store ids
+  let targets = [];
+  if (target_store_ids === 'all' || target_store_id === 'all') {
+    const allStores = db.prepare('SELECT id, store_name FROM stores').all();
+    targets = allStores.filter(s => String(s.id) !== String(sourceView.store_id));
+  } else {
+    const rawIds = target_store_ids || (target_store_id ? [target_store_id] : []);
+    const idList = Array.isArray(rawIds) ? rawIds : [rawIds];
+    if (idList.length > 0) {
+      const placeholders = idList.map(() => '?').join(',');
+      const allStores = db.prepare(`SELECT id, store_name FROM stores WHERE id IN (${placeholders})`).all(...idList);
+      targets = allStores.filter(s => String(s.id) !== String(sourceView.store_id));
+    }
+  }
+
+  if (targets.length === 0) {
+    return res.status(400).json({ error: 'No valid target stores selected to copy this view' });
+  }
+
+  const userId = req.user ? req.user.id : (sourceView.user_id || 1);
+  const copiedStoreNames = [];
+
+  for (const target of targets) {
+    const existing = db.prepare('SELECT id FROM saved_views WHERE store_id = ? AND view_name = ? AND (view_type = ? OR (view_type IS NULL AND ? = \'orders\'))')
+      .get(target.id, sourceView.view_name, sourceView.view_type, sourceView.view_type);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE saved_views 
+        SET column_config = ?, is_locked = ?, user_id = ?, view_type = ?
+        WHERE id = ?
+      `).run(sourceView.column_config, sourceView.is_locked, userId, sourceView.view_type, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO saved_views (store_id, user_id, view_name, view_type, column_config, is_locked)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(target.id, userId, sourceView.view_name, sourceView.view_type, sourceView.column_config, sourceView.is_locked);
+    }
+    copiedStoreNames.push(target.store_name || `Store #${target.id}`);
+  }
+
+  res.json({
+    success: true,
+    count: targets.length,
+    stores: copiedStoreNames,
+    message: `View "${sourceView.view_name}" copied to ${copiedStoreNames.join(', ')}`
+  });
+});
+
 // POST /api/stores/:id/meta-config
 router.post('/:id/meta-config', (req, res) => {
   const { ad_account_id, access_token } = req.body;
