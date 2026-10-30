@@ -58,7 +58,7 @@ async function fulfillShopifyOrder(store, shopifyOrderId, trackingNumber, courie
       tracking_info: {
         number: trackingNumber,
         company: courierName,
-        url: courierName === 'PostEx' ? `https://postex.pk/tracking?tracking_number=${trackingNumber}` : ''
+        url: courierName === 'PostEx' ? `https://postex.pk/tracking?cn=${trackingNumber}` : ''
       },
       notify_customer: true
     }

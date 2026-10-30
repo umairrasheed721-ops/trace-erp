@@ -53,7 +53,7 @@ async function writeTrackingToShopify(store, shopifyOrderId, trackingNumber) {
         tracking_info: {
           number: trackingNumber,
           company: 'PostEx',
-          url: `https://postex.pk/tracking?tracking_number=${trackingNumber}`
+          url: `https://postex.pk/tracking?cn=${trackingNumber}`
         },
         notify_customer: true
       }
@@ -105,7 +105,7 @@ async function writeTrackingToShopify(store, shopifyOrderId, trackingNumber) {
         tracking_info: {
           number: trackingNumber,
           company: 'PostEx',
-          url: `https://postex.pk/tracking?tracking_number=${trackingNumber}`
+          url: `https://postex.pk/tracking?cn=${trackingNumber}`
         },
         notify_customer: true
       }
