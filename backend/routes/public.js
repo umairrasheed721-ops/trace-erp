@@ -325,7 +325,7 @@ router.get('/track', (req, res) => {
     params.push(cleanedQuery);
 
     const querySql = `
-      SELECT ref_number, shopify_order_id, customer_name, order_date, city, tracking_number, delivery_status, courier_status, courier, status_date, product_titles
+      SELECT ref_number, shopify_order_id, customer_name, order_date, city, tracking_number, delivery_status, courier_status, courier, status_date, product_titles, COALESCE(price, total_price, 0) as price
       FROM orders
       WHERE ${whereClauses.join(' OR ')}
       ORDER BY order_date DESC
