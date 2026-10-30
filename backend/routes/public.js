@@ -325,19 +325,33 @@ router.get('/track', (req, res) => {
     params.push(cleanedQuery);
 
     const querySql = `
-      SELECT ref_number, shopify_order_id, customer_name, order_date, city, tracking_number, delivery_status, courier, status_date, product_titles
+      SELECT ref_number, shopify_order_id, customer_name, order_date, city, tracking_number, delivery_status, courier_status, courier, status_date, product_titles
       FROM orders
       WHERE ${whereClauses.join(' OR ')}
       ORDER BY order_date DESC
       LIMIT 5
     `;
 
-    const orders = db.prepare(querySql).all(...params);
+    const rawOrders = db.prepare(querySql).all(...params);
 
     // If no orders found, return 404
-    if (!orders || orders.length === 0) {
+    if (!rawOrders || rawOrders.length === 0) {
       return res.status(404).json({ error: 'No orders found matching the details provided.' });
     }
+
+    const orders = rawOrders.map(o => {
+      let finalStatus = (o.delivery_status || '').trim();
+      if (!finalStatus) finalStatus = 'Pending';
+
+      // Rule 12: If order has tracking number or active courier movement, never show Pending
+      if (finalStatus.toLowerCase() === 'pending' && o.tracking_number && String(o.tracking_number).trim() !== '' && String(o.tracking_number).trim() !== '—') {
+        finalStatus = 'In Transit';
+      }
+      return {
+        ...o,
+        delivery_status: finalStatus
+      };
+    });
 
     res.json({ success: true, orders });
   } catch (err) {
