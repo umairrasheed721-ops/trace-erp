@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useRoutePersistence } from '../context/RoutePersistenceContext'
 import { getDateRange, getStatusColor, formatYMD } from '../utils/orderUtils'
+import { copyOrderPhotoCard } from '../utils/orderSummaryCard'
 import CommandTable from '../components/CommandCenter/CommandTable'
 import BulkActions from '../components/BulkActions'
 import EditOrderModal from '../components/EditOrderModal'
@@ -496,6 +497,8 @@ export default function SearchTool() {
     showAgingConfig, setShowAgingConfig,
   } = useCommandCenterModals()
 
+  const [copyMultiProductCard, setCopyMultiProductCard] = useState(true)
+
   const {
     bulkActionLoading,
     confirmDialog, setConfirmDialog,
@@ -893,15 +896,16 @@ export default function SearchTool() {
           .replace(/\[CourierLink\]/g, courierLink);
       }
 
-      let imageUrls = [];
+      // Check if line items are parsed or need image resolution
+      let parsedItems = [];
       try {
-        const items = JSON.parse(o.line_items || '[]');
-        imageUrls = items.map(i => i.image_url).filter(Boolean);
+        parsedItems = Array.isArray(o.line_items) ? o.line_items : JSON.parse(o.line_items || '[]');
       } catch (e) {}
 
-      // Fallback: If no images are cached locally, resolve them from the backend via Shopify GraphQL
-      if (imageUrls.length === 0) {
-        addToast(`🔍 Resolving product images for ${o.ref_number || o.id}...`, 'info');
+      const hasImages = parsedItems.some(it => it.image_url || it.image || it.src);
+
+      // Fallback: If no images or items are cached locally, resolve them from the backend via Shopify GraphQL
+      if (!parsedItems || parsedItems.length === 0 || !hasImages) {
         try {
           const res = await fetch(`/api/orders/${o.id}/details`, {
             headers: {
@@ -910,10 +914,9 @@ export default function SearchTool() {
           });
           if (res.ok) {
             const freshOrder = await res.json();
-            o = freshOrder;
+            o = { ...o, ...freshOrder };
             if (o.line_items) {
-              const items = Array.isArray(o.line_items) ? o.line_items : JSON.parse(o.line_items || '[]');
-              imageUrls = items.map(i => i.image_url).filter(Boolean);
+              parsedItems = Array.isArray(o.line_items) ? o.line_items : JSON.parse(o.line_items || '[]');
             }
           }
         } catch (err) {
@@ -921,18 +924,36 @@ export default function SearchTool() {
         }
       }
 
-      // 📋 Auto-copy product image to System Clipboard
-      if (imageUrls.length > 0) {
-        const copied = await copyImageToClipboard(imageUrls[0]);
-        if (copied) {
-          addToast(`📋 Product image copied to Clipboard! Press Enter then Cmd+V in WhatsApp`, 'success');
-        } else {
-          addToast(`⚠️ Image found but couldn't auto-copy to clipboard.`, 'warning');
+      // 📸 Multi-Product Visual Card Auto-Copy
+      let cardCopied = false;
+      if (copyMultiProductCard) {
+        try {
+          cardCopied = await copyOrderPhotoCard(o, {
+            showToast: false,
+            storeName: o.store_name || 'TRACE PK'
+          });
+        } catch (cardErr) {
+          console.warn('Failed to copy multi-product card:', cardErr);
         }
       }
 
-      // 📱 Open Native WhatsApp Desktop App
-      const waLink = `whatsapp://send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
+      if (cardCopied) {
+        addToast(`📋 All-Products Summary Card copied to Clipboard! Press Enter then Cmd+V in WhatsApp`, 'success');
+      } else {
+        // Fallback: copy first single image if available
+        let imageUrls = parsedItems.map(i => i.image_url || i.image || i.src).filter(Boolean);
+        if (imageUrls.length > 0) {
+          const copied = await copyImageToClipboard(imageUrls[0]);
+          if (copied) {
+            addToast(`📋 Product image copied to Clipboard! Press Enter then Cmd+V in WhatsApp`, 'info');
+          }
+        }
+      }
+
+      // 📱 Open WhatsApp (Web or Desktop depending on user setting)
+      const useWaWeb = localStorage.getItem('trace_use_wa_web') === 'true';
+      const waBase = useWaWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send';
+      const waLink = `${waBase}?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       window.open(waLink, '_blank');
     }
 
@@ -1820,6 +1841,15 @@ export default function SearchTool() {
                 ))}
               </select>
 
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={copyMultiProductCard}
+                  onChange={e => setCopyMultiProductCard(e.target.checked)}
+                  style={{ accentColor: 'var(--brand)', cursor: 'pointer' }}
+                />
+                <span>📸 Auto-Copy All-Products Card (Collage)</span>
+              </label>
             </div>
 
             <div className="queue-progress" style={{ margin: '20px 0' }}>
