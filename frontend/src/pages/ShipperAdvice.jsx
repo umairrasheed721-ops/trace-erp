@@ -440,15 +440,220 @@ export default function ShipperAdvice() {
     addToast('🔄 Message templates reset to default presets!', 'info')
   }
 
+  // 📸 Generate and Copy High-Res Product Image Collage Card to OS Clipboard
+  const copyOrderPhotoCard = async (order, showToast = true) => {
+    try {
+      const items = (order.line_items_parsed && order.line_items_parsed.length > 0)
+        ? order.line_items_parsed
+        : (order.line_items ? (typeof order.line_items === 'string' ? JSON.parse(order.line_items) : order.line_items) : [])
+
+      if (!items || items.length === 0) {
+        if (showToast) addToast('⚠️ No product items found for this order', 'warning')
+        return false
+      }
+
+      // Preload product images safely with timeout
+      const loadImg = (url) => new Promise((resolve) => {
+        if (!url) return resolve(null)
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        let done = false
+        const timer = setTimeout(() => {
+          if (!done) { done = true; resolve(null) }
+        }, 2500)
+        img.onload = () => {
+          if (!done) { done = true; clearTimeout(timer); resolve(img) }
+        }
+        img.onerror = () => {
+          if (!done) { done = true; clearTimeout(timer); resolve(null) }
+        }
+        img.src = url
+      })
+
+      const loadedImgs = await Promise.all(items.map(it => loadImg(it.image || it.image_url || it.src)))
+
+      // Canvas Dimensions & Layout Setup
+      const canvasW = 800
+      const padding = 20
+      const gap = 16
+      const headerH = 82
+      const footerH = 36
+
+      const cols = items.length === 1 ? 1 : items.length <= 4 ? 2 : 3
+      const rows = Math.ceil(items.length / cols)
+
+      const cardW = Math.floor((canvasW - (padding * 2) - ((cols - 1) * gap)) / cols)
+      const imgH = cols === 1 ? 260 : cols === 2 ? 220 : 170
+      const textH = 75
+      const cardH = imgH + textH
+
+      const totalH = padding * 2 + headerH + (rows * cardH) + ((rows - 1) * gap) + footerH
+
+      const canvas = document.createElement('canvas')
+      canvas.width = canvasW
+      canvas.height = totalH
+      const ctx = canvas.getContext('2d')
+
+      // Safe rounded rectangle drawing helper
+      const roundedRect = (x, y, w, h, r) => {
+        ctx.beginPath()
+        ctx.moveTo(x + r, y)
+        ctx.lineTo(x + w - r, y)
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+        ctx.lineTo(x + w, y + h - r)
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+        ctx.lineTo(x + r, y + h)
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+        ctx.lineTo(x, y + r)
+        ctx.quadraticCurveTo(x, y, x + r, y)
+        ctx.closePath()
+      }
+
+      // Base Canvas Fill (Clean solid white)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvasW, totalH)
+
+      // Outer Card Border
+      ctx.strokeStyle = '#e2e8f0'
+      ctx.lineWidth = 2
+      roundedRect(1, 1, canvasW - 2, totalH - 2, 16)
+      ctx.stroke()
+
+      // Header Bar (Slate Dark theme)
+      ctx.fillStyle = '#0f172a'
+      roundedRect(padding, padding, canvasW - (padding * 2), headerH, 12)
+      ctx.fill()
+
+      // Header Brand & Order #
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '700 11px system-ui, -apple-system, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText('TRACE PK • ORDER VERIFICATION', padding + 16, padding + 28)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '800 22px system-ui, -apple-system, sans-serif'
+      ctx.fillText(`#${order.ref_number || order.id}`, padding + 16, padding + 58)
+
+      // Header Right (Customer Name & Price)
+      ctx.textAlign = 'right'
+      ctx.fillStyle = '#cbd5e1'
+      ctx.font = '600 13px system-ui, -apple-system, sans-serif'
+      const custName = (order.customer_name || 'Customer').slice(0, 26)
+      ctx.fillText(`Customer: ${custName}`, canvasW - padding - 16, padding + 30)
+
+      const priceVal = order.price ? `Rs. ${parseInt(order.price, 10).toLocaleString()}` : ''
+      if (priceVal) {
+        ctx.fillStyle = '#22c55e'
+        ctx.font = '800 16px system-ui, -apple-system, sans-serif'
+        ctx.fillText(`Total: ${priceVal}`, canvasW - padding - 16, padding + 58)
+      }
+
+      // Draw Individual Product Item Cards
+      items.forEach((it, idx) => {
+        const c = idx % cols
+        const r = Math.floor(idx / cols)
+        const cx = padding + c * (cardW + gap)
+        const cy = padding + headerH + gap + r * (cardH + gap)
+
+        // Card Container Background
+        ctx.fillStyle = '#f8fafc'
+        roundedRect(cx, cy, cardW, cardH, 10)
+        ctx.fill()
+        ctx.strokeStyle = '#e2e8f0'
+        ctx.lineWidth = 1
+        ctx.stroke()
+
+        // Inner Image Box
+        const img = loadedImgs[idx]
+        const imgBoxW = cardW - 20
+        const imgBoxH = imgH - 16
+        const imgBoxX = cx + 10
+        const imgBoxY = cy + 10
+
+        ctx.fillStyle = '#ffffff'
+        roundedRect(imgBoxX, imgBoxY, imgBoxW, imgBoxH, 8)
+        ctx.fill()
+
+        if (img && img.naturalWidth && img.naturalHeight) {
+          const scale = Math.min((imgBoxW - 12) / img.naturalWidth, (imgBoxH - 12) / img.naturalHeight)
+          const dw = img.naturalWidth * scale
+          const dh = img.naturalHeight * scale
+          const dx = imgBoxX + (imgBoxW - dw) / 2
+          const dy = imgBoxY + (imgBoxH - dh) / 2
+          ctx.drawImage(img, dx, dy, dw, dh)
+        } else {
+          ctx.fillStyle = '#94a3b8'
+          ctx.font = '28px sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText('🛍️', imgBoxX + imgBoxW / 2, imgBoxY + imgBoxH / 2 + 10)
+        }
+
+        // Product Title
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#0f172a'
+        ctx.font = '700 13px system-ui, -apple-system, sans-serif'
+        const rawTitle = it.title || it.name || 'Product'
+        const titleStr = rawTitle.length > 34 ? rawTitle.slice(0, 32) + '...' : rawTitle
+        ctx.fillText(titleStr, cx + cardW / 2, cy + imgH + 20)
+
+        // Variant Title (Color / Size)
+        const variantStr = it.variant_title || it.variant || ''
+        if (variantStr) {
+          ctx.fillStyle = '#6366f1'
+          ctx.font = '700 12px system-ui, -apple-system, sans-serif'
+          const vText = variantStr.length > 30 ? variantStr.slice(0, 28) + '...' : variantStr
+          ctx.fillText(vText, cx + cardW / 2, cy + imgH + 39)
+        }
+
+        // Quantity Badge
+        ctx.fillStyle = '#64748b'
+        ctx.font = '600 11px system-ui, -apple-system, sans-serif'
+        ctx.fillText(`Qty: ${it.quantity || 1}`, cx + cardW / 2, cy + imgH + (variantStr ? 56 : 40))
+      })
+
+      // Footer
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '500 11px system-ui, -apple-system, sans-serif'
+      ctx.fillText('📦 Verified Order Summary • Trace Customer Support', canvasW / 2, totalH - 14)
+
+      // Convert Canvas to Blob and Write directly to System Clipboard
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+      if (blob && navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ])
+        if (showToast) {
+          addToast('📋 Product images card copied to clipboard! Paste in WhatsApp with Ctrl+V', 'success')
+        }
+        return true
+      }
+      return false
+    } catch (err) {
+      console.warn('Failed to copy order photo card:', err)
+      if (showToast) {
+        addToast('⚠️ Could not copy image card to clipboard', 'warning')
+      }
+      return false
+    }
+  }
+
   // WhatsApp Refusal Verification Alert for Customer
   const triggerRefusalWhatsAppAlert = async (order) => {
     setLastActionedOrderId(order.id)
+    
+    // Auto copy photo card to clipboard while document has active focus
+    try {
+      await copyOrderPhotoCard(order, false)
+    } catch (_) {}
+
     const msg = applyTemplate(refusalTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
     const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
     window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+    addToast('💬 WA Alert sent! Press Ctrl+V in WhatsApp to paste product card 📸', 'success')
 
     try {
       const res = await fetch('/api/shipper-advice/wa-alert', {
@@ -458,7 +663,6 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`💬 Refusal Verification WA Alert logged for #${order.ref_number || order.tracking_number}`, 'success')
         fetchAdviceFeed(true)
       }
     } catch (err) {
@@ -469,12 +673,19 @@ export default function ShipperAdvice() {
   // WhatsApp Alert Builder for Customer & track in ERP
   const triggerWhatsAppAlert = async (order) => {
     setLastActionedOrderId(order.id)
+
+    // Auto copy photo card to clipboard while document has active focus
+    try {
+      await copyOrderPhotoCard(order, false)
+    } catch (_) {}
+
     const msg = applyTemplate(customerTemplate, order)
     const useWeb = localStorage.getItem('trace_use_wa_web') === 'true'
     const baseUrl = useWeb ? 'https://web.whatsapp.com/send' : 'whatsapp://send'
     const phoneClean = (order.phone || '').replace(/[^0-9]/g, '')
     const targetPhone = phoneClean.length === 11 && phoneClean.startsWith('0') ? `92${phoneClean.slice(1)}` : phoneClean
     window.open(`${baseUrl}?phone=${targetPhone}&text=${encodeURIComponent(msg)}`, '_blank')
+    addToast('💬 WA Alert sent! Press Ctrl+V in WhatsApp to paste product card 📸', 'success')
 
     try {
       const res = await fetch('/api/shipper-advice/wa-alert', {
@@ -484,7 +695,6 @@ export default function ShipperAdvice() {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        addToast(`💬 WA Alert logged for #${order.ref_number || order.tracking_number}`, 'success')
         fetchAdviceFeed(true)
       }
     } catch (err) {
@@ -1026,13 +1236,23 @@ export default function ShipperAdvice() {
                       )}
                     </div>
                     {order.line_items_parsed && order.line_items_parsed.length > 0 && (
-                      <button
-                        onClick={() => setImageModalOrder(order)}
-                        className="btn btn-xs btn-secondary"
-                        style={{ marginTop: 8, padding: '3px 8px', borderRadius: 8, fontSize: '0.72rem' }}
-                      >
-                        🖼️ View Images ({order.line_items_parsed.length})
-                      </button>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => setImageModalOrder(order)}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '3px 8px', borderRadius: 8, fontSize: '0.72rem' }}
+                        >
+                          🖼️ View ({order.line_items_parsed.length})
+                        </button>
+                        <button
+                          onClick={() => copyOrderPhotoCard(order, true)}
+                          className="btn btn-xs btn-secondary"
+                          style={{ padding: '3px 8px', borderRadius: 8, fontSize: '0.72rem', color: '#c084fc', borderColor: 'rgba(168,85,247,0.35)' }}
+                          title="Copy product images card to clipboard for WhatsApp (Ctrl+V)"
+                        >
+                          📸 Copy Card
+                        </button>
+                      </div>
                     )}
                   </td>
 
@@ -1450,7 +1670,17 @@ export default function ShipperAdvice() {
               <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>
                 🖼️ Product Images: Order #{imageModalOrder.ref_number || imageModalOrder.id}
               </h3>
-              <button onClick={() => setImageModalOrder(null)} className="btn btn-secondary btn-sm">✕</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={() => copyOrderPhotoCard(imageModalOrder, true)}
+                  className="btn btn-primary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+                  title="Copy ready-to-paste composite image to clipboard"
+                >
+                  📋 Copy Images Card (Ctrl+V)
+                </button>
+                <button onClick={() => setImageModalOrder(null)} className="btn btn-secondary btn-sm">✕</button>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, maxHeight: '70vh', overflowY: 'auto' }}>
@@ -1463,7 +1693,12 @@ export default function ShipperAdvice() {
                   ) : (
                     <div style={{ width: '100%', height: 160, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', marginBottom: 8 }}>🛍️</div>
                   )}
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{item.title || item.name}</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>{item.title || item.name}</div>
+                  {(item.variant_title || item.variant) && (
+                    <div style={{ fontSize: '0.74rem', color: 'var(--brand)', fontWeight: 600, marginBottom: 2 }}>
+                      {item.variant_title || item.variant}
+                    </div>
+                  )}
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Qty: {item.quantity || 1}</div>
                 </div>
               ))}
