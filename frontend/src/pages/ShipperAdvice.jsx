@@ -141,6 +141,16 @@ export default function ShipperAdvice() {
   const [riderModalOrder, setRiderModalOrder] = useState(null)
   const [riderInputContact, setRiderInputContact] = useState('')
 
+  // Customer Full Address Popover States (Hover & Click)
+  const [openAddressId, setOpenAddressId] = useState(null)
+  const [hoverAddressId, setHoverAddressId] = useState(null)
+
+  useEffect(() => {
+    const handleDocClick = () => setOpenAddressId(null)
+    document.addEventListener('click', handleDocClick)
+    return () => document.removeEventListener('click', handleDocClick)
+  }, [])
+
   const openHistoryModal = async (order) => {
     setHistoryModalOrder(order)
     setLiveHistory([])
@@ -1257,10 +1267,97 @@ export default function ShipperAdvice() {
                   </td>
 
                   {/* Customer Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top', position: 'relative' }}>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{order.customer_name || 'N/A'}</div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--brand)', marginTop: 2 }}>{order.phone || 'N/A'}</div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>📍 {order.city || 'N/A'}</div>
+
+                    {/* 🏠 Interactive Address Button with Hover & Click Popover */}
+                    <div style={{ marginTop: 6, position: 'relative', display: 'inline-block' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenAddressId(openAddressId === order.id ? null : order.id)
+                        }}
+                        onMouseEnter={() => setHoverAddressId(order.id)}
+                        onMouseLeave={() => setHoverAddressId(null)}
+                        className="btn btn-xs btn-secondary"
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '0.71rem',
+                          borderRadius: 6,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: (openAddressId === order.id || hoverAddressId === order.id) ? '#c084fc' : 'var(--text-secondary)',
+                          background: (openAddressId === order.id || hoverAddressId === order.id) ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                          border: (openAddressId === order.id || hoverAddressId === order.id) ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Click or Hover to view full customer delivery address"
+                      >
+                        🏠 Address
+                      </button>
+
+                      {(openAddressId === order.id || hoverAddressId === order.id) && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseEnter={() => setHoverAddressId(order.id)}
+                          onMouseLeave={() => setHoverAddressId(null)}
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            marginTop: 6,
+                            zIndex: 9999,
+                            width: 300,
+                            background: 'var(--bg-elevated)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 12,
+                            padding: '12px 14px',
+                            boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+                            textAlign: 'left',
+                            animation: 'fadeIn 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              📍 Full Delivery Address
+                            </span>
+                            {order.address && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  navigator.clipboard.writeText(order.address)
+                                  addToast('📋 Address copied!', 'success')
+                                }}
+                                className="btn btn-xs btn-secondary"
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  color: 'var(--brand)'
+                                }}
+                                title="Copy address to clipboard"
+                              >
+                                📋 Copy
+                              </button>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+                            {order.address ? order.address : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No detailed street address saved</span>}
+                          </div>
+                          {order.city && (
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6, paddingTop: 4, borderTop: '1px dashed var(--border)' }}>
+                              City: <b style={{ color: 'var(--text-primary)' }}>{order.city}</b>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* Product Details Column */}
