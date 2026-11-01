@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useApp } from '../context/AppContext'
 
 // Helper: Parse note string into logical single-line blocks & filter out generic fulfillment logs
@@ -107,6 +108,135 @@ function formatOrderDate(dateStr, includeTime = false) {
   }
 }
 
+// Customer Address Portal Popover Component (renders in document.body to prevent table overflow clipping)
+function AddressPortalPopover({ order, triggerEl, isPinned, onClose, onMouseEnter, onMouseLeave, addToast }) {
+  const popoverRef = useRef(null)
+  const [coords, setCoords] = useState({ top: 0, left: 0, visible: false })
+
+  const updatePosition = useCallback(() => {
+    if (!triggerEl || !popoverRef.current) return
+    const rect = triggerEl.getBoundingClientRect()
+    const popoverHeight = popoverRef.current.offsetHeight || 150
+    const popoverWidth = 320
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
+
+    // Vertical placement: default below trigger button
+    let top = rect.bottom + 6
+    // If it would overflow the viewport bottom, flip above if enough room
+    if (top + popoverHeight > viewportHeight - 12) {
+      if (rect.top - popoverHeight - 6 >= 10) {
+        top = rect.top - popoverHeight - 6
+      } else {
+        top = Math.max(10, viewportHeight - popoverHeight - 10)
+      }
+    }
+
+    // Horizontal placement: align left with trigger button
+    let left = rect.left
+    if (left + popoverWidth > viewportWidth - 12) {
+      left = Math.max(10, viewportWidth - popoverWidth - 12)
+    }
+
+    setCoords({ top, left, visible: true })
+  }, [triggerEl])
+
+  useLayoutEffect(() => {
+    updatePosition()
+    window.addEventListener('resize', updatePosition, { passive: true })
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true })
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, { capture: true })
+    }
+  }, [updatePosition])
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      onClick={(e) => e.stopPropagation()}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        left: coords.left,
+        zIndex: 999999,
+        width: 320,
+        maxWidth: 'calc(100vw - 24px)',
+        background: 'var(--bg-elevated, #1c1917)',
+        border: '1px solid rgba(168, 85, 247, 0.45)',
+        borderRadius: 12,
+        padding: '12px 14px',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.65), 0 4px 14px rgba(0,0,0,0.35)',
+        textAlign: 'left',
+        opacity: coords.visible ? 1 : 0,
+        transition: 'opacity 0.12s ease',
+        pointerEvents: coords.visible ? 'auto' : 'none'
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
+          📍 Full Delivery Address
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {order.address && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                navigator.clipboard.writeText(order.address)
+                addToast('📋 Address copied!', 'success')
+              }}
+              className="btn btn-xs btn-secondary"
+              style={{
+                fontSize: '0.68rem',
+                padding: '2px 8px',
+                borderRadius: 4,
+                color: 'var(--brand)',
+                fontWeight: 700
+              }}
+              title="Copy address to clipboard"
+            >
+              📋 Copy
+            </button>
+          )}
+          {isPinned && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onClose()
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                padding: '0 2px',
+                lineHeight: 1
+              }}
+              title="Close"
+            >
+              ✖
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.55, wordBreak: 'break-word' }}>
+        {order.address ? order.address : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No detailed street address saved</span>}
+      </div>
+      {order.city && (
+        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 8, paddingTop: 6, borderTop: '1px dashed var(--border)' }}>
+          City: <b style={{ color: 'var(--text-primary)' }}>{order.city}</b>
+        </div>
+      )}
+    </div>,
+    document.body
+  )
+}
+
 export default function ShipperAdvice() {
   const { activeStoreId, addToast } = useApp()
   const [loading, setLoading] = useState(true)
@@ -141,14 +271,17 @@ export default function ShipperAdvice() {
   const [riderModalOrder, setRiderModalOrder] = useState(null)
   const [riderInputContact, setRiderInputContact] = useState('')
 
-  // Customer Full Address Popover States (Hover & Click)
-  const [openAddressId, setOpenAddressId] = useState(null)
-  const [hoverAddressId, setHoverAddressId] = useState(null)
+  // Customer Full Address Popover States (Portal-based, zero table clipping)
+  const [addressPortal, setAddressPortal] = useState(null)
+  const hoverTimeoutRef = useRef(null)
 
   useEffect(() => {
-    const handleDocClick = () => setOpenAddressId(null)
+    const handleDocClick = () => setAddressPortal(null)
     document.addEventListener('click', handleDocClick)
-    return () => document.removeEventListener('click', handleDocClick)
+    return () => {
+      document.removeEventListener('click', handleDocClick)
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current)
+    }
   }, [])
 
   const openHistoryModal = async (order) => {
@@ -1174,7 +1307,9 @@ export default function ShipperAdvice() {
                     <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 800, color: 'var(--brand)', fontSize: '0.95rem' }}>
-                          #{order.ref_number || order.id}
+                          {String(order.ref_number || order.id || '').startsWith('#')
+                            ? (order.ref_number || order.id)
+                            : `#${order.ref_number || order.id}`}
                         </span>
                         <button
                           onClick={() => handleTogglePriority(order)}
@@ -1267,21 +1402,44 @@ export default function ShipperAdvice() {
                   </td>
 
                   {/* Customer Column */}
-                  <td style={{ padding: '14px 16px', verticalAlign: 'top', position: 'relative' }}>
+                  <td style={{ padding: '14px 16px', verticalAlign: 'top' }}>
                     <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{order.customer_name || 'N/A'}</div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--brand)', marginTop: 2 }}>{order.phone || 'N/A'}</div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>📍 {order.city || 'N/A'}</div>
 
-                    {/* 🏠 Interactive Address Button with Hover & Click Popover */}
-                    <div style={{ marginTop: 6, position: 'relative', display: 'inline-block' }}>
+                    {/* 🏠 Interactive Address Button with Portal Popover */}
+                    <div style={{ marginTop: 6, display: 'inline-block' }}>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          setOpenAddressId(openAddressId === order.id ? null : order.id)
+                          if (hoverTimeoutRef.current) {
+                            clearTimeout(hoverTimeoutRef.current)
+                            hoverTimeoutRef.current = null
+                          }
+                          if (addressPortal?.order?.id === order.id && addressPortal.isPinned) {
+                            setAddressPortal(null)
+                          } else {
+                            setAddressPortal({ order, triggerEl: e.currentTarget, isPinned: true })
+                          }
                         }}
-                        onMouseEnter={() => setHoverAddressId(order.id)}
-                        onMouseLeave={() => setHoverAddressId(null)}
+                        onMouseEnter={(e) => {
+                          if (hoverTimeoutRef.current) {
+                            clearTimeout(hoverTimeoutRef.current)
+                            hoverTimeoutRef.current = null
+                          }
+                          if (!addressPortal?.isPinned) {
+                            const target = e.currentTarget
+                            setAddressPortal({ order, triggerEl: target, isPinned: false })
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          if (!addressPortal?.isPinned) {
+                            hoverTimeoutRef.current = setTimeout(() => {
+                              setAddressPortal(null)
+                            }, 180)
+                          }
+                        }}
                         className="btn btn-xs btn-secondary"
                         style={{
                           padding: '2px 8px',
@@ -1290,9 +1448,9 @@ export default function ShipperAdvice() {
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 4,
-                          color: (openAddressId === order.id || hoverAddressId === order.id) ? '#c084fc' : 'var(--text-secondary)',
-                          background: (openAddressId === order.id || hoverAddressId === order.id) ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.05)',
-                          border: (openAddressId === order.id || hoverAddressId === order.id) ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border)',
+                          color: (addressPortal?.order?.id === order.id) ? '#c084fc' : 'var(--text-secondary)',
+                          background: (addressPortal?.order?.id === order.id) ? 'rgba(168, 85, 247, 0.14)' : 'rgba(255, 255, 255, 0.05)',
+                          border: (addressPortal?.order?.id === order.id) ? '1px solid rgba(168, 85, 247, 0.45)' : '1px solid var(--border)',
                           cursor: 'pointer',
                           transition: 'all 0.15s ease'
                         }}
@@ -1300,63 +1458,6 @@ export default function ShipperAdvice() {
                       >
                         🏠 Address
                       </button>
-
-                      {(openAddressId === order.id || hoverAddressId === order.id) && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseEnter={() => setHoverAddressId(order.id)}
-                          onMouseLeave={() => setHoverAddressId(null)}
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            marginTop: 6,
-                            zIndex: 9999,
-                            width: 300,
-                            background: 'var(--bg-elevated)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 12,
-                            padding: '12px 14px',
-                            boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
-                            textAlign: 'left',
-                            animation: 'fadeIn 0.15s ease'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--brand)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              📍 Full Delivery Address
-                            </span>
-                            {order.address && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  navigator.clipboard.writeText(order.address)
-                                  addToast('📋 Address copied!', 'success')
-                                }}
-                                className="btn btn-xs btn-secondary"
-                                style={{
-                                  fontSize: '0.68rem',
-                                  padding: '1px 6px',
-                                  borderRadius: 4,
-                                  color: 'var(--brand)'
-                                }}
-                                title="Copy address to clipboard"
-                              >
-                                📋 Copy
-                              </button>
-                            )}
-                          </div>
-                          <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.5, wordBreak: 'break-word' }}>
-                            {order.address ? order.address : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No detailed street address saved</span>}
-                          </div>
-                          {order.city && (
-                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6, paddingTop: 4, borderTop: '1px dashed var(--border)' }}>
-                              City: <b style={{ color: 'var(--text-primary)' }}>{order.city}</b>
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </td>
 
@@ -2129,6 +2230,30 @@ export default function ShipperAdvice() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🏠 Customer Address Popover Portal (Outside table to prevent any clipping / overflow) */}
+      {addressPortal && addressPortal.order && (
+        <AddressPortalPopover
+          order={addressPortal.order}
+          triggerEl={addressPortal.triggerEl}
+          isPinned={addressPortal.isPinned}
+          onClose={() => setAddressPortal(null)}
+          onMouseEnter={() => {
+            if (hoverTimeoutRef.current) {
+              clearTimeout(hoverTimeoutRef.current)
+              hoverTimeoutRef.current = null
+            }
+          }}
+          onMouseLeave={() => {
+            if (!addressPortal.isPinned) {
+              hoverTimeoutRef.current = setTimeout(() => {
+                setAddressPortal(null)
+              }, 180)
+            }
+          }}
+          addToast={addToast}
+        />
       )}
     </div>
   )
