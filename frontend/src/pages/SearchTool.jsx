@@ -433,21 +433,9 @@ export default function SearchTool() {
     }
   }, [loading])
 
-  // Smoothly scroll to active selected row on hydration or selection update (multi-stage retry timeline)
-  useEffect(() => {
-    if (!loading && activeRowId && allOrders.length > 0) {
-      const delays = [50, 150, 350, 650];
-      const timers = delays.map(delay =>
-        setTimeout(() => {
-          const activeRowEl = document.querySelector(`tr[data-order-id="${activeRowId}"], tr.row-active`);
-          if (activeRowEl) {
-            activeRowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, delay)
-      );
-      return () => timers.forEach(t => clearTimeout(t));
-    }
-  }, [loading, activeRowId, allOrders]);
+  // Note: Manual row selection & double-click copy must NOT trigger auto-scroll (preserves viewport & cursor alignment)
+  // Deep-link initial scroll is safely handled once on hydration via pendingScrollRestoreRef
+
 
   // Listen for global copy events to auto-set activeRowId
   useEffect(() => {
