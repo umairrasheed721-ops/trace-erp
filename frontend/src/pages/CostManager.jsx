@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import LinkSkuModal from '../components/LinkSkuModal'
 
 const isGhostMatch = (ghost, searchQuery) => {
   if (!searchQuery || !searchQuery.trim()) return true;
@@ -106,6 +107,12 @@ export default function CostManager() {
   const [ghostSearch, setGhostSearch] = useState('')
   const [selectedGhosts, setSelectedGhosts] = useState(new Set())
 
+  // Alias States
+  const [aliases, setAliases] = useState([])
+  const [loadingAliases, setLoadingAliases] = useState(false)
+  const [aliasSearch, setAliasSearch] = useState('')
+  const [linkingGhost, setLinkingGhost] = useState(null)
+
   // UI Enhancement States
   const [sortBy, setSortBy] = useState('value')       // 'value' | 'margin' | 'stock' | 'name'
   const [filterMargin, setFilterMargin] = useState('all') // 'all' | 'low' | 'mid' | 'high'
@@ -120,6 +127,7 @@ export default function CostManager() {
       fetchCosts()
       fetchGhosts()
       fetchAudit()
+      fetchAliases()
     }
   }, [activeStoreId])
 
@@ -202,6 +210,36 @@ export default function CostManager() {
       setGhosts(Array.isArray(data) ? data : [])
     } catch (e) { console.error('Failed to fetch ghosts', e) }
     finally { setLoadingGhosts(false) }
+  }
+
+  const fetchAliases = async () => {
+    setLoadingAliases(true)
+    try {
+      const res = await fetch(`/api/cost-manager/aliases?store_id=${activeStoreId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAliases(Array.isArray(data) ? data : [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch aliases', e)
+    } finally {
+      setLoadingAliases(false)
+    }
+  }
+
+  const handleDeleteAlias = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this alias?')) return
+    try {
+      const res = await fetch(`/api/cost-manager/aliases/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        addToast('Alias deleted & orders re-evaluated', 'info')
+        fetchAliases()
+        fetchGhosts()
+        fetchCosts()
+      }
+    } catch (e) {
+      addToast('Failed to delete alias: ' + e.message, 'error')
+    }
   }
 
   // --- Derived Data ---
@@ -1021,6 +1059,7 @@ export default function CostManager() {
           { key: 'unlisted', label: 'Unlisted', count: lists.unlisted?.length || 0, color: '#db2777', icon: '🚫' },
           { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', icon: '📦' },
           { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: '#8b5cf6', icon: '👻' },
+          { key: 'aliases',  label: 'Aliases',  count: aliases.length,       color: '#ec4899', icon: '🔗' },
           { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#f43f5e', icon: '🆔' },
         ].map(t => (
           <button
@@ -2181,6 +2220,13 @@ export default function CostManager() {
                       </td>
                       <td style={{ textAlign: 'right', padding: 15 }}>
                          <button className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleInspectGhost(p.name); }}>🔍 Orders</button>
+                         <button 
+                           className="btn btn-secondary btn-sm" 
+                           style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#f472b6', borderColor: 'rgba(236,72,153,0.3)', background: 'rgba(236,72,153,0.1)', marginLeft: 6 }}
+                           onClick={(e) => { e.stopPropagation(); setLinkingGhost({ title: p.name, variant: '' }); }}
+                         >
+                           🔗 Link SKU
+                         </button>
                       </td>
                     </tr>
                     {expandedParents.has(p.name) && p.variants.map((v, i) => (
@@ -2202,20 +2248,27 @@ export default function CostManager() {
                           />
                         </td>
                         <td style={{ textAlign: 'right', padding: 15 }}>
-                           <button 
-                            className="btn btn-primary btn-sm" 
-                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                            onClick={() => {
-                              setEditingItem({ parent_title: p.name, variant_title: v.name });
-                              setForm({ 
-                                parent_title: p.name, 
-                                variant_title: v.name, 
-                                unit_cost: parseFloat(ghostCosts[`${p.name}@@@${v.name}`]) || 0, 
-                                packaging_cost: 0 
-                              });
-                              setShowModal(true);
-                            }}
-                           >Fix This</button>
+                           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                             <button 
+                              className="btn btn-primary btn-sm" 
+                              style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                              onClick={() => {
+                                setEditingItem({ parent_title: p.name, variant_title: v.name });
+                                setForm({ 
+                                  parent_title: p.name, 
+                                  variant_title: v.name, 
+                                  unit_cost: parseFloat(ghostCosts[`${p.name}@@@${v.name}`]) || 0, 
+                                  packaging_cost: 0 
+                                });
+                                setShowModal(true);
+                              }}
+                             >Fix This</button>
+                             <button 
+                              className="btn btn-secondary btn-sm" 
+                              style={{ padding: '2px 8px', fontSize: '0.75rem', color: '#f472b6', borderColor: 'rgba(236,72,153,0.3)', background: 'rgba(236,72,153,0.1)' }}
+                              onClick={() => setLinkingGhost({ title: p.name, variant: v.name })}
+                             >🔗 Link SKU</button>
+                           </div>
                         </td>
                       </tr>
                     ))}
@@ -2226,6 +2279,99 @@ export default function CostManager() {
           </div>
           <div style={{ textAlign: 'right', marginTop: 20 }}>
             <button className="btn btn-success btn-lg" onClick={handleApplyGhostCosts}>🚀 Save & Apply All Ghost Costs</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'aliases' && (
+        <div style={{ animation: 'slideDown 0.3s ease' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                🔗 Product Ghost-to-SKU Aliases ({aliases.length})
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Items below are mapped to real Master SKUs. All past and incoming orders automatically pull the linked SKU and landed cost.
+              </p>
+            </div>
+            <div style={{ width: 260 }}>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Search aliases..." 
+                value={aliasSearch} 
+                onChange={e => setAliasSearch(e.target.value)} 
+                style={{ height: 34, fontSize: '0.8rem' }}
+              />
+            </div>
+          </div>
+
+          <div className="table-responsive card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.75rem' }}>Ghost / Alias Title</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.75rem' }}>Variant</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.75rem' }}>Linked Master SKU</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.75rem' }}>Master Product Title</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.75rem' }}>Landed Cost</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.75rem' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aliases.filter(a => {
+                  if (!aliasSearch) return true;
+                  const q = aliasSearch.toLowerCase();
+                  return (a.alias_title || '').toLowerCase().includes(q) ||
+                         (a.target_sku || '').toLowerCase().includes(q) ||
+                         (a.target_parent_title || '').toLowerCase().includes(q);
+                }).length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      {loadingAliases ? '⌛ Loading aliases...' : 'No aliases found. Link ghost items to catalog SKUs to see them here.'}
+                    </td>
+                  </tr>
+                ) : (
+                  aliases.filter(a => {
+                    if (!aliasSearch) return true;
+                    const q = aliasSearch.toLowerCase();
+                    return (a.alias_title || '').toLowerCase().includes(q) ||
+                           (a.target_sku || '').toLowerCase().includes(q) ||
+                           (a.target_parent_title || '').toLowerCase().includes(q);
+                  }).map(a => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#fff', fontSize: '0.82rem' }}>
+                        {a.alias_title}
+                      </td>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                        {a.alias_variant || '—'}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 800 }}>
+                          🆔 {a.target_sku || a.master_sku || 'N/A'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        {a.target_parent_title || '—'} {a.target_variant_title ? `(${a.target_variant_title})` : ''}
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: 'var(--green)', fontSize: '0.82rem' }}>
+                        Rs {Math.round(a.landed_cost || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                        <button 
+                          className="btn btn-secondary btn-sm"
+                          style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', padding: '3px 8px', fontSize: '0.7rem' }}
+                          onClick={() => handleDeleteAlias(a.id)}
+                          title="Unlink this alias"
+                        >
+                          🗑️ Unlink
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -2547,6 +2693,21 @@ export default function CostManager() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Link SKU Modal ── */}
+      {linkingGhost && (
+        <LinkSkuModal
+          isOpen={!!linkingGhost}
+          item={linkingGhost}
+          storeId={activeStoreId}
+          onClose={() => setLinkingGhost(null)}
+          onSuccess={() => {
+            fetchGhosts();
+            fetchAliases();
+            fetchCosts();
+          }}
+        />
       )}
 
       <style>{`

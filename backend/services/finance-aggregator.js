@@ -10,7 +10,8 @@ class FinanceAggregator {
       AND items_count > 0
     `).all(Number(storeId));
 
-    const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+    const catalog = db.prepare('SELECT id, shopify_variant_id, sku, parent_title, variant_title, landed_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+    const aliases = db.prepare('SELECT * FROM product_aliases WHERE store_id = ?').all(Number(storeId));
     const productCounts = {};
 
     console.log(`🔍 Scanning missing costs for Store ${storeId}. Orders found in last 90 days: ${orders.length}`);
@@ -43,6 +44,31 @@ class FinanceAggregator {
           if (!matchRow && sku) {
             matchRow = catalog.find(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
           }
+
+          // Alias match
+          if (!matchRow) {
+            const alias = aliases.find(a => 
+              a.alias_title.toLowerCase().trim() === parentName.toLowerCase().trim() &&
+              (!a.alias_variant || a.alias_variant.toLowerCase().trim() === variantName.toLowerCase().trim())
+            ) || aliases.find(a => 
+              variantName && a.alias_title.toLowerCase().trim() === `${parentName} - ${variantName}`.toLowerCase().trim()
+            ) || aliases.find(a =>
+              a.alias_title.toLowerCase().trim() === parentName.toLowerCase().trim()
+            );
+
+            if (alias) {
+              if (alias.target_master_cost_id) {
+                matchRow = catalog.find(c => c.id === alias.target_master_cost_id);
+              }
+              if (!matchRow && alias.target_sku) {
+                matchRow = catalog.find(c => c.sku && c.sku.toLowerCase().trim() === alias.target_sku.toLowerCase().trim());
+              }
+              if (!matchRow && alias.target_variant_id) {
+                matchRow = catalog.find(c => c.shopify_variant_id && String(c.shopify_variant_id).includes(String(alias.target_variant_id)));
+              }
+            }
+          }
+
           if (!matchRow) {
             matchRow = catalog.find(c => 
               c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
@@ -75,10 +101,34 @@ class FinanceAggregator {
           const variantName = parts.length > 1 ? parts.slice(1).join(' - ').trim() : '';
 
           // Check if this item is missing cost
-          const matchRow = catalog.find(c => 
-            c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
-            (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
+          let matchRow = null;
+          const alias = aliases.find(a => 
+            a.alias_title.toLowerCase().trim() === parentName.toLowerCase().trim() &&
+            (!a.alias_variant || a.alias_variant.toLowerCase().trim() === variantName.toLowerCase().trim())
+          ) || aliases.find(a => 
+            variantName && a.alias_title.toLowerCase().trim() === `${parentName} - ${variantName}`.toLowerCase().trim()
+          ) || aliases.find(a =>
+            a.alias_title.toLowerCase().trim() === parentName.toLowerCase().trim()
           );
+
+          if (alias) {
+            if (alias.target_master_cost_id) {
+              matchRow = catalog.find(c => c.id === alias.target_master_cost_id);
+            }
+            if (!matchRow && alias.target_sku) {
+              matchRow = catalog.find(c => c.sku && c.sku.toLowerCase().trim() === alias.target_sku.toLowerCase().trim());
+            }
+            if (!matchRow && alias.target_variant_id) {
+              matchRow = catalog.find(c => c.shopify_variant_id && String(c.shopify_variant_id).includes(String(alias.target_variant_id)));
+            }
+          }
+
+          if (!matchRow) {
+            matchRow = catalog.find(c => 
+              c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
+              (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
+            );
+          }
 
           const hasLandedCost = matchRow && (matchRow.landed_cost || 0) > 0;
           if (hasLandedCost) continue;

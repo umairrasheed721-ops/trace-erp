@@ -304,7 +304,8 @@ router.get('/master-costs', (req, res) => {
 
 // Helper to propagate cost changes from product_master_costs to orders matching by SKU/ID or Name (with appended variant handling)
 function healCostsForStore(storeId) {
-  const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost, packaging_cost, shopify_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+  const catalog = db.prepare('SELECT id, shopify_variant_id, sku, parent_title, variant_title, landed_cost, packaging_cost, shopify_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+  const aliases = db.prepare('SELECT * FROM product_aliases WHERE store_id = ?').all(Number(storeId));
   const orders = db.prepare('SELECT id, cost, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0').all(Number(storeId));
   let healedCount = 0;
 
@@ -352,6 +353,30 @@ function healCostsForStore(storeId) {
                 return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
               });
               matchRow = skuMatches[0];
+            }
+          }
+
+          // 2.5 Alias match (Ghost / Custom title mapped to Master SKU)
+          if (!matchRow && pName) {
+            const alias = aliases.find(a => 
+              a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+              (!a.alias_variant || a.alias_variant.toLowerCase().trim() === vName.toLowerCase().trim())
+            ) || aliases.find(a => 
+              vName && a.alias_title.toLowerCase().trim() === `${pName} - ${vName}`.toLowerCase().trim()
+            ) || aliases.find(a =>
+              a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim()
+            );
+
+            if (alias) {
+              if (alias.target_master_cost_id) {
+                matchRow = catalog.find(c => c.id === alias.target_master_cost_id);
+              }
+              if (!matchRow && alias.target_sku) {
+                matchRow = catalog.find(c => c.sku && c.sku.toLowerCase().trim() === alias.target_sku.toLowerCase().trim());
+              }
+              if (!matchRow && alias.target_variant_id) {
+                matchRow = catalog.find(c => c.shopify_variant_id && String(c.shopify_variant_id).includes(String(alias.target_variant_id)));
+              }
             }
           }
 
@@ -408,6 +433,30 @@ function healCostsForStore(storeId) {
           let matchRow = null;
           if (vName && titleMatches.length > 0) {
             matchRow = titleMatches.find(c => c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim());
+          }
+
+          // Alias check for product_titles
+          if (!matchRow && pName) {
+            const alias = aliases.find(a => 
+              a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+              (!a.alias_variant || a.alias_variant.toLowerCase().trim() === vName.toLowerCase().trim())
+            ) || aliases.find(a => 
+              vName && a.alias_title.toLowerCase().trim() === `${pName} - ${vName}`.toLowerCase().trim()
+            ) || aliases.find(a =>
+              a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim()
+            );
+
+            if (alias) {
+              if (alias.target_master_cost_id) {
+                matchRow = catalog.find(c => c.id === alias.target_master_cost_id);
+              }
+              if (!matchRow && alias.target_sku) {
+                matchRow = catalog.find(c => c.sku && c.sku.toLowerCase().trim() === alias.target_sku.toLowerCase().trim());
+              }
+              if (!matchRow && alias.target_variant_id) {
+                matchRow = catalog.find(c => c.shopify_variant_id && String(c.shopify_variant_id).includes(String(alias.target_variant_id)));
+              }
+            }
           }
           if (!matchRow && titleMatches.length > 0) {
             titleMatches.sort((a, b) => {
@@ -1174,4 +1223,6 @@ router.post('/settle-payout-discrepancy', async (req, res) => {
   }
 });
 
+router.healCostsForStore = healCostsForStore;
 module.exports = router;
+module.exports.healCostsForStore = healCostsForStore;

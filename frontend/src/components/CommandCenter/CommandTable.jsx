@@ -9,6 +9,7 @@ import { TABLE_CONSTANTS } from '../../config/uiConstants'
 import TableHeader from '../OrderTableParts/TableHeader'
 import CommandTableRow from './CommandTableRow'
 import TablePagination from '../OrderTableParts/TablePagination'
+import LinkSkuModal from '../LinkSkuModal'
 
 // Explicit column width map to support table-layout: fixed and prevent columns from shifting/jittering
 const COLUMN_WIDTHS = {
@@ -46,6 +47,8 @@ const getMatchBadgeStyle = (type) => {
       return { background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }; // Blue
     case 'sku':
       return { background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }; // Green
+    case 'alias':
+      return { background: 'rgba(236, 72, 153, 0.15)', color: '#f472b6' }; // Pink / Magenta
     case 'ghost':
       return { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }; // Orange / Amber
     case 'name_only':
@@ -61,6 +64,8 @@ const getMatchLabel = (type) => {
       return '🔗 Variant ID';
     case 'sku':
       return '🆔 SKU Match';
+    case 'alias':
+      return '⚡ Alias SKU';
     case 'ghost':
       return '👻 Ghost Match';
     case 'name_only':
@@ -71,7 +76,7 @@ const getMatchLabel = (type) => {
 }
 
 // Cost breakdown helper component moved to file level
-const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
+const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose, onOpenLinkSku }) => {
   const navigate = useNavigate();
 
   if (loadingBreakdown) return <div className="cost-tooltip" style={{ color: '#e5e7eb', padding: '12px', fontSize: '0.75rem' }}>⌛ Loading items...</div>
@@ -155,6 +160,30 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (onOpenLinkSku) {
+                      onOpenLinkSku(item);
+                    }
+                  }}
+                  style={{
+                    background: 'rgba(236, 72, 153, 0.12)',
+                    border: '1px solid rgba(236, 72, 153, 0.3)',
+                    borderRadius: '4px',
+                    color: '#f472b6',
+                    padding: '2px 6px',
+                    fontSize: '0.6rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  title="Link Ghost/Unmapped Item to Master SKU"
+                >
+                  🔗 Link SKU
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const title = item.title ? item.title.trim() : '';
                     const matchType = (item.match_type || '').toLowerCase();
                     const isGhost = matchType === 'unknown' || matchType === 'ghost' || matchType === 'none' || !item.match_type || Number(item.landed_cost) === 0;
@@ -198,7 +227,7 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
 }
 
 // Wrapper component to handle React Portal positioning and boundary checking dynamically via fixed positioning
-const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose }) => {
+const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose, onOpenLinkSku }) => {
   const [coords, setCoords] = useState({ top: 0, left: 0, visible: false })
   const tooltipRef = useRef(null)
 
@@ -274,6 +303,7 @@ const TooltipPortalWrapper = ({ triggerEl, loadingBreakdown, breakdown, onClose 
         loadingBreakdown={loadingBreakdown}
         breakdown={breakdown}
         onClose={onClose}
+        onOpenLinkSku={onOpenLinkSku}
       />
     </div>
   )
@@ -323,8 +353,9 @@ export default function CommandTable({
   activeRowId,
   setActiveRowId
 }) {
-  const { user } = useApp()
+  const { user, activeStoreId, addToast } = useApp()
   const canSeeFinancials = user?.role === 'admin'
+  const [linkSkuTarget, setLinkSkuTarget] = useState(null)
 
   const [localFilters, setLocalFilters] = useState({})
 
@@ -554,6 +585,23 @@ export default function CommandTable({
           loadingBreakdown={loadingBreakdown}
           breakdown={breakdown}
           onClose={() => { setActiveTooltipOrderId(null); setBreakdown(null); setTooltipTriggerEl(null); }}
+          onOpenLinkSku={(item) => setLinkSkuTarget(item)}
+        />,
+        document.body
+      )}
+
+      {/* Link SKU Modal Portal */}
+      {linkSkuTarget && createPortal(
+        <LinkSkuModal
+          isOpen={!!linkSkuTarget}
+          item={linkSkuTarget}
+          storeId={activeStoreId}
+          onClose={() => setLinkSkuTarget(null)}
+          onSuccess={() => {
+            if (activeTooltipOrderId) {
+              fetchBreakdown(activeTooltipOrderId);
+            }
+          }}
         />,
         document.body
       )}

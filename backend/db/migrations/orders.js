@@ -1125,6 +1125,32 @@ module.exports = [
     } catch (e) {
       console.error('Migration #42 failed:', e.message);
     }
+  },
+
+  // 43. Create product_aliases table for Ghost-to-SKU linking
+  (db) => {
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS product_aliases (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+          alias_title TEXT NOT NULL,
+          alias_variant TEXT NOT NULL DEFAULT '',
+          target_sku TEXT,
+          target_variant_id TEXT,
+          target_master_cost_id INTEGER REFERENCES product_master_costs(id) ON DELETE SET NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          UNIQUE(store_id, alias_title, alias_variant)
+        );
+      `).run();
+      db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_product_aliases_lookup ON product_aliases(store_id, alias_title, alias_variant);
+      `).run();
+      console.log('✅ [Migration #43] product_aliases table & index created successfully.');
+    } catch (e) {
+      console.error('Migration #43 failed:', e.message);
+    }
   }
 ];
 

@@ -143,6 +143,42 @@ router.get('/breakdown/:orderId', (req, res) => {
         pName.toLowerCase()
       );
 
+      let isAliasMatch = false;
+      let aliasData = null;
+      if (!cost || (cost.landed_cost <= 0 && cost.shopify_cost <= 0)) {
+        try {
+          aliasData = db.prepare(`
+            SELECT pa.*, pmc.id as master_cost_id, pmc.parent_title as master_parent_title, 
+                   pmc.variant_title as master_variant_title, pmc.sku as master_sku,
+                   pmc.landed_cost, pmc.unit_cost, pmc.packaging_cost, pmc.shopify_cost
+            FROM product_aliases pa
+            JOIN product_master_costs pmc ON (
+              pmc.id = pa.target_master_cost_id 
+              OR (pa.target_sku IS NOT NULL AND pmc.sku = pa.target_sku AND pmc.store_id = pa.store_id)
+              OR (pa.target_variant_id IS NOT NULL AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
+            )
+            WHERE pa.store_id = ?
+            AND (
+              (LOWER(pa.alias_title) = ? AND (LOWER(pa.alias_variant) = ? OR pa.alias_variant = ''))
+              OR LOWER(pa.alias_title) = ?
+              OR LOWER(pa.alias_title) = ?
+            )
+            LIMIT 1
+          `).get(
+            order.store_id,
+            pName.toLowerCase(),
+            vName.toLowerCase(),
+            `${pName} - ${vName}`.toLowerCase(),
+            pName.toLowerCase()
+          );
+
+          if (aliasData) {
+            cost = aliasData;
+            isAliasMatch = true;
+          }
+        } catch (_) {}
+      }
+
       const landed = cost ? (cost.landed_cost || 0) : 0;
       const unit = cost ? (cost.unit_cost || 0) : 0;
       const pkg = cost ? (cost.packaging_cost || 0) : 0;
@@ -151,7 +187,9 @@ router.get('/breakdown/:orderId', (req, res) => {
       totalMatchedCost += landed * item.quantity;
 
       let matchType = 'none';
-      if (cost) {
+      if (isAliasMatch) {
+        matchType = 'alias';
+      } else if (cost) {
         if (numericVariantId && cost.shopify_variant_id && (String(cost.shopify_variant_id).includes(numericVariantId) || String(numericVariantId).includes(String(cost.shopify_variant_id)))) {
           matchType = 'variant_id';
         } else if (sku && cost.sku && String(cost.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()) {
@@ -190,14 +228,171 @@ router.get('/breakdown/:orderId', (req, res) => {
         landed_cost: landed,
         packaging_cost: pkg,
         shopify_cost: shopifyCost,
-        sku: cost && cost.sku ? cost.sku : sku,
+        sku: (cost && (cost.master_sku || cost.sku)) ? (cost.master_sku || cost.sku) : (aliasData?.target_sku || sku),
         match_type: matchType,
         reason_code: reasonCode,
-        reason_hint: reasonHint
+        reason_hint: reasonHint,
+        is_alias: isAliasMatch,
+        alias_target_sku: aliasData ? (aliasData.master_sku || aliasData.target_sku) : null
       });
     }
 
     res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cost-manager/aliases - Fetch all product aliases for a store
+router.get('/aliases', (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const rows = db.prepare(`
+      SELECT 
+        pa.*,
+        pmc.parent_title as target_parent_title,
+        pmc.variant_title as target_variant_title,
+        pmc.sku as master_sku,
+        pmc.landed_cost,
+        pmc.unit_cost,
+        pmc.packaging_cost
+      FROM product_aliases pa
+      LEFT JOIN product_master_costs pmc ON (
+        pmc.id = pa.target_master_cost_id 
+        OR (pa.target_sku IS NOT NULL AND pmc.sku = pa.target_sku AND pmc.store_id = pa.store_id)
+      )
+      WHERE pa.store_id = ?
+      ORDER BY pa.updated_at DESC
+    `).all(Number(store_id));
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/cost-manager/search-skus - Fast typeahead search for catalog SKUs
+router.get('/search-skus', (req, res) => {
+  const { store_id, q } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const term = `%${(q || '').trim().toLowerCase()}%`;
+    const rows = db.prepare(`
+      SELECT id, sku, parent_title, variant_title, landed_cost, unit_cost, packaging_cost, shopify_cost, shopify_variant_id
+      FROM product_master_costs
+      WHERE store_id = ?
+      AND (
+        LOWER(sku) LIKE ? 
+        OR LOWER(parent_title) LIKE ? 
+        OR LOWER(variant_title) LIKE ?
+      )
+      ORDER BY (CASE WHEN landed_cost > 0 THEN 0 ELSE 1 END) ASC, sku ASC
+      LIMIT 40
+    `).all(Number(store_id), term, term, term);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cost-manager/link-alias - Bind a ghost/unmapped title to a real master SKU
+router.post('/link-alias', (req, res) => {
+  const { store_id, alias_title, alias_variant, target_master_cost_id, target_sku, target_variant_id } = req.body;
+  if (!store_id || !alias_title || (!target_master_cost_id && !target_sku)) {
+    return res.status(400).json({ error: 'store_id, alias_title, and target SKU/Cost ID are required' });
+  }
+
+  const cleanTitle = String(alias_title).trim();
+  const cleanVariant = String(alias_variant || '').trim();
+  const cleanSku = target_sku ? String(target_sku).trim() : null;
+
+  try {
+    // 1. Upsert into product_aliases
+    db.prepare(`
+      INSERT INTO product_aliases (
+        store_id, alias_title, alias_variant, target_sku, target_variant_id, target_master_cost_id, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(store_id, alias_title, alias_variant) DO UPDATE SET
+        target_sku = excluded.target_sku,
+        target_variant_id = excluded.target_variant_id,
+        target_master_cost_id = excluded.target_master_cost_id,
+        updated_at = datetime('now')
+    `).run(Number(store_id), cleanTitle, cleanVariant, cleanSku, target_variant_id || null, target_master_cost_id || null);
+
+    // 2. Backfill SKU into existing orders line_items JSON
+    let updatedOrdersCount = 0;
+    if (cleanSku) {
+      const orders = db.prepare(`
+        SELECT id, line_items FROM orders 
+        WHERE store_id = ? AND (line_items LIKE ? OR product_titles LIKE ?)
+      `).all(Number(store_id), `%${cleanTitle}%`, `%${cleanTitle}%`);
+
+      const updateOrderStmt = db.prepare('UPDATE orders SET line_items = ? WHERE id = ?');
+      db.transaction(() => {
+        for (const ord of orders) {
+          if (!ord.line_items) continue;
+          let items = [];
+          try { items = JSON.parse(ord.line_items); } catch (_) {}
+          let modified = false;
+
+          for (const it of items) {
+            const itTitle = (it.title || it.name || '').trim().toLowerCase();
+            const itVar = (it.variant_title || '').trim().toLowerCase();
+            const matchParent = itTitle === cleanTitle.toLowerCase();
+            const matchVar = !cleanVariant || itVar === cleanVariant.toLowerCase();
+            const matchFull = itTitle === `${cleanTitle} - ${cleanVariant}`.toLowerCase();
+
+            if ((matchParent && matchVar) || matchFull) {
+              if (!it.sku || it.sku !== cleanSku) {
+                it.sku = cleanSku;
+                modified = true;
+              }
+            }
+          }
+
+          if (modified) {
+            updateOrderStmt.run(JSON.stringify(items), ord.id);
+            updatedOrdersCount++;
+          }
+        }
+      })();
+    }
+
+    // 3. Propagate costs to all affected orders
+    const financeCorrections = require('./finance/finance-corrections');
+    let healedOrdersCount = 0;
+    if (typeof financeCorrections.healCostsForStore === 'function') {
+      healedOrdersCount = financeCorrections.healCostsForStore(store_id);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully linked "${cleanTitle}${cleanVariant ? ' (' + cleanVariant + ')' : ''}" to SKU ${cleanSku || 'Master Product'}`,
+      updatedOrdersCount,
+      healedOrdersCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/cost-manager/aliases/:id - Delete an alias mapping
+router.delete('/aliases/:id', (req, res) => {
+  try {
+    const alias = db.prepare('SELECT store_id FROM product_aliases WHERE id = ?').get(req.params.id);
+    if (!alias) return res.status(404).json({ error: 'Alias not found' });
+
+    db.prepare('DELETE FROM product_aliases WHERE id = ?').run(req.params.id);
+
+    const financeCorrections = require('./finance/finance-corrections');
+    let healedCount = 0;
+    if (typeof financeCorrections.healCostsForStore === 'function') {
+      healedCount = financeCorrections.healCostsForStore(alias.store_id);
+    }
+
+    res.json({ success: true, healedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
