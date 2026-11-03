@@ -190,8 +190,26 @@ function calculateOrderCost(storeId, lineItems, costMap) {
       if (shopifyCost > 0 && Math.abs(shopifyCost - unitCost) > (unitCost * 0.05)) {
         logAudit(storeId, 'WARN', `Cost Drift: ${item.name} registry cost is ${unitCost} but Shopify says ${shopifyCost}. Difference: ${Math.round(Math.abs(shopifyCost - unitCost))}`);
       }
-    } else {
+    } else if (shopifyCost > 0) {
       unitCost = shopifyCost;
+      // Auto-baseline into product_master_costs so that healCosts and registry stay in 100% parity
+      try {
+        const cleanParent = pName || item.name || 'Unnamed Product';
+        const cleanVariant = vName || '';
+        db.prepare(`
+          INSERT INTO product_master_costs (
+            store_id, shopify_variant_id, sku, parent_title, variant_title, 
+            unit_cost, landed_cost, shopify_cost, packaging_cost, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
+          ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
+            shopify_cost = excluded.shopify_cost,
+            landed_cost = CASE WHEN product_master_costs.landed_cost > 0 THEN product_master_costs.landed_cost ELSE excluded.shopify_cost END,
+            shopify_variant_id = COALESCE(product_master_costs.shopify_variant_id, excluded.shopify_variant_id),
+            sku = COALESCE(product_master_costs.sku, excluded.sku)
+        `).run(storeId, gidVariantId || numericVariantId, sku, cleanParent, cleanVariant, shopifyCost, shopifyCost, shopifyCost);
+      } catch (_) {}
+    } else {
+      unitCost = 0;
     }
 
     if (unitCost > 0) {

@@ -1022,6 +1022,109 @@ module.exports = [
     } catch (e) {
       console.error('Migration #41 failed:', e.message);
     }
+  },
+
+  // 42. Auto-heal unlocked orders to enforce zero-leak cost lock parity
+  (db) => {
+    try {
+      const stores = db.prepare('SELECT id FROM stores').all();
+      let totalHealed = 0;
+      for (const store of stores) {
+        const storeId = store.id;
+        const catalog = db.prepare('SELECT shopify_variant_id, sku, parent_title, variant_title, landed_cost, packaging_cost, shopify_cost FROM product_master_costs WHERE store_id = ?').all(Number(storeId));
+        const orders = db.prepare("SELECT id, cost, line_items, product_titles, delivery_status FROM orders WHERE store_id = ? AND (cost = 0 OR cost IS NULL OR cost_locked = 0) AND items_count > 0").all(Number(storeId));
+
+        const updateStmt = db.prepare("UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = (CASE WHEN delivery_status IN ('Delivered', 'Return Received') THEN 1 ELSE 0 END) WHERE id = ?");
+        
+        for (const order of orders) {
+          let totalLanded = 0;
+          let totalPackaging = 0;
+          let hasMissingCostItem = false;
+
+          let parsedItems = [];
+          try {
+            if (order.line_items) parsedItems = JSON.parse(order.line_items);
+          } catch (_) {}
+
+          if (parsedItems.length > 0) {
+            for (const item of parsedItems) {
+              const qty = item.quantity || 0;
+              if (qty === 0) continue;
+
+              let matchRow = null;
+              const vId = item.variant_id ? String(item.variant_id) : '';
+              const numericVariantId = vId.includes('/') ? vId.split('/').pop() : vId;
+              const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+              const sku = item.sku ? String(item.sku).trim() : '';
+              const pName = item.title ? String(item.title).trim() : '';
+              const vName = item.variant_title ? String(item.variant_title).trim() : '';
+
+              if (numericVariantId) {
+                matchRow = catalog.find(c => 
+                  c.shopify_variant_id && 
+                  (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
+                );
+              }
+
+              if (!matchRow && sku) {
+                const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+                if (skuMatches.length > 0) {
+                  skuMatches.sort((a, b) => {
+                    const aCost = a.landed_cost || a.shopify_cost || 0;
+                    const bCost = b.landed_cost || b.shopify_cost || 0;
+                    return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
+                  });
+                  matchRow = skuMatches[0];
+                }
+              }
+
+              if (!matchRow && pName) {
+                if (vName) {
+                  matchRow = catalog.find(c => 
+                    c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
+                    c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()
+                  );
+                }
+                if (!matchRow) {
+                  const parentMatches = catalog.filter(c => c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim());
+                  if (parentMatches.length > 0) {
+                    parentMatches.sort((a, b) => {
+                      const aCost = a.landed_cost || a.shopify_cost || 0;
+                      const bCost = b.landed_cost || b.shopify_cost || 0;
+                      return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
+                    });
+                    matchRow = parentMatches[0];
+                  }
+                }
+              }
+
+              if (matchRow && (matchRow.landed_cost > 0 || matchRow.shopify_cost > 0)) {
+                totalLanded += (matchRow.landed_cost || matchRow.shopify_cost || 0) * qty;
+                totalPackaging += (matchRow.packaging_cost || 0) * qty;
+              } else {
+                hasMissingCostItem = true;
+              }
+            }
+          } else {
+            hasMissingCostItem = true;
+          }
+
+          const currentCost = order.cost || 0;
+          const finalCost = hasMissingCostItem ? 0 : totalLanded;
+          const finalPackaging = hasMissingCostItem ? 0 : totalPackaging;
+
+          if (finalCost !== currentCost || (finalCost === 0 && currentCost > 0)) {
+            updateStmt.run(finalCost, finalPackaging, order.id);
+            totalHealed++;
+          }
+        }
+      }
+      if (totalHealed > 0) {
+        console.log(`✅ [Migration #42] Auto-healed ${totalHealed} orders to enforce zero-leak cost lock parity.`);
+      }
+    } catch (e) {
+      console.error('Migration #42 failed:', e.message);
+    }
   }
 ];
 

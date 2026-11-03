@@ -50,8 +50,6 @@ const getMatchBadgeStyle = (type) => {
       return { background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }; // Orange / Amber
     case 'name_only':
       return { background: 'rgba(139, 92, 246, 0.15)', color: '#a78bfa' }; // Purple
-    case 'fallback':
-      return { background: 'rgba(239, 68, 68, 0.15)', color: '#f87171' }; // Red
     default:
       return { background: 'rgba(156, 163, 175, 0.15)', color: '#cbd5e1' }; // Gray
   }
@@ -67,10 +65,8 @@ const getMatchLabel = (type) => {
       return '👻 Ghost Match';
     case 'name_only':
       return '📝 Name Match';
-    case 'fallback':
-      return '💸 Split Cost';
     default:
-      return '❓ Unknown';
+      return '❓ Unmapped';
   }
 }
 
@@ -101,10 +97,41 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
             <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', marginBottom: 2 }}>
               {item.title} {item.variant ? `(${item.variant})` : ''}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#9ca3af', marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.65rem', color: '#9ca3af', marginBottom: 4 }}>
               <span>{item.quantity} x Rs {item.landed_cost.toLocaleString()}</span>
-              <span style={{ fontWeight: 'bold', color: 'var(--green)' }}>Rs {(item.landed_cost * item.quantity).toLocaleString()}</span>
+              <span style={{ fontWeight: 'bold', color: item.landed_cost > 0 ? 'var(--green)' : '#ef4444' }}>
+                Rs {(item.landed_cost * item.quantity).toLocaleString()}
+              </span>
             </div>
+            {(parseFloat(item.landed_cost || 0) <= 0 || item.reason_hint) && (
+              <div 
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  fontSize: '0.62rem',
+                  fontWeight: 600,
+                  marginBottom: 6,
+                  marginTop: 1,
+                  background: item.reason_code === 'VERIFICATION_PENDING'
+                    ? 'rgba(234, 179, 8, 0.12)'
+                    : 'rgba(239, 68, 68, 0.12)',
+                  border: item.reason_code === 'VERIFICATION_PENDING'
+                    ? '1px solid rgba(234, 179, 8, 0.28)'
+                    : '1px solid rgba(239, 68, 68, 0.28)',
+                  color: item.reason_code === 'VERIFICATION_PENDING'
+                    ? '#fbbf24'
+                    : '#f87171'
+                }}
+              >
+                <span>{item.reason_code === 'VERIFICATION_PENDING' ? '⏳' : '🛑'}</span>
+                <span>
+                  {item.reason_hint || (item.reason_code === 'VERIFICATION_PENDING' ? 'Verification Pending' : 'Cost Missing in Registry')}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.6rem', color: '#6b7280', paddingTop: '2px' }}>
               <span>
                 {item.sku ? `SKU: ${item.sku}` : <span style={{ fontStyle: 'italic', opacity: 0.5 }}>No SKU</span>}
@@ -130,8 +157,8 @@ const CostBreakdownTooltip = ({ loadingBreakdown, breakdown, onClose }) => {
                     e.stopPropagation();
                     const title = item.title ? item.title.trim() : '';
                     const matchType = (item.match_type || '').toLowerCase();
-                    const isGhost = matchType === 'unknown' || matchType === 'ghost' || matchType === 'fallback' || matchType === 'none' || !item.match_type || Number(item.landed_cost) === 0;
-                    const tab = isGhost ? 'ghosts' : 'verified';
+                    const isGhost = matchType === 'unknown' || matchType === 'ghost' || matchType === 'none' || !item.match_type || Number(item.landed_cost) === 0;
+                    const tab = item.reason_code === 'VERIFICATION_PENDING' ? 'pending' : (isGhost ? 'ghosts' : 'verified');
                     const searchTerm = item.sku ? item.sku.trim() : title;
                     navigate(`/costing?search=${encodeURIComponent(searchTerm)}&tab=${tab}`);
                   }}

@@ -143,9 +143,10 @@ router.get('/breakdown/:orderId', (req, res) => {
         pName.toLowerCase()
       );
 
-      const landed = cost ? cost.landed_cost : 0;
-      const unit = cost ? cost.unit_cost : 0;
-      const pkg = cost ? cost.packaging_cost : 0;
+      const landed = cost ? (cost.landed_cost || 0) : 0;
+      const unit = cost ? (cost.unit_cost || 0) : 0;
+      const pkg = cost ? (cost.packaging_cost || 0) : 0;
+      const shopifyCost = cost ? (cost.shopify_cost || 0) : 0;
 
       totalMatchedCost += landed * item.quantity;
 
@@ -165,6 +166,21 @@ router.get('/breakdown/:orderId', (req, res) => {
         }
       }
 
+      let reasonCode = null;
+      let reasonHint = null;
+      if (landed <= 0) {
+        if (!cost) {
+          reasonCode = 'NOT_IN_CATALOG';
+          reasonHint = 'Item Not in Catalog (Ghost Variant)';
+        } else if (shopifyCost > 0 && unit <= 0) {
+          reasonCode = 'VERIFICATION_PENDING';
+          reasonHint = `Verification Pending (Shopify Cost: Rs ${Math.round(shopifyCost).toLocaleString()})`;
+        } else {
+          reasonCode = 'ZERO_COST';
+          reasonHint = 'Cost Missing in Registry (Rs 0)';
+        }
+      }
+
       results.push({
         title: pName,
         variant: vName,
@@ -173,23 +189,12 @@ router.get('/breakdown/:orderId', (req, res) => {
         unit_cost: unit,
         landed_cost: landed,
         packaging_cost: pkg,
+        shopify_cost: shopifyCost,
         sku: cost && cost.sku ? cost.sku : sku,
-        match_type: matchType
+        match_type: matchType,
+        reason_code: reasonCode,
+        reason_hint: reasonHint
       });
-    }
-
-    // Fallback: If no costs matched from catalog but order has a direct cost, distribute it
-    if (totalMatchedCost === 0 && order.cost > 0) {
-      const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
-      if (totalQty > 0) {
-        const distributedLandedCost = order.cost / totalQty;
-        for (const res of results) {
-          res.landed_cost = distributedLandedCost;
-          res.unit_cost = distributedLandedCost;
-          res.packaging_cost = 0;
-          res.match_type = 'fallback';
-        }
-      }
     }
 
     res.json(results);

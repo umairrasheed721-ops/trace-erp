@@ -82,7 +82,7 @@ exports.csUpdate = async (req, res) => {
       const vName = item.variant_title ? String(item.variant_title).trim() : '';
 
       const costRow = db.db.prepare(`
-        SELECT landed_cost, unit_cost FROM product_master_costs 
+        SELECT landed_cost, unit_cost, shopify_cost FROM product_master_costs 
         WHERE store_id = ? 
         AND (
           shopify_variant_id = ? 
@@ -94,7 +94,8 @@ exports.csUpdate = async (req, res) => {
                        WHEN sku = ? AND sku != '' THEN 1
                        WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
                        WHEN LOWER(parent_title) = ? THEN 3
-                       ELSE 4 END) ASC
+                       ELSE 4 END) ASC,
+                 (CASE WHEN landed_cost > 0 OR unit_cost > 0 OR shopify_cost > 0 THEN 0 ELSE 1 END) ASC
         LIMIT 1
       `).get(
         oldOrder.store_id,
@@ -112,7 +113,8 @@ exports.csUpdate = async (req, res) => {
 
       const landed = costRow ? costRow.landed_cost : 0;
       const unit = costRow ? costRow.unit_cost : 0;
-      const resolvedUnitCost = landed || unit || 0;
+      const shopify = costRow ? costRow.shopify_cost : 0;
+      const resolvedUnitCost = landed || unit || shopify || 0;
 
       if (resolvedUnitCost > 0) {
         totalCost += (resolvedUnitCost * item.quantity);
