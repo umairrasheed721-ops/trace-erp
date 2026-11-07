@@ -36,6 +36,11 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
      - `paymentPaid` = Actual payout from courier (bank deposit)
      - `hybridCourierFee` = Est. for unreconciled + actual for reconciled orders
      - `actualCourierFee` = Only reconciled/paid courier fees
+   - **Column Visibility & Dynamic Checkbox Standard (CRITICAL)**: Whenever ANY new column or metric is added to the PNL Reports module:
+     1. It MUST be registered in `frontend/src/pages/Reports.jsx` inside the `columns` array with its `id`, `label`, and `group`. The `columns` array is the single source of truth for both table rendering and the `⚙️ Columns` visibility checkbox dropdown.
+     2. This ensures users can check/uncheck the column from the column-picker and persist custom views across browsers and devices.
+     3. It MUST be defined in `COLUMN_INFO` (`PnLMetricsPanel.jsx`) with a clean `description`, `formula`, and `example` so the info tooltip (`i` button) works seamlessly.
+     4. If clickable/drillable, it MUST be added to `CLICKABLE_IDS` and have a drilldown branch in `handleDrilldown` (`Reports.jsx`) mapping to Command Center filters.
 
 12. **Courier Status Mapping — 7 Core ERP Statuses Architecture (CRITICAL)**:
    ERP Statuses are strictly limited to **7 Core Statuses** across frontend (`frontend/src/utils/orderUtils.js`) and backend (`backend/routes/status-mappings.js`, `backend/engines/tracking/statusMapper.js`):

@@ -13,7 +13,8 @@
     { label: '🔴 Cancel Req', tag: 'Cancel Request', color: '#ef4444', shortcut: 'Alt+X' },
     { label: '📋 Ready to Book', tag: 'Ready to Book', color: '#ec4899', shortcut: 'Alt+R' },
     { label: '⏸️ Hold', tag: 'Hold', color: '#94a3b8', shortcut: 'Alt+H' },
-    { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' }
+    { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' },
+    { label: '⚠️ Low Stock', tag: 'low stock', color: '#f97316', shortcut: 'Alt+L' }
   ];
 
   const QUICK_NOTES = [
@@ -1074,6 +1075,7 @@
     else if (key === 'R' || key === 'A') matchedTag = 'Ready to Book';
     else if (key === 'H') matchedTag = 'Hold';
     else if (key === 'E') matchedTag = 'Exchange';
+    else if (key === 'L') matchedTag = 'low stock';
 
     if (matchedTag) {
       e.preventDefault();
