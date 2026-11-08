@@ -422,7 +422,7 @@ export default function AbandonedCheckouts() {
         </div>
 
         {/* Right: Clean Horizontal Controls Toolbar */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {/* WhatsApp Mode Toggle */}
           <button
             className="btn btn-secondary btn-sm"
@@ -440,7 +440,8 @@ export default function AbandonedCheckouts() {
               display: 'inline-flex',
               alignItems: 'center',
               gap: 5,
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             {useWaWeb ? '💻 WA Web' : '📱 WA App'}
@@ -461,7 +462,9 @@ export default function AbandonedCheckouts() {
               border: '1px solid var(--border)',
               fontWeight: 600,
               color: 'var(--text-primary)',
-              maxWidth: 170
+              width: 'auto',
+              maxWidth: 165,
+              flexShrink: 0
             }}
           >
             <option value="REMINDER">💬 Gentle Reminder</option>
@@ -491,13 +494,14 @@ export default function AbandonedCheckouts() {
               background: 'rgba(99, 102, 241, 0.12)',
               border: '1px solid rgba(99, 102, 241, 0.3)',
               color: 'var(--brand)',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             <span>⚙️</span> Customize
           </button>
 
-          <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 2px' }} />
+          <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 2px', flexShrink: 0 }} />
 
           {/* Date Filter Preset */}
           <select
@@ -512,7 +516,10 @@ export default function AbandonedCheckouts() {
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
               fontWeight: 600,
-              color: 'var(--text-primary)'
+              color: 'var(--text-primary)',
+              width: 'auto',
+              maxWidth: 175,
+              flexShrink: 0
             }}
           >
             <option value="TODAY">📅 Today</option>
@@ -526,13 +533,13 @@ export default function AbandonedCheckouts() {
 
           {/* Custom Date Inputs */}
           {datePreset === 'CUSTOM' && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="form-control"
-                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8 }}
+                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8, width: 125 }}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>to</span>
               <input
@@ -540,7 +547,7 @@ export default function AbandonedCheckouts() {
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="form-control"
-                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8 }}
+                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8, width: 125 }}
               />
             </div>
           )}
@@ -559,7 +566,8 @@ export default function AbandonedCheckouts() {
               gap: 5,
               fontWeight: 700,
               fontSize: '0.75rem',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             {loading ? <span className="loading-spinner" /> : '🔄'} Refresh
@@ -574,8 +582,8 @@ export default function AbandonedCheckouts() {
         gap: 16,
         marginBottom: 24
       }}>
-        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14 }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        <div className="stat-card" style={{ padding: 18, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14, borderTop: '3px solid #6366f1' }}>
+          <div style={{ fontSize: '0.72rem', color: '#6366f1', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
             Total Value (Abandoned)
           </div>
           <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
@@ -732,7 +740,7 @@ export default function AbandonedCheckouts() {
         </div>
 
         {/* Search Input & Sort Selector Controls */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end', minWidth: 300 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
           {/* Easy Sorting Dropdown */}
           <select
             value={sortKey}
@@ -749,7 +757,9 @@ export default function AbandonedCheckouts() {
               fontWeight: 700,
               color: 'var(--brand)',
               cursor: 'pointer',
-              minWidth: 220
+              width: 'auto',
+              maxWidth: 230,
+              flexShrink: 0
             }}
           >
             <option value="WA_FIRST">💬 Sort: WhatsApp Doable First</option>
@@ -761,10 +771,10 @@ export default function AbandonedCheckouts() {
           </select>
 
           {/* Search Input */}
-          <div style={{ minWidth: 220, flex: '1 1 220px', maxWidth: 320 }}>
+          <div style={{ width: 240, flexShrink: 0 }}>
             <input
               type="text"
-              placeholder="🔍 Search name, phone, email, city..."
+              placeholder="🔍 Search name, phone, email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="form-control"
@@ -774,7 +784,8 @@ export default function AbandonedCheckouts() {
                 padding: '0 12px',
                 borderRadius: 10,
                 background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)'
+                border: '1px solid var(--border)',
+                width: '100%'
               }}
             />
           </div>
