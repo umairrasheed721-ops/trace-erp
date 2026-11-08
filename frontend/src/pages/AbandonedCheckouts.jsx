@@ -313,48 +313,59 @@ export default function AbandonedCheckouts() {
 
   return (
     <div style={{ paddingBottom: 40 }}>
-      {/* Top Glassmorphic Card Container */}
+      {/* Top Sleek Compact Bar Container */}
       <div className="card" style={{
-        padding: '20px 24px',
-        marginBottom: 24,
+        padding: '8px 16px',
+        marginBottom: 14,
         background: 'var(--bg-surface)',
         border: '1px solid var(--border)',
-        borderRadius: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+        borderRadius: 12,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 16
+        gap: 12,
+        flexWrap: 'wrap'
       }}>
-        <div>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+        {/* Left: Compact Title with Inline Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             🛒 Abandoned Checkouts
           </h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.84rem' }}>
-            Reconciled Shopify checkouts with 1-click WhatsApp / Email outreach, template presets, and smart doable sorting.
-          </p>
+          <span style={{
+            fontSize: '0.72rem',
+            color: 'var(--text-muted)',
+            fontWeight: 600,
+            borderLeft: '1px solid var(--border)',
+            paddingLeft: 10,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4
+          }}>
+            ⚡ 1-Click Recovery
+          </span>
         </div>
 
-        {/* Clean Controls Toolbar */}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Right: Clean Horizontal Controls Toolbar */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* WhatsApp Mode Toggle */}
           <button
             className="btn btn-secondary btn-sm"
             onClick={toggleWaWeb}
             title="Click to toggle between WhatsApp Web browser tab vs WhatsApp App"
             style={{
-              height: 38,
-              padding: '0 14px',
-              fontSize: '0.8rem',
+              height: 32,
+              padding: '0 10px',
+              fontSize: '0.75rem',
               fontWeight: 700,
-              borderRadius: 10,
+              borderRadius: 8,
               background: useWaWeb ? 'rgba(74, 222, 128, 0.15)' : 'var(--bg-elevated)',
               color: useWaWeb ? '#4ade80' : 'var(--text-primary)',
               border: useWaWeb ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid var(--border)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6
+              gap: 5,
+              whiteSpace: 'nowrap'
             }}
           >
             {useWaWeb ? '💻 WA Web' : '📱 WA App'}
@@ -367,14 +378,15 @@ export default function AbandonedCheckouts() {
             className="form-select"
             title="Choose template message for WhatsApp"
             style={{
-              height: 38,
-              fontSize: '0.8rem',
-              padding: '0 12px',
-              borderRadius: 10,
+              height: 32,
+              fontSize: '0.75rem',
+              padding: '0 10px',
+              borderRadius: 8,
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
               fontWeight: 600,
-              color: 'var(--text-primary)'
+              color: 'var(--text-primary)',
+              maxWidth: 170
             }}
           >
             <option value="REMINDER">💬 Gentle Reminder</option>
@@ -393,23 +405,24 @@ export default function AbandonedCheckouts() {
             }}
             title="Customize WhatsApp message templates & variable placeholders"
             style={{
-              height: 38,
-              padding: '0 14px',
-              fontSize: '0.8rem',
+              height: 32,
+              padding: '0 10px',
+              fontSize: '0.75rem',
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              borderRadius: 10,
+              gap: 5,
+              borderRadius: 8,
               background: 'rgba(99, 102, 241, 0.12)',
               border: '1px solid rgba(99, 102, 241, 0.3)',
-              color: 'var(--brand)'
+              color: 'var(--brand)',
+              whiteSpace: 'nowrap'
             }}
           >
             <span>⚙️</span> Customize
           </button>
 
-          <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 2px' }} />
+          <div style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 2px' }} />
 
           {/* Date Filter Preset */}
           <select
@@ -417,10 +430,10 @@ export default function AbandonedCheckouts() {
             onChange={(e) => handlePresetChange(e.target.value)}
             className="form-select"
             style={{
-              height: 38,
-              fontSize: '0.8rem',
-              padding: '0 12px',
-              borderRadius: 10,
+              height: 32,
+              fontSize: '0.75rem',
+              padding: '0 10px',
+              borderRadius: 8,
               background: 'var(--bg-elevated)',
               border: '1px solid var(--border)',
               fontWeight: 600,
@@ -444,15 +457,15 @@ export default function AbandonedCheckouts() {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="form-control"
-                style={{ height: 38, fontSize: '0.8rem', padding: '0 8px', borderRadius: 10 }}
+                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8 }}
               />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>to</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>to</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="form-control"
-                style={{ height: 38, fontSize: '0.8rem', padding: '0 8px', borderRadius: 10 }}
+                style={{ height: 32, fontSize: '0.75rem', padding: '0 8px', borderRadius: 8 }}
               />
             </div>
           )}
@@ -462,7 +475,17 @@ export default function AbandonedCheckouts() {
             className="btn btn-secondary btn-sm"
             onClick={fetchAbandoned}
             disabled={loading}
-            style={{ height: 38, padding: '0 16px', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
+            style={{
+              height: 32,
+              padding: '0 12px',
+              borderRadius: 8,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontWeight: 700,
+              fontSize: '0.75rem',
+              whiteSpace: 'nowrap'
+            }}
           >
             {loading ? <span className="loading-spinner" /> : '🔄'} Refresh
           </button>
