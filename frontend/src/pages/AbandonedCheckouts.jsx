@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import CustomerHistoryModal from '../components/CustomerHistoryModal'
 
 const DEFAULT_WA_TEMPLATES = {
   REMINDER: "Assalam-o-Alaikum {{customer_name}}, aapka {{store_name}} cart checkout par wapas aapka intezar kar raha hai. Kya aapko order complete karne mein koi dushwari pesh aa rahi hai?\n\nComplete link: {{checkout_url}}",
@@ -9,6 +11,7 @@ const DEFAULT_WA_TEMPLATES = {
 }
 
 export default function AbandonedCheckouts() {
+  const navigate = useNavigate()
   const { activeStoreId, activeStore, addToast } = useApp()
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({ stats: {}, checkouts: [] })
@@ -35,6 +38,7 @@ export default function AbandonedCheckouts() {
   })
   const [showCustomizerModal, setShowCustomizerModal] = useState(false)
   const [selectedCheckoutForImages, setSelectedCheckoutForImages] = useState(null)
+  const [selectedCustomerHistory, setSelectedCustomerHistory] = useState(null)
   const [editingKey, setEditingKey] = useState('REMINDER')
   const [editingText, setEditingText] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
@@ -854,7 +858,21 @@ export default function AbandonedCheckouts() {
                   >
                     {/* Customer Name & City */}
                     <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                      <div
+                        onClick={c.phone || c.email ? () => setSelectedCustomerHistory({
+                          phone: c.clean_phone || c.phone,
+                          email: c.email,
+                          name: c.customer_name
+                        }) : undefined}
+                        style={{
+                          fontWeight: 700,
+                          color: c.phone || c.email ? 'var(--brand)' : 'var(--text-primary)',
+                          fontSize: '0.85rem',
+                          cursor: c.phone || c.email ? 'pointer' : 'default',
+                          textDecoration: c.phone || c.email ? 'underline dotted' : 'none'
+                        }}
+                        title={c.phone || c.email ? 'Click to view customer lifetime history & orders' : undefined}
+                      >
                         {c.customer_name}
                       </div>
                       {c.city && (
@@ -984,8 +1002,31 @@ export default function AbandonedCheckouts() {
                             🟢 Order Placed
                           </span>
                           {c.matched_order?.ref_number && (
-                            <div style={{ fontSize: '0.7rem', color: '#4ade80', marginTop: 4, fontWeight: 600 }}>
-                              Ref: {c.matched_order.ref_number} ({c.matched_order.delivery_status})
+                            <div>
+                              <button
+                                onClick={() => setSelectedCustomerHistory({
+                                  phone: c.clean_phone || c.phone,
+                                  email: c.email,
+                                  name: c.customer_name
+                                })}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  fontSize: '0.7rem',
+                                  color: '#4ade80',
+                                  marginTop: 4,
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline'
+                                }}
+                                title="Click to view customer history"
+                              >
+                                Ref: {c.matched_order.ref_number} ({c.matched_order.delivery_status}) ↗
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1005,11 +1046,33 @@ export default function AbandonedCheckouts() {
                           }}>
                             🟡 Existing Customer
                           </span>
-                          {c.matched_order?.ref_number && (
-                            <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: 4, fontWeight: 600 }}>
-                              Previous Ref: {c.matched_order.ref_number}
-                            </div>
-                          )}
+                          <div>
+                            <button
+                              onClick={() => setSelectedCustomerHistory({
+                                phone: c.clean_phone || c.phone,
+                                email: c.email,
+                                name: c.customer_name
+                              })}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                background: 'rgba(251, 191, 36, 0.12)',
+                                color: '#fbbf24',
+                                border: '1px solid rgba(251, 191, 36, 0.35)',
+                                borderRadius: 10,
+                                padding: '2px 8px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                marginTop: 4,
+                                transition: 'all 0.15s ease'
+                              }}
+                              title="Click to view customer lifetime history & orders in Command Center"
+                            >
+                              📦 {c.existing_orders_count || 1} Past Order{(c.existing_orders_count || 1) > 1 ? 's' : ''} ↗
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <span style={{
@@ -1486,6 +1549,20 @@ export default function AbandonedCheckouts() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Lifetime History Modal */}
+      {selectedCustomerHistory && (
+        <CustomerHistoryModal
+          phone={selectedCustomerHistory.phone}
+          email={selectedCustomerHistory.email}
+          name={selectedCustomerHistory.name}
+          onClose={() => setSelectedCustomerHistory(null)}
+          onOpenAllOrders={(targetKeyword) => {
+            setSelectedCustomerHistory(null);
+            navigate(`/search?search=${encodeURIComponent(targetKeyword)}`);
+          }}
+        />
       )}
     </div>
   )
