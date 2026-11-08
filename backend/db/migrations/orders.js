@@ -1196,6 +1196,26 @@ module.exports = [
     } catch (e) {
       console.error('Migration #44 failed:', e.message);
     }
+  },
+
+  // 45. Add abandoned_templates table for cross-device persistent WhatsApp recovery templates
+  (db) => {
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS abandoned_templates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          template_key TEXT NOT NULL,
+          template_text TEXT NOT NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(store_id, template_key)
+        )
+      `).run();
+      console.log('✅ [Migration #45] abandoned_templates table created successfully.');
+    } catch (e) {
+      console.error('Migration #45 failed:', e.message);
+    }
   }
 ];
+
 

@@ -37,6 +37,7 @@ export default function AbandonedCheckouts() {
   const [selectedCheckoutForImages, setSelectedCheckoutForImages] = useState(null)
   const [editingKey, setEditingKey] = useState('REMINDER')
   const [editingText, setEditingText] = useState('')
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const textareaRef = useRef(null)
 
   // Dismissed/Handled checkouts set stored in localStorage
@@ -138,6 +139,34 @@ export default function AbandonedCheckouts() {
   useEffect(() => {
     fetchAbandoned()
   }, [activeStoreId, startDate, endDate])
+
+  // Load store-specific WhatsApp templates from database
+  useEffect(() => {
+    if (!activeStoreId) return
+    let isMounted = true
+    const fetchTemplates = async () => {
+      try {
+        const res = await fetch(`/api/abandoned/templates?store_id=${activeStoreId}`)
+        if (res.ok) {
+          const json = await res.json()
+          if (isMounted && json.success && json.templates) {
+            setWaTemplates(prev => {
+              const merged = { ...DEFAULT_WA_TEMPLATES, ...json.templates }
+              try {
+                localStorage.setItem(`trace_abandoned_wa_templates_${activeStoreId}`, JSON.stringify(merged))
+                localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(merged))
+              } catch (_) {}
+              return merged
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load abandoned templates from DB:', e)
+      }
+    }
+    fetchTemplates()
+    return () => { isMounted = false }
+  }, [activeStoreId])
 
   const stats = data.stats || {}
   const allCheckouts = data.checkouts || []
@@ -258,22 +287,68 @@ export default function AbandonedCheckouts() {
     }, 50)
   }
 
-  // Save template to localStorage
-  const saveTemplate = () => {
+  // Save template to DB & localStorage
+  const saveTemplate = async () => {
     const updated = { ...waTemplates, [editingKey]: editingText }
     setWaTemplates(updated)
-    localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
-    addToast('✅ WhatsApp template saved!', 'success')
+    try {
+      if (activeStoreId) localStorage.setItem(`trace_abandoned_wa_templates_${activeStoreId}`, JSON.stringify(updated))
+      localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
+    } catch (_) {}
+
+    setIsSavingTemplate(true)
+    try {
+      const res = await fetch('/api/abandoned/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: activeStoreId || 1,
+          template_key: editingKey,
+          template_text: editingText
+        })
+      })
+      const json = await res.json()
+      if (json.success) {
+        addToast('✅ WhatsApp template saved permanently!', 'success')
+      } else {
+        addToast(json.error || 'Failed to sync to database', 'warning')
+      }
+    } catch (err) {
+      console.error('Error saving template to DB:', err)
+      addToast('Saved locally, but server sync failed', 'warning')
+    } finally {
+      setIsSavingTemplate(false)
+    }
   }
 
   // Reset template to default
-  const resetTemplateToDefault = () => {
+  const resetTemplateToDefault = async () => {
     const defaultText = DEFAULT_WA_TEMPLATES[editingKey] || ''
     setEditingText(defaultText)
     const updated = { ...waTemplates, [editingKey]: defaultText }
     setWaTemplates(updated)
-    localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
-    addToast('Reset to default template', 'info')
+    try {
+      if (activeStoreId) localStorage.setItem(`trace_abandoned_wa_templates_${activeStoreId}`, JSON.stringify(updated))
+      localStorage.setItem('trace_abandoned_wa_templates', JSON.stringify(updated))
+    } catch (_) {}
+
+    try {
+      const res = await fetch('/api/abandoned/templates/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: activeStoreId || 1,
+          template_key: editingKey
+        })
+      })
+      const json = await res.json()
+      if (json.success) {
+        addToast('🔄 Reset to default template', 'info')
+      }
+    } catch (err) {
+      console.error('Error resetting template on server:', err)
+      addToast('Reset locally, but server sync failed', 'warning')
+    }
   }
 
   // Open WhatsApp with selected Template
@@ -1183,10 +1258,11 @@ export default function AbandonedCheckouts() {
                   </button>
                   <button
                     onClick={saveTemplate}
+                    disabled={isSavingTemplate}
                     className="btn btn-primary btn-sm"
-                    style={{ fontSize: '0.75rem', padding: '6px 16px', background: '#22c55e', borderColor: '#22c55e' }}
+                    style={{ fontSize: '0.75rem', padding: '6px 16px', background: '#22c55e', borderColor: '#22c55e', opacity: isSavingTemplate ? 0.7 : 1, cursor: isSavingTemplate ? 'not-allowed' : 'pointer' }}
                   >
-                    💾 Save Template
+                    {isSavingTemplate ? '⏳ Saving...' : '💾 Save Template'}
                   </button>
                 </div>
               </div>

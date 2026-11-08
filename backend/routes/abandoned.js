@@ -226,4 +226,101 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/abandoned/templates?store_id=...
+router.get('/templates', (req, res) => {
+  try {
+    const store_id = Number(req.query.store_id) || 1;
+    // Defensive table check
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS abandoned_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL,
+        template_key TEXT NOT NULL,
+        template_text TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(store_id, template_key)
+      )
+    `).run();
+
+    const rows = db.prepare('SELECT template_key, template_text FROM abandoned_templates WHERE store_id = ?').all(store_id);
+    const templates = {};
+    for (const r of rows) {
+      templates[r.template_key] = r.template_text;
+    }
+    res.json({ success: true, templates });
+  } catch (err) {
+    console.error('Error fetching abandoned templates:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/abandoned/templates
+router.post('/templates', (req, res) => {
+  try {
+    const { store_id, template_key, template_text } = req.body;
+    if (!store_id || !template_key || template_text === undefined) {
+      return res.status(400).json({ success: false, error: 'store_id, template_key, and template_text are required' });
+    }
+
+    // Defensive table check
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS abandoned_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL,
+        template_key TEXT NOT NULL,
+        template_text TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(store_id, template_key)
+      )
+    `).run();
+
+    db.prepare(`
+      INSERT INTO abandoned_templates (store_id, template_key, template_text, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(store_id, template_key) DO UPDATE SET
+        template_text = excluded.template_text,
+        updated_at = datetime('now')
+    `).run(Number(store_id), String(template_key), String(template_text));
+
+    res.json({ success: true, message: 'Template saved successfully' });
+  } catch (err) {
+    console.error('Error saving abandoned template:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/abandoned/templates/reset
+router.post('/templates/reset', (req, res) => {
+  try {
+    const { store_id, template_key } = req.body;
+    if (!store_id) {
+      return res.status(400).json({ success: false, error: 'store_id is required' });
+    }
+
+    // Defensive table check
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS abandoned_templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL,
+        template_key TEXT NOT NULL,
+        template_text TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(store_id, template_key)
+      )
+    `).run();
+
+    if (template_key && template_key !== 'ALL') {
+      db.prepare('DELETE FROM abandoned_templates WHERE store_id = ? AND template_key = ?').run(Number(store_id), String(template_key));
+    } else {
+      db.prepare('DELETE FROM abandoned_templates WHERE store_id = ?').run(Number(store_id));
+    }
+
+    res.json({ success: true, message: 'Template reset to default' });
+  } catch (err) {
+    console.error('Error resetting abandoned template:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+
