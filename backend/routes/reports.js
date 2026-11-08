@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { getCitySqlCase } = require('../utils/cityNormalizer');
 
 // ─── PNL MODULE: Named Constants (Rule 11 — No Magic Numbers) ───────────────
 const EST_COURIER_PER_ORDER = 200;  // Rs per dispatched order (PostEx/Leopards standard est. rate)
@@ -438,9 +439,10 @@ router.get('/courier-comparison', (req, res) => {
     const results = db.prepare(query).all(store_id);
 
     // City-wise success rate per courier
+    const cityCase = getCitySqlCase();
     const cityQuery = `
       SELECT 
-        city,
+        ${cityCase} as city,
         CASE 
           WHEN UPPER(courier) LIKE '%POSTEX%' OR UPPER(courier) LIKE '%POST EX%' THEN 'PostEx'
           WHEN UPPER(courier) LIKE '%LCS%' OR UPPER(courier) LIKE '%LEOPARD%' THEN 'Leopards'
@@ -456,7 +458,7 @@ router.get('/courier-comparison', (req, res) => {
       WHERE store_id = ? AND tracking_number IS NOT NULL AND tracking_number != ''
         AND city IS NOT NULL AND city != ''
         ${dateFilter}
-      GROUP BY city, courier_name
+      GROUP BY 1, 2
       HAVING total >= 3
     `;
     const cityResults = db.prepare(cityQuery).all(store_id);
@@ -484,6 +486,7 @@ router.get('/logistics-intelligence', (req, res) => {
       ELSE TRIM(courier)
     END
   `;
+  const cityCase = getCitySqlCase();
 
   let dateFilter = '';
   const baseParams = [Number(store_id)];
@@ -550,7 +553,7 @@ router.get('/logistics-intelligence', (req, res) => {
     // ── 4. Dead Zone Cities (delivery rate < 50%, min 5 orders) ─────────────
     const deadZoneCities = db.prepare(`
       SELECT
-        city,
+        ${cityCase} as city,
         ${courierCase} as courier_name,
         COUNT(*) as total_orders,
         SUM(CASE WHEN delivery_status = 'Delivered' THEN 1 ELSE 0 END) as delivered,
@@ -559,7 +562,7 @@ router.get('/logistics-intelligence', (req, res) => {
       FROM orders
       WHERE store_id = ? AND city IS NOT NULL AND city != '' 
         AND tracking_number IS NOT NULL AND tracking_number != '' ${dateFilter}
-      GROUP BY city, courier_name
+      GROUP BY 1, 2
       HAVING total_orders >= 5 AND delivery_rate < 50
       ORDER BY delivery_rate ASC
       LIMIT 20
@@ -639,7 +642,7 @@ router.get('/logistics-intelligence', (req, res) => {
     // ── 9. City-level Avg Delivery Days ──────────────────────────────────────
     const cityDeliveryDays = db.prepare(`
       SELECT
-        city,
+        ${cityCase} as city,
         ${courierCase} as courier_name,
         COUNT(*) as delivered_count,
         ROUND(AVG(julianday(status_date) - julianday(order_date)), 1) as avg_days,
@@ -652,7 +655,7 @@ router.get('/logistics-intelligence', (req, res) => {
         AND julianday(status_date) > julianday(order_date)
         AND (julianday(status_date) - julianday(order_date)) <= 30
         ${dateFilter}
-      GROUP BY city, courier_name
+      GROUP BY 1, 2
       HAVING delivered_count >= 5
       ORDER BY avg_days ASC
       LIMIT 40

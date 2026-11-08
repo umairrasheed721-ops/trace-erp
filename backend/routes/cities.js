@@ -39,12 +39,15 @@ router.post('/mappings', (req, res) => {
   }
 });
 
+const { normalizeCity } = require('../utils/cityNormalizer');
+
 // Helper for other backend logic to use directly
 const getCorrectedCity = (city) => {
   if (!city) return null;
   const normalized = city.trim().toLowerCase();
   const mapping = db.prepare('SELECT corrected_name FROM city_mappings WHERE original_input = ?').get(normalized);
-  return mapping ? mapping.corrected_name : city;
+  if (mapping && mapping.corrected_name) return mapping.corrected_name;
+  return normalizeCity(city);
 };
 
 // Increment usage count if auto-corrected

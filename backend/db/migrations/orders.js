@@ -1151,6 +1151,51 @@ module.exports = [
     } catch (e) {
       console.error('Migration #43 failed:', e.message);
     }
+  },
+
+  // 44. Seed city_mappings & auto-heal dirty city names in orders (e.g. Rwp -> Rawalpindi)
+  (db) => {
+    try {
+      const { CITY_ALIASES } = require('../../utils/cityNormalizer');
+      
+      // 1. Ensure city_mappings table exists
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS city_mappings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          original_input TEXT NOT NULL UNIQUE,
+          corrected_name TEXT NOT NULL,
+          usage_count INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now'))
+        )
+      `).run();
+
+      // 2. Seed standard aliases into city_mappings
+      const insertMapping = db.prepare(`
+        INSERT INTO city_mappings (original_input, corrected_name, usage_count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(original_input) DO UPDATE SET corrected_name = excluded.corrected_name
+      `);
+
+      for (const [alias, standard] of Object.entries(CITY_ALIASES)) {
+        insertMapping.run(alias.toLowerCase(), standard);
+      }
+
+      // 3. Auto-heal existing orders with dirty city names
+      const updateOrderCity = db.prepare('UPDATE orders SET city = ? WHERE LOWER(TRIM(city)) = ?');
+      let healedCount = 0;
+      for (const [alias, standard] of Object.entries(CITY_ALIASES)) {
+        const res = updateOrderCity.run(standard, alias.toLowerCase());
+        healedCount += res.changes;
+      }
+
+      if (healedCount > 0) {
+        console.log(`✅ [Migration #44] Auto-healed ${healedCount} orders with normalized city names.`);
+      } else {
+        console.log('✅ [Migration #44] City mappings seeded and verified.');
+      }
+    } catch (e) {
+      console.error('Migration #44 failed:', e.message);
+    }
   }
 ];
 
