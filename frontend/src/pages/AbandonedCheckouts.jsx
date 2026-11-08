@@ -10,6 +10,33 @@ const DEFAULT_WA_TEMPLATES = {
   CUSTOM: "Assalam-o-Alaikum {{customer_name}}, aapka cart link: {{checkout_url}}"
 }
 
+function computePresetDates(preset) {
+  const now = new Date()
+  const formatDateStr = (d) => d.toISOString().split('T')[0]
+
+  if (preset === 'TODAY') {
+    const todayStr = formatDateStr(now)
+    return { startDate: todayStr, endDate: todayStr }
+  } else if (preset === 'YESTERDAY') {
+    const y = new Date(now)
+    y.setDate(y.getDate() - 1)
+    const yStr = formatDateStr(y)
+    return { startDate: yStr, endDate: yStr }
+  } else if (preset === 'LAST_7_DAYS') {
+    const past = new Date(now)
+    past.setDate(past.getDate() - 7)
+    return { startDate: formatDateStr(past), endDate: formatDateStr(now) }
+  } else if (preset === 'LAST_30_DAYS') {
+    const past = new Date(now)
+    past.setDate(past.getDate() - 30)
+    return { startDate: formatDateStr(past), endDate: formatDateStr(now) }
+  } else if (preset === 'THIS_MONTH') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+    return { startDate: formatDateStr(firstDay), endDate: formatDateStr(now) }
+  }
+  return { startDate: '', endDate: '' }
+}
+
 export default function AbandonedCheckouts() {
   const navigate = useNavigate()
   const { activeStoreId, activeStore, addToast } = useApp()
@@ -20,8 +47,8 @@ export default function AbandonedCheckouts() {
   const [sortKey, setSortKey] = useState('DATE_DESC') // DATE_DESC | DATE_ASC | WA_FIRST | EMAIL_FIRST | PRICE_DESC | PRICE_ASC
   const [searchQuery, setSearchQuery] = useState('')
   const [datePreset, setDatePreset] = useState('LAST_30_DAYS')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDate, setStartDate] = useState(() => computePresetDates('LAST_30_DAYS').startDate)
+  const [endDate, setEndDate] = useState(() => computePresetDates('LAST_30_DAYS').endDate)
   
   // Custom message template option
   const [msgTemplate, setMsgTemplate] = useState('REMINDER') // REMINDER | DISCOUNT | LINK | CUSTOM
@@ -80,43 +107,12 @@ export default function AbandonedCheckouts() {
   // Compute dates based on preset
   const handlePresetChange = (preset) => {
     setDatePreset(preset)
-    const now = new Date()
-    const formatDateStr = (d) => d.toISOString().split('T')[0]
-
-    if (preset === 'TODAY') {
-      const todayStr = formatDateStr(now)
-      setStartDate(todayStr)
-      setEndDate(todayStr)
-    } else if (preset === 'YESTERDAY') {
-      const y = new Date(now)
-      y.setDate(y.getDate() - 1)
-      const yStr = formatDateStr(y)
-      setStartDate(yStr)
-      setEndDate(yStr)
-    } else if (preset === 'LAST_7_DAYS') {
-      const past = new Date(now)
-      past.setDate(past.getDate() - 7)
-      setStartDate(formatDateStr(past))
-      setEndDate(formatDateStr(now))
-    } else if (preset === 'LAST_30_DAYS') {
-      const past = new Date(now)
-      past.setDate(past.getDate() - 30)
-      setStartDate(formatDateStr(past))
-      setEndDate(formatDateStr(now))
-    } else if (preset === 'THIS_MONTH') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-      setStartDate(formatDateStr(firstDay))
-      setEndDate(formatDateStr(now))
-    } else if (preset === 'ALL_TIME') {
-      setStartDate('')
-      setEndDate('')
+    if (preset !== 'CUSTOM') {
+      const { startDate: s, endDate: e } = computePresetDates(preset)
+      setStartDate(s)
+      setEndDate(e)
     }
   }
-
-  // Initial mount: set preset
-  useEffect(() => {
-    handlePresetChange('LAST_30_DAYS')
-  }, [])
 
   const fetchAbandoned = async () => {
     if (!activeStoreId) return
