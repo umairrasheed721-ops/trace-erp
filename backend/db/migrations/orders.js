@@ -1215,7 +1215,26 @@ module.exports = [
     } catch (e) {
       console.error('Migration #45 failed:', e.message);
     }
+  },
+
+  // 46. Add abandoned_dismissed table for cross-device persistent handled checkouts
+  (db) => {
+    try {
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS abandoned_dismissed (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          checkout_id TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(store_id, checkout_id)
+        )
+      `).run();
+      console.log('✅ [Migration #46] abandoned_dismissed table created successfully.');
+    } catch (e) {
+      console.error('Migration #46 failed:', e.message);
+    }
   }
 ];
+
 
 

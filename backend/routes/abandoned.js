@@ -54,6 +54,21 @@ router.get('/', async (req, res) => {
       ORDER BY id DESC
     `).all(store.id);
 
+    // 2b. Fetch dismissed checkouts for this store from database
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS abandoned_dismissed (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id INTEGER NOT NULL,
+        checkout_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(store_id, checkout_id)
+      )
+    `).run();
+    const dismissedRows = db.prepare('SELECT checkout_id FROM abandoned_dismissed WHERE store_id = ?').all(store.id);
+    const dismissedSet = new Set(dismissedRows.map(r => String(r.checkout_id)));
+    const allTimeDismissedCount = dismissedRows.length;
+
+
     // Build lookup maps for fast matching
     const phoneToOrdersMap = new Map();
     const emailToOrdersMap = new Map();
@@ -186,7 +201,8 @@ router.get('/', async (req, res) => {
         completed_at: c.completed_at,
         reconciliation_status,
         matched_order,
-        existing_orders_count
+        existing_orders_count,
+        is_dismissed: dismissedSet.has(String(c.id))
       };
     });
 
@@ -203,11 +219,13 @@ router.get('/', async (req, res) => {
     // Summary statistics
     const stats = {
       total: checkouts.length,
-      true_abandoned: checkouts.filter(c => c.reconciliation_status === 'TRUE_ABANDONED').length,
+      true_abandoned: checkouts.filter(c => c.reconciliation_status === 'TRUE_ABANDONED' && !c.is_dismissed).length,
       recovered: checkouts.filter(c => c.reconciliation_status === 'RECOVERED').length,
       existing_customer: checkouts.filter(c => c.reconciliation_status === 'EXISTING_CUSTOMER').length,
+      dismissed: checkouts.filter(c => c.is_dismissed).length,
+      all_time_dismissed_count: allTimeDismissedCount,
       total_abandoned_value: checkouts
-        .filter(c => c.reconciliation_status === 'TRUE_ABANDONED')
+        .filter(c => c.reconciliation_status === 'TRUE_ABANDONED' && !c.is_dismissed)
         .reduce((sum, c) => sum + c.total_price, 0),
       recovery_rate_pct: checkouts.length > 0
         ? Math.round((checkouts.filter(c => c.reconciliation_status === 'RECOVERED').length / checkouts.length) * 100)
@@ -217,6 +235,7 @@ router.get('/', async (req, res) => {
     res.json({
       success: true,
       stats,
+      dismissed_ids: Array.from(dismissedSet),
       checkouts: filteredCheckouts
     });
 
@@ -322,5 +341,76 @@ router.post('/templates/reset', (req, res) => {
   }
 });
 
+// POST /api/abandoned/dismiss
+router.post('/dismiss', (req, res) => {
+  try {
+    const { store_id, checkout_id } = req.body;
+    if (!store_id || !checkout_id) {
+      return res.status(400).json({ success: false, error: 'store_id and checkout_id are required' });
+    }
+    db.prepare(`
+      INSERT INTO abandoned_dismissed (store_id, checkout_id)
+      VALUES (?, ?)
+      ON CONFLICT(store_id, checkout_id) DO NOTHING
+    `).run(Number(store_id), String(checkout_id));
+    res.json({ success: true, message: 'Checkout marked as handled / dismissed' });
+  } catch (err) {
+    console.error('Error dismissing checkout:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/abandoned/restore
+router.post('/restore', (req, res) => {
+  try {
+    const { store_id, checkout_id } = req.body;
+    if (!store_id || !checkout_id) {
+      return res.status(400).json({ success: false, error: 'store_id and checkout_id are required' });
+    }
+    db.prepare('DELETE FROM abandoned_dismissed WHERE store_id = ? AND checkout_id = ?')
+      .run(Number(store_id), String(checkout_id));
+    res.json({ success: true, message: 'Checkout restored to active list' });
+  } catch (err) {
+    console.error('Error restoring checkout:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/abandoned/dismiss-sync
+router.post('/dismiss-sync', (req, res) => {
+  try {
+    const { store_id, checkout_ids } = req.body;
+    if (store_id && Array.isArray(checkout_ids) && checkout_ids.length > 0) {
+      const insert = db.prepare('INSERT OR IGNORE INTO abandoned_dismissed (store_id, checkout_id) VALUES (?, ?)');
+      db.transaction(() => {
+        for (const id of checkout_ids) {
+          if (id) insert.run(Number(store_id), String(id));
+        }
+      })();
+    }
+    const all = db.prepare('SELECT checkout_id FROM abandoned_dismissed WHERE store_id = ?').all(Number(store_id));
+    res.json({ success: true, dismissed_ids: all.map(r => String(r.checkout_id)) });
+  } catch (err) {
+    console.error('Error syncing dismissed checkouts:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/abandoned/clear-dismissed
+router.post('/clear-dismissed', (req, res) => {
+  try {
+    const { store_id } = req.body;
+    if (!store_id) {
+      return res.status(400).json({ success: false, error: 'store_id is required' });
+    }
+    db.prepare('DELETE FROM abandoned_dismissed WHERE store_id = ?').run(Number(store_id));
+    res.json({ success: true, message: 'Dismissed checkouts history cleared for store' });
+  } catch (err) {
+    console.error('Error clearing dismissed checkouts:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+
 

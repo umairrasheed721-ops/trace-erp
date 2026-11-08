@@ -89,19 +89,51 @@ export default function AbandonedCheckouts() {
   }
 
   // Dismiss a checkout (hide/mark handled)
-  const handleDismiss = (id) => {
-    const updated = Array.from(new Set([...dismissedIds, String(id)]))
+  const handleDismiss = async (id) => {
+    const strId = String(id)
+    const updated = Array.from(new Set([...dismissedIds, strId]))
     setDismissedIds(updated)
     localStorage.setItem('trace_dismissed_abandoned', JSON.stringify(updated))
     addToast('Marked as handled / dismissed', 'success')
+    try {
+      await fetch('/api/abandoned/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId || 1, checkout_id: strId })
+      })
+    } catch (_) {}
   }
 
   // Restore a dismissed checkout
-  const handleRestore = (id) => {
-    const updated = dismissedIds.filter(dId => dId !== String(id))
+  const handleRestore = async (id) => {
+    const strId = String(id)
+    const updated = dismissedIds.filter(dId => dId !== strId)
     setDismissedIds(updated)
     localStorage.setItem('trace_dismissed_abandoned', JSON.stringify(updated))
     addToast('Restored to active list', 'info')
+    try {
+      await fetch('/api/abandoned/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId || 1, checkout_id: strId })
+      })
+    } catch (_) {}
+  }
+
+  // Clear all dismissed history for current store
+  const handleClearAllDismissed = async () => {
+    if (!window.confirm('Are you sure you want to clear all dismissed checkouts history?')) return
+    setDismissedIds([])
+    localStorage.setItem('trace_dismissed_abandoned', '[]')
+    addToast('Cleared dismissed checkouts history', 'info')
+    try {
+      await fetch('/api/abandoned/clear-dismissed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStoreId || 1 })
+      })
+      fetchAbandoned()
+    } catch (_) {}
   }
 
   // Compute dates based on preset
@@ -125,6 +157,28 @@ export default function AbandonedCheckouts() {
       const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch abandoned checkouts')
       const json = await res.json()
+      
+      // Sync dismissed IDs from server with local storage
+      if (Array.isArray(json.dismissed_ids)) {
+        const serverIds = json.dismissed_ids.map(String)
+        let localIds = []
+        try {
+          localIds = JSON.parse(localStorage.getItem('trace_dismissed_abandoned') || '[]').map(String)
+        } catch (_) {}
+        const merged = Array.from(new Set([...serverIds, ...localIds]))
+        setDismissedIds(merged)
+        localStorage.setItem('trace_dismissed_abandoned', JSON.stringify(merged))
+
+        const unsynced = localIds.filter(id => !serverIds.includes(id))
+        if (unsynced.length > 0 && activeStoreId) {
+          fetch('/api/abandoned/dismiss-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ store_id: activeStoreId, checkout_ids: unsynced })
+          }).catch(() => {})
+        }
+      }
+
       setData({
         stats: json.stats || {},
         checkouts: Array.isArray(json.checkouts) ? json.checkouts : []
@@ -192,17 +246,23 @@ export default function AbandonedCheckouts() {
     return !!c.email
   }).length
 
+  // Count how many checkouts currently loaded in view are dismissed
+  const dismissedInViewCount = allCheckouts.filter(c => dismissedIds.includes(String(c.id))).length
+
   // Filter & Sort checkouts by active tab, contact channel filter, dismissed state, & search query
   const filteredCheckouts = allCheckouts.filter(c => {
-    // Dismissed filter (unless viewing ALL or DISMISSED)
+    // Dismissed filter
     const isDismissed = dismissedIds.includes(String(c.id))
-    if (activeTab === 'DISMISSED') return isDismissed
-    if (isDismissed && activeTab !== 'ALL') return false
+    if (activeTab === 'DISMISSED') {
+      if (!isDismissed) return false
+    } else {
+      if (isDismissed && activeTab !== 'ALL') return false
 
-    // Tab filter
-    if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
-    if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
-    if (activeTab === 'EXISTING_CUSTOMER' && c.reconciliation_status !== 'EXISTING_CUSTOMER') return false
+      // Tab filter
+      if (activeTab === 'TRUE_ABANDONED' && c.reconciliation_status !== 'TRUE_ABANDONED') return false
+      if (activeTab === 'RECOVERED' && c.reconciliation_status !== 'RECOVERED') return false
+      if (activeTab === 'EXISTING_CUSTOMER' && c.reconciliation_status !== 'EXISTING_CUSTOMER') return false
+    }
 
     // Contact Doable Sub-Filter
     if (contactFilter === 'WA_DOABLE' && !c.phone) return false
@@ -659,7 +719,7 @@ export default function AbandonedCheckouts() {
             { key: 'ALL', label: 'All Checkouts', badge: stats.total || 0 },
             { key: 'RECOVERED', label: '🟢 Recovered / Placed', badge: stats.recovered || 0 },
             { key: 'EXISTING_CUSTOMER', label: '🟡 Existing Customer', badge: stats.existing_customer || 0 },
-            { key: 'DISMISSED', label: '🚫 Handled / Dismissed', badge: dismissedIds.length },
+            { key: 'DISMISSED', label: '🚫 Handled / Dismissed', badge: dismissedInViewCount },
           ].map(tab => (
             <button
               key={tab.key}
@@ -798,13 +858,39 @@ export default function AbandonedCheckouts() {
           <span className="loading-spinner" /> Fetching and reconciling checkouts from Shopify...
         </div>
       ) : filteredCheckouts.length === 0 ? (
-        <div className="empty-state" style={{ padding: '60px 0', textAlign: 'center' }}>
-          <div className="empty-icon" style={{ fontSize: '2.5rem', marginBottom: 12 }}>🛒</div>
-          <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>No Abandoned Checkouts Found</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: '0.85rem' }}>
-            No checkouts match the current tab, contact filter, or search query.
-          </p>
-        </div>
+        activeTab === 'DISMISSED' && dismissedIds.length > 0 ? (
+          <div className="card" style={{ padding: '48px 24px', textAlign: 'center', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 14 }}>
+            <div className="empty-icon" style={{ fontSize: '2.5rem', marginBottom: 12 }}>🚫</div>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>No Dismissed Checkouts in Selected Date Range</h3>
+            <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: '0.85rem', maxWidth: 520, margin: '8px auto 20px' }}>
+              Selected date filter ke andar koi dismissed checkout nahi hai. Aapke paas <strong>{dismissedIds.length} checkout(s)</strong> older dates ya previous periods me Handled / Dismissed mark huay hain.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handlePresetChange('ALL_TIME')}
+                style={{ padding: '8px 16px', fontWeight: 700, borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                📅 Switch to All Time ({dismissedIds.length} Dismissed)
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleClearAllDismissed}
+                style={{ padding: '8px 16px', fontWeight: 700, borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 6, color: '#f87171' }}
+              >
+                🧹 Clear Dismissed History
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state" style={{ padding: '60px 0', textAlign: 'center' }}>
+            <div className="empty-icon" style={{ fontSize: '2.5rem', marginBottom: 12 }}>🛒</div>
+            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>No Abandoned Checkouts Found</h3>
+            <p style={{ color: 'var(--text-muted)', marginTop: 6, fontSize: '0.85rem' }}>
+              No checkouts match the current tab, contact filter, or search query.
+            </p>
+          </div>
+        )
       ) : (
         <div className="table-wrapper" style={{ overflowX: 'auto', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1250 }}>
