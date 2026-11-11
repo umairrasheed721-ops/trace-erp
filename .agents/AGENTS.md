@@ -209,7 +209,31 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - **Post-upload check (mandatory for every NEW store)**: `curl -s -o /dev/null -w "%{http_code}" https://<store-domain>/` MUST be `200`. If `404` while `/collections/all` is `200`, FIRST suspect a rejected `templates/index.json` (check asset error), not caching.
     - After fixing a new store, tell the user which sections lost their media (e.g. hero video slider) so they can re-add store-specific videos in Theme Editor.
 
+35. **Synchronous Date Preset & Filter Initialization Standard (CRITICAL)**:
+    - Whenever a page or component utilizes a default date preset (e.g. `Last 30 Days`, `Today`, `This Month`), the `startDate` and `endDate` states MUST be computed and initialized synchronously on component declaration:
+      `const [startDate, setStartDate] = useState(() => computePresetDates('LAST_30_DAYS').startDate)`
+      `const [endDate, setEndDate] = useState(() => computePresetDates('LAST_30_DAYS').endDate)`
+    - **Forbidden Pattern**: NEVER initialize `startDate` and `endDate` to empty strings `''` and attempt to populate them inside an async mount `useEffect(() => { handlePresetChange(...) }, [])`. This causes the initial fetch to fire with blank dates, triggering un-filtered / all-time database or Shopify API queries.
 
+36. **Scoped Tab Badge & Filter Parity Standard (CRITICAL)**:
+    - Every tab button's numeric badge (e.g. `🔴 True Abandoned (16)`, `🚫 Handled / Dismissed (0)`) MUST reflect the exact count of items matching that tab within the **current active date, store, and channel filters**.
+    - **Forbidden Pattern**: NEVER bind a tab badge to a global/unscoped array length (e.g. `badge: dismissedIds.length`) if the table content underneath is filtered by date or store. Badge numbers MUST match the number of visible items when that tab is clicked to prevent confusing 0-row UI states.
 
+37. **Operational & Workflow State DB Persistence Standard**:
+    - Any ERP state that represents team operational actions (e.g. marking checkouts/orders as handled/dismissed, custom recovery templates, call notes, manual restock flags) MUST NEVER rely solely on browser `localStorage`.
+    - Every operational action must be backed by a dedicated SQLite database table with `store_id` scoping (e.g. `abandoned_templates`, `abandoned_dismissed`), ensuring changes persist across laptops, mobile devices, team members, and cache clears.
+    - `localStorage` may only be used as a client-side optimistic cache or for personal UI preferences (e.g., dark mode toggle, table density).
 
+38. **Universal Store Isolation (`store_id` Scoping)**:
+    - Every newly created database table, migration, API endpoint, query, and localStorage key that holds merchant or order data MUST be explicitly scoped by `store_id`.
+    - No operational workflow, dismissal list, or template configuration may ever be stored globally across multiple connected stores.
 
+39. **Actionable Empty States & Contextual Guidance Standard**:
+    - When a filter or tab produces 0 results but records exist outside the current filter/date range, the UI MUST NOT show a dead generic "No Data Found" screen.
+    - It MUST provide a contextual banner explaining where the records are (e.g., *"You have 4 dismissed checkouts in older dates"*) along with a 1-click action button (e.g., `[📅 Switch to All Time]` or `[🧹 Clear Filter]`).
+
+40. **Shopify 250-Item Hard Limit & Silent Truncation Guard**:
+    - Shopify REST API endpoints (`/checkouts.json`, `/orders.json`) enforce a hard maximum limit of 250 items per request.
+    - When fetching data from Shopify:
+      - If the response returns exactly 250 records, the agent and UI must account for potential data truncation (e.g. notifying the merchant to narrow the date range or implementing pagination/cursor handling).
+      - Never assume a single 250-limit call represents complete historical data for high-volume stores without date bounds.
