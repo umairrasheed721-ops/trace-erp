@@ -164,6 +164,7 @@ export default function EditOrderModal({
   const [sendingCatalog, setSendingCatalog] = useState(false);
   const [catalogVariants, setCatalogVariants] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [selectedCatalogVariants, setSelectedCatalogVariants] = useState(new Set());
   const [includeContinueSelling, setIncludeContinueSelling] = useState(true);
   const [batchIndex, setBatchIndex] = useState(0);
@@ -181,10 +182,12 @@ export default function EditOrderModal({
   const fetchCatalogVariants = async (size, includeContinue) => {
     if (!editingOrder || !size) return;
     setLoadingCatalog(true);
+    setCatalogError('');
     setBatchIndex(0); // Reset page index on reload
     try {
       const token = localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
-      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}&include_continue_selling=${includeContinue ? 'true' : 'false'}`, {
+      const storeId = editingOrder.store_id || 1;
+      const res = await fetch(`/api/whatsapp/in-stock-images?size=${encodeURIComponent(size)}&include_continue_selling=${includeContinue ? 'true' : 'false'}&store_id=${storeId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -206,10 +209,12 @@ export default function EditOrderModal({
         }
       } else {
         setCatalogVariants([]);
+        setCatalogError(data.error || `Catalog request failed (HTTP ${res.status})`);
       }
     } catch (err) {
       console.error('Error fetching catalog variants:', err);
       setCatalogVariants([]);
+      setCatalogError(err.message || 'Catalog request failed');
     } finally {
       setLoadingCatalog(false);
     }
@@ -961,8 +966,10 @@ export default function EditOrderModal({
                       </div>
                     </div>
                   ) : (
-                    <div style={{ padding: '16px', border: '1px dashed #334155', borderRadius: 12, textAlign: 'center', color: '#fb923c', fontSize: '0.8rem' }}>
-                      ⚠️ No in-stock items found matching size: {selectedSize}
+                    <div style={{ padding: '16px', border: '1px dashed #334155', borderRadius: 12, textAlign: 'center', color: catalogError ? '#f87171' : '#fb923c', fontSize: '0.8rem' }}>
+                      {catalogError
+                        ? `❌ Catalog load failed: ${catalogError}`
+                        : `⚠️ No in-stock items found matching size: ${selectedSize}`}
                     </div>
                   )}
                   <span style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: '1.4' }}>

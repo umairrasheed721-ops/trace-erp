@@ -53,6 +53,7 @@ const reviewsRoutes     = safeRequire('./reviews',      'Reviews');
 const abandonedRoutes   = safeRequire('./abandoned',    'Abandoned');
 const shipperAdviceRoutes = safeRequire('./shipper-advice', 'ShipperAdvice');
 const expensesRoutes    = safeRequire('./expenses',     'Expenses');
+const whatsappRoutes    = safeRequire('./whatsapp',     'WhatsApp');
 
 // Register routes
 router.use('/api/auth', authRoutes);
@@ -78,6 +79,7 @@ router.use('/api/postex', postexRoutes);
 router.use('/api/reviews', reviewsRoutes);
 router.use('/api/abandoned', abandonedRoutes);
 router.use('/api/expenses', expensesRoutes);
+router.use('/api/whatsapp', whatsappRoutes);
 
 // --- 🔄 AUTO-RETRY FAILED MODULES (every 90s) ---
 const ROUTE_MAP = {
@@ -120,6 +122,12 @@ setInterval(() => {
 // --- OTHER SPECIFIC ROUTES FROM index.js ---
 
 router.get('/api/wake-up-test', (req, res) => res.json({ message: "🚀 RAILWAY IS ALIVE AND UPDATED!", version: "v2-multi-store", time: new Date().toISOString() }));
+
+// ⚡ COURIERS LIST ALIAS FOR EDIT ORDER MODAL ⚡
+router.get('/api/logistics/couriers', (req, res, next) => {
+  req.url = '/logistics/couriers';
+  ordersRoutes(req, res, next);
+});
 
 // ⚡ GET RABBI TRENDS ACCESS TOKEN FOR LOCAL SCRIPTS ⚡
 router.get('/api/public/get-rabbi-token', (req, res) => {

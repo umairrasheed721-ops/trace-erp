@@ -79,7 +79,7 @@ export default function SearchTool() {
 
   const hasState = !!(location.state && Object.keys(location.state).length > 0);
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const orderQuery = searchParams.get('order') || searchParams.get('search');
+  const orderQuery = searchParams.get('order') || searchParams.get('search') || searchParams.get('q');
   const hasQueryOrState = hasState || !!orderQuery;
 
   const [preset, setPreset] = usePersistentState('command_center_filters_v1_preset', orderQuery ? 'All Time' : (location.state?.preset || 'This Month'), { override: hasQueryOrState })
@@ -382,7 +382,7 @@ export default function SearchTool() {
   // Handle order/search query parameter updates dynamically
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const orderParam = params.get('order') || params.get('search');
+    const orderParam = params.get('order') || params.get('search') || params.get('q');
     if (orderParam) {
       setKeyword(orderParam);
       setStatus('All Statuses');

@@ -48,7 +48,7 @@ router.get('/history-search', (req, res) => {
     if (phone && phone.trim() && phone.trim() !== 'null' && phone.trim() !== 'undefined') {
       const cleanPhoneVal = phone.trim().replace(/\D/g, '');
       if (cleanPhoneVal.length >= 10) {
-        dualKeys.push('(o.phone IS NOT NULL AND o.phone != \'\' AND SUBSTR(o.phone, -10) = ?)');
+        dualKeys.push('(o.phone IS NOT NULL AND o.phone != \'\' AND SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\'), \'(\', \'\'), -10) = ?)');
         params.push(cleanPhoneVal.slice(-10));
       } else {
         dualKeys.push('o.phone = ?');
@@ -221,7 +221,7 @@ router.get('/', (req, res) => {
                SELECT COUNT(*) FROM (
                  SELECT id FROM orders 
                  WHERE phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != ''
-                   AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10)
+                   AND SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) = SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(o.phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10)
                  UNION
                  SELECT id FROM orders 
                  WHERE email = o.email AND o.email IS NOT NULL AND o.email != ''

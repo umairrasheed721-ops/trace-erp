@@ -70,7 +70,32 @@ function getOrderFilters(req) {
   if (end_date) { whereClauses.push("date(COALESCE(NULLIF(o.order_date,''), o.created_timestamp)) <= ?"); queryParams.push(end_date); }
   
   if (search && search.trim()) {
-    const kw = search.trim().toLowerCase().replace(/^#/, '');
+    const rawSearch = search.trim();
+
+    // 1. Unify field prefix spacing (e.g. "phone: 0333..." -> "phone:0333...")
+    let cleanKw = rawSearch.replace(/\b(phone|city|email|ref|status|note|tag|tags|courier):\s+/gi, '$1:');
+
+    // 2. Normalize phone numbers: if the entire query is digits & phone punctuation (e.g. "+92 333 5149718", "0333 514 9718", "0333-514-9718")
+    const allDigits = cleanKw.replace(/\D/g, '');
+    const isPurePhoneOrNumeric = /^[\d\s+\-().]+$/.test(cleanKw) && allDigits.length >= 7;
+
+    if (isPurePhoneOrNumeric) {
+      // Standardize 10+ digit phone numbers to standard 11-digit "03xxxxxxxxx" representation so spaces don't shatter tokens
+      if (allDigits.length >= 10) {
+        cleanKw = '0' + allDigits.slice(-10);
+      } else {
+        cleanKw = allDigits;
+      }
+    } else {
+      // 3. For mixed queries (e.g. "Rubab +92 333 5149718"), collapse spaces/hyphens in any embedded phone numbers
+      const pakPhoneRegex = /(?:(?:\+|00)?92[\s\-.]*|0)?3\d{2}[\s\-.]*\d{3}[\s\-.]*\d{4}/gi;
+      cleanKw = cleanKw.replace(pakPhoneRegex, (m) => {
+        const d = m.replace(/\D/g, '');
+        return d.length >= 10 ? '0' + d.slice(-10) : d;
+      });
+    }
+
+    const kw = cleanKw.toLowerCase().replace(/^#/, '');
     if (!kw) return { where: whereClauses.join(' AND '), queryParams };
     
     // Detect Bulk ID Search (Multiple space/newline separated IDs)
@@ -94,7 +119,7 @@ function getOrderFilters(req) {
           const [field, value] = actualToken.split(':');
           const target = ['city','phone','email','courier','ref','status','note','tag','tags'].includes(field) ? field : null;
           if (target === 'city') clause = 'o.city LIKE ?';
-          else if (target === 'phone') clause = 'o.phone LIKE ?';
+          else if (target === 'phone') clause = '(o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\'), \'(\', \'\') LIKE ?)';
           else if (target === 'email') clause = 'o.email LIKE ?';
           else if (target === 'courier') clause = 'o.courier LIKE ?';
           else if (target === 'status') clause = 'o.delivery_status LIKE ?';
@@ -107,7 +132,7 @@ function getOrderFilters(req) {
             if (target === 'phone') {
               const digits = value.replace(/\D/g, '');
               const cleanVal = digits.length >= 10 ? digits.slice(-10) : digits;
-              queryParams.push(`%${cleanVal}%`);
+              queryParams.push(`%${cleanVal}%`, `%${cleanVal}%`);
             } else if (target === 'ref') {
               queryParams.push(`%${value}%`, `%${value}%`);
             } else {
@@ -115,21 +140,17 @@ function getOrderFilters(req) {
             }
           }
         } else {
-          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\') LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ? OR o.tags LIKE ?)';
+          clause = '(o.tracking_number LIKE ? OR o.customer_name LIKE ? OR o.ref_number LIKE ? OR o.shopify_order_id LIKE ? OR o.phone LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(o.phone, \' \', \'\'), \'-\', \'\'), \'+\', \'\'), \'(\', \'\') LIKE ? OR o.email LIKE ? OR o.product_titles LIKE ? OR o.tags LIKE ?)';
           whereClauses.push(isNegated ? `NOT (${clause})` : clause);
           const searchVal = `%${actualToken}%`;
           
           let phoneSearchVal = searchVal;
           let cleanPhoneDigits = searchVal;
-          if (/^\+?\d+$/.test(actualToken) || (actualToken.startsWith('+') && /^\d+$/.test(actualToken.slice(1)))) {
-            const digits = actualToken.replace(/\D/g, '');
-            if (digits.length >= 10) {
-              phoneSearchVal = `%${digits.slice(-10)}%`;
-              cleanPhoneDigits = `%${digits.slice(-10)}%`;
-            } else {
-              phoneSearchVal = `%${digits}%`;
-              cleanPhoneDigits = `%${digits}%`;
-            }
+          const rawDigits = actualToken.replace(/\D/g, '');
+          if (rawDigits.length >= 7 || /^\+?\d+$/.test(actualToken) || (actualToken.startsWith('+') && /^\d+$/.test(actualToken.slice(1)))) {
+            const last10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
+            phoneSearchVal = `%${last10}%`;
+            cleanPhoneDigits = `%${last10}%`;
           }
           queryParams.push(searchVal, searchVal, searchVal, searchVal, phoneSearchVal, cleanPhoneDigits, searchVal, searchVal, searchVal);
         }
@@ -146,19 +167,27 @@ function getOrderFilters(req) {
   ['ref_number', 'customer_name', 'city', 'phone', 'email', 'courier', 'tracking_number', 'notes', 'tags'].forEach(field => {
     if (req.query[field]) {
       const val = req.query[field].toLowerCase().trim();
-      const terms = val.split(/[\s,]+/).filter(Boolean);
+      const terms = (field === 'phone')
+        ? val.split(',').map(t => t.trim()).filter(Boolean)
+        : val.split(/[\s,]+/).filter(Boolean);
+
       if (terms.length > 0) {
-        const orClauses = terms.map(() => `LOWER(o.${field}) LIKE ?`).join(' OR ');
-        whereClauses.push(`(${orClauses})`);
-        terms.forEach(t => {
-          if (field === 'phone') {
+        if (field === 'phone') {
+          const phoneClauses = [];
+          terms.forEach(t => {
             const digits = t.replace(/\D/g, '');
             const cleanVal = digits.length >= 10 ? digits.slice(-10) : digits;
-            queryParams.push(`%${cleanVal}%`);
-          } else {
+            phoneClauses.push('(LOWER(o.phone) LIKE ? OR REPLACE(REPLACE(REPLACE(REPLACE(o.phone, " ", ""), "-", ""), "+", ""), "(", "") LIKE ?)');
+            queryParams.push(`%${cleanVal}%`, `%${cleanVal}%`);
+          });
+          whereClauses.push(`(${phoneClauses.join(' OR ')})`);
+        } else {
+          const orClauses = terms.map(() => `LOWER(o.${field}) LIKE ?`).join(' OR ');
+          whereClauses.push(`(${orClauses})`);
+          terms.forEach(t => {
             queryParams.push(`%${t}%`);
-          }
-        });
+          });
+        }
       }
     }
   });
