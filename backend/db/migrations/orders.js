@@ -1233,6 +1233,18 @@ module.exports = [
     } catch (e) {
       console.error('Migration #46 failed:', e.message);
     }
+  },
+
+  // 47. Create composite index on orders(store_id, created_timestamp DESC) for instant All-Time sorting
+  (db) => {
+    try {
+      db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_orders_store_created ON orders(store_id, created_timestamp DESC);
+      `).run();
+      console.log('✅ [Migration #47] idx_orders_store_created composite index verified successfully.');
+    } catch (e) {
+      console.error('Migration #47 failed:', e.message);
+    }
   }
 ];
 

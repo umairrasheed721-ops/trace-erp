@@ -1087,8 +1087,8 @@ export default function SearchTool() {
    * a direct, immediate API call with default unfiltered parameters.
    */
   const handleClear = useCallback(() => {
-    console.log('🧹 [SearchTool] handleClear execution started.');
-    
+    isClearingRef.current = true;
+
     // Clear all filters state immediately
     setPreset('All Time');
     setStatus('All Statuses');
@@ -1897,6 +1897,8 @@ export default function SearchTool() {
         setShowNameDialog={setShowNameDialog}
         setKeyword={setKeyword}
         setStatus={setStatus}
+        keyword={keyword}
+        status={status}
         page={page}
         setPage={setPage}
         limit={limit}
