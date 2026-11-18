@@ -19,6 +19,37 @@ router.get('/', (req, res) => {
   }
 });
 
+// GET /api/cost-manager/drift-summary - Ultra-lightweight endpoint for monitor pills & alert banners
+router.get('/drift-summary', (req, res) => {
+  const { store_id } = req.query;
+  const targetStoreId = Number(store_id) || 1;
+
+  try {
+    const row = db.prepare(`
+      SELECT 
+        COUNT(*) AS drift_count,
+        COUNT(DISTINCT parent_title) AS products_count
+      FROM product_master_costs
+      WHERE store_id = ?
+        AND unit_cost > 0
+        AND shopify_cost > 0
+        AND ABS(shopify_cost - unit_cost) > 1
+    `).get(targetStoreId);
+
+    const store = db.prepare('SELECT id, store_name, shop_domain FROM stores WHERE id = ?').get(targetStoreId);
+
+    res.json({
+      success: true,
+      store_id: targetStoreId,
+      store_name: store?.store_name || store?.shop_domain || `Store #${targetStoreId}`,
+      drift_count: row?.drift_count || 0,
+      products_count: row?.products_count || 0
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, drift_count: 0 });
+  }
+});
+
 // POST /api/cost-manager/bulk-update - Update costs for multiple SKUs
 router.post('/bulk-update', (req, res) => {
   const { store_id, updates } = req.body;

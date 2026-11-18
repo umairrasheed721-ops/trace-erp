@@ -20,6 +20,7 @@ export default function Topbar() {
 
   const [adviceCount, setAdviceCount] = useState(0)
   const [stuckCount, setStuckCount] = useState(0)
+  const [driftCount, setDriftCount] = useState(0)
 
   // 📝 Super Admin Quick Notepad Engine
   const isAdmin = !user || user.role === 'admin';
@@ -84,9 +85,10 @@ export default function Topbar() {
     if (!activeStoreId) return;
     const fetchCounts = async () => {
       try {
-        const [advRes, stuckRes] = await Promise.all([
+        const [advRes, stuckRes, driftRes] = await Promise.all([
           fetch(`/api/monitors/advice?store_id=${activeStoreId}`),
-          fetch(`/api/monitors/stuck?store_id=${activeStoreId}`)
+          fetch(`/api/monitors/stuck?store_id=${activeStoreId}`),
+          fetch(`/api/cost-manager/drift-summary?store_id=${activeStoreId}`)
         ]);
         if (advRes.ok) {
           const advData = await advRes.json();
@@ -96,6 +98,10 @@ export default function Topbar() {
           const stuckData = await stuckRes.json();
           setStuckCount(Array.isArray(stuckData) ? stuckData.length : (stuckData.total || 0));
         }
+        if (driftRes && driftRes.ok) {
+          const driftData = await driftRes.json();
+          setDriftCount(driftData.drift_count || 0);
+        }
       } catch (e) {
         console.warn('Failed to fetch monitor alert counts:', e.message);
       }
@@ -103,7 +109,13 @@ export default function Topbar() {
 
     fetchCounts();
     const interval = setInterval(fetchCounts, 60000);
-    return () => clearInterval(interval);
+    const handleRefresh = () => fetchCounts();
+    window.addEventListener('refresh-drift-count', handleRefresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refresh-drift-count', handleRefresh);
+    };
   }, [activeStoreId]);
 
   // Close dropdowns on outside click & Handle keyboard shortcuts
@@ -361,6 +373,29 @@ export default function Topbar() {
                 title="Stuck Parcels Monitor"
               >
                 🚨 Stuck ({stuckCount})
+              </Link>
+            )}
+            {driftCount > 0 && (
+              <Link
+                to="/costing?tab=drift"
+                className="btn btn-xs"
+                style={{
+                  padding: '3px 10px',
+                  fontSize: '0.72rem',
+                  borderRadius: 12,
+                  background: 'rgba(245,158,11,0.15)',
+                  color: '#f59e0b',
+                  border: '1px solid rgba(245,158,11,0.4)',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  boxShadow: '0 0 10px rgba(245,158,11,0.2)'
+                }}
+                title="Price Drifts: Shopify costs differ from ERP accepted costs"
+              >
+                ⚡ Drift ({driftCount})
               </Link>
             )}
           </div>

@@ -194,6 +194,7 @@ export default function CostManager() {
       setCosts(Array.isArray(data) ? data : [])
       setSelectedVariants(new Set())
       fetchAudit()
+      try { window.dispatchEvent(new CustomEvent('refresh-drift-count')) } catch (_) {}
     } catch (e) {
       setLoadError(e.message || 'Unknown error')
       addToast('Failed to load cost registry: ' + e.message, 'error')

@@ -9,6 +9,7 @@ import { RoutePersistenceProvider, RoutePersistenceWatcher } from './context/Rou
 
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
+import PriceDriftBanner from './components/PriceDriftBanner'
 import ToastContainer from './components/ToastContainer'
 import ErrorBoundary from './components/ErrorBoundary'
 import { copyWithTooltip } from './utils/orderUtils'
@@ -325,6 +326,7 @@ function AppContent() {
         <Sidebar />
         <div className="main-content">
           <Topbar />
+          <PriceDriftBanner />
           <div className="page-content">
             <Suspense fallback={<div className="loading-screen"><span className="loading-spinner"></span></div>}>
               <ErrorBoundary>
