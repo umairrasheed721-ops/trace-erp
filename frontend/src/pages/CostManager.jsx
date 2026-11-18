@@ -279,7 +279,7 @@ export default function CostManager() {
       if (landed > 0) grouped[c.parent_title].hasCost = true
       
       // Track Price Drift
-      if (c.unit_cost > 0 && c.shopify_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
+      if (c.unit_cost > 0 && c.shopify_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) >= 1) {
         grouped[c.parent_title].hasDrift = true
       }
 
@@ -339,7 +339,7 @@ export default function CostManager() {
   const lists = useMemo(() => {
     return {
       pending: sorted.filter(p => !p.hasCost),
-      drift: sorted.filter(p => p.hasDrift || p.variants.some(v => v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1)),
+      drift: sorted.filter(p => p.hasDrift || p.variants.some(v => v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1)),
       verified: sorted.filter(p => p.hasCost),
       continue_selling: sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue')),
       active: sorted.filter(p => (p.variants[0]?.status || 'active') === 'active'),
@@ -1600,7 +1600,7 @@ export default function CostManager() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     {v.variant_title || 'Default'}
                                     {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
-                                    {v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                    {v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                       <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
                                     )}
                                     {v.inventory_policy === 'continue' && (
@@ -1615,7 +1615,7 @@ export default function CostManager() {
                               {v.shopify_cost > 0 ? (
                                 <div>
                                   <div>Rs {v.shopify_cost.toLocaleString()}</div>
-                                  {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                  {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                     <div style={{
                                       fontSize: '0.65rem',
                                       fontWeight: 700,
@@ -1677,7 +1677,7 @@ export default function CostManager() {
                                   </div>
                                 ) : (
                                   <div style={{ display: 'flex', gap: 4 }}>
-                                    {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                    {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                       <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
                                     )}
                                     <button className="btn btn-icon" title="Edit inline" onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })} >✏️</button>
@@ -1836,7 +1836,7 @@ export default function CostManager() {
                                     {v.shopify_cost > 0 ? (
                                       <div>
                                         <div>Rs {v.shopify_cost.toLocaleString()}</div>
-                                        {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                        {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                           <div style={{
                                             fontSize: '0.65rem',
                                             fontWeight: 700,
@@ -1896,7 +1896,7 @@ export default function CostManager() {
                                         </div>
                                       ) : (
                                         <div style={{ display: 'flex', gap: 4 }}>
-                                          {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                          {v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                             <button className="btn btn-icon" title="Accept Shopify Cost" onClick={() => handleAcceptShopifyCost(v)}>✅</button>
                                           )}
                                           <button className="btn btn-icon" title="Edit inline" onClick={() => setInlineEdits({ ...inlineEdits, [key]: { unit_cost: v.unit_cost || 0, packaging_cost: v.packaging_cost || 0 } })} >✏️</button>

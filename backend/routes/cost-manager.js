@@ -33,7 +33,7 @@ router.get('/drift-summary', (req, res) => {
       WHERE store_id = ?
         AND unit_cost > 0
         AND shopify_cost > 0
-        AND ABS(shopify_cost - unit_cost) > 1
+        AND ABS(shopify_cost - unit_cost) >= 1
     `).get(targetStoreId);
 
     const store = db.prepare('SELECT id, store_name, shop_domain FROM stores WHERE id = ?').get(targetStoreId);
