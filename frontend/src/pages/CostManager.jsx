@@ -278,7 +278,7 @@ export default function CostManager() {
       if (landed > 0) grouped[c.parent_title].hasCost = true
       
       // Track Price Drift
-      if (c.unit_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
+      if (c.unit_cost > 0 && c.shopify_cost > 0 && Math.abs(c.shopify_cost - c.unit_cost) > 1) {
         grouped[c.parent_title].hasDrift = true
       }
 
@@ -338,6 +338,7 @@ export default function CostManager() {
   const lists = useMemo(() => {
     return {
       pending: sorted.filter(p => !p.hasCost),
+      drift: sorted.filter(p => p.hasDrift || p.variants.some(v => v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1)),
       verified: sorted.filter(p => p.hasCost),
       continue_selling: sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue')),
       active: sorted.filter(p => (p.variants[0]?.status || 'active') === 'active'),
@@ -663,6 +664,28 @@ export default function CostManager() {
         fetchCosts()
       }
     } catch (e) { addToast('Bulk accept failed', 'error') }
+  }
+
+  const handleAcceptAllDrifts = async () => {
+    const driftList = lists.drift || []
+    if (driftList.length === 0) return
+    if (!window.confirm(`Accept new Shopify costs for ALL ${driftList.length} products with price drift?`)) return
+    setBulkProcessing(true)
+    try {
+      for (const p of driftList) {
+        await fetch('/api/finance/bulk-accept-shopify-costs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: activeStoreId, parent_title: p.name })
+        })
+      }
+      addToast(`Successfully accepted new costs for ${driftList.length} products!`, 'success')
+      fetchCosts()
+    } catch (e) {
+      addToast('Bulk accept failed', 'error')
+    } finally {
+      setBulkProcessing(false)
+    }
   }
 
   const handleInlineSave = async (v) => {
@@ -1052,6 +1075,7 @@ export default function CostManager() {
         {[
           { key: 'watchdog', label: 'Watchdog', count: auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length, color: '#ef4444', icon: '🛡️' },
           { key: 'pending',  label: 'Pending',  count: lists.pending.length,  color: '#f59e0b', icon: '⏳' },
+          { key: 'drift',    label: 'Price Drift', count: lists.drift.length, color: '#eab308', icon: '⚡' },
           { key: 'verified', label: 'Verified', count: lists.verified.length, color: '#22c55e', icon: '✅' },
           { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', icon: '🔄' },
           { key: 'active',   label: 'Active',   count: lists.active.length,   color: '#3b82f6', icon: '🟢' },
@@ -1091,7 +1115,7 @@ export default function CostManager() {
         ))}
       </div>
 
-      {(activeTab === 'pending' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'unlisted' || activeTab === 'archived') && (
+      {(activeTab === 'pending' || activeTab === 'drift' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'unlisted' || activeTab === 'archived') && (
         <>
           {/*             <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>🔍</span>
@@ -1287,6 +1311,74 @@ export default function CostManager() {
             })()
           )}
 
+          {/* ── Price Drift Action Banner ── */}
+          {activeTab === 'drift' && !loading && !loadError && currentList.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12) 0%, rgba(245, 158, 11, 0.08) 100%)',
+              border: '1px solid rgba(234, 179, 8, 0.35)',
+              borderRadius: 14,
+              padding: '16px 22px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+              boxShadow: '0 4px 16px rgba(234, 179, 8, 0.08)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 12,
+                  background: 'rgba(234, 179, 8, 0.2)',
+                  border: '1px solid rgba(234, 179, 8, 0.4)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.4rem', flexShrink: 0
+                }}>
+                  ⚡
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#eab308', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Price Drift Detected
+                    <span style={{
+                      background: 'rgba(234, 179, 8, 0.25)',
+                      color: '#eab308',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: 20
+                    }}>
+                      {currentList.length} Product{currentList.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 3 }}>
+                    In products ki cost Shopify par update hui hai lekin ERP ki accepted cost se mukhtalif hai. Nayi cost accept karne se aane wale naye orders ko nayi cost assign ho jayegi.
+                  </div>
+                </div>
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)',
+                  color: '#000',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  border: 'none',
+                  padding: '9px 18px',
+                  borderRadius: 10,
+                  boxShadow: '0 4px 12px rgba(234, 179, 8, 0.3)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+                onClick={handleAcceptAllDrifts}
+                disabled={bulkProcessing}
+              >
+                {bulkProcessing ? '⌛ Processing...' : `⚡ Accept All (${currentList.length}) Drifted Costs`}
+              </button>
+            </div>
+          )}
+
           {/* ── Current Tab Empty State ── */}
           {!loading && !loadError && costs.length > 0 && currentList.length === 0 && (
             <div style={{
@@ -1294,37 +1386,41 @@ export default function CostManager() {
               borderRadius: 12, padding: '40px', textAlign: 'center'
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
-                {activeTab === 'pending' ? '✅' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'unlisted' ? '🚫' : activeTab === 'archived' ? '📦' : '⏳'}
+                {activeTab === 'pending' ? '✅' : activeTab === 'drift' ? '⚡' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'unlisted' ? '🚫' : activeTab === 'archived' ? '📦' : '⏳'}
               </div>
               <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
                 {activeTab === 'pending'
                   ? 'All products are verified!'
-                  : activeTab === 'continue_selling'
-                    ? 'No continue selling products'
-                    : activeTab === 'active'
-                      ? 'No active products'
-                      : activeTab === 'draft'
-                        ? 'No draft products'
-                        : activeTab === 'unlisted'
-                          ? 'No unlisted products'
-                          : activeTab === 'archived'
-                            ? 'No archived products'
-                            : 'No verified products yet'}
+                  : activeTab === 'drift'
+                    ? 'No price drift detected!'
+                    : activeTab === 'continue_selling'
+                      ? 'No continue selling products'
+                      : activeTab === 'active'
+                        ? 'No active products'
+                        : activeTab === 'draft'
+                          ? 'No draft products'
+                          : activeTab === 'unlisted'
+                            ? 'No unlisted products'
+                            : activeTab === 'archived'
+                              ? 'No archived products'
+                              : 'No verified products yet'}
               </div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 {activeTab === 'pending'
                   ? 'Every product in your registry has an accepted cost.'
-                  : activeTab === 'continue_selling'
-                    ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
-                    : activeTab === 'active'
-                      ? 'No products are currently active on your Shopify store.'
-                      : activeTab === 'draft'
-                        ? 'No products are in draft status.'
-                        : activeTab === 'unlisted'
-                          ? 'No products are in unlisted status on Shopify.'
-                          : activeTab === 'archived'
-                            ? 'No products are archived.'
-                            : 'Accept costs for your products to see them here.'}
+                  : activeTab === 'drift'
+                    ? 'All accepted costs in your ERP registry match the latest costs on Shopify.'
+                    : activeTab === 'continue_selling'
+                      ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
+                      : activeTab === 'active'
+                        ? 'No products are currently active on your Shopify store.'
+                        : activeTab === 'draft'
+                          ? 'No products are in draft status.'
+                          : activeTab === 'unlisted'
+                            ? 'No products are in unlisted status on Shopify.'
+                            : activeTab === 'archived'
+                              ? 'No products are archived.'
+                              : 'Accept costs for your products to see them here.'}
               </div>
             </div>
           )}
@@ -1503,7 +1599,7 @@ export default function CostManager() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     {v.variant_title || 'Default'}
                                     {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
-                                    {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                    {v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
                                       <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
                                     )}
                                     {v.inventory_policy === 'continue' && (
@@ -1514,7 +1610,25 @@ export default function CostManager() {
                                 </div>
                               </div>
                             </td>
-                            <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                            <td style={{ textAlign: 'right', color: 'var(--brand)', fontSize: '0.85rem', padding: '0 8px' }}>
+                              {v.shopify_cost > 0 ? (
+                                <div>
+                                  <div>Rs {v.shopify_cost.toLocaleString()}</div>
+                                  {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                    <div style={{
+                                      fontSize: '0.65rem',
+                                      fontWeight: 700,
+                                      color: v.shopify_cost > v.unit_cost ? '#ef4444' : '#22c55e',
+                                      marginTop: 1
+                                    }}>
+                                      {v.shopify_cost > v.unit_cost
+                                        ? `▲ +Rs ${(v.shopify_cost - v.unit_cost).toLocaleString()}`
+                                        : `▼ -Rs ${(v.unit_cost - v.shopify_cost).toLocaleString()}`}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : '—'}
+                            </td>
                             <td style={{ textAlign: 'right', padding: '8px' }}>
                               {(() => {
                                 const key = v.id || `${v.parent_title}@@@${v.variant_title}`
@@ -1717,7 +1831,25 @@ export default function CostManager() {
                                       </div>
                                     </div>
                                   </td>
-                                  <td style={{ textAlign: 'right', padding: '0 8px' }}>{v.shopify_cost > 0 ? `Rs ${v.shopify_cost.toLocaleString()}` : '—'}</td>
+                                  <td style={{ textAlign: 'right', padding: '0 8px' }}>
+                                    {v.shopify_cost > 0 ? (
+                                      <div>
+                                        <div>Rs {v.shopify_cost.toLocaleString()}</div>
+                                        {v.unit_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) > 1 && (
+                                          <div style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            color: v.shopify_cost > v.unit_cost ? '#ef4444' : '#22c55e',
+                                            marginTop: 1
+                                          }}>
+                                            {v.shopify_cost > v.unit_cost
+                                              ? `▲ +Rs ${(v.shopify_cost - v.unit_cost).toLocaleString()}`
+                                              : `▼ -Rs ${(v.unit_cost - v.shopify_cost).toLocaleString()}`}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : '—'}
+                                  </td>
                                   <td style={{ textAlign: 'right', padding: '8px' }}>
                                     {(() => {
                                       const key = v.id || `${v.parent_title}@@@${v.variant_title}`;
