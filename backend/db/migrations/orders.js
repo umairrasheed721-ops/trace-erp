@@ -1245,6 +1245,19 @@ module.exports = [
     } catch (e) {
       console.error('Migration #47 failed:', e.message);
     }
+  },
+
+  // 48. Add last_cost_sync_at to stores table for Hybrid Cost Auto-Sync Engine
+  (db) => {
+    try {
+      const cols = db.prepare('PRAGMA table_info(stores)').all();
+      if (!cols.some(c => c.name === 'last_cost_sync_at')) {
+        db.prepare('ALTER TABLE stores ADD COLUMN last_cost_sync_at TEXT').run();
+        console.log('✅ [Migration #48] Added last_cost_sync_at column to stores table.');
+      }
+    } catch (e) {
+      console.error('Migration #48 failed:', e.message);
+    }
   }
 ];
 

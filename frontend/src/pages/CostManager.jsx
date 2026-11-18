@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import LinkSkuModal from '../components/LinkSkuModal'
@@ -72,6 +72,7 @@ export default function CostManager() {
   const [syncWarning, setSyncWarning] = useState('')
   const [isDiagnosing, setIsDiagnosing] = useState(false)
   const [diagnoseReport, setDiagnoseReport] = useState(null)
+  const [lastCostSyncedAt, setLastCostSyncedAt] = useState(null)
   const [activeTab, setActiveTab] = useState('watchdog')
   const [selectedParents, setSelectedParents] = useState(new Set())
   const [selectedVariants, setSelectedVariants] = useState(new Set())
@@ -122,14 +123,66 @@ export default function CostManager() {
   const [groupVariantsBy, setGroupVariantsBy] = useState('none') // 'none' | 'opt1' | 'opt2'
   const [expandedGroups, setExpandedGroups] = useState(new Set())
 
+  const formatRelativeTime = (ts) => {
+    if (!ts) return 'Auto-Active'
+    try {
+      const dateStr = ts.includes('T') ? ts : ts.replace(' ', 'T')
+      const date = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z')
+      const diffSec = Math.floor((Date.now() - date.getTime()) / 1000)
+      if (isNaN(diffSec) || diffSec < 0) return 'Just now'
+      if (diffSec < 60) return 'Just now'
+      if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
+      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
+      return `${Math.floor(diffSec / 86400)}d ago`
+    } catch (_) {
+      return 'Auto-Active'
+    }
+  }
+
+  const fetchSyncStatus = useCallback(async () => {
+    if (!activeStoreId) return
+    try {
+      const res = await fetch(`/api/cost-manager/sync-status?store_id=${activeStoreId}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.last_cost_sync_at) {
+          setLastCostSyncedAt(data.last_cost_sync_at)
+        }
+      }
+    } catch (_) {}
+  }, [activeStoreId])
+
   useEffect(() => {
     if (activeStoreId) {
       fetchCosts()
       fetchGhosts()
       fetchAudit()
       fetchAliases()
+      fetchSyncStatus()
     }
-  }, [activeStoreId])
+  }, [activeStoreId, fetchSyncStatus])
+
+  // Live SSE listener for real-time Shopify cost updates & 30s status refresher
+  useEffect(() => {
+    const handleLiveCostUpdate = (e) => {
+      const detail = e.detail
+      if (!detail || !detail.storeId || String(detail.storeId) === String(activeStoreId)) {
+        fetchCosts()
+        fetchGhosts()
+        fetchSyncStatus()
+        fetchAudit()
+        addToast('⚡ Live Shopify cost update synced automatically!', 'info')
+      }
+    }
+
+    window.addEventListener('trace_cost_drift_updated', handleLiveCostUpdate)
+    const interval = setInterval(fetchSyncStatus, 30000)
+
+    return () => {
+      window.removeEventListener('trace_cost_drift_updated', handleLiveCostUpdate)
+      clearInterval(interval)
+    }
+  }, [activeStoreId, fetchSyncStatus])
 
   // Parse query parameters on mount & sync search queries across tabs
   useEffect(() => {
@@ -408,6 +461,7 @@ export default function CostManager() {
           addToast(`Synced ${data.count} variants from Shopify`, 'success')
           await fetchCosts()
           await fetchGhosts()
+          await fetchSyncStatus()
         }
       } else {
         throw new Error(data.error || 'Sync failed')
@@ -764,7 +818,26 @@ export default function CostManager() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, position: 'relative' }}>
+        <div style={{ display: 'flex', gap: 10, position: 'relative', alignItems: 'center' }}>
+          {/* Hybrid Auto-Sync Status Badge */}
+          <div 
+            title="Hybrid Cost Sync: Real-time webhook micro-sync active + 6-hour background cron"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '8px 14px', borderRadius: 10,
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.25)',
+              fontSize: '0.82rem', color: '#34d399', fontWeight: 600,
+              boxShadow: '0 2px 8px rgba(16,185,129,0.1)'
+            }}
+          >
+            <span style={{ 
+              width: 8, height: 8, borderRadius: '50%', background: '#10b981', 
+              boxShadow: '0 0 8px #10b981', display: 'inline-block' 
+            }} />
+            <span>Auto-Sync: {formatRelativeTime(lastCostSyncedAt)}</span>
+          </div>
+
           <button
             onClick={handleDiagnose}
             disabled={isDiagnosing || isSyncing}

@@ -102,6 +102,13 @@ export default function AppProvider({ children }) {
       fetchSyncHistory()
     })
 
+    eventSource.addEventListener('cost_drift_updated', (e) => {
+      try {
+        const payload = e.data ? JSON.parse(e.data) : null;
+        window.dispatchEvent(new CustomEvent('trace_cost_drift_updated', { detail: payload }));
+      } catch (_) {}
+    })
+
     return () => eventSource.close()
   }, [token, activeStoreId])
 

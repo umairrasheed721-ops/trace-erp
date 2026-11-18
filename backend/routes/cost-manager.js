@@ -50,6 +50,31 @@ router.get('/drift-summary', (req, res) => {
   }
 });
 
+// GET /api/cost-manager/sync-status - Fetch last sync timestamp and drift metrics
+router.get('/sync-status', (req, res) => {
+  const { store_id } = req.query;
+  const { getLastSyncStatus } = require('../services/costSyncService');
+  const status = getLastSyncStatus(store_id);
+  res.json(status);
+});
+
+// POST /api/cost-manager/sync-shopify - Trigger on-demand full catalog sync
+router.post('/sync-shopify', async (req, res) => {
+  const { store_id } = req.body;
+  if (!store_id) return res.status(400).json({ error: 'store_id required' });
+
+  try {
+    const { syncFullCatalog } = require('../services/costSyncService');
+    const result = await syncFullCatalog(store_id);
+    if (!result.success) {
+      return res.status(result.error?.includes('not found') ? 404 : 400).json({ error: result.error });
+    }
+    res.json({ success: true, count: result.count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/cost-manager/bulk-update - Update costs for multiple SKUs
 router.post('/bulk-update', (req, res) => {
   const { store_id, updates } = req.body;

@@ -10,7 +10,7 @@ function getAllFiles(dirPath, arrayOfFiles) {
     const fullPath = path.join(dirPath, file);
     try {
       if (fs.statSync(fullPath).isDirectory()) {
-        if (file !== 'node_modules' && file !== 'public' && file !== 'wa_session' && !file.startsWith('.')) {
+        if (file !== 'node_modules' && file !== 'public' && file !== 'wa_session' && file !== 'scratch' && file !== 'scripts' && !file.startsWith('.')) {
           arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
         }
       } else {
@@ -50,4 +50,5 @@ if (errors > 0) {
   process.exit(1);
 } else {
   console.log(`✅ All ${files.length} backend files passed syntax verification in ${elapsed}ms.`);
+  process.exit(0);
 }

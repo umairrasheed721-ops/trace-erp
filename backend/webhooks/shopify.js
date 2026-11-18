@@ -145,6 +145,16 @@ module.exports = async function handleShopifyWebhook(req, res) {
 
           // 2. Update costing registry with new price/image (real-time R1)
           processProductUpdateForCosts(store.id, payload);
+
+          // 3. Layer 1: Hybrid Event-Driven Micro-Sync — Fetch real-time unitCost via GraphQL
+          try {
+            const { syncSingleProductCosts } = require('../services/costSyncService');
+            syncSingleProductCosts(store.id, payload.id).catch(err => {
+              console.warn(`[Shopify Webhook] Micro-sync cost failed for product ${payload.id}:`, err.message);
+            });
+          } catch (mErr) {
+            console.warn(`[Shopify Webhook] Could not invoke micro-sync:`, mErr.message);
+          }
         }
       } else if (topic === 'orders/cancelled' || (payload.cancelled_at !== undefined && payload.cancelled_at !== null)) {
         // Immediate cancellation state invalidation

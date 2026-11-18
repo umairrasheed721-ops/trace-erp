@@ -370,6 +370,119 @@ async function getShopifyInventoryCosts(store, onBatch) {
   return onBatch ? null : accumulator;
 }
 
+/**
+ * getShopifySingleProductCosts — Targeted single-product GraphQL fetch
+ * Fast micro-sync for webhook updates (Rule 9 optimized)
+ */
+async function getShopifySingleProductCosts(store, productId) {
+  if (!store || !productId) return [];
+  try {
+    const rawId = String(productId).trim();
+    const numericId = rawId.includes('/') ? rawId.split('/').pop() : rawId;
+    const gid = `gid://shopify/Product/${numericId}`;
+
+    const query = `
+      query($id: ID!) {
+        product(id: $id) {
+          id
+          title
+          status
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                title
+                sku
+                price
+                inventoryPolicy
+                image {
+                  url
+                }
+                product {
+                  title
+                  status
+                }
+                inventoryItem {
+                  unitCost {
+                    amount
+                  }
+                  inventoryLevels(first: 10) {
+                    edges {
+                      node {
+                        quantities(names: ["available"]) {
+                          quantity
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const res = await shopifyFetch(store, 'graphql.json', {
+      method: 'POST',
+      body: JSON.stringify({ query, variables: { id: gid } })
+    });
+
+    if (!res.ok) {
+      console.warn(`[shopify_finance] Single product GraphQL fetch failed (${res.status}) for ${gid}`);
+      return [];
+    }
+
+    const json = await res.json();
+    if (json.errors) {
+      console.warn(`[shopify_finance] Single product GraphQL errors:`, json.errors);
+      return [];
+    }
+
+    const prod = json.data?.product;
+    if (!prod) return [];
+
+    const parentName = prod.title || '';
+    const edges = prod.variants?.edges || [];
+    const results = [];
+
+    for (const edge of edges) {
+      const node = edge.node;
+      if (!node) continue;
+      const variantId = node.id;
+      const variantName = node.title === 'Default Title' ? '' : (node.title || '');
+      const rawCost = node.inventoryItem?.unitCost?.amount;
+      const cost = rawCost ? parseFloat(rawCost) : 0;
+      const sellingPrice = parseFloat(node.price || 0);
+      const status = prod.status ? String(prod.status).toLowerCase() : 'active';
+
+      let qty = 0;
+      const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
+      invEdges.forEach(invEdge => {
+        qty += invEdge.node?.quantities?.[0]?.quantity || 0;
+      });
+
+      results.push({
+        shopify_variant_id: variantId,
+        sku: node.sku ? String(node.sku).trim() : '',
+        parent_name: parentName,
+        variant_name: variantName,
+        shopify_cost: cost,
+        selling_price: sellingPrice,
+        qty: qty,
+        image_url: node.image?.url || '',
+        status: status,
+        inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.error(`[shopify_finance] getShopifySingleProductCosts error for ${productId}:`, err.message);
+    return [];
+  }
+}
+
 async function markShopifyOrderDelivered(store, orderIdOrRef) {
   if (!orderIdOrRef) return false;
   try {
@@ -527,6 +640,7 @@ module.exports = {
   captureShopifyPayment,
   getShopifyOrderStatus,
   getShopifyInventoryCosts,
+  getShopifySingleProductCosts,
   markShopifyOrderDelivered
 };
 
