@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import LinkSkuModal from '../components/LinkSkuModal'
@@ -11,22 +11,47 @@ const isGhostMatch = (ghost, searchQuery) => {
   // 1. Direct bidirectional inclusion on parent name
   if (name.includes(q) || q.includes(name)) return true;
 
-  // 2. Check variants inside ghost.variants object
-  if (ghost.variants && typeof ghost.variants === 'object') {
-    const variantKeys = Object.keys(ghost.variants);
-    for (const v of variantKeys) {
-      const fullVariantStr = `${name} ${v}`.toLowerCase();
-      if (fullVariantStr.includes(q) || q.includes(fullVariantStr) || v.toLowerCase().includes(q)) return true;
-    }
+  // 2. Check variants (supports both object map and array)
+  const variantNames = Array.isArray(ghost.variants)
+    ? ghost.variants.map(v => `${v.name || v.variant_title || ''} ${v.sku || ''}`)
+    : (ghost.variants && typeof ghost.variants === 'object' ? Object.keys(ghost.variants) : []);
+
+  for (const v of variantNames) {
+    const fullVariantStr = `${name} ${v}`.toLowerCase();
+    if (fullVariantStr.includes(q) || q.includes(fullVariantStr) || v.toLowerCase().includes(q)) return true;
   }
 
   // 3. Token-based matching
   const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
   if (tokens.length > 0) {
-    const nameAndVariants = `${name} ${ghost.variants ? Object.keys(ghost.variants).join(' ') : ''}`.toLowerCase();
+    const nameAndVariants = `${name} ${variantNames.join(' ')}`.toLowerCase();
     if (tokens.every(token => nameAndVariants.includes(token))) return true;
   }
 
+  return false;
+};
+
+const matchesVariantSearch = (v, parentName, searchQuery) => {
+  if (!searchQuery || !searchQuery.trim()) return false;
+  const q = searchQuery.trim().toLowerCase();
+  const vTitle = (v.variant_title || v.name || '').toLowerCase();
+  const sku = (v.sku || '').toLowerCase();
+  const varId = String(v.shopify_variant_id || '').toLowerCase();
+  const landed = (v.unit_cost || 0) + (v.packaging_cost || 0);
+  const prices = `${v.shopify_cost || ''} ${v.unit_cost || ''} ${landed || ''} ${v.selling_price || ''}`;
+  const fullStr = `${(parentName || '').toLowerCase()} ${vTitle} ${sku} ${varId} ${prices}`;
+
+  if (vTitle.includes(q) || (sku && sku.includes(q)) || (varId && varId.includes(q))) return true;
+  if (/^\d+(\.\d+)?$/.test(q)) {
+    const num = Number(q);
+    if (v.shopify_cost === num || v.unit_cost === num || landed === num || v.selling_price === num) return true;
+  }
+  const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    // Only consider variant-specific match if at least one token matches variant title, sku, or price (not parent alone)
+    const variantOnly = `${vTitle} ${sku} ${varId} ${prices}`;
+    if (tokens.every(t => fullStr.includes(t)) && tokens.some(t => variantOnly.includes(t))) return true;
+  }
   return false;
 };
 
@@ -38,24 +63,42 @@ const matchesProductSearch = (product, searchQuery) => {
   // 1. Direct bidirectional inclusion on parent name
   if (name.includes(q) || q.includes(name)) return true;
 
-  // 2. Check variants inside product
+  // 2. Check variants inside product (title, SKU, variant ID, costs/prices)
   if (product.variants && Array.isArray(product.variants)) {
     for (const v of product.variants) {
+      if (matchesVariantSearch(v, product.name, q)) return true;
       const vTitle = (v.variant_title || v.name || '').toLowerCase();
-      const sku = (v.sku || '').toLowerCase();
-      const fullStr = `${name} ${vTitle}`.toLowerCase();
-      if (vTitle.includes(q) || sku.includes(q) || fullStr.includes(q) || q.includes(fullStr)) return true;
+      const fullStr = `${name} ${vTitle}`;
+      if (fullStr.includes(q) || q.includes(fullStr)) return true;
     }
   }
 
-  // 3. Token-based matching
+  // 3. Token-based matching across parent + all variants + SKUs + costs
   const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
   if (tokens.length > 0) {
-    const fullText = `${name} ${product.variants ? product.variants.map(v => `${v.variant_title || v.name || ''} ${v.sku || ''}`).join(' ') : ''}`.toLowerCase();
+    const fullText = `${name} ${product.variants ? product.variants.map(v => `${v.variant_title || v.name || ''} ${v.sku || ''} ${v.shopify_variant_id || ''} ${v.shopify_cost || ''} ${v.unit_cost || ''}`).join(' ') : ''}`.toLowerCase();
     if (tokens.every(token => fullText.includes(token))) return true;
   }
 
   return false;
+};
+
+const matchesWatchdogRow = (row, searchQuery) => {
+  if (!searchQuery || !searchQuery.trim()) return true;
+  const q = searchQuery.trim().toLowerCase();
+  const haystack = `${row.parent_title || ''} ${row.variant_title || ''} ${row.title || ''} ${row.sku || ''} ${row.order_number || ''} ${row.order_name || ''} ${row.customer_name || ''} ${row.shopify_variant_id || ''} ${row.shopify_cost ?? ''} ${row.unit_cost ?? ''}`.toLowerCase();
+  if (haystack.includes(q)) return true;
+  const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every(t => haystack.includes(t));
+};
+
+const matchesAliasRow = (a, searchQuery) => {
+  if (!searchQuery || !searchQuery.trim()) return true;
+  const q = searchQuery.trim().toLowerCase();
+  const haystack = `${a.alias_title || ''} ${a.alias_variant || ''} ${a.target_sku || ''} ${a.target_parent_title || ''} ${a.target_variant_title || ''}`.toLowerCase();
+  if (haystack.includes(q)) return true;
+  const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every(t => haystack.includes(t));
 };
 
 export default function CostManager() {
@@ -115,13 +158,44 @@ export default function CostManager() {
   const [linkingGhost, setLinkingGhost] = useState(null)
 
   // UI Enhancement States
-  const [sortBy, setSortBy] = useState('value')       // 'value' | 'margin' | 'stock' | 'name'
+  const searchInputRef = useRef(null)
+  const [sortBy, setSortBy] = useState('value')       // 'value' | 'margin' | 'stock' | 'name' | 'pending'
   const [filterMargin, setFilterMargin] = useState('all') // 'all' | 'low' | 'mid' | 'high'
+  const [filterMissingSku, setFilterMissingSku] = useState(false)
+  const [filterPartialOnly, setFilterPartialOnly] = useState(false)
+  const [filterStock, setFilterStock] = useState('all') // 'all' | 'in_stock' | 'out_of_stock'
+  const [filterZeroCost, setFilterZeroCost] = useState(false)
   const [inlineEdits, setInlineEdits] = useState({})  // { variantId: { unit_cost, packaging_cost } }
   const [savingInline, setSavingInline] = useState(null)
   const [skuSubTab, setSkuSubTab] = useState('duplicates')
   const [groupVariantsBy, setGroupVariantsBy] = useState('none') // 'none' | 'opt1' | 'opt2'
   const [expandedGroups, setExpandedGroups] = useState(new Set())
+
+  // Global keyboard shortcuts: '/' or Cmd/Ctrl+K focuses search, Esc clears
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const tag = (e.target?.tagName || '').toLowerCase()
+      const isEditable = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      } else if (e.key === '/' && !isEditable) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      } else if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        if (search) {
+          setSearch('')
+          setGhostSearch('')
+          setAliasSearch('')
+        } else {
+          searchInputRef.current?.blur()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [search])
 
   const formatRelativeTime = (ts) => {
     if (!ts) return 'Auto-Active'
@@ -373,10 +447,37 @@ export default function CostManager() {
     return ghosts.reduce((sum, g) => sum + (g.count * 500), 0) // rough estimate
   }, [ghosts])
 
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+    filterMargin !== 'all' ||
+    filterMissingSku ||
+    filterPartialOnly ||
+    filterStock !== 'all' ||
+    filterZeroCost
+  )
+
+  const handleClearAllFilters = useCallback(() => {
+    setSearch('')
+    setGhostSearch('')
+    setAliasSearch('')
+    setFilterMargin('all')
+    setFilterMissingSku(false)
+    setFilterPartialOnly(false)
+    setFilterStock('all')
+    setFilterZeroCost(false)
+  }, [])
+
   const allGrouped = useMemo(() => {
-    return Object.values(grouped)
-      .filter(p => matchesProductSearch(p, search))
-  }, [grouped, search])
+    return Object.values(grouped).filter(p => {
+      if (!matchesProductSearch(p, search)) return false
+      if (filterMissingSku && !p.variants.some(v => !v.sku || !String(v.sku).trim())) return false
+      if (filterPartialOnly && !p.isPartiallyVerified) return false
+      if (filterStock === 'in_stock' && p.totalQty <= 0) return false
+      if (filterStock === 'out_of_stock' && p.totalQty > 0) return false
+      if (filterZeroCost && !p.variants.some(v => ((v.unit_cost || 0) + (v.packaging_cost || 0)) <= 0 || (v.shopify_cost || 0) <= 0)) return false
+      return true
+    })
+  }, [grouped, search, filterMissingSku, filterPartialOnly, filterStock, filterZeroCost])
 
   // Apply margin filter
   const marginFiltered = useMemo(() => {
@@ -390,10 +491,11 @@ export default function CostManager() {
   // Apply sort
   const sorted = useMemo(() => {
     return [...marginFiltered].sort((a, b) => {
-      if (sortBy === 'value')  return b.totalValue - a.totalValue
-      if (sortBy === 'margin') return (b.margin ?? -1) - (a.margin ?? -1)
-      if (sortBy === 'stock')  return b.totalQty - a.totalQty
-      if (sortBy === 'name')   return a.name.localeCompare(b.name)
+      if (sortBy === 'value')   return b.totalValue - a.totalValue
+      if (sortBy === 'margin')  return (b.margin ?? -1) - (a.margin ?? -1)
+      if (sortBy === 'stock')   return b.totalQty - a.totalQty
+      if (sortBy === 'name')    return a.name.localeCompare(b.name)
+      if (sortBy === 'pending') return (b.pendingCount - a.pendingCount) || (b.totalQty - a.totalQty)
       return 0
     })
   }, [marginFiltered, sortBy])
@@ -414,6 +516,52 @@ export default function CostManager() {
   const currentList = useMemo(() => {
     return lists[activeTab] || []
   }, [lists, activeTab])
+
+  // Auto-expand matching parents (up to 8) when user searches a specific SKU/variant or narrow query
+  useEffect(() => {
+    const q = search.trim()
+    if (q.length < 2) return
+    const toExpand = []
+    for (const p of currentList) {
+      const hasDirectVariantHit = p.variants.some(v => matchesVariantSearch(v, p.name, q))
+      if (hasDirectVariantHit || currentList.length <= 4) {
+        toExpand.push(p.name)
+      }
+      if (toExpand.length >= 8) break
+    }
+    if (toExpand.length > 0) {
+      setExpandedParents(prev => {
+        const next = new Set(prev)
+        toExpand.forEach(name => next.add(name))
+        return next
+      })
+    }
+  }, [search, activeTab, currentList])
+
+  // Global search filtering for Watchdog, Ghosts, Aliases, and SKU Checker
+  const filteredWatchdog = useMemo(() => {
+    const filterFn = (row) => {
+      if (!matchesWatchdogRow(row, search)) return false
+      if (filterStock === 'in_stock' && (row.inventory_qty ?? row.qty ?? 1) <= 0) return false
+      if (filterStock === 'out_of_stock' && (row.inventory_qty ?? row.qty ?? 0) > 0) return false
+      if (filterMissingSku && row.sku && String(row.sku).trim() !== '') return false
+      return true
+    }
+    const missing = (auditData.missingInRegistry || []).filter(filterFn)
+    const zero = (auditData.zeroCostInRegistry || []).filter(filterFn)
+    const orders = (auditData.pendingOrdersWithMissingCost || []).filter(filterFn)
+    return { missing, zero, orders, total: missing.length + zero.length + orders.length }
+  }, [auditData, search, filterStock, filterMissingSku])
+
+  const filteredGhosts = useMemo(() => {
+    const q = search || ghostSearch
+    return ghosts.filter(g => isGhostMatch(g, q))
+  }, [ghosts, search, ghostSearch])
+
+  const filteredAliases = useMemo(() => {
+    const q = search || aliasSearch
+    return aliases.filter(a => matchesAliasRow(a, q))
+  }, [aliases, search, aliasSearch])
 
   const skuCheckerData = useMemo(() => {
     const skuGroups = {}
@@ -440,11 +588,32 @@ export default function CostManager() {
       }
     });
 
+    const q = search.trim().toLowerCase()
+    const matchVariantRow = (v) => {
+      if (filterStock === 'in_stock' && (v.inventory_qty || 0) <= 0) return false
+      if (filterStock === 'out_of_stock' && (v.inventory_qty || 0) > 0) return false
+      if (filterZeroCost && ((v.unit_cost || 0) + (v.packaging_cost || 0)) > 0 && (v.shopify_cost || 0) > 0) return false
+      if (!q) return true
+      const hay = `${v.parent_title || ''} ${v.variant_title || ''} ${v.sku || ''} ${v.shopify_variant_id || ''} ${v.shopify_cost || ''} ${v.unit_cost || ''}`.toLowerCase()
+      if (hay.includes(q)) return true
+      const tokens = q.replace(/[()\/]/g, ' ').split(/\s+/).filter(Boolean)
+      return tokens.length > 0 && tokens.every(t => hay.includes(t))
+    }
+
+    const filteredDuplicates = duplicates.filter(d => {
+      if (filterMissingSku) return false
+      if (!q && filterStock === 'all' && !filterZeroCost) return true
+      if (q && d.sku.toLowerCase().includes(q) && filterStock === 'all' && !filterZeroCost) return true
+      return d.variants.some(matchVariantRow)
+    })
+
+    const filteredMissingSkus = missingSkus.filter(matchVariantRow)
+
     return {
-      duplicates,
-      missingSkus
+      duplicates: filteredDuplicates,
+      missingSkus: filteredMissingSkus
     };
-  }, [costs]);
+  }, [costs, search, filterMissingSku, filterStock, filterZeroCost]);
 
   // --- Handlers ---
   const handleSyncShopify = async () => {
@@ -1147,16 +1316,10 @@ export default function CostManager() {
         </div>
       )}
 
-      {/* ── Segmented Tab Bar ── */}
-      <div style={{
-        display: 'flex', gap: 4, marginBottom: 24,
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 14, padding: 5,
-        flexWrap: 'wrap'
-      }}>
-        {[
-          { key: 'watchdog', label: 'Watchdog', count: auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length, color: '#ef4444', icon: '🛡️' },
+      {/* ── Global Advanced Search & Filter Command Bar ── */}
+      {(() => {
+        const globalTabs = [
+          { key: 'watchdog', label: 'Watchdog', count: filteredWatchdog.total, color: '#ef4444', icon: '🛡️' },
           { key: 'pending',  label: 'Pending',  count: lists.pending.length,  color: '#f59e0b', icon: '⏳' },
           { key: 'drift',    label: 'Price Drift', count: lists.drift.length, color: '#eab308', icon: '⚡' },
           { key: 'verified', label: 'Verified', count: lists.verified.length, color: '#22c55e', icon: '✅' },
@@ -1165,96 +1328,264 @@ export default function CostManager() {
           { key: 'draft',    label: 'Draft',    count: lists.draft.length,    color: '#fb923c', icon: '📝' },
           { key: 'unlisted', label: 'Unlisted', count: lists.unlisted?.length || 0, color: '#db2777', icon: '🚫' },
           { key: 'archived', label: 'Archived', count: lists.archived.length, color: '#94a3b8', icon: '📦' },
-          { key: 'ghosts',   label: 'Ghosts',   count: ghosts.length,        color: '#8b5cf6', icon: '👻' },
-          { key: 'aliases',  label: 'Aliases',  count: aliases.length,       color: '#ec4899', icon: '🔗' },
+          { key: 'ghosts',   label: 'Ghosts',   count: filteredGhosts.length, color: '#8b5cf6', icon: '👻' },
+          { key: 'aliases',  label: 'Aliases',  count: filteredAliases.length, color: '#ec4899', icon: '🔗' },
           { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#f43f5e', icon: '🆔' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: activeTab === t.key ? 'var(--bg-surface)' : 'transparent',
-              color: activeTab === t.key ? t.color : 'var(--text-muted)',
-              fontWeight: activeTab === t.key ? 700 : 500,
-              fontSize: '0.84rem',
-              boxShadow: activeTab === t.key ? '0 1px 6px rgba(0,0,0,0.15)' : 'none',
-              transition: 'all 0.18s ease',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <span style={{ fontSize: '0.9rem' }}>{t.icon}</span>
-            {t.label}
-            {t.count > 0 && (
-              <span style={{
-                background: activeTab === t.key ? t.color : 'var(--border)',
-                color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
-                borderRadius: 20, padding: '1px 7px', fontSize: '0.68rem', fontWeight: 700, minWidth: 20, textAlign: 'center',
-                transition: 'all 0.18s ease'
-              }}>{t.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+        ];
+        const matchingTabs = hasActiveFilters ? globalTabs.filter(t => t.count > 0) : [];
+        const chipStyle = (active, color) => ({
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '5px 11px', borderRadius: 20, fontSize: '0.75rem', fontWeight: active ? 700 : 600,
+          cursor: 'pointer', transition: 'all 0.16s ease', whiteSpace: 'nowrap',
+          background: active ? `${color}20` : 'var(--bg-elevated)',
+          color: active ? color : 'var(--text-secondary)',
+          border: `1px solid ${active ? color : 'var(--border)'}`,
+          boxShadow: active ? `0 0 0 1px ${color}33` : 'none'
+        });
+
+        return (
+          <>
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 16,
+              padding: '14px 16px',
+              marginBottom: 16,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 11
+            }}>
+              {/* Row 1: Primary Global Search Input + Sort / Margin / Grouping Controls */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: '1 1 300px', minWidth: 240 }}>
+                  <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', opacity: 0.65, pointerEvents: 'none' }}>🔍</span>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="form-input"
+                    placeholder="Global search: product, variant, SKU (RT-10169), cost (1850), ghosts, alerts..."
+                    value={search}
+                    onChange={e => {
+                      setSearch(e.target.value)
+                      setGhostSearch(e.target.value)
+                      setAliasSearch(e.target.value)
+                    }}
+                    style={{
+                      paddingLeft: 38,
+                      paddingRight: search ? 38 : 74,
+                      width: '100%',
+                      height: 40,
+                      borderRadius: 10,
+                      fontSize: '0.86rem',
+                      background: 'var(--bg-elevated)',
+                      borderColor: search ? 'var(--brand)' : 'var(--border)'
+                    }}
+                  />
+                  {search ? (
+                    <button
+                      type="button"
+                      title="Clear search (Esc)"
+                      onClick={() => { setSearch(''); setGhostSearch(''); setAliasSearch(''); searchInputRef.current?.focus(); }}
+                      style={{
+                        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                        border: 'none', background: 'var(--border)', color: 'var(--text-primary)',
+                        borderRadius: '50%', width: 22, height: 22, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700
+                      }}
+                    >✕</button>
+                  ) : (
+                    <span style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
+                      background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                      borderRadius: 6, padding: '2px 7px', pointerEvents: 'none', letterSpacing: '0.02em'
+                    }}>⌘K /</span>
+                  )}
+                </div>
+
+                <select
+                  className="form-input"
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                  style={{ width: 'auto', height: 40, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
+                >
+                  <option value="value">Sort: By Value</option>
+                  <option value="margin">Sort: By Margin</option>
+                  <option value="stock">Sort: By Stock</option>
+                  <option value="pending">Sort: Most Pending</option>
+                  <option value="name">Sort: By Name</option>
+                </select>
+
+                <select
+                  className="form-input"
+                  value={filterMargin}
+                  onChange={e => setFilterMargin(e.target.value)}
+                  style={{ width: 'auto', height: 40, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
+                >
+                  <option value="all">Margin: All</option>
+                  <option value="high">Margin: High (&gt;40%)</option>
+                  <option value="mid">Margin: Mid (20–40%)</option>
+                  <option value="low">Margin: Low (&lt;20%) ⚠️</option>
+                </select>
+
+                <select
+                  className="form-input"
+                  value={groupVariantsBy}
+                  onChange={e => setGroupVariantsBy(e.target.value)}
+                  style={{ width: 'auto', height: 40, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
+                >
+                  <option value="none">Group: Flat List</option>
+                  <option value="opt1">Group by Size (Option 1)</option>
+                  <option value="opt2">Group by Color (Option 2)</option>
+                </select>
+              </div>
+
+              {/* Row 2: 1-Click Quick Filter Chips + Clear All */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 7 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 2 }}>
+                    Quick Filters:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFilterMissingSku(v => !v)}
+                    style={chipStyle(filterMissingSku, '#ef4444')}
+                    title="Filter products/variants with blank SKU"
+                  >
+                    ❌ Missing SKU
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterPartialOnly(v => !v)}
+                    style={chipStyle(filterPartialOnly, '#d97706')}
+                    title="Filter products where some variants are verified and some are pending"
+                  >
+                    ⚠️ Partial Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterStock(s => s === 'in_stock' ? 'all' : 'in_stock')}
+                    style={chipStyle(filterStock === 'in_stock', '#22c55e')}
+                    title="Show only items with Stock > 0"
+                  >
+                    📦 In Stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterStock(s => s === 'out_of_stock' ? 'all' : 'out_of_stock')}
+                    style={chipStyle(filterStock === 'out_of_stock', '#64748b')}
+                    title="Show only items with Stock = 0"
+                  >
+                    🚫 Out of Stock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterZeroCost(v => !v)}
+                    style={chipStyle(filterZeroCost, '#f97316')}
+                    title="Show products with any Rs. 0 cost variant"
+                  >
+                    💸 Zero Cost (Rs 0)
+                  </button>
+                </div>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllFilters}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5,
+                      padding: '5px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
+                      background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.35)', cursor: 'pointer'
+                    }}
+                  >
+                    ✕ Clear All
+                  </button>
+                )}
+              </div>
+
+              {/* Row 3: Live Cross-Tab Match Strip (Visible whenever Search or Quick Filters are active) */}
+              {hasActiveFilters && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+                  paddingTop: 9, borderTop: '1px dashed var(--border)'
+                }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginRight: 4 }}>
+                    🔀 Matches across tabs:
+                  </span>
+                  {matchingTabs.length === 0 ? (
+                    <span style={{ fontSize: '0.76rem', color: '#ef4444', fontWeight: 600 }}>
+                      No matches found in any tab — try clearing filters.
+                    </span>
+                  ) : (
+                    matchingTabs.map(t => (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setActiveTab(t.key)}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 10px', borderRadius: 16, fontSize: '0.73rem', fontWeight: 700,
+                          cursor: 'pointer', transition: 'all 0.15s ease',
+                          background: activeTab === t.key ? t.color : `${t.color}16`,
+                          color: activeTab === t.key ? '#fff' : t.color,
+                          border: `1px solid ${activeTab === t.key ? t.color : `${t.color}55`}`
+                        }}
+                      >
+                        <span>{t.icon}</span>
+                        <span>{t.label}</span>
+                        <span style={{ opacity: 0.9 }}>({t.count})</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Segmented Tab Bar ── */}
+            <div style={{
+              display: 'flex', gap: 4, marginBottom: 24,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 14, padding: 5,
+              flexWrap: 'wrap'
+            }}>
+              {globalTabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '7px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: activeTab === t.key ? 'var(--bg-surface)' : 'transparent',
+                    color: activeTab === t.key ? t.color : 'var(--text-muted)',
+                    fontWeight: activeTab === t.key ? 700 : 500,
+                    fontSize: '0.84rem',
+                    boxShadow: activeTab === t.key ? '0 1px 6px rgba(0,0,0,0.15)' : 'none',
+                    transition: 'all 0.18s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <span style={{ fontSize: '0.9rem' }}>{t.icon}</span>
+                  {t.label}
+                  {t.count > 0 && (
+                    <span style={{
+                      background: activeTab === t.key ? t.color : 'var(--border)',
+                      color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
+                      borderRadius: 20, padding: '1px 7px', fontSize: '0.68rem', fontWeight: 700, minWidth: 20, textAlign: 'center',
+                      transition: 'all 0.18s ease'
+                    }}>{t.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
+        );
+      })()}
 
       {(activeTab === 'pending' || activeTab === 'drift' || activeTab === 'verified' || activeTab === 'continue_selling' || activeTab === 'active' || activeTab === 'draft' || activeTab === 'unlisted' || activeTab === 'archived') && (
         <>
-          {/*             <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>🔍</span>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Search products..."
-                value={search}
-                onChange={e => {
-                  setSearch(e.target.value)
-                  setGhostSearch(e.target.value)
-                }}
-                style={{ paddingLeft: 36, width: '100%' }}
-              />
-            </div>
-            <select
-              className="form-input"
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value)}
-              style={{ width: 'auto', cursor: 'pointer' }}
-            >
-              <option value="value">Sort: By Value</option>
-              <option value="margin">Sort: By Margin</option>
-              <option value="stock">Sort: By Stock</option>
-              <option value="name">Sort: By Name</option>
-            </select>
-            <select
-              className="form-input"
-              value={filterMargin}
-              onChange={e => setFilterMargin(e.target.value)}
-              style={{ width: 'auto', cursor: 'pointer' }}
-            >
-              <option value="all">Margin: All</option>
-              <option value="high">Margin: High (&gt;40%)</option>
-              <option value="mid">Margin: Mid (20–40%)</option>
-              <option value="low">Margin: Low (&lt;20%) ⚠️</option>
-            </select>
-            <select
-              className="form-input"
-              value={groupVariantsBy}
-              onChange={e => setGroupVariantsBy(e.target.value)}
-              style={{ width: 'auto', cursor: 'pointer' }}
-            >
-              <option value="none">Group: Flat List</option>
-              <option value="opt1">Group by Size (Option 1)</option>
-              <option value="opt2">Group by Color (Option 2)</option>
-            </select>
-            {(search || filterMargin !== 'all') && (
-              <button
-                className="btn btn-secondary"
-                style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}
-                onClick={() => { setSearch(''); setGhostSearch(''); setFilterMargin('all') }}
-              >✕ Clear</button>
-            )}
-          </div>
-
           {/* ── Loading State ── */}
           {loading && (
             <div style={{
@@ -1468,43 +1799,60 @@ export default function CostManager() {
               background: 'var(--bg-surface)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '40px', textAlign: 'center'
             }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
-                {activeTab === 'pending' ? '✅' : activeTab === 'drift' ? '⚡' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'unlisted' ? '🚫' : activeTab === 'archived' ? '📦' : '⏳'}
-              </div>
-              <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-                {activeTab === 'pending'
-                  ? 'All products are verified!'
-                  : activeTab === 'drift'
-                    ? 'No price drift detected!'
-                    : activeTab === 'continue_selling'
-                      ? 'No continue selling products'
-                      : activeTab === 'active'
-                        ? 'No active products'
-                        : activeTab === 'draft'
-                          ? 'No draft products'
-                          : activeTab === 'unlisted'
-                            ? 'No unlisted products'
-                            : activeTab === 'archived'
-                              ? 'No archived products'
-                              : 'No verified products yet'}
-              </div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {activeTab === 'pending'
-                  ? 'Every product in your registry has an accepted cost.'
-                  : activeTab === 'drift'
-                    ? 'All accepted costs in your ERP registry match the latest costs on Shopify.'
-                    : activeTab === 'continue_selling'
-                      ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
-                      : activeTab === 'active'
-                        ? 'No products are currently active on your Shopify store.'
-                        : activeTab === 'draft'
-                          ? 'No products are in draft status.'
-                          : activeTab === 'unlisted'
-                            ? 'No products are in unlisted status on Shopify.'
-                            : activeTab === 'archived'
-                              ? 'No products are archived.'
-                              : 'Accept costs for your products to see them here.'}
-              </div>
+              {hasActiveFilters ? (
+                <>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🔍</div>
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    No matching products in this tab
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>
+                    Check the <strong>Matches across tabs</strong> bar above or clear your active search/filters.
+                  </div>
+                  <button type="button" className="btn btn-secondary" onClick={handleClearAllFilters}>
+                    ✕ Clear All Filters
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>
+                    {activeTab === 'pending' ? '✅' : activeTab === 'drift' ? '⚡' : activeTab === 'continue_selling' ? '🔄' : activeTab === 'active' ? '🟢' : activeTab === 'draft' ? '📝' : activeTab === 'unlisted' ? '🚫' : activeTab === 'archived' ? '📦' : '⏳'}
+                  </div>
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    {activeTab === 'pending'
+                      ? 'All products are verified!'
+                      : activeTab === 'drift'
+                        ? 'No price drift detected!'
+                        : activeTab === 'continue_selling'
+                          ? 'No continue selling products'
+                          : activeTab === 'active'
+                            ? 'No active products'
+                            : activeTab === 'draft'
+                              ? 'No draft products'
+                              : activeTab === 'unlisted'
+                                ? 'No unlisted products'
+                                : activeTab === 'archived'
+                                  ? 'No archived products'
+                                  : 'No verified products yet'}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {activeTab === 'pending'
+                      ? 'Every product in your registry has an accepted cost.'
+                      : activeTab === 'drift'
+                        ? 'All accepted costs in your ERP registry match the latest costs on Shopify.'
+                        : activeTab === 'continue_selling'
+                          ? 'None of your variants are set to "Continue Selling when out of stock" on Shopify.'
+                          : activeTab === 'active'
+                            ? 'No products are currently active on your Shopify store.'
+                            : activeTab === 'draft'
+                              ? 'No products are in draft status.'
+                              : activeTab === 'unlisted'
+                                ? 'No products are in unlisted status on Shopify.'
+                                : activeTab === 'archived'
+                                  ? 'No products are archived.'
+                                  : 'Accept costs for your products to see them here.'}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1662,10 +2010,15 @@ export default function CostManager() {
                     {expandedParents.has(p.name) && (() => {
                       if (groupVariantsBy === 'none') {
                         // Render flat variants
-                        return p.variants.map((v, i) => (
+                        return p.variants.map((v, i) => {
+                          const isDirectHit = search.trim().length >= 2 && matchesVariantSearch(v, p.name, search);
+                          return (
                           <tr key={v.id || i} style={{ 
                             borderBottom: '1px solid var(--border)',
-                            backgroundColor: (v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'
+                            backgroundColor: isDirectHit
+                              ? 'rgba(99, 102, 241, 0.10)'
+                              : ((v.unit_cost + v.packaging_cost) > 0 ? 'var(--green-dim)' : 'transparent'),
+                            boxShadow: isDirectHit ? 'inset 3px 0 0 var(--brand)' : 'none'
                           }}>
                             <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                               <input 
@@ -1690,6 +2043,9 @@ export default function CostManager() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                     {v.variant_title || 'Default'}
                                     {(v.unit_cost + v.packaging_cost) > 0 && <span style={{ color: 'var(--green)' }}>✓</span>}
+                                    {isDirectHit && (
+                                      <span style={{ fontSize: '0.6rem', color: 'var(--brand)', background: 'rgba(99,102,241,0.16)', border: '1px solid rgba(99,102,241,0.35)', padding: '1px 5px', borderRadius: 3, fontWeight: 700 }}>🎯 MATCH</span>
+                                    )}
                                     {v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1 && (
                                       <span style={{ fontSize: '0.6rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '1px 4px', borderRadius: 3, fontWeight: 700 }}>DRIFT</span>
                                     )}
@@ -1777,7 +2133,8 @@ export default function CostManager() {
                               })()}
                             </td>
                           </tr>
-                        ));
+                          );
+                        });
                       }
 
                       // Grouped variations rendering
@@ -2026,7 +2383,7 @@ export default function CostManager() {
               <span style={{ fontSize: '1.1rem' }}>🚨</span>
               <h3 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Priority Prevention List</h3>
               {(() => {
-                const totalAlerts = auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length;
+                const totalAlerts = filteredWatchdog.total;
                 return totalAlerts > 0 && (
                   <span style={{
                     background: 'var(--red-dim)', color: 'var(--red)',
@@ -2042,10 +2399,10 @@ export default function CostManager() {
             {/* Filter Tabs */}
             <div style={{ display: 'flex', gap: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: 4, borderRadius: 8 }}>
               {[
-                { id: 'all', label: 'All Alerts', count: auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length },
-                { id: 'missing', label: 'Missing Mapping', count: auditData.missingInRegistry.length },
-                { id: 'zero', label: '$0 Costs', count: auditData.zeroCostInRegistry.length },
-                { id: 'orders', label: 'Order Risks', count: auditData.pendingOrdersWithMissingCost.length },
+                { id: 'all', label: 'All Alerts', count: filteredWatchdog.total },
+                { id: 'missing', label: 'Missing Mapping', count: filteredWatchdog.missing.length },
+                { id: 'zero', label: '$0 Costs', count: filteredWatchdog.zero.length },
+                { id: 'orders', label: 'Order Risks', count: filteredWatchdog.orders.length },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -2115,13 +2472,13 @@ export default function CostManager() {
                 ) : (() => {
                   const rows = [];
                   if (auditFilter === 'all' || auditFilter === 'missing') {
-                    auditData.missingInRegistry.forEach((p, i) => rows.push({ ...p, _type: 'missing', _key: `m-${i}` }));
+                    filteredWatchdog.missing.forEach((p, i) => rows.push({ ...p, _type: 'missing', _key: `m-${i}` }));
                   }
                   if (auditFilter === 'all' || auditFilter === 'zero') {
-                    auditData.zeroCostInRegistry.forEach((p, i) => rows.push({ ...p, _type: 'zero', _key: `z-${i}` }));
+                    filteredWatchdog.zero.forEach((p, i) => rows.push({ ...p, _type: 'zero', _key: `z-${i}` }));
                   }
                   if (auditFilter === 'all' || auditFilter === 'orders') {
-                    auditData.pendingOrdersWithMissingCost.forEach((o, i) => rows.push({ ...o, _type: 'order', _key: `o-${i}` }));
+                    filteredWatchdog.orders.forEach((o, i) => rows.push({ ...o, _type: 'order', _key: `o-${i}` }));
                   }
 
                   if (rows.length === 0) {
@@ -2327,28 +2684,8 @@ export default function CostManager() {
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 20 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.5, color: 'var(--text-muted)' }}>🔍</span>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Search ghost products..." 
-                style={{ paddingLeft: 35, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
-                value={ghostSearch}
-                onChange={e => {
-                  setGhostSearch(e.target.value)
-                  setSearch(e.target.value)
-                }}
-              />
-            </div>
-            <div style={{ color: 'var(--brand)', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-              <strong>{ghosts.length}</strong> items found
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--brand-glow)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid var(--brand)' }}>
-            <p style={{ margin: 0, color: 'var(--brand)' }}>Found <strong>{ghosts.length}</strong> products in your history that are missing costs. Fill them in below to fix your P&L.</p>
+          <div style={{ background: 'var(--brand-glow)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid var(--brand)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <p style={{ margin: 0, color: 'var(--brand)' }}>Found <strong>{filteredGhosts.length}</strong>{filteredGhosts.length !== ghosts.length ? ` of ${ghosts.length}` : ''} products in your history that are missing costs. Fill them in below to fix your P&L.</p>
           </div>
           
           <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
@@ -2360,13 +2697,13 @@ export default function CostManager() {
                       type="checkbox" 
                       onChange={(e) => {
                         if (e.target.checked) {
-                          const all = new Set(ghosts.filter(p => isGhostMatch(p, ghostSearch)).map(p => p.name));
+                          const all = new Set(filteredGhosts.map(p => p.name));
                           setSelectedGhosts(all);
                         } else {
                           setSelectedGhosts(new Set());
                         }
                       }}
-                      checked={selectedGhosts.size > 0 && selectedGhosts.size === ghosts.filter(p => isGhostMatch(p, ghostSearch)).length}
+                      checked={selectedGhosts.size > 0 && selectedGhosts.size === filteredGhosts.length}
                     />
                   </th>
                   <th style={{ padding: 15 }}>Product / Variant</th>
@@ -2376,7 +2713,7 @@ export default function CostManager() {
                 </tr>
               </thead>
               <tbody>
-                {ghosts.filter(p => isGhostMatch(p, ghostSearch)).map(p => (
+                {filteredGhosts.map(p => (
                   <React.Fragment key={p.name}>
                     <tr 
                       style={{ cursor: 'pointer', background: selectedGhosts.has(p.name) ? 'var(--brand-glow)' : 'transparent', borderBottom: '1px solid var(--border)' }} 
@@ -2388,7 +2725,6 @@ export default function CostManager() {
                           checked={selectedGhosts.has(p.name)} 
                           onClick={(e) => {
                             const checked = e.target.checked;
-                            const filteredGhosts = ghosts.filter(g => isGhostMatch(g, ghostSearch));
                             const currentIndex = filteredGhosts.findIndex(item => item.name === p.name);
                             
                             if (e.shiftKey && lastSelectedGhostIndex !== null) {
@@ -2511,21 +2847,11 @@ export default function CostManager() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-                🔗 Product Ghost-to-SKU Aliases ({aliases.length})
+                🔗 Product Ghost-to-SKU Aliases ({filteredAliases.length}{filteredAliases.length !== aliases.length ? ` / ${aliases.length}` : ''})
               </h3>
               <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 Items below are mapped to real Master SKUs. All past and incoming orders automatically pull the linked SKU and landed cost.
               </p>
-            </div>
-            <div style={{ width: 260 }}>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Search aliases..." 
-                value={aliasSearch} 
-                onChange={e => setAliasSearch(e.target.value)} 
-                style={{ height: 34, fontSize: '0.8rem' }}
-              />
             </div>
           </div>
 
@@ -2542,26 +2868,14 @@ export default function CostManager() {
                 </tr>
               </thead>
               <tbody>
-                {aliases.filter(a => {
-                  if (!aliasSearch) return true;
-                  const q = aliasSearch.toLowerCase();
-                  return (a.alias_title || '').toLowerCase().includes(q) ||
-                         (a.target_sku || '').toLowerCase().includes(q) ||
-                         (a.target_parent_title || '').toLowerCase().includes(q);
-                }).length === 0 ? (
+                {filteredAliases.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                       {loadingAliases ? '⌛ Loading aliases...' : 'No aliases found. Link ghost items to catalog SKUs to see them here.'}
                     </td>
                   </tr>
                 ) : (
-                  aliases.filter(a => {
-                    if (!aliasSearch) return true;
-                    const q = aliasSearch.toLowerCase();
-                    return (a.alias_title || '').toLowerCase().includes(q) ||
-                           (a.target_sku || '').toLowerCase().includes(q) ||
-                           (a.target_parent_title || '').toLowerCase().includes(q);
-                  }).map(a => (
+                  filteredAliases.map(a => (
                     <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '12px 14px', fontWeight: 600, color: '#fff', fontSize: '0.82rem' }}>
                         {a.alias_title}
