@@ -310,21 +310,25 @@ export default function CostManager() {
 
     const grouped = {}
     costs.forEach(c => {
-      if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0, totalSelling: 0 }
+      if (!grouped[c.parent_title]) grouped[c.parent_title] = { name: c.parent_title, variants: [], totalQty: 0, totalValue: 0, totalSelling: 0, verifiedCount: 0, pendingCount: 0 }
       grouped[c.parent_title].variants.push(c)
       grouped[c.parent_title].totalQty += (c.inventory_qty || 0)
       
       const landed = (c.unit_cost || 0) + (c.packaging_cost || 0)
       const selling = c.selling_price || 0
       if (landed > 0) {
+        grouped[c.parent_title].verifiedCount += 1
         totals.acceptedValue += landed * (c.inventory_qty || 0)
         totals.acceptedQty += (c.inventory_qty || 0)
         if (selling > 0) {
           totals.totalMarginValue += (selling - landed) * (c.inventory_qty || 0)
           totals.totalSellingValue += selling * (c.inventory_qty || 0)
         }
-      } else if (c.shopify_cost > 0) {
-        totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
+      } else {
+        grouped[c.parent_title].pendingCount += 1
+        if (c.shopify_cost > 0) {
+          totals.pendingValue += c.shopify_cost * (c.inventory_qty || 0)
+        }
       }
       
       grouped[c.parent_title].totalValue += landed * (c.inventory_qty || 0)
@@ -341,8 +345,13 @@ export default function CostManager() {
       grouped[c.parent_title].uniqueCosts.add(c.shopify_cost || 0)
     })
 
-    // Compute per-group margin and at-risk
+    // Compute per-group margin, verification completeness, and at-risk
     Object.values(grouped).forEach(p => {
+      p.totalVariants = p.variants.length
+      p.isFullyVerified = p.totalVariants > 0 && p.verifiedCount === p.totalVariants
+      p.isPartiallyVerified = p.verifiedCount > 0 && p.pendingCount > 0
+      p.hasPending = p.pendingCount > 0
+
       if (p.totalSelling > 0 && p.totalValue > 0) {
         p.margin = Math.round(((p.totalSelling - p.totalValue) / p.totalSelling) * 100)
         if (p.margin < 20) totals.atRiskCount++
@@ -391,9 +400,9 @@ export default function CostManager() {
 
   const lists = useMemo(() => {
     return {
-      pending: sorted.filter(p => !p.hasCost),
+      pending: sorted.filter(p => p.hasPending),
       drift: sorted.filter(p => p.hasDrift || p.variants.some(v => v.unit_cost > 0 && v.shopify_cost > 0 && Math.abs(v.shopify_cost - v.unit_cost) >= 1)),
-      verified: sorted.filter(p => p.hasCost),
+      verified: sorted.filter(p => p.isFullyVerified),
       continue_selling: sorted.filter(p => p.variants.some(v => v.inventory_policy === 'continue')),
       active: sorted.filter(p => (p.variants[0]?.status || 'active') === 'active'),
       draft: sorted.filter(p => p.variants[0]?.status === 'draft'),
@@ -1524,9 +1533,9 @@ export default function CostManager() {
                 {currentList.map(p => (
                   <React.Fragment key={p.name}>
                     <tr style={{ 
-                      background: p.hasCost ? 'var(--green-dim)' : 'transparent', 
+                      background: p.isFullyVerified ? 'var(--green-dim)' : (p.isPartiallyVerified ? 'rgba(245, 158, 11, 0.08)' : 'transparent'), 
                       cursor: 'pointer',
-                      borderLeft: p.hasCost ? '4px solid var(--green)' : '4px solid transparent',
+                      borderLeft: p.isFullyVerified ? '4px solid var(--green)' : (p.isPartiallyVerified ? '4px solid #f59e0b' : '4px solid transparent'),
                       borderBottom: '1px solid var(--border)'
                     }} onClick={() => toggleParent(p.name)}>
                       <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -1599,7 +1608,15 @@ export default function CostManager() {
                              }
                              return null;
                            })()}
-                           {p.hasCost && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                           {p.isFullyVerified && <span style={{ fontSize: '0.65rem', color: 'var(--green)', background: 'var(--green-dim)', padding: '2px 6px', borderRadius: 4 }}>✅ VERIFIED</span>}
+                           {p.isPartiallyVerified && (
+                             <span
+                               title={`${p.verifiedCount} of ${p.totalVariants} variants verified — ${p.pendingCount} pending`}
+                               style={{ fontSize: '0.65rem', fontWeight: 700, color: '#d97706', background: 'rgba(245, 158, 11, 0.16)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '2px 6px', borderRadius: 4 }}
+                             >
+                               ⚠️ PARTIAL ({p.verifiedCount}/{p.totalVariants})
+                             </span>
+                           )}
                            {p.hasDrift && <span style={{ fontSize: '0.65rem', color: 'var(--yellow)', background: 'var(--yellow-dim)', padding: '2px 6px', borderRadius: 4 }}>⚠️ PRICE DRIFT</span>}
                         </div>
                         <div style={{ fontSize: '0.7rem', marginTop: 4, marginLeft: 52, opacity: 0.6, fontWeight: 'normal', color: 'var(--text-secondary)' }}>
@@ -1615,7 +1632,7 @@ export default function CostManager() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--text-muted)', padding: '0 8px' }}>—</td>
-                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.hasCost ? 'var(--green)' : 'var(--text-primary)', padding: '0 8px' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0') : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 'bold', color: p.isFullyVerified ? 'var(--green)' : (p.isPartiallyVerified ? '#d97706' : 'var(--text-primary)'), padding: '0 8px' }}>{p.hasCost ? (p.totalValue > 0 ? `Rs ${p.totalValue.toLocaleString()}` : 'Rs 0') : '—'}</td>
                       {/* Margin Bar */}
                       <td style={{ padding: '0 16px' }}>
                         {p.margin !== null ? (
