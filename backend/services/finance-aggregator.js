@@ -158,39 +158,90 @@ class FinanceAggregator {
   }
 
   static async getPreventionAudit(storeId) {
-    // 1. Missing Mapping (In Master Registry but cost is 0)
+    const sid = Number(storeId);
+
+    // 1. Zero-Cost Items (In Master Registry but landed_cost is 0 / NULL)
     const zeroCostInRegistry = db.prepare(`
-      SELECT parent_title, variant_title, inventory_qty, landed_cost 
+      SELECT parent_title, variant_title, inventory_qty, landed_cost, shopify_cost, sku
       FROM product_master_costs 
       WHERE store_id = ? AND (landed_cost = 0 OR landed_cost IS NULL)
       ORDER BY inventory_qty DESC
-    `).all(Number(storeId));
+    `).all(sid);
 
-    // 2. Pending Orders with Missing Cost (The actual risk)
+    // 2. Pending Orders with Missing Cost (The actual risk — excludes Cancelled/Returned/Return Received)
     const pendingOrdersWithMissingCost = db.prepare(`
       SELECT id, shopify_order_id, customer_name, price, order_date 
       FROM orders 
       WHERE store_id = ? 
       AND (cost = 0 OR cost IS NULL)
-      AND delivery_status NOT IN ('Cancelled', 'Returned', 'RTO')
+      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'returned', 'return received')
       AND order_date >= date('now', '-30 days')
       ORDER BY order_date DESC
-    `).all(Number(storeId));
+    `).all(sid);
 
     // 3. Extract unmapped line items from active orders in the last 60 days
     const activeOrders = db.prepare(`
       SELECT line_items FROM orders 
       WHERE store_id = ? 
-      AND delivery_status NOT IN ('Cancelled', 'Returned', 'RTO')
+      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'returned', 'return received')
       AND order_date >= date('now', '-60 days')
       AND line_items IS NOT NULL
-    `).all(Number(storeId));
+    `).all(sid);
 
     const catalog = db.prepare(`
-      SELECT parent_title, variant_title, shopify_variant_id, sku 
+      SELECT id, parent_title, variant_title, shopify_variant_id, sku 
       FROM product_master_costs 
       WHERE store_id = ?
-    `).all(Number(storeId));
+    `).all(sid);
+
+    let aliases = [];
+    try {
+      aliases = db.prepare(`
+        SELECT alias_title, alias_variant, target_sku, target_variant_id, target_master_cost_id
+        FROM product_aliases
+        WHERE store_id = ?
+      `).all(sid);
+    } catch (_) {}
+
+    // Build O(1) lookup sets for normalized Variant IDs (numeric + GID), SKUs, Titles, and Aliases
+    const variantIdSet = new Set();
+    const skuSet = new Set();
+    const parentTitleSet = new Set();
+    const parentVariantSet = new Set();
+
+    for (const c of catalog) {
+      if (c.shopify_variant_id) {
+        const raw = String(c.shopify_variant_id).trim();
+        const numeric = raw.includes('/') ? raw.split('/').pop() : raw;
+        if (raw) variantIdSet.add(raw);
+        if (numeric) {
+          variantIdSet.add(numeric);
+          variantIdSet.add(`gid://shopify/ProductVariant/${numeric}`);
+        }
+      }
+      if (c.sku && String(c.sku).trim()) {
+        skuSet.add(String(c.sku).trim().toLowerCase());
+      }
+      const pt = (c.parent_title || '').trim().toLowerCase();
+      const vt = (c.variant_title || '').trim().toLowerCase();
+      if (pt) {
+        parentTitleSet.add(pt);
+        parentVariantSet.add(`${pt}::${vt}`);
+      }
+    }
+
+    const aliasExactSet = new Set();
+    const aliasTitleSet = new Set();
+    for (const a of aliases) {
+      const at = (a.alias_title || '').trim().toLowerCase();
+      const av = (a.alias_variant || '').trim().toLowerCase();
+      if (!at) continue;
+      if (av) {
+        aliasExactSet.add(`${at}::${av}`);
+      } else {
+        aliasTitleSet.add(at);
+      }
+    }
 
     const missingMap = new Map();
 
@@ -203,39 +254,50 @@ class FinanceAggregator {
       for (const item of items) {
         if (!item.title) continue;
 
-        const vId = item.variant_id ? String(item.variant_id) : '';
-        const sku = item.sku ? String(item.sku).trim() : '';
-        const pName = item.title.trim();
-        const vName = item.variant_title ? item.variant_title.trim() : '';
+        const rawVarId = item.variant_id ? String(item.variant_id).trim() : '';
+        const numericVarId = rawVarId.includes('/') ? rawVarId.split('/').pop() : rawVarId;
+        const skuLower = item.sku ? String(item.sku).trim().toLowerCase() : '';
+        const pName = String(item.title).trim();
+        const vName = item.variant_title ? String(item.variant_title).trim() : '';
+        const pLower = pName.toLowerCase();
+        const vLower = vName.toLowerCase();
 
-        let matched = false;
-        if (vId || sku) {
-          matched = catalog.some(c => 
-            (vId && c.shopify_variant_id === vId) || 
-            (sku && c.sku === sku)
-          );
-        }
-        if (!matched) {
-          matched = catalog.some(c => c.parent_title === pName && c.variant_title === vName);
-        }
-        if (!matched) {
-          matched = catalog.some(c => c.parent_title === pName);
-        }
-        if (!matched && vName) {
-          const fullSearchTitle1 = `${pName} - ${vName}`;
-          const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`;
-          matched = catalog.some(c => 
-            c.parent_title.trim() === fullSearchTitle1 || 
-            c.parent_title.trim() === fullSearchTitle2
-          );
+        // 1. Normalized Variant ID match (handles numeric order variant_id vs GID in product_master_costs)
+        let matched = Boolean(
+          (numericVarId && variantIdSet.has(numericVarId)) ||
+          (rawVarId && variantIdSet.has(rawVarId))
+        );
+
+        // 2. Case-insensitive SKU match
+        if (!matched && skuLower) {
+          matched = skuSet.has(skuLower);
         }
 
+        // 3. Alias match (previously linked ghost/renamed products)
         if (!matched) {
-          const key = `${pName}::${vName}`;
+          matched = aliasTitleSet.has(pLower) ||
+            (vLower && aliasExactSet.has(`${pLower}::${vLower}`)) ||
+            (vLower && aliasTitleSet.has(`${pLower} - ${vLower}`));
+        }
+
+        // 4. Case-insensitive Title / Variant match
+        if (!matched) {
+          matched = parentVariantSet.has(`${pLower}::${vLower}`) || parentTitleSet.has(pLower);
+        }
+        if (!matched && vLower) {
+          const fullSearchTitle1 = `${pLower} - ${vLower}`;
+          const fullSearchTitle2 = `${pLower} - ${vLower.split('/').map(x => x.trim()).reverse().join(' / ')}`;
+          matched = parentTitleSet.has(fullSearchTitle1) || parentTitleSet.has(fullSearchTitle2);
+        }
+
+        if (!matched) {
+          const key = `${pLower}::${vLower}`;
           if (!missingMap.has(key)) {
             missingMap.set(key, {
               parent_title: pName,
               variant_title: vName,
+              sku: item.sku ? String(item.sku).trim() : '',
+              shopify_variant_id: numericVarId || '',
               inventory_qty: 0,
               landed_cost: 0
             });

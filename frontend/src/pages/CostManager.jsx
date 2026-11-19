@@ -2590,6 +2590,42 @@ export default function CostManager() {
                             >
                               ⚡ Heal Now
                             </button>
+                          ) : isMissing ? (
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => setLinkingGhost({ title: row.parent_title, variant: row.variant_title || '' })}
+                                title="Link this renamed/old item to an existing catalog SKU"
+                                style={{
+                                  padding: '6px 12px', borderRadius: 6,
+                                  background: 'rgba(236,72,153,0.12)', color: '#ec4899',
+                                  border: '1px solid rgba(236,72,153,0.4)',
+                                  fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                                }}
+                              >
+                                🔗 Link SKU
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingItem(null);
+                                  setForm({
+                                    parent_title: row.parent_title || '',
+                                    variant_title: row.variant_title || '',
+                                    unit_cost: 0,
+                                    packaging_cost: 0
+                                  });
+                                  setShowModal(true);
+                                }}
+                                title="Create a manual cost entry for this item"
+                                style={{
+                                  padding: '6px 12px', borderRadius: 6,
+                                  background: 'transparent', color: 'var(--red)',
+                                  border: '1px solid var(--red)',
+                                  fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
+                                }}
+                              >
+                                + Add Cost
+                              </button>
+                            </div>
                           ) : (
                             <button
                               onClick={() => {
@@ -2598,12 +2634,12 @@ export default function CostManager() {
                               }}
                               style={{
                                 padding: '6px 14px', borderRadius: 6,
-                                background: 'transparent', color: isMissing ? 'var(--red)' : 'var(--orange)',
-                                border: `1px solid ${isMissing ? 'var(--red)' : 'var(--orange)'}`,
+                                background: 'transparent', color: 'var(--orange)',
+                                border: '1px solid var(--orange)',
                                 fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer'
                               }}
                             >
-                              {isMissing ? '+ Add Cost' : '✏️ Update Cost'}
+                              ✏️ Update Cost
                             </button>
                           )}
                         </td>
@@ -3243,6 +3279,7 @@ export default function CostManager() {
             fetchGhosts();
             fetchAliases();
             fetchCosts();
+            fetchAudit();
           }}
         />
       )}
