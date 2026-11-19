@@ -132,6 +132,15 @@ export default function CostManager() {
     pendingOrdersWithMissingCost: []
   })
   const [auditFilter, setAuditFilter] = useState('all')
+  const [expandedWatchdogGroups, setExpandedWatchdogGroups] = useState(new Set())
+  const toggleWatchdogGroup = useCallback((groupKey) => {
+    setExpandedWatchdogGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) next.delete(groupKey)
+      else next.add(groupKey)
+      return next
+    })
+  }, [])
   
   // Modal States
   const [showModal, setShowModal] = useState(false)
@@ -552,6 +561,81 @@ export default function CostManager() {
     const orders = (auditData.pendingOrdersWithMissingCost || []).filter(filterFn)
     return { missing, zero, orders, total: missing.length + zero.length + orders.length }
   }, [auditData, search, filterStock, filterMissingSku])
+
+  // Fast thumbnail lookup by parent title for Watchdog parent rows
+  const productImageByParent = useMemo(() => {
+    const map = new Map()
+    for (const c of costs) {
+      if (c.parent_title && c.variant_image_url) {
+        const key = c.parent_title.trim().toLowerCase()
+        if (!map.has(key)) map.set(key, c.variant_image_url)
+      }
+    }
+    return map
+  }, [costs])
+
+  // Parent-grouped Watchdog rows (groups Missing Mapping & $0 Costs by parent_title; keeps Orders as individual rows)
+  const watchdogGroupedRows = useMemo(() => {
+    const entries = []
+
+    const pushProductGroups = (items, type) => {
+      const groupMap = new Map()
+      for (const item of items) {
+        const pTitle = (item.parent_title || 'Unknown Product').trim()
+        const normKey = `${type}::${pTitle.toLowerCase()}`
+        if (!groupMap.has(normKey)) {
+          groupMap.set(normKey, {
+            _kind: 'group',
+            _type: type,
+            groupKey: normKey,
+            parent_title: pTitle,
+            variants: [],
+            totalStock: 0,
+            shopifyCosts: new Set(),
+            imageUrl: productImageByParent.get(pTitle.toLowerCase()) || null
+          })
+        }
+        const g = groupMap.get(normKey)
+        g.variants.push(item)
+        g.totalStock += (item.inventory_qty || 0)
+        if ((item.shopify_cost || 0) > 0) g.shopifyCosts.add(Number(item.shopify_cost))
+      }
+
+      const list = Array.from(groupMap.values()).map(g => {
+        const sortedCosts = Array.from(g.shopifyCosts).sort((a, b) => a - b)
+        return {
+          ...g,
+          hasShopifyCost: sortedCosts.length > 0,
+          shopifyCostHint: sortedCosts.length === 1
+            ? `Shopify Cost: Rs ${sortedCosts[0].toLocaleString()}`
+            : sortedCosts.length > 1
+              ? `Shopify Cost: Rs ${sortedCosts[0].toLocaleString()} – Rs ${sortedCosts[sortedCosts.length - 1].toLocaleString()}`
+              : null
+        }
+      })
+
+      if (type === 'zero') {
+        list.sort((a, b) => (b.totalStock - a.totalStock) || (b.variants.length - a.variants.length) || a.parent_title.localeCompare(b.parent_title))
+      } else {
+        list.sort((a, b) => (b.variants.length - a.variants.length) || a.parent_title.localeCompare(b.parent_title))
+      }
+      entries.push(...list)
+    }
+
+    if (auditFilter === 'all' || auditFilter === 'missing') {
+      pushProductGroups(filteredWatchdog.missing, 'missing')
+    }
+    if (auditFilter === 'all' || auditFilter === 'zero') {
+      pushProductGroups(filteredWatchdog.zero, 'zero')
+    }
+    if (auditFilter === 'all' || auditFilter === 'orders') {
+      filteredWatchdog.orders.forEach((o, i) => {
+        entries.push({ ...o, _kind: 'order', _type: 'order', groupKey: `order::${o.id || o.shopify_order_id || i}` })
+      })
+    }
+
+    return entries
+  }, [filteredWatchdog, auditFilter, productImageByParent])
 
   const filteredGhosts = useMemo(() => {
     const q = search || ghostSearch
@@ -2379,19 +2463,44 @@ export default function CostManager() {
             alignItems: 'center',
             background: 'var(--bg-elevated)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: '1.1rem' }}>🚨</span>
               <h3 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Priority Prevention List</h3>
               {(() => {
                 const totalAlerts = filteredWatchdog.total;
-                return totalAlerts > 0 && (
-                  <span style={{
-                    background: 'var(--red-dim)', color: 'var(--red)',
-                    border: '1px solid var(--red)', borderRadius: 12,
-                    padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700
-                  }}>
-                    {totalAlerts} alert{totalAlerts !== 1 ? 's' : ''}
-                  </span>
+                const multiGroups = watchdogGroupedRows.filter(r => r._kind === 'group' && r.variants.length > 1);
+                const allExpanded = multiGroups.length > 0 && multiGroups.every(g => expandedWatchdogGroups.has(g.groupKey));
+                return (
+                  <>
+                    {totalAlerts > 0 && (
+                      <span style={{
+                        background: 'var(--red-dim)', color: 'var(--red)',
+                        border: '1px solid var(--red)', borderRadius: 12,
+                        padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700
+                      }}>
+                        {watchdogGroupedRows.length} group{watchdogGroupedRows.length !== 1 ? 's' : ''} · {totalAlerts} alert{totalAlerts !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {multiGroups.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allExpanded) {
+                            setExpandedWatchdogGroups(new Set());
+                          } else {
+                            setExpandedWatchdogGroups(new Set(multiGroups.map(g => g.groupKey)));
+                          }
+                        }}
+                        style={{
+                          padding: '3px 10px', borderRadius: 8, fontSize: '0.72rem', fontWeight: 600,
+                          background: 'var(--bg-surface)', color: 'var(--text-secondary)',
+                          border: '1px solid var(--border)', cursor: 'pointer'
+                        }}
+                      >
+                        {allExpanded ? '▲ Collapse All' : `▼ Expand All (${multiGroups.length})`}
+                      </button>
+                    )}
+                  </>
                 )
               })()}
             </div>
@@ -2470,18 +2579,7 @@ export default function CostManager() {
                     </td>
                   </tr>
                 ) : (() => {
-                  const rows = [];
-                  if (auditFilter === 'all' || auditFilter === 'missing') {
-                    filteredWatchdog.missing.forEach((p, i) => rows.push({ ...p, _type: 'missing', _key: `m-${i}` }));
-                  }
-                  if (auditFilter === 'all' || auditFilter === 'zero') {
-                    filteredWatchdog.zero.forEach((p, i) => rows.push({ ...p, _type: 'zero', _key: `z-${i}` }));
-                  }
-                  if (auditFilter === 'all' || auditFilter === 'orders') {
-                    filteredWatchdog.orders.forEach((o, i) => rows.push({ ...o, _type: 'order', _key: `o-${i}` }));
-                  }
-
-                  if (rows.length === 0) {
+                  if (watchdogGroupedRows.length === 0) {
                     return (
                       <tr>
                         <td colSpan={5} style={{ padding: '60px 16px', textAlign: 'center' }}>
@@ -2495,10 +2593,10 @@ export default function CostManager() {
                     )
                   }
 
-                  return rows.map((row, i) => {
-                    const isMissing = row._type === 'missing';
-                    const isZero = row._type === 'zero';
-                    const isOrder = row._type === 'order';
+                  return watchdogGroupedRows.map((entry, i) => {
+                    const isOrder = entry._kind === 'order';
+                    const isMissing = entry._type === 'missing';
+                    const isZero = entry._type === 'zero';
 
                     const badgeColor = isMissing ? 'var(--red)' : isZero ? 'var(--orange)' : 'var(--purple)';
                     const badgeBg = isMissing ? 'var(--red-dim)' : isZero ? 'var(--orange-dim)' : 'var(--purple-dim)';
@@ -2508,79 +2606,41 @@ export default function CostManager() {
                     const riskColor = isOrder ? 'var(--red)' : isMissing ? 'var(--yellow)' : 'var(--orange)';
                     const riskBg = isOrder ? 'var(--red-dim)' : isMissing ? 'var(--yellow-dim)' : 'var(--orange-dim)';
 
-                    return (
-                      <tr
-                        key={row._key}
-                        style={{
-                          borderBottom: '1px solid var(--border)',
-                          background: i % 2 === 0 ? 'transparent' : 'var(--bg-hover)',
-                          transition: 'background 0.15s ease'
-                        }}
-                      >
-                        {/* Product / Variant */}
-                        <td style={{ padding: '14px 16px', maxWidth: 280 }}>
-                          {isOrder ? (
-                            <div>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{row.customer_name}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Order #{row.shopify_order_id}</div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.parent_title}>
-                                {row.parent_title}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {row.variant_title || 'Default Variant'}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Issue Type Badge */}
-                        <td style={{ padding: '14px 16px' }}>
-                          <span style={{
-                            display: 'inline-block', padding: '4px 12px', borderRadius: 20,
-                            fontSize: '0.72rem', fontWeight: 700,
-                            background: badgeBg, color: badgeColor,
-                            border: `1px solid ${badgeColor}`
-                          }}>
-                            {badgeLabel}
-                          </span>
-                        </td>
-
-                        {/* Stock */}
-                        <td style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                          {isOrder ? (
-                            <span style={{ color: 'var(--text-muted)' }}>—</span>
-                          ) : (
-                            <span style={{ color: (row.inventory_qty || 0) > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                              {row.inventory_qty || 0} units
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Risk Level */}
-                        <td style={{ padding: '14px 16px' }}>
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '3px 10px', borderRadius: 6,
-                            fontSize: '0.75rem', fontWeight: 600,
-                            background: riskBg, color: riskColor
-                          }}>
-                            {riskLabel}
-                          </span>
-                          {isOrder && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                              {row.price} PKR
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Action */}
-                        <td style={{ padding: '14px 16px' }}>
-                          {isOrder ? (
+                    if (isOrder) {
+                      return (
+                        <tr
+                          key={entry.groupKey}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            background: i % 2 === 0 ? 'transparent' : 'var(--bg-hover)',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          <td style={{ padding: '14px 16px', maxWidth: 320 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{entry.customer_name}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>Order #{entry.shopify_order_id}</div>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{
+                              display: 'inline-block', padding: '4px 12px', borderRadius: 20,
+                              fontSize: '0.72rem', fontWeight: 700,
+                              background: badgeBg, color: badgeColor,
+                              border: `1px solid ${badgeColor}`
+                            }}>{badgeLabel}</span>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: 'var(--text-muted)' }}>—</td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '3px 10px', borderRadius: 6,
+                              fontSize: '0.75rem', fontWeight: 600,
+                              background: riskBg, color: riskColor
+                            }}>{riskLabel}</span>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>{entry.price} PKR</div>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
                             <button
-                              onClick={() => handleHealOrderCost(row.shopify_order_id)}
+                              onClick={() => handleHealOrderCost(entry.shopify_order_id)}
                               style={{
                                 padding: '6px 14px', borderRadius: 6, border: 'none',
                                 background: 'var(--red)', color: '#fff',
@@ -2590,60 +2650,293 @@ export default function CostManager() {
                             >
                               ⚡ Heal Now
                             </button>
-                          ) : isMissing ? (
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => setLinkingGhost({ title: row.parent_title, variant: row.variant_title || '' })}
-                                title="Link this renamed/old item to an existing catalog SKU"
-                                style={{
-                                  padding: '6px 12px', borderRadius: 6,
-                                  background: 'rgba(236,72,153,0.12)', color: '#ec4899',
-                                  border: '1px solid rgba(236,72,153,0.4)',
-                                  fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
-                                }}
-                              >
-                                🔗 Link SKU
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setEditingItem(null);
-                                  setForm({
-                                    parent_title: row.parent_title || '',
-                                    variant_title: row.variant_title || '',
-                                    unit_cost: 0,
-                                    packaging_cost: 0
-                                  });
-                                  setShowModal(true);
-                                }}
-                                title="Create a manual cost entry for this item"
-                                style={{
-                                  padding: '6px 12px', borderRadius: 6,
-                                  background: 'transparent', color: 'var(--red)',
-                                  border: '1px solid var(--red)',
-                                  fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
-                                }}
-                              >
-                                + Add Cost
-                              </button>
+                          </td>
+                        </tr>
+                      )
+                    }
+
+                    const isMulti = entry.variants.length > 1;
+                    const isExpanded = isMulti && expandedWatchdogGroups.has(entry.groupKey);
+                    const singleVar = entry.variants[0];
+
+                    return (
+                      <React.Fragment key={entry.groupKey}>
+                        {/* Parent Group Row */}
+                        <tr
+                          onClick={() => isMulti && toggleWatchdogGroup(entry.groupKey)}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            borderLeft: `4px solid ${isMissing ? 'var(--red)' : 'var(--orange)'}`,
+                            background: isExpanded ? 'var(--bg-elevated)' : (i % 2 === 0 ? 'transparent' : 'var(--bg-hover)'),
+                            cursor: isMulti ? 'pointer' : 'default',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          {/* Product / Variant Summary */}
+                          <td style={{ padding: '13px 16px', maxWidth: 380 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                              <span style={{
+                                width: 16, textAlign: 'center', fontSize: '0.8rem',
+                                color: isMulti ? 'var(--text-primary)' : 'var(--text-muted)',
+                                opacity: isMulti ? 1 : 0.35, flexShrink: 0
+                              }}>
+                                {isMulti ? (isExpanded ? '▼' : '▶') : '•'}
+                              </span>
+                              {entry.imageUrl ? (
+                                <img
+                                  src={entry.imageUrl}
+                                  alt={entry.parent_title}
+                                  style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width: 32, height: 32, borderRadius: 6, flexShrink: 0,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: '0.95rem'
+                                }}>📦</div>
+                              )}
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                                  <span style={{ fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }} title={entry.parent_title}>
+                                    {entry.parent_title}
+                                  </span>
+                                  {isMulti && (
+                                    <span style={{
+                                      fontSize: '0.68rem', fontWeight: 700, padding: '1px 7px', borderRadius: 12,
+                                      background: isMissing ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.14)',
+                                      color: isMissing ? 'var(--red)' : 'var(--orange)',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {entry.variants.length} variants
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <span>{isMulti ? 'Click row to expand variants' : (singleVar?.variant_title || 'Default Variant')}</span>
+                                  {entry.shopifyCostHint && (
+                                    <span style={{ color: 'var(--brand)', fontWeight: 600 }}>• {entry.shopifyCostHint}</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setActiveTab('pending');
-                                setSearch(row.parent_title);
-                              }}
-                              style={{
-                                padding: '6px 14px', borderRadius: 6,
-                                background: 'transparent', color: 'var(--orange)',
-                                border: '1px solid var(--orange)',
-                                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer'
-                              }}
-                            >
-                              ✏️ Update Cost
-                            </button>
-                          )}
-                        </td>
-                      </tr>
+                          </td>
+
+                          {/* Issue Type Badge */}
+                          <td style={{ padding: '13px 16px' }}>
+                            <span style={{
+                              display: 'inline-block', padding: '4px 12px', borderRadius: 20,
+                              fontSize: '0.72rem', fontWeight: 700,
+                              background: badgeBg, color: badgeColor,
+                              border: `1px solid ${badgeColor}`, whiteSpace: 'nowrap'
+                            }}>
+                              {badgeLabel}
+                            </span>
+                          </td>
+
+                          {/* Total Stock */}
+                          <td style={{ padding: '13px 16px', fontWeight: 600 }}>
+                            <span style={{ color: entry.totalStock > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                              {entry.totalStock} units
+                            </span>
+                          </td>
+
+                          {/* Risk Level */}
+                          <td style={{ padding: '13px 16px' }}>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '3px 10px', borderRadius: 6,
+                              fontSize: '0.75rem', fontWeight: 600,
+                              background: riskBg, color: riskColor, whiteSpace: 'nowrap'
+                            }}>
+                              {riskLabel}
+                            </span>
+                          </td>
+
+                          {/* Parent Actions */}
+                          <td style={{ padding: '13px 16px' }} onClick={(e) => e.stopPropagation()}>
+                            {isMissing ? (
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => setLinkingGhost({ title: entry.parent_title, variant: isMulti ? '' : (singleVar?.variant_title || '') })}
+                                  title={isMulti ? 'Link all variants of this product to an existing catalog SKU' : 'Link this renamed/old item to an existing catalog SKU'}
+                                  style={{
+                                    padding: '6px 12px', borderRadius: 6,
+                                    background: 'rgba(236,72,153,0.12)', color: '#ec4899',
+                                    border: '1px solid rgba(236,72,153,0.4)',
+                                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  🔗 {isMulti ? 'Link All' : 'Link SKU'}
+                                </button>
+                                {!isMulti && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingItem(null);
+                                      setForm({
+                                        parent_title: entry.parent_title || '',
+                                        variant_title: singleVar?.variant_title || '',
+                                        unit_cost: 0,
+                                        packaging_cost: 0
+                                      });
+                                      setShowModal(true);
+                                    }}
+                                    title="Create a manual cost entry for this item"
+                                    style={{
+                                      padding: '6px 11px', borderRadius: 6,
+                                      background: 'transparent', color: 'var(--red)',
+                                      border: '1px solid var(--red)',
+                                      fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    + Add Cost
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {entry.hasShopifyCost && (
+                                  <button
+                                    onClick={() => handleBulkAccept(entry.parent_title)}
+                                    title="Accept Shopify Cost for all variants of this product"
+                                    style={{
+                                      padding: '6px 12px', borderRadius: 6,
+                                      background: 'rgba(34,197,94,0.14)', color: 'var(--green)',
+                                      border: '1px solid rgba(34,197,94,0.45)',
+                                      fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    ✅ Accept {isMulti ? 'All' : 'Cost'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setActiveTab('pending');
+                                    setSearch(entry.parent_title);
+                                  }}
+                                  title="Open this product in Pending tab to edit costs"
+                                  style={{
+                                    padding: '6px 12px', borderRadius: 6,
+                                    background: 'transparent', color: 'var(--orange)',
+                                    border: '1px solid var(--orange)',
+                                    fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  ✏️ Update Cost
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* Expanded Child Variant Rows */}
+                        {isExpanded && entry.variants.map((v, vi) => (
+                          <tr
+                            key={`${entry.groupKey}-v-${vi}`}
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: 'rgba(148, 163, 184, 0.04)'
+                            }}
+                          >
+                            <td style={{ padding: '10px 16px 10px 60px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                  ↳ {v.variant_title || 'Default Variant'}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  {v.sku && <span>SKU: {v.sku}</span>}
+                                  {(v.shopify_cost || 0) > 0 && (
+                                    <span style={{ color: 'var(--brand)', fontWeight: 600 }}>Shopify Cost: Rs {Number(v.shopify_cost).toLocaleString()}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                {isMissing ? 'Unmapped variant' : 'Pending verification'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 16px', fontSize: '0.82rem', color: (v.inventory_qty || 0) > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                              {v.inventory_qty || 0} units
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>—</span>
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              {isMissing ? (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  <button
+                                    onClick={() => setLinkingGhost({ title: v.parent_title, variant: v.variant_title || '' })}
+                                    style={{
+                                      padding: '4px 10px', borderRadius: 6,
+                                      background: 'rgba(236,72,153,0.1)', color: '#ec4899',
+                                      border: '1px solid rgba(236,72,153,0.35)',
+                                      fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    🔗 Link SKU
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditingItem(null);
+                                      setForm({
+                                        parent_title: v.parent_title || '',
+                                        variant_title: v.variant_title || '',
+                                        unit_cost: 0,
+                                        packaging_cost: 0
+                                      });
+                                      setShowModal(true);
+                                    }}
+                                    style={{
+                                      padding: '4px 10px', borderRadius: 6,
+                                      background: 'transparent', color: 'var(--red)',
+                                      border: '1px solid rgba(239,68,68,0.5)',
+                                      fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    + Add Cost
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  {(v.shopify_cost || 0) > 0 && (
+                                    <button
+                                      onClick={() => handleAcceptShopifyCost(v)}
+                                      style={{
+                                        padding: '4px 10px', borderRadius: 6,
+                                        background: 'rgba(34,197,94,0.12)', color: 'var(--green)',
+                                        border: '1px solid rgba(34,197,94,0.4)',
+                                        fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      ✅ Accept Rs {Number(v.shopify_cost).toLocaleString()}
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setEditingItem(v);
+                                      setForm({
+                                        parent_title: v.parent_title || '',
+                                        variant_title: v.variant_title || '',
+                                        unit_cost: v.unit_cost || v.shopify_cost || 0,
+                                        packaging_cost: v.packaging_cost || 0
+                                      });
+                                      setShowModal(true);
+                                    }}
+                                    style={{
+                                      padding: '4px 10px', borderRadius: 6,
+                                      background: 'transparent', color: 'var(--orange)',
+                                      border: '1px solid rgba(249,115,22,0.5)',
+                                      fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     )
                   })
                 })()}
