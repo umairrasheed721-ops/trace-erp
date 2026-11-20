@@ -357,6 +357,8 @@ router.get('/returns/exchange-lookup', authenticateToken, (req, res) => {
           const loggedItems = JSON.parse(log.returned_items_json);
           if (Array.isArray(loggedItems)) {
             for (const li of loggedItems) {
+              // Skip failed restock attempts so user can cleanly retry restocking that item
+              if (li.restock && li.qc_status !== 'damaged' && !log.restocked_shopify) continue;
               const k = `${String(li.variant_id || '')}::${(li.sku || '').toLowerCase()}::${(li.title || '').toLowerCase()}::${(li.variant_title || '').toLowerCase()}`;
               returnedQtyByKey[k] = (returnedQtyByKey[k] || 0) + (parseInt(li.quantity, 10) || 0);
             }
@@ -446,44 +448,54 @@ router.post('/returns/partial-exchange', authenticateToken, async (req, res) => 
       return res.status(400).json({ error: 'No items with quantity > 0 selected' });
     }
 
-    // Perform item-only Shopify Inventory Adjust restock for good + restock=true items
+    // Perform item-only Shopify partial restock via Orders Refunds API (uses write_orders scope)
     const itemsToRestock = validItems.filter(it => it.restock && it.qc_status === 'good');
-    let shopifyResult = { success: true, restockedCount: 0, failedCount: 0, details: [], summary: '⏭️ Logged (No Restock)' };
+    let shopifyResult = { success: true, restockedCount: 0, alreadyRestockedCount: 0, failedCount: 0, details: [], summary: '⏭️ Logged (No Restock)' };
     if (itemsToRestock.length > 0 && store.access_token) {
       try {
         shopifyResult = await restockPartialItems(store, order.shopify_order_id, validItems);
       } catch (shopErr) {
-        shopifyResult = { success: false, restockedCount: 0, failedCount: itemsToRestock.length, details: [], summary: `❌ ${shopErr.message}` };
+        shopifyResult = { success: false, restockedCount: 0, alreadyRestockedCount: 0, failedCount: itemsToRestock.length, details: [], summary: `❌ ${shopErr.message}` };
       }
     }
+
+    const restockSucceeded = (shopifyResult.restockedCount > 0 || shopifyResult.alreadyRestockedCount > 0);
+    const restockFailed = itemsToRestock.length > 0 && !restockSucceeded && shopifyResult.failedCount > 0;
 
     // Append concise audit stamp to ERP cs_notes WITHOUT touching delivery_status (stays Delivered!)
     const todayStr = new Date().toISOString().split('T')[0];
     const itemsSummaryText = validItems
-      .map(it => `${it.title}${it.variant_title ? ` (${it.variant_title})` : ''} x${it.quantity} [${it.qc_status === 'damaged' ? 'Damaged' : (it.restock ? 'Restocked' : 'Logged')}]`)
+      .map(it => {
+        const statusWord = it.qc_status === 'damaged'
+          ? 'Damaged'
+          : (!it.restock ? 'Logged' : (restockSucceeded ? 'Restocked' : 'Restock Failed'));
+        return `${it.title}${it.variant_title ? ` (${it.variant_title})` : ''} x${it.quantity} [${statusWord}]`;
+      })
       .join(', ');
     const auditLine = `\n[Exchange Partial Return ${todayStr}] ${itemsSummaryText}${notes ? ` | Note: ${notes}` : ''}`;
 
-    db.prepare("UPDATE orders SET cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
-      .run(auditLine, order.id);
+    if (!restockFailed) {
+      db.prepare("UPDATE orders SET cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
+        .run(auditLine, order.id);
 
-    // Log into returns_log with item-level JSON
-    db.prepare(`
-      INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by, return_type, returned_items_json, notes)
-      VALUES (?, ?, ?, ?, ?, 'exchange_partial', ?, ?)
-    `).run(
-      sid,
-      order.id,
-      order.tracking_number || order.ref_number || String(order.id),
-      shopifyResult.restockedCount > 0 ? 1 : 0,
-      req.user?.username || 'system',
-      JSON.stringify(validItems),
-      notes || ''
-    );
+      // Log into returns_log with item-level JSON only when logging or restock succeeded
+      db.prepare(`
+        INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by, return_type, returned_items_json, notes)
+        VALUES (?, ?, ?, ?, ?, 'exchange_partial', ?, ?)
+      `).run(
+        sid,
+        order.id,
+        order.tracking_number || order.ref_number || String(order.id),
+        restockSucceeded ? 1 : 0,
+        req.user?.username || 'system',
+        JSON.stringify(validItems),
+        notes || ''
+      );
+    }
 
-    // Optional: 1-click clear 'replacement' tag from the linked replacement order
+    // Optional: 1-click clear 'replacement' tag from the linked replacement order (skip if restock failed)
     let replacementTagCleared = false;
-    if (clear_replacement_order_id) {
+    if (clear_replacement_order_id && !restockFailed) {
       const replOrder = db.prepare('SELECT id, shopify_order_id, tags FROM orders WHERE id = ? AND store_id = ?').get(Number(clear_replacement_order_id), sid);
       if (replOrder) {
         const cleanedTags = String(replOrder.tags || '')
@@ -500,7 +512,9 @@ router.post('/returns/partial-exchange', authenticateToken, async (req, res) => 
     }
 
     res.json({
-      success: true,
+      success: !restockFailed,
+      restockFailed,
+      error: restockFailed ? shopifyResult.summary : undefined,
       order_id: order.id,
       ref_number: order.ref_number,
       shopifyStatus: shopifyResult.summary,

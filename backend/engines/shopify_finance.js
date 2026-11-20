@@ -235,118 +235,177 @@ async function removeShopifyTag(store, orderId, tagToRemove) {
 }
 
 /**
- * Partial / Exchange Item-Only Shopify Restock via Inventory Levels Adjust API
- * Restocks ONLY selected variant(s) without refunding or cancelling the original Delivered order.
+ * Partial / Exchange Item-Only Shopify Restock via Orders Refunds API (Option A)
+ * Uses existing `write_orders` scope (no `write_inventory` needed!) to restock ONLY selected
+ * line item(s) & quantity with `transactions: []` (Rs 0 cash refund) and NO full-order refund.
  */
 async function restockPartialItems(store, shopifyOrderId, items, locationId = null) {
   if (!store || !Array.isArray(items) || items.length === 0) {
     return { success: false, restockedCount: 0, failedCount: 0, details: [], summary: '⏭️ No items to restock' };
   }
 
-  let resolvedLocationId = locationId;
-  let shopifyLineItems = [];
-
-  if (shopifyOrderId) {
-    try {
-      const orderRes = await shopifyFetch(store, `orders/${shopifyOrderId}.json?fields=id,line_items,fulfillments`);
-      if (orderRes.ok) {
-        const orderObj = (await orderRes.json()).order;
-        shopifyLineItems = orderObj?.line_items || [];
-        if (!resolvedLocationId && orderObj?.fulfillments?.length > 0) {
-          resolvedLocationId = orderObj.fulfillments[0].location_id;
-        }
-      }
-    } catch (e) {
-      console.warn(`[shopify_finance] Order fetch during partial restock failed:`, e.message);
-    }
+  if (!shopifyOrderId) {
+    return { success: false, restockedCount: 0, failedCount: items.length, details: [], summary: '❌ Missing Shopify Order ID' };
   }
 
+  const orderRes = await shopifyFetch(store, `orders/${shopifyOrderId}.json?fields=id,line_items,fulfillments,refunds`);
+  if (!orderRes.ok) {
+    const errText = await orderRes.text();
+    throw new Error(`Shopify Order Fetch HTTP ${orderRes.status}: ${errText.substring(0, 100)}`);
+  }
+
+  const orderObj = (await orderRes.json()).order;
+  const shopifyLineItems = orderObj?.line_items || [];
+  const activeFulfillment = (orderObj?.fulfillments || []).find(f => f.status !== 'cancelled') || orderObj?.fulfillments?.[0];
+
+  let resolvedLocationId = locationId || activeFulfillment?.location_id || null;
   if (!resolvedLocationId) {
     resolvedLocationId = await getPrimaryLocationId(store);
   }
-
   if (!resolvedLocationId) {
     throw new Error("Could not resolve Shopify Location ID (missing 'read_locations' scope and no order fulfillments).");
   }
 
-  let restockedCount = 0;
-  let failedCount = 0;
-  const details = [];
-
-  for (const item of items) {
-    const qty = parseInt(item.quantity, 10) || 0;
-    if (qty <= 0 || !item.restock) {
-      details.push({ title: item.title, variant: item.variant_title, qty, status: '⏭️ Skipped (No Restock)' });
-      continue;
-    }
-
-    let rawVarId = item.variant_id ? String(item.variant_id).trim() : '';
-    let numericVarId = rawVarId.includes('/') ? rawVarId.split('/').pop() : rawVarId;
-
-    // Fallback: locate variant_id from live Shopify order line_items if missing locally
-    if (!numericVarId && shopifyLineItems.length > 0) {
-      const matchedLi = shopifyLineItems.find(li =>
-        (item.sku && li.sku && String(li.sku).trim().toLowerCase() === String(item.sku).trim().toLowerCase()) ||
-        ((li.title || '').trim().toLowerCase() === (item.title || '').trim().toLowerCase() &&
-          (!item.variant_title || (li.variant_title || '').trim().toLowerCase() === (item.variant_title || '').trim().toLowerCase()))
-      );
-      if (matchedLi?.variant_id) numericVarId = String(matchedLi.variant_id);
-    }
-
-    if (!numericVarId || isNaN(Number(numericVarId))) {
-      failedCount++;
-      details.push({ title: item.title, variant: item.variant_title, qty, status: '❌ No Variant ID' });
-      continue;
-    }
-
-    try {
-      await sleep(200);
-      const varRes = await shopifyFetch(store, `variants/${numericVarId}.json?fields=id,inventory_item_id`);
-      if (!varRes.ok) {
-        failedCount++;
-        details.push({ title: item.title, variant: item.variant_title, qty, status: `❌ Variant Fetch HTTP ${varRes.status}` });
-        continue;
-      }
-      const invItemId = (await varRes.json()).variant?.inventory_item_id;
-      if (!invItemId) {
-        failedCount++;
-        details.push({ title: item.title, variant: item.variant_title, qty, status: '❌ Missing inventory_item_id' });
-        continue;
-      }
-
-      await sleep(200);
-      const adjRes = await shopifyFetch(store, 'inventory_levels/adjust.json', {
-        method: 'POST',
-        body: JSON.stringify({
-          location_id: Number(resolvedLocationId),
-          inventory_item_id: Number(invItemId),
-          available_adjustment: qty
-        })
-      });
-
-      if (adjRes.ok) {
-        restockedCount += qty;
-        details.push({ title: item.title, variant: item.variant_title, qty, status: `✅ Restocked (+${qty})` });
-      } else {
-        const errText = await adjRes.text();
-        failedCount++;
-        details.push({ title: item.title, variant: item.variant_title, qty, status: `❌ Shopify HTTP ${adjRes.status}: ${errText.substring(0, 80)}` });
-      }
-    } catch (err) {
-      failedCount++;
-      details.push({ title: item.title, variant: item.variant_title, qty, status: `❌ ${err.message}` });
+  // Compute exact already-refunded/restocked qty per line_item_id from order.refunds
+  const refundedByLineItemId = {};
+  for (const r of (orderObj?.refunds || [])) {
+    for (const rli of (r.refund_line_items || [])) {
+      const lid = String(rli.line_item_id);
+      refundedByLineItemId[lid] = (refundedByLineItemId[lid] || 0) + (parseInt(rli.quantity, 10) || 0);
     }
   }
 
-  // Append clean audit note to Shopify Order (without altering order status or refunding)
-  if (shopifyOrderId && details.length > 0) {
+  const refundLineItems = [];
+  const details = [];
+  const usedLineItemIds = new Set();
+  let failedCount = 0;
+  let alreadyRestockedCount = 0;
+
+  for (const item of items) {
+    const requestedQty = parseInt(item.quantity, 10) || 0;
+    if (requestedQty <= 0 || !item.restock || item.qc_status === 'damaged') {
+      details.push({ title: item.title, variant: item.variant_title, qty: requestedQty, status: item.qc_status === 'damaged' ? '⚠️ Damaged (No Restock)' : '⏭️ Logged (No Restock)' });
+      continue;
+    }
+
+    const rawVarId = item.variant_id ? String(item.variant_id).trim() : '';
+    const numericVarId = rawVarId.includes('/') ? rawVarId.split('/').pop() : rawVarId;
+    const skuLower = item.sku ? String(item.sku).trim().toLowerCase() : '';
+    const titleLower = (item.title || '').trim().toLowerCase();
+    const varTitleLower = (item.variant_title || '').trim().toLowerCase();
+
+    // Match exact Shopify line item (1. variant_id -> 2. sku -> 3. title + variant_title)
+    let matchedLi = shopifyLineItems.find(li =>
+      !usedLineItemIds.has(String(li.id)) &&
+      numericVarId && li.variant_id && String(li.variant_id) === numericVarId
+    );
+    if (!matchedLi && skuLower) {
+      matchedLi = shopifyLineItems.find(li =>
+        !usedLineItemIds.has(String(li.id)) &&
+        li.sku && String(li.sku).trim().toLowerCase() === skuLower
+      );
+    }
+    if (!matchedLi && titleLower) {
+      matchedLi = shopifyLineItems.find(li =>
+        !usedLineItemIds.has(String(li.id)) &&
+        (li.title || '').trim().toLowerCase() === titleLower &&
+        (!varTitleLower || (li.variant_title || '').trim().toLowerCase() === varTitleLower)
+      );
+    }
+
+    if (!matchedLi) {
+      failedCount++;
+      details.push({ title: item.title, variant: item.variant_title, qty: requestedQty, status: '❌ Line item not found on Shopify order' });
+      continue;
+    }
+
+    const lidStr = String(matchedLi.id);
+    const alreadyRef = refundedByLineItemId[lidStr] || (matchedLi.refunded_quantity || 0);
+    const remaining = Math.max(0, (matchedLi.quantity || 0) - alreadyRef);
+
+    if (remaining <= 0) {
+      alreadyRestockedCount += requestedQty;
+      details.push({ title: item.title, variant: item.variant_title, qty: requestedQty, status: '⏭️ Already Restocked in Shopify' });
+      continue;
+    }
+
+    const qtyToRestock = Math.min(requestedQty, remaining);
+    const isFulfilled = matchedLi.fulfillment_status === 'fulfilled' ||
+      matchedLi.fulfillment_status === 'partial' ||
+      ((matchedLi.quantity || 0) - (matchedLi.fulfillable_quantity ?? matchedLi.quantity ?? 0)) > 0;
+
+    usedLineItemIds.add(lidStr);
+    refundLineItems.push({
+      line_item_id: matchedLi.id,
+      quantity: qtyToRestock,
+      restock_type: isFulfilled ? 'return' : 'cancel',
+      location_id: Number(resolvedLocationId)
+    });
+    details.push({
+      title: item.title,
+      variant: item.variant_title,
+      qty: qtyToRestock,
+      line_item_id: matchedLi.id,
+      status: 'PENDING'
+    });
+  }
+
+  let restockedCount = 0;
+  let shopifyErrorMsg = '';
+
+  if (refundLineItems.length > 0) {
+    await sleep(250);
+    const payload = {
+      refund: {
+        currency: 'PKR',
+        notify: false,
+        note: 'Partial Exchange Restock via TRACE ERP',
+        refund_line_items: refundLineItems,
+        transactions: []
+      }
+    };
+
+    const refundRes = await shopifyFetch(store, `orders/${shopifyOrderId}/refunds.json`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (refundRes.status === 201 || refundRes.status === 200) {
+      for (const rli of refundLineItems) {
+        restockedCount += rli.quantity;
+      }
+      for (const d of details) {
+        if (d.status === 'PENDING') d.status = `✅ Restocked (+${d.qty})`;
+      }
+    } else {
+      const errText = await refundRes.text();
+      shopifyErrorMsg = `Shopify HTTP ${refundRes.status}: ${errText.substring(0, 140)}`;
+      failedCount += refundLineItems.length;
+      for (const d of details) {
+        if (d.status === 'PENDING') d.status = `❌ ${shopifyErrorMsg}`;
+      }
+    }
+  }
+
+  // Strictly honest audit note: ONLY write [Restocked] for items that actually succeeded in Shopify!
+  const noteParts = details
+    .filter(d => !d.status.startsWith('❌'))
+    .map(d => {
+      const label = d.variant ? `${d.title} (${d.variant})` : d.title;
+      const tag = d.status.includes('✅ Restocked')
+        ? 'Restocked'
+        : d.status.includes('Already Restocked')
+          ? 'Already Restocked'
+          : d.status.includes('Damaged')
+            ? 'Damaged/No Restock'
+            : 'Logged';
+      return `${label} x${d.qty} [${tag}]`;
+    });
+
+  if (shopifyOrderId && noteParts.length > 0 && failedCount === 0) {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const itemSummary = items.map(it => {
-        const label = it.variant_title ? `${it.title} (${it.variant_title})` : it.title;
-        return `${label} x${it.quantity} [${it.qc_status === 'damaged' ? 'Damaged/No Restock' : (it.restock ? 'Restocked' : 'Logged')}]`;
-      }).join(', ');
-      await appendShopifyNote(store, shopifyOrderId, `| 🔄 Exchange Partial Return (${today}): ${itemSummary}`);
+      await appendShopifyNote(store, shopifyOrderId, `| 🔄 Exchange Partial Return (${today}): ${noteParts.join(', ')}`);
     } catch (noteErr) {
       console.warn(`[shopify_finance] Partial return note append failed:`, noteErr.message);
     }
@@ -354,9 +413,13 @@ async function restockPartialItems(store, shopifyOrderId, items, locationId = nu
 
   const summary = restockedCount > 0
     ? `✅ Restocked ${restockedCount} unit(s)${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
-    : (failedCount > 0 ? `❌ Restock Failed (${failedCount})` : '⏭️ Logged (No Restock)');
+    : alreadyRestockedCount > 0 && failedCount === 0
+      ? `⏭️ Already Restocked in Shopify`
+      : failedCount > 0
+        ? `❌ Restock Failed${shopifyErrorMsg ? `: ${shopifyErrorMsg}` : ''}`
+        : '⏭️ Logged (No Restock)';
 
-  return { success: failedCount === 0, restockedCount, failedCount, details, summary };
+  return { success: failedCount === 0, restockedCount, alreadyRestockedCount, failedCount, details, summary };
 }
 
 async function getShopifyFinancials(store, orderId) {
