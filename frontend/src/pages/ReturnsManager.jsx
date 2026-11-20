@@ -24,7 +24,7 @@ const formatItems = (row) => {
 export default function ReturnsManager() {
   const { activeStoreId, addToast } = useApp()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('queue') // 'queue' or 'history'
+  const [activeTab, setActiveTab] = useState('queue') // 'queue' | 'exchange' | 'history'
   const [trackingInput, setTrackingInput] = useState('')
   const [restockShopify, setRestockShopify] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -35,6 +35,17 @@ export default function ReturnsManager() {
   const [results, setResults] = useState([])
   const inputRef = useRef(null)
   const lastScanRef = useRef({ code: '', time: 0 })
+
+  // Exchange / Partial Return Tab States
+  const [exchangeQuery, setExchangeQuery] = useState('')
+  const [exchangeSearching, setExchangeSearching] = useState(false)
+  const [exchangeMatches, setExchangeMatches] = useState([])
+  const [selectedExchangeOrder, setSelectedExchangeOrder] = useState(null)
+  const [selectedReturnItems, setSelectedReturnItems] = useState({}) // { [idx]: { checked, quantity, qc_status, restock } }
+  const [exchangeNote, setExchangeNote] = useState('')
+  const [clearReplOrderId, setClearReplOrderId] = useState(null)
+  const [processingExchange, setProcessingExchange] = useState(false)
+  const [clearingTagId, setClearingTagId] = useState(null)
 
   const [datePreset, setDatePreset] = useState('7')
   const [customStart, setCustomStart] = useState('')
@@ -272,6 +283,135 @@ export default function ReturnsManager() {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleBulkAction()
+    }
+  }
+
+  const partialExchangeCount = useMemo(
+    () => returnHistory.filter(r => r.return_type === 'exchange_partial').length,
+    [returnHistory]
+  )
+
+  // --- Exchange / Partial Return Handlers ---
+  const initSelectionForOrder = (order) => {
+    setSelectedExchangeOrder(order)
+    const map = {}
+    const items = order?.parsed_items || []
+    items.forEach(it => {
+      const canReturn = (it.remaining_qty || 0) > 0
+      map[it.idx] = {
+        checked: items.length === 1 && canReturn,
+        quantity: canReturn ? 1 : 0,
+        qc_status: 'good',
+        restock: true
+      }
+    })
+    setSelectedReturnItems(map)
+    setClearReplOrderId(order?.active_replacements?.length === 1 ? order.active_replacements[0].id : null)
+  }
+
+  const handleExchangeLookup = async (customQuery) => {
+    const q = (typeof customQuery === 'string' ? customQuery : exchangeQuery).trim()
+    if (!q || !activeStoreId) return
+    setExchangeSearching(true)
+    try {
+      const res = await fetch(
+        `/api/finance/returns/exchange-lookup?store_id=${activeStoreId}&q=${encodeURIComponent(q)}`,
+        { headers: { 'Authorization': `Bearer ${localStorage.getItem('trace_token')}` } }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Lookup failed')
+      const found = data.orders || []
+      setExchangeMatches(found)
+      if (found.length > 0) {
+        initSelectionForOrder(found[0])
+      } else {
+        setSelectedExchangeOrder(null)
+        setSelectedReturnItems({})
+        addToast(`No order found matching "${q}"`, 'warning')
+      }
+    } catch (e) {
+      addToast('Order lookup failed: ' + e.message, 'error')
+    } finally {
+      setExchangeSearching(false)
+    }
+  }
+
+  const handleProcessPartialExchange = async () => {
+    if (!selectedExchangeOrder || !activeStoreId) return
+    const itemsPayload = (selectedExchangeOrder.parsed_items || [])
+      .filter(it => selectedReturnItems[it.idx]?.checked && (selectedReturnItems[it.idx]?.quantity || 0) > 0)
+      .map(it => {
+        const sel = selectedReturnItems[it.idx]
+        return {
+          variant_id: it.variant_id,
+          sku: it.sku,
+          title: it.title,
+          variant_title: it.variant_title,
+          quantity: Math.min(sel.quantity, it.remaining_qty || it.ordered_qty),
+          qc_status: sel.qc_status,
+          restock: sel.qc_status === 'damaged' ? false : Boolean(sel.restock)
+        }
+      })
+
+    if (itemsPayload.length === 0) {
+      return addToast('Please check at least 1 item to process partial return.', 'warning')
+    }
+
+    setProcessingExchange(true)
+    try {
+      const res = await fetch('/api/finance/returns/partial-exchange', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          order_id: selectedExchangeOrder.id,
+          items: itemsPayload,
+          notes: exchangeNote.trim(),
+          clear_replacement_order_id: clearReplOrderId
+        })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Partial return failed')
+
+      addToast(
+        `🔄 Partial return saved for ${data.ref_number || '#' + selectedExchangeOrder.id} — ${data.shopifyStatus}${data.replacementTagCleared ? ' + Replacement tag cleared!' : ''}`,
+        'success'
+      )
+      setExchangeNote('')
+      fetchHistory()
+      handleExchangeLookup(selectedExchangeOrder.ref_number || selectedExchangeOrder.tracking_number || exchangeQuery)
+    } catch (e) {
+      addToast('Partial exchange error: ' + e.message, 'error')
+    } finally {
+      setProcessingExchange(false)
+    }
+  }
+
+  const handleClearReplacementTagNow = async (replOrderId, replRef) => {
+    if (!activeStoreId || !replOrderId) return
+    setClearingTagId(replOrderId)
+    try {
+      const res = await fetch('/api/finance/returns/clear-replacement-tag', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify({ store_id: activeStoreId, order_id: replOrderId })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to clear tag')
+      addToast(`🧹 Cleared 'replacement' tag from ${replRef || '#' + replOrderId}${data.shopifySynced ? ' (ERP + Shopify)' : ' (ERP)'}`, 'success')
+      if (selectedExchangeOrder) {
+        handleExchangeLookup(selectedExchangeOrder.ref_number || selectedExchangeOrder.tracking_number || exchangeQuery)
+      }
+    } catch (e) {
+      addToast('Tag clear failed: ' + e.message, 'error')
+    } finally {
+      setClearingTagId(null)
     }
   }
 
@@ -712,21 +852,32 @@ export default function ReturnsManager() {
               <button 
                 onClick={() => setActiveTab('queue')}
                 style={{ 
-                  padding: '16px 20px', background: 'none', border: 'none', 
+                  padding: '16px 18px', background: 'none', border: 'none', 
                   borderBottom: activeTab === 'queue' ? '2px solid var(--brand)' : 'none',
                   color: activeTab === 'queue' ? 'var(--brand)' : 'inherit',
-                  fontWeight: 700, cursor: 'pointer'
+                  fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
                 }}
               >
                 Approval Queue ({pendingReturns.length})
               </button>
               <button 
+                onClick={() => setActiveTab('exchange')}
+                style={{ 
+                  padding: '16px 18px', background: 'none', border: 'none', 
+                  borderBottom: activeTab === 'exchange' ? '2px solid #a855f7' : 'none',
+                  color: activeTab === 'exchange' ? '#a855f7' : 'inherit',
+                  fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
+                }}
+              >
+                🔄 Exchange / Partial {partialExchangeCount > 0 ? `(${partialExchangeCount})` : ''}
+              </button>
+              <button 
                 onClick={() => setActiveTab('history')}
                 style={{ 
-                  padding: '16px 20px', background: 'none', border: 'none', 
+                  padding: '16px 18px', background: 'none', border: 'none', 
                   borderBottom: activeTab === 'history' ? '2px solid var(--brand)' : 'none',
                   color: activeTab === 'history' ? 'var(--brand)' : 'inherit',
-                  fontWeight: 700, cursor: 'pointer'
+                  fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap'
                 }}
               >
                 Returns History ({returnHistory.length})
@@ -877,6 +1028,306 @@ export default function ReturnsManager() {
                   )}
                 </tbody>
               </table>
+            ) : activeTab === 'exchange' ? (
+              <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Header & Order Lookup Bar */}
+                <div style={{
+                  background: 'rgba(168, 85, 247, 0.06)',
+                  border: '1px solid rgba(168, 85, 247, 0.25)',
+                  borderRadius: 12,
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        🔄 Exchange &amp; Partial Item Return
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Select only the item(s) returned by the customer — original order stays <strong>Delivered</strong> and only selected item(s) are restocked in Shopify.
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Scan/Enter Original Order Ref (#TR33500), Tracking #, or Customer Phone..."
+                      value={exchangeQuery}
+                      onChange={e => setExchangeQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleExchangeLookup()}
+                      style={{ flex: '1 1 260px', height: 38, fontSize: '0.85rem' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-brand"
+                      onClick={() => handleExchangeLookup()}
+                      disabled={exchangeSearching || !exchangeQuery.trim()}
+                      style={{ height: 38, padding: '0 18px', fontWeight: 700, whiteSpace: 'nowrap' }}
+                    >
+                      {exchangeSearching ? '⏳ Searching...' : '🔍 Lookup Order'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Multiple Order Match Selector */}
+                {exchangeMatches.length > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      Found {exchangeMatches.length} orders:
+                    </span>
+                    {exchangeMatches.map(m => {
+                      const active = selectedExchangeOrder?.id === m.id
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => initSelectionForOrder(m)}
+                          style={{
+                            padding: '5px 11px',
+                            borderRadius: 16,
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: active ? '#a855f7' : 'var(--bg-elevated)',
+                            color: active ? '#fff' : 'var(--text-primary)',
+                            border: `1px solid ${active ? '#a855f7' : 'var(--border)'}`
+                          }}
+                        >
+                          {m.ref_number || `#${m.id}`} · {m.delivery_status} · Rs {Math.round(parseFloat(m.price || 0)).toLocaleString()}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Selected Order Details & Item Selector */}
+                {selectedExchangeOrder ? (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-surface)' }}>
+                    {/* Order Summary Banner */}
+                    <div style={{
+                      padding: '14px 16px',
+                      background: 'var(--bg-elevated)',
+                      borderBottom: '1px solid var(--border)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 10
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.96rem' }}>
+                            {selectedExchangeOrder.ref_number || `Order #${selectedExchangeOrder.id}`}
+                          </span>
+                          <span className="badge" style={{
+                            background: String(selectedExchangeOrder.delivery_status || '').toLowerCase() === 'delivered' ? 'rgba(34,197,94,0.14)' : 'rgba(245,158,11,0.14)',
+                            color: String(selectedExchangeOrder.delivery_status || '').toLowerCase() === 'delivered' ? 'var(--green)' : '#d97706',
+                            fontWeight: 700
+                          }}>
+                            {selectedExchangeOrder.delivery_status || 'Unknown'}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#16a34a' }}>
+                            Rs {Math.round(parseFloat(selectedExchangeOrder.price || 0)).toLocaleString()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                          {selectedExchangeOrder.customer_name} · {selectedExchangeOrder.phone || 'No Phone'} · Tracking: <strong style={{ fontFamily: 'monospace' }}>{selectedExchangeOrder.tracking_number || 'N/A'}</strong> ({selectedExchangeOrder.courier || '—'})
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8,
+                        background: 'rgba(34,197,94,0.1)', color: 'var(--green)', border: '1px solid rgba(34,197,94,0.3)'
+                      }}>
+                        🛡️ Status stays {selectedExchangeOrder.delivery_status || 'Delivered'}
+                      </span>
+                    </div>
+
+                    {/* Active Replacement Tag Reminder Banner */}
+                    {selectedExchangeOrder.active_replacements && selectedExchangeOrder.active_replacements.length > 0 && (
+                      <div style={{
+                        padding: '12px 16px',
+                        background: 'rgba(245, 158, 11, 0.08)',
+                        borderBottom: '1px solid rgba(245, 158, 11, 0.3)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8
+                      }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#d97706' }}>
+                          🏷️ Active &apos;replacement&apos; Tagged Order(s) Found for This Customer:
+                        </div>
+                        {selectedExchangeOrder.active_replacements.map(rep => {
+                          const isOverdue = (rep.age_days || 0) >= 7
+                          return (
+                            <div key={rep.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: '0.78rem' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={clearReplOrderId === rep.id}
+                                  onChange={e => setClearReplOrderId(e.target.checked ? rep.id : null)}
+                                />
+                                <span>
+                                  Also clear <code>replacement</code> tag on <strong>{rep.ref_number || `#${rep.id}`}</strong> ({rep.delivery_status} · {rep.age_days ?? 0}d ago)
+                                </span>
+                                {isOverdue && (
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', padding: '1px 6px', borderRadius: 6 }}>
+                                    🔴 OVERDUE
+                                  </span>
+                                )}
+                              </label>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                disabled={clearingTagId === rep.id}
+                                onClick={() => handleClearReplacementTagNow(rep.id, rep.ref_number)}
+                                style={{ fontSize: '0.72rem', padding: '3px 10px' }}
+                              >
+                                {clearingTagId === rep.id ? '⏳ Clearing...' : '🧹 Clear Tag Only'}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Line Items Selection Table */}
+                    <table className="order-table" style={{ width: '100%' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 42, padding: '10px 16px' }}>Pick</th>
+                          <th>Product / Variant</th>
+                          <th style={{ textAlign: 'center' }}>Ordered / Returned</th>
+                          <th style={{ textAlign: 'center' }}>Return Qty</th>
+                          <th>QC &amp; Shopify Restock</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(selectedExchangeOrder.parsed_items || []).map(it => {
+                          const sel = selectedReturnItems[it.idx] || { checked: false, quantity: 1, qc_status: 'good', restock: true }
+                          const fullyReturned = (it.remaining_qty || 0) <= 0
+                          return (
+                            <tr key={it.idx} style={{ background: sel.checked ? 'rgba(168,85,247,0.06)' : 'transparent' }}>
+                              <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  disabled={fullyReturned}
+                                  checked={Boolean(sel.checked)}
+                                  onChange={e => setSelectedReturnItems(prev => ({
+                                    ...prev,
+                                    [it.idx]: { ...sel, checked: e.target.checked, quantity: e.target.checked ? Math.max(1, sel.quantity || 1) : sel.quantity }
+                                  }))}
+                                />
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>{it.title}</div>
+                                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                                  {it.variant_title && <span>{it.variant_title}</span>}
+                                  {it.sku && <span style={{ fontFamily: 'monospace' }}>SKU: {it.sku}</span>}
+                                  {fullyReturned && (
+                                    <span style={{ color: 'var(--green)', fontWeight: 700 }}>✅ Already Returned</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'center', fontSize: '0.8rem' }}>
+                                <strong>{it.ordered_qty}</strong>
+                                {it.already_returned_qty > 0 && (
+                                  <span style={{ color: '#a855f7', marginLeft: 5, fontWeight: 700 }}>
+                                    ({it.already_returned_qty} ret.)
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={Math.max(1, it.remaining_qty || 1)}
+                                  disabled={fullyReturned || !sel.checked}
+                                  value={sel.quantity || 1}
+                                  onChange={e => {
+                                    const val = Math.max(1, Math.min(it.remaining_qty || 1, parseInt(e.target.value, 10) || 1))
+                                    setSelectedReturnItems(prev => ({ ...prev, [it.idx]: { ...sel, quantity: val } }))
+                                  }}
+                                  className="form-input"
+                                  style={{ width: 64, textAlign: 'center', padding: '4px 6px', fontSize: '0.82rem' }}
+                                />
+                              </td>
+                              <td>
+                                <select
+                                  disabled={fullyReturned || !sel.checked}
+                                  className="form-input"
+                                  value={sel.qc_status === 'damaged' ? 'damaged' : (sel.restock ? 'good_restock' : 'good_norestock')}
+                                  onChange={e => {
+                                    const v = e.target.value
+                                    setSelectedReturnItems(prev => ({
+                                      ...prev,
+                                      [it.idx]: {
+                                        ...sel,
+                                        qc_status: v === 'damaged' ? 'damaged' : 'good',
+                                        restock: v === 'good_restock'
+                                      }
+                                    }))
+                                  }}
+                                  style={{ fontSize: '0.78rem', padding: '5px 8px', width: 'auto' }}
+                                >
+                                  <option value="good_restock">✅ Good — Restock Shopify (+Qty)</option>
+                                  <option value="good_norestock">📝 Good — Log Only (No Shopify Restock)</option>
+                                  <option value="damaged">⚠️ Damaged — Do Not Restock</option>
+                                </select>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+
+                    {/* Action Footer */}
+                    <div style={{
+                      padding: '14px 16px',
+                      background: 'var(--bg-elevated)',
+                      borderTop: '1px solid var(--border)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 10
+                    }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Optional note (e.g. Size exchange XL → XXL, customer sent via TCS)..."
+                        value={exchangeNote}
+                        onChange={e => setExchangeNote(e.target.value)}
+                        style={{ flex: '1 1 240px', height: 36, fontSize: '0.8rem' }}
+                      />
+                      {(() => {
+                        const selectedUnits = Object.values(selectedReturnItems)
+                          .filter(s => s.checked)
+                          .reduce((sum, s) => sum + (s.quantity || 0), 0)
+                        return (
+                          <button
+                            type="button"
+                            className="btn btn-brand"
+                            disabled={processingExchange || selectedUnits === 0}
+                            onClick={handleProcessPartialExchange}
+                            style={{ height: 38, padding: '0 20px', fontWeight: 700, whiteSpace: 'nowrap' }}
+                          >
+                            {processingExchange
+                              ? '⏳ Processing Partial Return...'
+                              : `✅ Process Partial Return (${selectedUnits} unit${selectedUnits !== 1 ? 's' : ''})`}
+                          </button>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '44px 20px', opacity: 0.55, fontSize: '0.86rem' }}>
+                    <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>🔄</div>
+                    <div>Search an order by <strong>Order Ref (#TR...)</strong>, <strong>Tracking #</strong>, or <strong>Phone</strong> above to restock individual exchanged items.</div>
+                  </div>
+                )}
+              </div>
             ) : (
               <table className="order-table" style={{ width: '100%' }}>
                 <thead>
@@ -890,13 +1341,37 @@ export default function ReturnsManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredHistory.map(row => (
+                  {filteredHistory.map(row => {
+                    const isPartialExchange = row.return_type === 'exchange_partial'
+                    let partialItemsText = ''
+                    if (isPartialExchange && row.returned_items_json) {
+                      try {
+                        const parsed = JSON.parse(row.returned_items_json)
+                        if (Array.isArray(parsed)) {
+                          partialItemsText = parsed.map(it => {
+                            const label = it.variant_title ? `${it.title} (${it.variant_title})` : it.title
+                            return `${label} x${it.quantity}${it.qc_status === 'damaged' ? ' [Damaged]' : ''}`
+                          }).join(', ')
+                        }
+                      } catch (_) {}
+                    }
+                    return (
                     <tr key={row.id}>
                       <td style={{ padding: '12px 20px', fontSize: '0.8rem' }}>
                         {new Date(row.created_at).toLocaleString()}
                       </td>
                       <td>
-                        <div style={{ fontWeight: 700 }}>{row.ref_number}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 700 }}>{row.ref_number}</span>
+                          {isPartialExchange && (
+                            <span style={{
+                              fontSize: '0.66rem', fontWeight: 800, padding: '1px 6px', borderRadius: 6,
+                              background: 'rgba(168,85,247,0.14)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.35)'
+                            }}>
+                              🔄 Partial Exchange
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>{row.customer_name}</div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -912,21 +1387,21 @@ export default function ReturnsManager() {
                               Rs. {Math.round(parseFloat(row.price || 0)).toLocaleString()}
                             </span>
                           </div>
-                          {formatItems(row) && (
+                          {(partialItemsText || formatItems(row)) && (
                             <div style={{ 
                               fontSize: '0.7rem', 
-                              opacity: 0.7,
-                              color: 'var(--text-secondary)',
+                              opacity: 0.78,
+                              color: isPartialExchange ? '#a855f7' : 'var(--text-secondary)',
                               lineHeight: '1.3',
-                              maxWidth: '260px',
+                              maxWidth: '280px',
                               wordBreak: 'break-word',
                               whiteSpace: 'normal'
                             }}>
-                              📦 {formatItems(row)}
+                              {isPartialExchange ? `🔄 Returned: ${partialItemsText}` : `📦 ${formatItems(row)}`}
                             </div>
                           )}
                         </div>
-                        {row.notes && (
+                        {(row.return_notes || row.notes) && (
                           <div style={{ 
                             fontSize: '0.72rem', 
                             color: 'var(--brand)', 
@@ -941,7 +1416,7 @@ export default function ReturnsManager() {
                             whiteSpace: 'normal',
                             textAlign: 'left'
                           }}>
-                            📝 {row.notes}
+                            📝 {row.return_notes || row.notes}
                           </div>
                         )}
                       </td>
@@ -953,16 +1428,30 @@ export default function ReturnsManager() {
                         </span>
                       </td>
                       <td>
-                        <button 
-                          className="btn btn-secondary btn-sm" 
-                          onClick={() => handleBulkVerify([row.order_id || row.id])}
-                          disabled={isProcessing}
-                        >
-                          Verify Again
-                        </button>
+                        {isPartialExchange ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              setActiveTab('exchange')
+                              setExchangeQuery(row.ref_number || row.tracking_number || '')
+                              handleExchangeLookup(row.ref_number || row.tracking_number || '')
+                            }}
+                          >
+                            🔄 Open
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn btn-secondary btn-sm" 
+                            onClick={() => handleBulkVerify([row.order_id || row.id])}
+                            disabled={isProcessing}
+                          >
+                            Verify Again
+                          </button>
+                        )}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                   {filteredHistory.length === 0 && (
                     <tr>
                       <td colSpan="6" style={{ textAlign: 'center', padding: '40px', opacity: 0.4 }}>No history records found.</td>

@@ -136,5 +136,19 @@ module.exports = [
     try {
       db.exec(`ALTER TABLE pnl_daily_snapshots ADD COLUMN prev_metrics_json TEXT;`);
     } catch (_) {}
+  },
+
+  // 11. Extend returns_log for item-level Partial / Exchange Returns tracking
+  (db) => {
+    const alters = [
+      "ALTER TABLE returns_log ADD COLUMN return_type TEXT DEFAULT 'rto_full'",
+      "ALTER TABLE returns_log ADD COLUMN returned_items_json TEXT",
+      "ALTER TABLE returns_log ADD COLUMN notes TEXT"
+    ];
+    alters.forEach(sql => {
+      try {
+        db.exec(sql);
+      } catch (_) {}
+    });
   }
 ];

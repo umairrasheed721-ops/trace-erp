@@ -7,6 +7,7 @@ const { getCitySqlCase } = require('../utils/cityNormalizer');
 const EST_COURIER_PER_ORDER = 200;  // Rs per dispatched order (PostEx/Leopards standard est. rate)
 const TAX_RATE = 0.04;              // 4% sales tax on delivered sale value
 const PAYMENT_DIFF_THRESHOLD = 0.9;  // Min Rs difference to flag as unpaid/overdue payout (captures all + and - variances > 0.9 PKR)
+const OVERDUE_REPLACEMENT_DAYS = 7; // Days after order_date before an uncleared 'replacement' tagged order highlights red in PNL
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get('/daily', (req, res) => {
@@ -66,6 +67,10 @@ router.get('/daily', (req, res) => {
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%prepaid%' THEN 1 ELSE 0 END) as prepaid_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%claim%' THEN 1 ELSE 0 END) as claim_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%low stock%' OR LOWER(COALESCE(tags, '')) LIKE '%low_stock%' THEN 1 ELSE 0 END) as low_stock_orders,
+        -- 📊 REPLACEMENT_ORDERS: Active orders tagged 'replacement' awaiting return inventory verification. Source: tags
+        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%replacement%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement-cleared%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement_cleared%' THEN 1 ELSE 0 END) as replacement_orders,
+        -- 📊 OVERDUE_REPLACEMENT_ORDERS: Active 'replacement' orders older than OVERDUE_REPLACEMENT_DAYS without cleared tag. Source: tags, order_date, delivery_status
+        SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%replacement%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement-cleared%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement_cleared%' AND LOWER(COALESCE(delivery_status, '')) != 'cancelled' AND (julianday('now') - julianday(substr(order_date, 1, 10))) >= ${OVERDUE_REPLACEMENT_DAYS} THEN 1 ELSE 0 END) as overdue_replacement_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%whatsapp%funnel%' THEN 1 ELSE 0 END) as whatsapp_orders,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%whatsapp%funnel%' THEN price ELSE 0 END) as whatsapp_total_sale,
         SUM(CASE WHEN LOWER(COALESCE(tags, '')) LIKE '%whatsapp%' AND LOWER(COALESCE(tags, '')) NOT LIKE '%whatsapp%funnel%' AND LOWER(COALESCE(delivery_status, '')) = 'delivered' THEN 1 ELSE 0 END) as whatsapp_delivered,
@@ -256,6 +261,10 @@ router.get('/daily', (req, res) => {
         claimOrders: day.claim_orders || 0,
         // 📊 LOW_STOCK_ORDERS: Total orders tagged with 'low stock' due to inventory shortage. Source: day.low_stock_orders
         lowStockOrders: day.low_stock_orders || 0,
+        // 📊 REPLACEMENT_ORDERS: Active orders tagged 'replacement' awaiting return inventory verification. Source: day.replacement_orders
+        replacementOrders: day.replacement_orders || 0,
+        // 📊 OVERDUE_REPLACEMENT_ORDERS: Active 'replacement' orders 7+ days old not yet cleared. Source: day.overdue_replacement_orders
+        overdueReplacementOrders: day.overdue_replacement_orders || 0,
         whatsappOrders: day.whatsapp_orders || 0,
         whatsappTotalSale: day.whatsapp_total_sale || 0,
         // 📊 WHATSAPP_PCT: Percentage of total dispatched orders that are WhatsApp-tagged. Source: day.whatsapp_orders, totalDispatched
@@ -311,7 +320,7 @@ router.get('/daily', (req, res) => {
             delPercent: 0, roasMeta: 0, cpaAvg: 0, netCpaAvg: 0, landedOrders: 0, cancelations: 0, canPercent: 0,
             pending: 0, booked: 0, totalDispatched: 0, disPercent: 0, delivered: 0, restock: 0, missingParcel: 0,
             intransit: 0, mathCounter: 0, cashInTransit: 0, withoutTrackingId: 0, paymentPaid: 0, diffCorrection: m.diff_correction || 0,
-            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, prepaidPercent: 0, claimOrders: 0, lowStockOrders: 0,
+            deliveredPaymentPending: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0, zeroExpenseCount: 0, prepaidOrders: 0, prepaidPercent: 0, claimOrders: 0, lowStockOrders: 0, replacementOrders: 0, overdueReplacementOrders: 0,
             whatsappOrders: 0, whatsappTotalSale: 0, whatsappPercent: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDelPercent: 0, whatsappRetPercent: 0,
             whatsappDeliveredSale: 0, whatsappAov: 0, whatsappCgs: 0, whatsappAvgCgs: 0, whatsappCourier: 0, whatsappAvgCourier: 0,
             surplusPayout: 0, surplusPayoutCount: 0

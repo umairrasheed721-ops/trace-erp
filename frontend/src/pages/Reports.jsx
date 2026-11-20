@@ -99,6 +99,8 @@ export default function Reports() {
     else if (colId === 'prepaidPercent') { filters.status = 'All Statuses'; filters.keyword = 'prepaid'; }
     else if (colId === 'claimOrders') { filters.status = 'All Statuses'; filters.keyword = 'claim'; }
     else if (colId === 'lowStockOrders') { filters.status = 'All Statuses'; filters.keyword = 'low stock'; }
+    else if (colId === 'replacementOrders') { filters.status = '[REPLACEMENT ONLY]'; }
+    else if (colId === 'overdueReplacementOrders') { filters.status = '[OVERDUE REPLACEMENT]'; }
     else if (colId === 'whatsappOrders') { filters.status = '[WHATSAPP ONLY]'; }
     else if (colId === 'whatsappPercent') { filters.status = '[WHATSAPP ONLY]'; }
     else if (colId === 'whatsappDelPercent') { filters.status = 'Delivered'; filters.keyword = 'whatsapp'; }
@@ -136,6 +138,8 @@ export default function Reports() {
     { id: 'prepaidPercent', label: 'Prepaid %', group: 'income' },
     { id: 'claimOrders', label: 'Claim', group: 'income' },
     { id: 'lowStockOrders', label: 'Low Stock', group: 'income' },
+    { id: 'replacementOrders', label: 'Replacement', group: 'income' },
+    { id: 'overdueReplacementOrders', label: 'Overdue Repl.', group: 'kpi' },
     { id: 'whatsappOrders', label: 'WhatsApp', group: 'income' },
     { id: 'whatsappPercent', label: 'WA %', group: 'income' },
     { id: 'whatsappDelPercent', label: 'WA DEL %', group: 'income' },

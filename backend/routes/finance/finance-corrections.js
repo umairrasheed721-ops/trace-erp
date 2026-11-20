@@ -4,6 +4,8 @@ const db = require('../../db');
 const { 
   getPrimaryLocationId, 
   processSmartRestock,
+  restockPartialItems,
+  removeShopifyTag,
   markShopifyOrderDelivered
 } = require('../../engines/shopify_finance');
 const { authenticateToken } = require('../auth');
@@ -263,6 +265,283 @@ router.post('/returns', authenticateToken, async (req, res) => {
   }
 
   res.json({ success: true, results });
+});
+
+// Helper: parse order line_items JSON with fallback to product_titles
+function parseOrderLineItemsSafe(order) {
+  let items = [];
+  if (order.line_items) {
+    try {
+      const parsed = JSON.parse(order.line_items);
+      if (Array.isArray(parsed)) items = parsed;
+    } catch (_) {}
+  }
+  if (items.length === 0 && order.product_titles) {
+    const regex = /(.*?)\s\(x(\d+)\)(?:,\s|$)/g;
+    let m;
+    while ((m = regex.exec(order.product_titles)) !== null) {
+      const fullName = m[1].trim();
+      const qty = parseInt(m[2], 10) || 1;
+      const parts = fullName.split(' - ');
+      items.push({
+        title: parts[0].trim(),
+        variant_title: parts.length > 1 ? parts.slice(1).join(' - ').trim() : '',
+        quantity: qty,
+        price: 0,
+        sku: '',
+        variant_id: ''
+      });
+    }
+  }
+  return items;
+}
+
+// GET /api/finance/returns/exchange-lookup?store_id=1&q=...
+// Lookup any order (typically Delivered) for Partial / Exchange item-level restocking
+router.get('/returns/exchange-lookup', authenticateToken, (req, res) => {
+  const { store_id, q } = req.query;
+  if (!store_id || !q || !String(q).trim()) {
+    return res.status(400).json({ error: 'store_id and q required' });
+  }
+
+  const sid = Number(store_id);
+  const rawQ = String(q).trim();
+  const cleanRef = rawQ.replace(/^#/, '');
+  const digitsOnly = rawQ.replace(/\D/g, '');
+  const phoneSuffix = digitsOnly.length >= 9 ? digitsOnly.slice(-10) : '';
+
+  try {
+    let orders = db.prepare(`
+      SELECT id, shopify_order_id, ref_number, customer_name, phone, tracking_number, courier,
+             delivery_status, order_date, status_date, price, tags, notes, cs_notes, line_items, product_titles
+      FROM orders
+      WHERE store_id = ?
+      AND (
+        tracking_number = ?
+        OR ref_number = ?
+        OR ref_number = ?
+        OR shopify_order_id = ?
+        OR LOWER(COALESCE(tracking_number, '')) LIKE ?
+        OR LOWER(COALESCE(ref_number, '')) LIKE ?
+        ${phoneSuffix ? "OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?" : ''}
+      )
+      ORDER BY order_date DESC
+      LIMIT 15
+    `).all(
+      sid,
+      rawQ,
+      cleanRef,
+      '#' + cleanRef,
+      cleanRef,
+      `%${rawQ.toLowerCase()}%`,
+      `%${cleanRef.toLowerCase()}%`,
+      ...(phoneSuffix ? [`%${phoneSuffix}%`] : [])
+    );
+
+    // Enrich each order with parsed items, previously returned quantities, and active 'replacement' orders for same phone
+    const enriched = orders.map(o => {
+      const items = parseOrderLineItemsSafe(o);
+
+      // Compute already-returned qty per item key from returns_log
+      const pastLogs = db.prepare(`
+        SELECT id, return_type, returned_items_json, restocked_shopify, notes, processed_by, created_at
+        FROM returns_log
+        WHERE store_id = ? AND order_id = ?
+        ORDER BY id DESC
+      `).all(sid, o.id);
+
+      const returnedQtyByKey = {};
+      for (const log of pastLogs) {
+        if (!log.returned_items_json) continue;
+        try {
+          const loggedItems = JSON.parse(log.returned_items_json);
+          if (Array.isArray(loggedItems)) {
+            for (const li of loggedItems) {
+              const k = `${String(li.variant_id || '')}::${(li.sku || '').toLowerCase()}::${(li.title || '').toLowerCase()}::${(li.variant_title || '').toLowerCase()}`;
+              returnedQtyByKey[k] = (returnedQtyByKey[k] || 0) + (parseInt(li.quantity, 10) || 0);
+            }
+          }
+        } catch (_) {}
+      }
+
+      const normalizedItems = items.map((it, idx) => {
+        const key = `${String(it.variant_id || '')}::${(it.sku || '').toLowerCase()}::${(it.title || '').toLowerCase()}::${(it.variant_title || '').toLowerCase()}`;
+        const orderedQty = parseInt(it.quantity, 10) || 1;
+        const alreadyReturned = returnedQtyByKey[key] || 0;
+        return {
+          idx,
+          variant_id: it.variant_id ? String(it.variant_id) : '',
+          sku: it.sku || '',
+          title: it.title || it.name || 'Item',
+          variant_title: it.variant_title || '',
+          price: parseFloat(it.price || 0),
+          ordered_qty: orderedQty,
+          already_returned_qty: alreadyReturned,
+          remaining_qty: Math.max(0, orderedQty - alreadyReturned)
+        };
+      });
+
+      // Find any active 'replacement' tagged orders for the same customer phone (for 1-click tag clearing)
+      let activeReplacements = [];
+      const oDigits = String(o.phone || '').replace(/\D/g, '');
+      const oPhoneSuffix = oDigits.length >= 9 ? oDigits.slice(-10) : '';
+      if (oPhoneSuffix) {
+        activeReplacements = db.prepare(`
+          SELECT id, ref_number, shopify_order_id, order_date, delivery_status, tracking_number, price, tags,
+                 CAST(julianday('now') - julianday(substr(order_date, 1, 10)) AS INTEGER) as age_days
+          FROM orders
+          WHERE store_id = ?
+            AND LOWER(COALESCE(tags, '')) LIKE '%replacement%'
+            AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement-cleared%'
+            AND LOWER(COALESCE(tags, '')) NOT LIKE '%replacement_cleared%'
+            AND REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?
+          ORDER BY order_date DESC
+          LIMIT 5
+        `).all(sid, `%${oPhoneSuffix}%`);
+      }
+
+      return {
+        ...o,
+        parsed_items: normalizedItems,
+        past_partial_returns: pastLogs.filter(l => l.return_type === 'exchange_partial'),
+        active_replacements: activeReplacements
+      };
+    });
+
+    res.json({ success: true, orders: enriched });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/returns/partial-exchange
+// Item-level partial exchange return & Shopify inventory adjustment — keeps original order Delivered!
+router.post('/returns/partial-exchange', authenticateToken, async (req, res) => {
+  const { store_id, order_id, items, notes = '', clear_replacement_order_id = null } = req.body;
+  if (!store_id || !order_id || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'store_id, order_id, and at least one item are required' });
+  }
+
+  const sid = Number(store_id);
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(sid);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(Number(order_id), sid);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const validItems = items
+      .map(it => ({
+        variant_id: it.variant_id ? String(it.variant_id) : '',
+        sku: it.sku ? String(it.sku).trim() : '',
+        title: String(it.title || 'Item').trim(),
+        variant_title: it.variant_title ? String(it.variant_title).trim() : '',
+        quantity: parseInt(it.quantity, 10) || 0,
+        qc_status: it.qc_status === 'damaged' ? 'damaged' : 'good',
+        restock: it.qc_status === 'damaged' ? false : Boolean(it.restock)
+      }))
+      .filter(it => it.quantity > 0);
+
+    if (validItems.length === 0) {
+      return res.status(400).json({ error: 'No items with quantity > 0 selected' });
+    }
+
+    // Perform item-only Shopify Inventory Adjust restock for good + restock=true items
+    const itemsToRestock = validItems.filter(it => it.restock && it.qc_status === 'good');
+    let shopifyResult = { success: true, restockedCount: 0, failedCount: 0, details: [], summary: '⏭️ Logged (No Restock)' };
+    if (itemsToRestock.length > 0 && store.access_token) {
+      try {
+        shopifyResult = await restockPartialItems(store, order.shopify_order_id, validItems);
+      } catch (shopErr) {
+        shopifyResult = { success: false, restockedCount: 0, failedCount: itemsToRestock.length, details: [], summary: `❌ ${shopErr.message}` };
+      }
+    }
+
+    // Append concise audit stamp to ERP cs_notes WITHOUT touching delivery_status (stays Delivered!)
+    const todayStr = new Date().toISOString().split('T')[0];
+    const itemsSummaryText = validItems
+      .map(it => `${it.title}${it.variant_title ? ` (${it.variant_title})` : ''} x${it.quantity} [${it.qc_status === 'damaged' ? 'Damaged' : (it.restock ? 'Restocked' : 'Logged')}]`)
+      .join(', ');
+    const auditLine = `\n[Exchange Partial Return ${todayStr}] ${itemsSummaryText}${notes ? ` | Note: ${notes}` : ''}`;
+
+    db.prepare("UPDATE orders SET cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
+      .run(auditLine, order.id);
+
+    // Log into returns_log with item-level JSON
+    db.prepare(`
+      INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by, return_type, returned_items_json, notes)
+      VALUES (?, ?, ?, ?, ?, 'exchange_partial', ?, ?)
+    `).run(
+      sid,
+      order.id,
+      order.tracking_number || order.ref_number || String(order.id),
+      shopifyResult.restockedCount > 0 ? 1 : 0,
+      req.user?.username || 'system',
+      JSON.stringify(validItems),
+      notes || ''
+    );
+
+    // Optional: 1-click clear 'replacement' tag from the linked replacement order
+    let replacementTagCleared = false;
+    if (clear_replacement_order_id) {
+      const replOrder = db.prepare('SELECT id, shopify_order_id, tags FROM orders WHERE id = ? AND store_id = ?').get(Number(clear_replacement_order_id), sid);
+      if (replOrder) {
+        const cleanedTags = String(replOrder.tags || '')
+          .split(',')
+          .map(t => t.trim())
+          .filter(t => t && t.toLowerCase() !== 'replacement')
+          .join(', ');
+        db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(cleanedTags, replOrder.id);
+        if (replOrder.shopify_order_id && store.access_token) {
+          await removeShopifyTag(store, replOrder.shopify_order_id, 'replacement').catch(() => {});
+        }
+        replacementTagCleared = true;
+      }
+    }
+
+    res.json({
+      success: true,
+      order_id: order.id,
+      ref_number: order.ref_number,
+      shopifyStatus: shopifyResult.summary,
+      shopifyDetails: shopifyResult.details,
+      restockedUnits: shopifyResult.restockedCount,
+      replacementTagCleared
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/returns/clear-replacement-tag
+// Standalone 1-click helper to strip 'replacement' tag from an order in ERP & Shopify
+router.post('/returns/clear-replacement-tag', authenticateToken, async (req, res) => {
+  const { store_id, order_id } = req.body;
+  if (!store_id || !order_id) return res.status(400).json({ error: 'store_id and order_id required' });
+
+  const sid = Number(store_id);
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(sid);
+    const order = db.prepare('SELECT id, ref_number, shopify_order_id, tags FROM orders WHERE id = ? AND store_id = ?').get(Number(order_id), sid);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const cleanedTags = String(order.tags || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t && t.toLowerCase() !== 'replacement')
+      .join(', ');
+
+    db.prepare('UPDATE orders SET tags = ? WHERE id = ?').run(cleanedTags, order.id);
+
+    let shopifySynced = false;
+    if (store?.access_token && order.shopify_order_id) {
+      shopifySynced = await removeShopifyTag(store, order.shopify_order_id, 'replacement');
+    }
+
+    res.json({ success: true, ref_number: order.ref_number, tags: cleanedTags, shopifySynced });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/finance/apply-bulk-product-costs

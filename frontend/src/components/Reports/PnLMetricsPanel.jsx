@@ -137,6 +137,16 @@ const COLUMN_INFO = {
     formula: "COUNT(id) WHERE tags LIKE '%low stock%'",
     example: "Shows orders on hold or delayed due to low stock. Click to view matching orders in Command Center."
   },
+  replacementOrders: {
+    description: "Active orders tagged with 'replacement' awaiting return inventory verification against the original order.",
+    formula: "COUNT(id) WHERE tags LIKE '%replacement%' AND NOT cleared",
+    example: "Click to open all active replacement orders in Command Center and clear the tag once original inventory is restocked."
+  },
+  overdueReplacementOrders: {
+    description: "Active 'replacement' tagged orders older than 7 days whose tag has not yet been cleared. Highlights red as an alert.",
+    formula: "COUNT(id) WHERE tags LIKE '%replacement%' AND NOT cleared AND status != 'Cancelled' AND age >= 7 days",
+    example: "If 3 replacements are 7+ days old and still uncleared, check whether the original return parcel arrived at warehouse or needs a courier claim."
+  },
   whatsappOrders: {
     description: "Total WhatsApp orders containing the whatsapp tag or note (strictly excluding WhatsApp-In-Funnel).",
     formula: "COUNT(id) WHERE (tags LIKE '%whatsapp%' OR notes LIKE '%whatsapp%') AND tags NOT LIKE '%whatsapp%funnel%'",
@@ -297,7 +307,7 @@ const GROUP_STYLES = {
   kpi:     { bg: 'rgba(30,41,59,0.5)',    border: 'rgba(71,85,105,0.25)',  accent: '#94a3b8', badge: 'linear-gradient(135deg,#1e293b,#334155)',  label: '🛡️ KPIs'     },
 };
 
-const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','lowStockOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','whatsappCourier','whatsappAvgCourier','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
+const CLICKABLE_IDS = new Set(['landedOrders','prepaidOrders','prepaidPercent','claimOrders','lowStockOrders','replacementOrders','overdueReplacementOrders','whatsappOrders','whatsappPercent','whatsappDelPercent','whatsappRetPercent','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','whatsappCourier','whatsappAvgCourier','cancelations','pending','booked','totalDispatched','delivered','restock','missingParcel','intransit','mathCounter','cashInTransit','withoutTrackingId','deliveredPaymentPending','unpaidAmount','paymentPaid','surplusPayout','surplusPayoutCount','costGaps','overduePayoutCount','zeroExpenseCount']);
 const CURRENCY_IDS = new Set(['aov','deliveredSale','cgs','taxPaid','grossProfit','estCourier','actualCourier','courierDiff','actualExp','pnl','actualPnl','paymentPaid','surplusPayout','marketingSpend','tiktokMarketing','cpaAvg','netCpaAvg','unpaidAmount','diffCorrection','cashInTransit','whatsappTotalSale','whatsappDeliveredSale','whatsappAov','whatsappCgs','whatsappAvgCgs','whatsappCourier','whatsappAvgCourier']);
 const PERCENT_IDS  = new Set(['cgsPercent','marPercent','delPercent','canPercent','ndrRecoveryRate','prepaidPercent','whatsappPercent','whatsappDelPercent','whatsappRetPercent']);
 const NUMBER_IDS   = new Set(['roasMeta','deliveredRoas']);
@@ -343,7 +353,7 @@ export default function PnLMetricsPanel({
     const { diff, prevVal, curVal } = row.deltas24h[colId];
     if (!diff || Math.abs(diff) < 0.01) return null;
 
-    const isCostOrNegativeMetric = ['cancelations', 'actualExp', 'hybridCourier', 'actualCourier', 'cgs', 'marketingSpend', 'tiktokMarketing', 'costGaps', 'unpaidAmount', 'overduePayoutCount', 'zeroExpenseCount'].includes(colId);
+    const isCostOrNegativeMetric = ['cancelations', 'actualExp', 'hybridCourier', 'actualCourier', 'cgs', 'marketingSpend', 'tiktokMarketing', 'costGaps', 'unpaidAmount', 'overduePayoutCount', 'overdueReplacementOrders', 'zeroExpenseCount'].includes(colId);
 
     const isGood = isCostOrNegativeMetric ? diff < 0 : diff > 0;
     const color = isGood ? '#22c55e' : '#ef4444';
@@ -557,6 +567,7 @@ export default function PnLMetricsPanel({
                       const isAlert = !row.isSummaryRow && (
                         (col.id === 'costGaps'          && row.costGaps > 0) ||
                         (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
+                        (col.id === 'overdueReplacementOrders' && row.overdueReplacementOrders > 0) ||
                         (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0) ||
                         isMathMismatch
                       );
@@ -662,6 +673,7 @@ export default function PnLMetricsPanel({
                 const isAlert = (
                   (col.id === 'costGaps'          && row.costGaps > 0) ||
                   (col.id === 'overduePayoutCount' && row.overduePayoutCount > 0) ||
+                  (col.id === 'overdueReplacementOrders' && row.overdueReplacementOrders > 0) ||
                   (col.id === 'zeroExpenseCount'  && row.zeroExpenseCount > 0) ||
                   isMathMismatch
                 );

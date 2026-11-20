@@ -494,7 +494,7 @@ export default function useReportsData(activeStoreId, toast) {
           pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
           intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
           paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
-          zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, lowStockOrders: 0, whatsappOrders: 0,
+          zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, lowStockOrders: 0, replacementOrders: 0, overdueReplacementOrders: 0, whatsappOrders: 0,
           whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0, whatsappCourier: 0,
           surplusPayout: 0, surplusPayoutCount: 0
         };
@@ -531,6 +531,10 @@ export default function useReportsData(activeStoreId, toast) {
       m.prepaidOrders += row.prepaidOrders || 0;
       m.claimOrders += row.claimOrders || 0;
       m.lowStockOrders += row.lowStockOrders || 0;
+      // 📊 REPLACEMENT_ORDERS: Monthly active replacement-tagged orders. Source: row.replacementOrders
+      m.replacementOrders += row.replacementOrders || 0;
+      // 📊 OVERDUE_REPLACEMENT_ORDERS: Monthly replacement-tagged orders 7+ days uncleared. Source: row.overdueReplacementOrders
+      m.overdueReplacementOrders += row.overdueReplacementOrders || 0;
       m.whatsappOrders += row.whatsappOrders || 0;
       m.whatsappTotalSale += row.whatsappTotalSale || 0;
       m.whatsappDelivered += row.whatsappDelivered || 0;
@@ -668,7 +672,7 @@ export default function useReportsData(activeStoreId, toast) {
       pending: 0, booked: 0, totalDispatched: 0, delivered: 0, restock: 0, missingParcel: 0,
       intransit: 0, cashInTransit: 0, withoutTrackingId: 0,
       paymentPaid: 0, diffCorrection: 0, deliveredPaymentPending: 0, totalSale: 0, costGaps: 0, unpaidAmount: 0, overduePayoutCount: 0,
-      zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, lowStockOrders: 0, whatsappOrders: 0,
+      zeroExpenseCount: 0, ordersWithFailedAttempts: 0, failedButDelivered: 0, prepaidOrders: 0, claimOrders: 0, lowStockOrders: 0, replacementOrders: 0, overdueReplacementOrders: 0, whatsappOrders: 0,
       whatsappTotalSale: 0, whatsappDelivered: 0, whatsappReturned: 0, whatsappDeliveredSale: 0, whatsappCgs: 0, whatsappCourier: 0,
       surplusPayout: 0, surplusPayoutCount: 0
     };
@@ -706,6 +710,8 @@ export default function useReportsData(activeStoreId, toast) {
       totals.prepaidOrders += row.prepaidOrders || 0;
       totals.claimOrders += row.claimOrders || 0;
       totals.lowStockOrders += row.lowStockOrders || 0;
+      totals.replacementOrders += row.replacementOrders || 0;
+      totals.overdueReplacementOrders += row.overdueReplacementOrders || 0;
       totals.whatsappOrders += row.whatsappOrders || 0;
       totals.whatsappTotalSale += row.whatsappTotalSale || 0;
       totals.whatsappDelivered += row.whatsappDelivered || 0;

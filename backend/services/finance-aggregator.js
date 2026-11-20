@@ -378,11 +378,11 @@ class FinanceAggregator {
     }
 
     return db.prepare(`
-      SELECT rl.*, o.ref_number, o.customer_name, o.courier, o.notes, o.price, o.line_items, o.product_titles, o.order_date
+      SELECT rl.*, rl.notes AS return_notes, o.ref_number, o.customer_name, o.courier, o.notes, o.price, o.line_items, o.product_titles, o.order_date
       FROM returns_log rl
       JOIN orders o ON rl.order_id = o.id
       ${whereClause}
-      ORDER BY o.order_date DESC
+      ORDER BY rl.created_at DESC, o.order_date DESC
     `).all(...params);
   }
 

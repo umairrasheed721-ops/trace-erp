@@ -39,6 +39,10 @@ function getOrderFilters(req) {
       whereClauses.push("o.paid_amount > 0.9 AND ((LOWER(o.delivery_status) = 'delivered' AND (COALESCE(o.paid_amount, 0) - COALESCE(o.price, 0)) > 0.9) OR (LOWER(o.delivery_status) != 'delivered'))");
     } else if (s.includes('[WHATSAPP ONLY]')) {
       whereClauses.push("LOWER(COALESCE(o.tags, '')) LIKE '%whatsapp%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%whatsapp%funnel%'");
+    } else if (s.includes('[REPLACEMENT ONLY]')) {
+      whereClauses.push("LOWER(COALESCE(o.tags, '')) LIKE '%replacement%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement-cleared%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement_cleared%'");
+    } else if (s.includes('[OVERDUE REPLACEMENT]')) {
+      whereClauses.push("LOWER(COALESCE(o.tags, '')) LIKE '%replacement%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement-cleared%' AND LOWER(COALESCE(o.tags, '')) NOT LIKE '%replacement_cleared%' AND LOWER(COALESCE(o.delivery_status, '')) != 'cancelled' AND (julianday('now') - julianday(substr(o.order_date, 1, 10))) >= 7");
     } else if (s.includes('READY TO BOOK')) {
       whereClauses.push("LOWER(o.delivery_status) = 'confirmed' AND (o.tracking_number IS NULL OR o.tracking_number = '' OR o.tracking_number = '—')");
     } else if (s.includes('NO TRACKING')) {
