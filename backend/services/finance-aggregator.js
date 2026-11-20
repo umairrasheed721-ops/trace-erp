@@ -358,23 +358,23 @@ class FinanceAggregator {
     const params = [Number(storeId)];
 
     if (startDate && endDate) {
-      whereClause += ` AND o.order_date >= ? AND o.order_date <= ?`;
+      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
       params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
     } else if (d === 'today') {
-      whereClause += ` AND o.order_date >= date('now', 'start of day')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
     } else if (d === 'yesterday') {
-      whereClause += ` AND o.order_date >= date('now', '-1 day', 'start of day') AND o.order_date < date('now', 'start of day')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
     } else if (d === 'this_month') {
-      whereClause += ` AND o.order_date >= date('now', 'start of month')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
-      whereClause += ` AND o.order_date >= date('now', '-1 month', 'start of month') AND o.order_date < date('now', 'start of month')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
     } else if (d === 'this_year') {
-      whereClause += ` AND o.order_date >= date('now', 'start of year')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
     } else if (d === 'last_year') {
-      whereClause += ` AND o.order_date >= date('now', '-1 year', 'start of year') AND o.order_date < date('now', 'start of year')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
-      whereClause += ` AND o.order_date >= datetime('now', '-${numDays} days')`;
+      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
     }
 
     return db.prepare(`
@@ -392,23 +392,23 @@ class FinanceAggregator {
     const params = [Number(storeId)];
 
     if (startDate && endDate) {
-      whereClause += ` AND o.order_date >= ? AND o.order_date <= ?`;
+      whereClause += ` AND rl.created_at >= ? AND rl.created_at <= ?`;
       params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
     } else if (d === 'today') {
-      whereClause += ` AND o.order_date >= date('now', 'start of day')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of day')`;
     } else if (d === 'yesterday') {
-      whereClause += ` AND o.order_date >= date('now', '-1 day', 'start of day') AND o.order_date < date('now', 'start of day')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 day', 'start of day') AND rl.created_at < date('now', 'start of day')`;
     } else if (d === 'this_month') {
-      whereClause += ` AND o.order_date >= date('now', 'start of month')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of month')`;
     } else if (d === 'last_month') {
-      whereClause += ` AND o.order_date >= date('now', '-1 month', 'start of month') AND o.order_date < date('now', 'start of month')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 month', 'start of month') AND rl.created_at < date('now', 'start of month')`;
     } else if (d === 'this_year') {
-      whereClause += ` AND o.order_date >= date('now', 'start of year')`;
+      whereClause += ` AND rl.created_at >= date('now', 'start of year')`;
     } else if (d === 'last_year') {
-      whereClause += ` AND o.order_date >= date('now', '-1 year', 'start of year') AND o.order_date < date('now', 'start of year')`;
+      whereClause += ` AND rl.created_at >= date('now', '-1 year', 'start of year') AND rl.created_at < date('now', 'start of year')`;
     } else if (d !== 'all' && d !== '9999') {
       const numDays = parseInt(d, 10) || 7;
-      whereClause += ` AND o.order_date >= datetime('now', '-${numDays} days')`;
+      whereClause += ` AND rl.created_at >= datetime('now', '-${numDays} days')`;
     }
 
     return db.prepare(`

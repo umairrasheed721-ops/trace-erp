@@ -239,7 +239,8 @@ async function removeShopifyTag(store, orderId, tagToRemove) {
  * Uses existing `write_orders` scope (no `write_inventory` needed!) to restock ONLY selected
  * line item(s) & quantity with `transactions: []` (Rs 0 cash refund) and NO full-order refund.
  */
-async function restockPartialItems(store, shopifyOrderId, items, locationId = null) {
+async function restockPartialItems(store, shopifyOrderId, items, locationId = null, options = {}) {
+  const refundShipping = Boolean(options.refundShipping);
   if (!store || !Array.isArray(items) || items.length === 0) {
     return { success: false, restockedCount: 0, failedCount: 0, details: [], summary: '⏭️ No items to restock' };
   }
@@ -355,15 +356,19 @@ async function restockPartialItems(store, shopifyOrderId, items, locationId = nu
 
   if (refundLineItems.length > 0) {
     await sleep(250);
-    const payload = {
-      refund: {
-        currency: 'PKR',
-        notify: false,
-        note: 'Partial Exchange Restock via TRACE ERP',
-        refund_line_items: refundLineItems,
-        transactions: []
-      }
+    const refundBody = {
+      currency: 'PKR',
+      notify: false,
+      note: refundShipping
+        ? 'Partial Exchange Restock (Shipping Refunded / Zeroed) via TRACE ERP'
+        : 'Partial Exchange Restock (Delivery Charges Kept) via TRACE ERP',
+      refund_line_items: refundLineItems,
+      transactions: []
     };
+    if (refundShipping) {
+      refundBody.shipping = { full_refund: true };
+    }
+    const payload = { refund: refundBody };
 
     const refundRes = await shopifyFetch(store, `orders/${shopifyOrderId}/refunds.json`, {
       method: 'POST',
@@ -405,14 +410,15 @@ async function restockPartialItems(store, shopifyOrderId, items, locationId = nu
   if (shopifyOrderId && noteParts.length > 0 && failedCount === 0) {
     try {
       const today = new Date().toISOString().split('T')[0];
-      await appendShopifyNote(store, shopifyOrderId, `| 🔄 Exchange Partial Return (${today}): ${noteParts.join(', ')}`);
+      const shipLabel = refundShipping ? ' | Shipping: Zeroed' : ' | Shipping: Kept';
+      await appendShopifyNote(store, shopifyOrderId, `| 🔄 Exchange Partial Return (${today}): ${noteParts.join(', ')}${shipLabel}`);
     } catch (noteErr) {
       console.warn(`[shopify_finance] Partial return note append failed:`, noteErr.message);
     }
   }
 
   const summary = restockedCount > 0
-    ? `✅ Restocked ${restockedCount} unit(s)${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
+    ? `✅ Restocked ${restockedCount} unit(s)${refundShipping ? ' + Shipping Zeroed' : ' (Delivery Kept)'}${failedCount > 0 ? ` (${failedCount} failed)` : ''}`
     : alreadyRestockedCount > 0 && failedCount === 0
       ? `⏭️ Already Restocked in Shopify`
       : failedCount > 0
@@ -420,6 +426,38 @@ async function restockPartialItems(store, shopifyOrderId, items, locationId = nu
         : '⏭️ Logged (No Restock)';
 
   return { success: failedCount === 0, restockedCount, alreadyRestockedCount, failedCount, details, summary };
+}
+
+/**
+ * Zero out remaining shipping/delivery charges on an order whose items were already restocked
+ * Uses existing `write_orders` scope via Shopify Orders Refunds API (`shipping: { full_refund: true }`).
+ */
+async function refundShippingOnly(store, shopifyOrderId) {
+  if (!store || !shopifyOrderId) {
+    return { success: false, summary: '❌ Missing store or Shopify Order ID' };
+  }
+  const payload = {
+    refund: {
+      currency: 'PKR',
+      notify: false,
+      note: 'Delivery Charges Zeroed via TRACE ERP',
+      shipping: { full_refund: true },
+      transactions: []
+    }
+  };
+  const res = await shopifyFetch(store, `orders/${shopifyOrderId}/refunds.json`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  if (res.status === 201 || res.status === 200) {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await appendShopifyNote(store, shopifyOrderId, `| 💸 Delivery Charges Zeroed (${today})`);
+    } catch (_) {}
+    return { success: true, summary: '✅ Delivery charges zeroed in Shopify' };
+  }
+  const errText = await res.text();
+  return { success: false, summary: `❌ Shopify HTTP ${res.status}: ${errText.substring(0, 140)}` };
 }
 
 async function getShopifyFinancials(store, orderId) {
@@ -847,6 +885,7 @@ module.exports = {
   addShopifyTag,
   removeShopifyTag,
   restockPartialItems,
+  refundShippingOnly,
   getShopifyFinancials,
   captureShopifyPayment,
   getShopifyOrderStatus,

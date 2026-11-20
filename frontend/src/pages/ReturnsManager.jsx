@@ -44,8 +44,11 @@ export default function ReturnsManager() {
   const [selectedReturnItems, setSelectedReturnItems] = useState({}) // { [idx]: { checked, quantity, qc_status, restock } }
   const [exchangeNote, setExchangeNote] = useState('')
   const [clearReplOrderId, setClearReplOrderId] = useState(null)
+  const [gotDeliveryCharges, setGotDeliveryCharges] = useState(true) // true = Keep shipping, false = Zero out shipping too
+  const [deliveryChoiceTouched, setDeliveryChoiceTouched] = useState(false)
   const [processingExchange, setProcessingExchange] = useState(false)
   const [clearingTagId, setClearingTagId] = useState(null)
+  const [refundingShipping, setRefundingShipping] = useState(false)
 
   const [datePreset, setDatePreset] = useState('7')
   const [customStart, setCustomStart] = useState('')
@@ -306,8 +309,27 @@ export default function ReturnsManager() {
       }
     })
     setSelectedReturnItems(map)
+    setDeliveryChoiceTouched(false)
+    // Smart default: if single-item order auto-checked (100% return), default to zeroing shipping; otherwise keep shipping
+    setGotDeliveryCharges(!(items.length === 1 && (items[0].remaining_qty || 0) > 0))
     setClearReplOrderId(order?.active_replacements?.length === 1 ? order.active_replacements[0].id : null)
   }
+
+  // Smart auto-default for Delivery Charges whenever item selection changes (unless user manually toggled)
+  useEffect(() => {
+    if (!selectedExchangeOrder || deliveryChoiceTouched) return
+    const items = selectedExchangeOrder.parsed_items || []
+    const totalOrderedUnits = items.reduce((s, it) => s + (it.ordered_qty || 1), 0)
+    const alreadyReturnedUnits = items.reduce((s, it) => s + (it.already_returned_qty || 0), 0)
+    const newlySelectedUnits = items.reduce((s, it) => {
+      const sel = selectedReturnItems[it.idx]
+      return s + (sel?.checked ? (sel.quantity || 0) : 0)
+    }, 0)
+    if (newlySelectedUnits > 0) {
+      const isFullOrderReturn = (alreadyReturnedUnits + newlySelectedUnits) >= totalOrderedUnits
+      setGotDeliveryCharges(!isFullOrderReturn)
+    }
+  }, [selectedReturnItems, selectedExchangeOrder, deliveryChoiceTouched])
 
   const handleExchangeLookup = async (customQuery) => {
     const q = (typeof customQuery === 'string' ? customQuery : exchangeQuery).trim()
@@ -370,7 +392,8 @@ export default function ReturnsManager() {
           order_id: selectedExchangeOrder.id,
           items: itemsPayload,
           notes: exchangeNote.trim(),
-          clear_replacement_order_id: clearReplOrderId
+          clear_replacement_order_id: clearReplOrderId,
+          got_delivery_charges: gotDeliveryCharges
         })
       })
       const data = await res.json()
@@ -412,6 +435,32 @@ export default function ReturnsManager() {
       addToast('Tag clear failed: ' + e.message, 'error')
     } finally {
       setClearingTagId(null)
+    }
+  }
+
+  const handleRefundShippingOnly = async (orderId, refNumber) => {
+    if (!activeStoreId || !orderId) return
+    if (!window.confirm(`Zero out remaining delivery/shipping charges on ${refNumber || '#' + orderId} in Shopify?`)) return
+    setRefundingShipping(true)
+    try {
+      const res = await fetch('/api/finance/returns/refund-shipping-only', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('trace_token')}`
+        },
+        body: JSON.stringify({ store_id: activeStoreId, order_id: orderId })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Shipping refund failed')
+      addToast(`💸 ${data.shopifyStatus} — ${refNumber || '#' + orderId} price is now Rs ${Math.round(data.newPrice || 0)}`, 'success')
+      if (selectedExchangeOrder) {
+        handleExchangeLookup(selectedExchangeOrder.ref_number || selectedExchangeOrder.tracking_number || exchangeQuery)
+      }
+    } catch (e) {
+      addToast('Shipping refund failed: ' + e.message, 'error')
+    } finally {
+      setRefundingShipping(false)
     }
   }
 
@@ -1281,6 +1330,114 @@ export default function ReturnsManager() {
                         })}
                       </tbody>
                     </table>
+
+                    {/* Delivery Charges Control + Already-Restocked Remaining Shipping Cleanup */}
+                    {(() => {
+                      const items = selectedExchangeOrder.parsed_items || []
+                      const allReturned = items.length > 0 && items.every(it => (it.remaining_qty || 0) <= 0)
+                      const currentPrice = Math.round(parseFloat(selectedExchangeOrder.price || 0))
+                      const selectedValue = items.reduce((sum, it) => {
+                        const sel = selectedReturnItems[it.idx]
+                        if (!sel?.checked) return sum
+                        return sum + ((it.price || 0) * (sel.quantity || 0))
+                      }, 0)
+                      const selectedUnitsCount = Object.values(selectedReturnItems)
+                        .filter(s => s.checked)
+                        .reduce((sum, s) => sum + (s.quantity || 0), 0)
+
+                      if (allReturned && currentPrice > 0) {
+                        return (
+                          <div style={{
+                            padding: '12px 16px',
+                            background: 'rgba(239, 68, 68, 0.06)',
+                            borderTop: '1px solid rgba(239, 68, 68, 0.25)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: 10
+                          }}>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                              <strong>💸 Remaining Shipping Charge Detected (Rs {currentPrice.toLocaleString()})</strong>
+                              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                All items are already restocked. If you did NOT receive delivery charges from customer, zero it out below.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              disabled={refundingShipping}
+                              onClick={() => handleRefundShippingOnly(selectedExchangeOrder.id, selectedExchangeOrder.ref_number)}
+                              style={{
+                                borderColor: '#ef4444', color: '#ef4444', fontWeight: 700,
+                                padding: '6px 14px', whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {refundingShipping ? '⏳ Zeroing...' : `💸 Zero Out Shipping (Rs ${currentPrice.toLocaleString()} → Rs 0)`}
+                            </button>
+                          </div>
+                        )
+                      }
+
+                      if (allReturned) return null
+
+                      return (
+                        <div style={{
+                          padding: '12px 16px',
+                          background: 'rgba(99, 102, 241, 0.05)',
+                          borderTop: '1px solid var(--border)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: 10
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              🚚 Got Delivery Charges from Customer?
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                              {gotDeliveryCharges
+                                ? 'Delivery charges will stay on the order (only returned item price is deducted).'
+                                : 'Delivery charges will ALSO be zeroed out in Shopify (full return → Rs 0).'}
+                              {selectedUnitsCount > 0 && selectedValue > 0 && (
+                                <span style={{ marginLeft: 6, color: 'var(--brand)', fontWeight: 700 }}>
+                                  · Est. Item Deduction: -Rs {Math.round(selectedValue).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={() => { setDeliveryChoiceTouched(true); setGotDeliveryCharges(false) }}
+                              style={{
+                                padding: '6px 12px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
+                                background: !gotDeliveryCharges ? 'rgba(239,68,68,0.14)' : 'var(--bg-surface)',
+                                color: !gotDeliveryCharges ? '#ef4444' : 'var(--text-muted)',
+                                border: `1.5px solid ${!gotDeliveryCharges ? '#ef4444' : 'var(--border)'}`,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              ❌ No — Zero Out Shipping
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setDeliveryChoiceTouched(true); setGotDeliveryCharges(true) }}
+                              style={{
+                                padding: '6px 12px', borderRadius: 8, fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer',
+                                background: gotDeliveryCharges ? 'rgba(34,197,94,0.14)' : 'var(--bg-surface)',
+                                color: gotDeliveryCharges ? 'var(--green)' : 'var(--text-muted)',
+                                border: `1.5px solid ${gotDeliveryCharges ? 'var(--green)' : 'var(--border)'}`,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              ✅ Yes — Keep Delivery Charges
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })()}
 
                     {/* Action Footer */}
                     <div style={{

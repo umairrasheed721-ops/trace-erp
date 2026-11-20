@@ -5,6 +5,7 @@ const {
   getPrimaryLocationId, 
   processSmartRestock,
   restockPartialItems,
+  refundShippingOnly,
   removeShopifyTag,
   markShopifyOrderDelivered
 } = require('../../engines/shopify_finance');
@@ -419,12 +420,13 @@ router.get('/returns/exchange-lookup', authenticateToken, (req, res) => {
 // POST /api/finance/returns/partial-exchange
 // Item-level partial exchange return & Shopify inventory adjustment — keeps original order Delivered!
 router.post('/returns/partial-exchange', authenticateToken, async (req, res) => {
-  const { store_id, order_id, items, notes = '', clear_replacement_order_id = null } = req.body;
+  const { store_id, order_id, items, notes = '', clear_replacement_order_id = null, got_delivery_charges = true } = req.body;
   if (!store_id || !order_id || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'store_id, order_id, and at least one item are required' });
   }
 
   const sid = Number(store_id);
+  const refundShipping = got_delivery_charges === false;
   try {
     const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(sid);
     if (!store) return res.status(404).json({ error: 'Store not found' });
@@ -453,7 +455,7 @@ router.post('/returns/partial-exchange', authenticateToken, async (req, res) => 
     let shopifyResult = { success: true, restockedCount: 0, alreadyRestockedCount: 0, failedCount: 0, details: [], summary: '⏭️ Logged (No Restock)' };
     if (itemsToRestock.length > 0 && store.access_token) {
       try {
-        shopifyResult = await restockPartialItems(store, order.shopify_order_id, validItems);
+        shopifyResult = await restockPartialItems(store, order.shopify_order_id, validItems, null, { refundShipping });
       } catch (shopErr) {
         shopifyResult = { success: false, restockedCount: 0, alreadyRestockedCount: 0, failedCount: itemsToRestock.length, details: [], summary: `❌ ${shopErr.message}` };
       }
@@ -461,6 +463,16 @@ router.post('/returns/partial-exchange', authenticateToken, async (req, res) => 
 
     const restockSucceeded = (shopifyResult.restockedCount > 0 || shopifyResult.alreadyRestockedCount > 0);
     const restockFailed = itemsToRestock.length > 0 && !restockSucceeded && shopifyResult.failedCount > 0;
+
+    // Immediately re-sync order from Shopify so ERP price & CGS reflect the partial refund right away
+    if (restockSucceeded && order.shopify_order_id && store.access_token) {
+      try {
+        const { syncSingleShopifyOrder } = require('../../engines/shopify');
+        await syncSingleShopifyOrder(store, order.shopify_order_id);
+      } catch (syncErr) {
+        console.warn(`[partial-exchange] Post-restock order sync notice for ${order.shopify_order_id}:`, syncErr.message);
+      }
+    }
 
     // Append concise audit stamp to ERP cs_notes WITHOUT touching delivery_status (stays Delivered!)
     const todayStr = new Date().toISOString().split('T')[0];
@@ -553,6 +565,48 @@ router.post('/returns/clear-replacement-tag', authenticateToken, async (req, res
     }
 
     res.json({ success: true, ref_number: order.ref_number, tags: cleanedTags, shopifySynced });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/finance/returns/refund-shipping-only
+// Zero out remaining shipping/delivery charges (e.g. Rs 299) on an already-restocked order
+router.post('/returns/refund-shipping-only', authenticateToken, async (req, res) => {
+  const { store_id, order_id } = req.body;
+  if (!store_id || !order_id) return res.status(400).json({ error: 'store_id and order_id required' });
+
+  const sid = Number(store_id);
+  try {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(sid);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    const order = db.prepare('SELECT * FROM orders WHERE id = ? AND store_id = ?').get(Number(order_id), sid);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    let shopifyResult = { success: true, summary: '⏭️ Local update only (no Shopify Order ID)' };
+    if (store.access_token && order.shopify_order_id) {
+      shopifyResult = await refundShippingOnly(store, order.shopify_order_id);
+      if (!shopifyResult.success) {
+        return res.status(400).json({ success: false, error: shopifyResult.summary });
+      }
+      try {
+        const { syncSingleShopifyOrder } = require('../../engines/shopify');
+        await syncSingleShopifyOrder(store, order.shopify_order_id);
+      } catch (_) {}
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    db.prepare("UPDATE orders SET cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
+      .run(`\n[Delivery Charges Zeroed ${todayStr}]`, order.id);
+
+    const refreshed = db.prepare('SELECT price FROM orders WHERE id = ?').get(order.id);
+    res.json({
+      success: true,
+      ref_number: order.ref_number,
+      newPrice: refreshed?.price ?? 0,
+      shopifyStatus: shopifyResult.summary
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
