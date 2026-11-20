@@ -14,6 +14,7 @@
     { label: '📋 Ready to Book', tag: 'Ready to Book', color: '#ec4899', shortcut: 'Alt+R' },
     { label: '⏸️ Hold', tag: 'Hold', color: '#94a3b8', shortcut: 'Alt+H' },
     { label: '🔄 Exchange', tag: 'Exchange', color: '#06b6d4', shortcut: 'Alt+E' },
+    { label: '🔁 Replacement', tag: 'Replacement', color: '#e11d48', shortcut: 'Alt+M' },
     { label: '⚠️ Low Stock', tag: 'low stock', color: '#f97316', shortcut: 'Alt+L' }
   ];
 
@@ -1075,6 +1076,7 @@
     else if (key === 'R' || key === 'A') matchedTag = 'Ready to Book';
     else if (key === 'H') matchedTag = 'Hold';
     else if (key === 'E') matchedTag = 'Exchange';
+    else if (key === 'M') matchedTag = 'Replacement';
     else if (key === 'L') matchedTag = 'low stock';
 
     if (matchedTag) {
