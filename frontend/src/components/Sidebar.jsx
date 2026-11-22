@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { NAV_ITEMS } from '../utils/navigationItems'
 
 export default function Sidebar() {
+  const navigate = useNavigate()
   const { stores, activeStoreId, setActiveStoreId, badgeCounts, sidebarCollapsed, toggleSidebar, user, logout, permissions } = useApp()
   const [isHovered, setIsHovered] = useState(false)
   const hoverTimeout = useRef(null)
@@ -60,6 +61,12 @@ export default function Sidebar() {
             end={item.to === '/'}
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
             title={!isExpanded ? item.label : ''}
+            onClick={(e) => {
+              if (item.to === '/search') {
+                e.preventDefault()
+                navigate('/search', { state: { resetToDefault: Date.now() } })
+              }
+            }}
           >
             <span className="nav-icon">{item.icon}</span>
             <span style={{ display: isExpanded ? 'inline' : 'none' }}>{item.label}</span>

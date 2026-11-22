@@ -1121,6 +1121,43 @@ export default function SearchTool() {
     });
   }, [fetchOrders, addToast]);
 
+  // Reset Command Center to default fresh mode (This Month + Pending) whenever Sidebar Command Center button is clicked
+  const lastResetTsRef = useRef(null);
+  useEffect(() => {
+    const resetTs = location.state?.resetToDefault;
+    if (!resetTs || resetTs === lastResetTsRef.current) return;
+    lastResetTsRef.current = resetTs;
+    isClearingRef.current = true;
+
+    const emptyColFilters = {
+      ref_number: '', customer_name: '', tags: '', city: '', phone: '', status: '', courier: '', tracking_number: '', notes: ''
+    };
+    setPreset('This Month');
+    setStatus('Pending');
+    setCustomStart('');
+    setCustomEnd('');
+    setColFilters(emptyColFilters);
+    setActiveAgingBucket(null);
+    setKeyword('');
+    setPage(1);
+    setGlobalSearch(false);
+    setSelectedIds([]);
+
+    fetchOrders({
+      preset: 'This Month',
+      status: 'Pending',
+      customStart: '',
+      customEnd: '',
+      keyword: '',
+      colFilters: emptyColFilters,
+      isRefresh: true,
+      wasProgrammatic: true,
+      clearKeyword: true,
+      clearColFilters: true,
+      globalSearch: false
+    });
+  }, [location.state?.resetToDefault, fetchOrders, setPreset, setStatus, setCustomStart, setCustomEnd, setKeyword]);
+
   /**
    * Triggers a programmatic search for a customer's orders using their phone or email.
    * To ensure the search input is properly synchronized and React receives the update
