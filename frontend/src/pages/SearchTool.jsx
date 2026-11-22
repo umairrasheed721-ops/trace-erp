@@ -52,6 +52,18 @@ export default function SearchTool() {
   const lastRefreshRef = useRef(0)
   const isClearingRef = useRef(false)
   const isClearingStageRef = useRef(null)
+  const fetchAbortRef = useRef(null)
+  const fetchSeqRef = useRef(0)
+  const lastProcessedStateRef = useRef(null)
+
+  // Abort any in-flight orders fetch on unmount
+  useEffect(() => {
+    return () => {
+      if (fetchAbortRef.current) {
+        try { fetchAbortRef.current.abort(); } catch (_) {}
+      }
+    };
+  }, [])
   
   // ⚡ Self-Echo Guard: Prevents double refresh when local tab saves an order
   const recentlySavedOrderIdsRef = useRef(new Map());
@@ -169,21 +181,21 @@ export default function SearchTool() {
     const wasProgrammatic = options.wasProgrammatic || false;
     const isRefresh = options.isRefresh || false;
 
-    const isGlobal = options.hasOwnProperty('globalSearch')
+    const isGlobal = options.globalSearch !== undefined
       ? options.globalSearch
       : globalSearch;
 
-    if (options.hasOwnProperty('globalSearch')) {
+    if (options.globalSearch !== undefined) {
       setGlobalSearch(options.globalSearch);
     }
     
-    // Choose source of values (accept override parameters for immediate/clear runs)
-    const presetVal = options.hasOwnProperty('preset') ? options.preset : preset;
-    const statusVal = options.hasOwnProperty('status') ? options.status : status;
-    const customStartVal = options.hasOwnProperty('customStart') ? options.customStart : customStart;
-    const customEndVal = options.hasOwnProperty('customEnd') ? options.customEnd : customEnd;
-    const keywordVal = options.hasOwnProperty('keyword') ? options.keyword : keyword;
-    const colFiltersVal = options.hasOwnProperty('colFilters') ? options.colFilters : colFilters;
+    // Choose source of values (accept override parameters ONLY when explicitly defined — never let `undefined` wipe filters to All Time)
+    const presetVal = options.preset !== undefined ? options.preset : preset;
+    const statusVal = options.status !== undefined ? options.status : status;
+    const customStartVal = options.customStart !== undefined ? options.customStart : customStart;
+    const customEndVal = options.customEnd !== undefined ? options.customEnd : customEnd;
+    const keywordVal = options.keyword !== undefined ? options.keyword : keyword;
+    const colFiltersVal = options.colFilters !== undefined ? options.colFilters : colFilters;
 
     const queryStatus = statusVal === 'All Statuses' ? '' : statusVal;
     
@@ -239,6 +251,14 @@ export default function SearchTool() {
 
     lastFetchedUrlRef.current = urlWithoutTimestamp;
 
+    // Cancel any older in-flight fetch so slow/stale responses can NEVER overwrite fresh filters
+    if (fetchAbortRef.current) {
+      try { fetchAbortRef.current.abort(); } catch (_) {}
+    }
+    const abortController = new AbortController();
+    fetchAbortRef.current = abortController;
+    const reqSeq = ++fetchSeqRef.current;
+
     // ⚡ Silent Refresh: If data is already displayed, keep existing rows visible (no full-table loading unmount)
     const isSilent = allOrders.length > 0 && !options.forceHardLoad;
     if (!isSilent) {
@@ -256,6 +276,7 @@ export default function SearchTool() {
     try {
       const authToken = token || localStorage.getItem('trace_token') || localStorage.getItem('token') || '';
       const res = await fetch(url, {
+        signal: abortController.signal,
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
@@ -264,6 +285,10 @@ export default function SearchTool() {
         throw new Error(`HTTP ${res.status}`);
       }
       const data = await res.json();
+
+      // Ignore stale response if a newer request has been issued since this one started
+      if (reqSeq !== fetchSeqRef.current) return;
+
       setAllOrders(data.orders || []);
       setTotalCount(data.total || 0);
       setDebugWhere(data.debugWhere || '');
@@ -281,13 +306,18 @@ export default function SearchTool() {
         isClearingStageRef.current = null;
       }
     } catch (err) {
+      if (err?.name === 'AbortError' || reqSeq !== fetchSeqRef.current) {
+        return;
+      }
       if (isClearingRef.current) {
         isClearingRef.current = false;
         isClearingStageRef.current = null;
       }
       console.error('❌ [SearchTool] fetchOrders error:', err.message);
     } finally {
-      setLoading(false);
+      if (reqSeq === fetchSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [
     activeStoreId, status, debouncedKeyword, preset, customStart, customEnd, colFilters, debouncedColFilters,
@@ -1156,7 +1186,10 @@ export default function SearchTool() {
       clearColFilters: true,
       globalSearch: false
     });
-  }, [location.state?.resetToDefault, fetchOrders, setPreset, setStatus, setCustomStart, setCustomEnd, setKeyword]);
+
+    // Clear resetToDefault from router state so subsequent renders/refreshes don't re-trigger it
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state?.resetToDefault, location.pathname, navigate, fetchOrders, setPreset, setStatus, setCustomStart, setCustomEnd, setKeyword]);
 
   /**
    * Triggers a programmatic search for a customer's orders using their phone or email.
@@ -1395,25 +1428,27 @@ export default function SearchTool() {
       });
     } else {
       lastProcessedUrlQueryRef.current = '';
-      if (location.state) {
+      if (location.state && !location.state.resetToDefault && location.state !== lastProcessedStateRef.current) {
+        lastProcessedStateRef.current = location.state;
         const { preset: p, customStart: cs, customEnd: ce, status: s, keyword: kw, colFilters: cf } = location.state;
-        if (p) setPreset(p);
-        if (cs !== undefined) setCustomStart(cs);
-        if (ce !== undefined) setCustomEnd(ce);
-        if (s) setStatus(s);
-        if (kw !== undefined) setKeyword(kw);
-        if (cf !== undefined) setColFilters(cf);
+        const hasDrilldownFields = p !== undefined || cs !== undefined || ce !== undefined || s !== undefined || kw !== undefined || cf !== undefined;
+        if (hasDrilldownFields) {
+          if (p !== undefined) setPreset(p);
+          if (cs !== undefined) setCustomStart(cs);
+          if (ce !== undefined) setCustomEnd(ce);
+          if (s !== undefined) setStatus(s);
+          if (kw !== undefined) setKeyword(kw);
+          if (cf !== undefined) setColFilters(cf);
 
-        fetchOrders({
-          preset: p,
-          customStart: cs,
-          customEnd: ce,
-          status: s,
-          keyword: kw !== undefined ? kw : keyword,
-          colFilters: cf !== undefined ? cf : colFilters,
-          isRefresh: true,
-          wasProgrammatic: true
-        });
+          const overrides = { isRefresh: true, wasProgrammatic: true };
+          if (p !== undefined) overrides.preset = p;
+          if (cs !== undefined) overrides.customStart = cs;
+          if (ce !== undefined) overrides.customEnd = ce;
+          if (s !== undefined) overrides.status = s;
+          if (kw !== undefined) overrides.keyword = kw;
+          if (cf !== undefined) overrides.colFilters = cf;
+          fetchOrders(overrides);
+        }
       }
     }
   }, [location.state, location.search, fetchOrders]);

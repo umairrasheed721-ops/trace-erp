@@ -215,40 +215,9 @@ router.get('/', (req, res) => {
       }
     }
 
+    // ⚡ High-Speed Main Page Query (ZERO per-row correlated subqueries — avoids 250×34k full table scans)
     const orders = db.prepare(`
-      SELECT o.*, s.shop_domain, s.store_name,
-             (
-               SELECT COUNT(*) FROM (
-                 SELECT id FROM orders 
-                 WHERE phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != ''
-                   AND SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) = SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(o.phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10)
-                 UNION
-                 SELECT id FROM orders 
-                 WHERE email = o.email AND o.email IS NOT NULL AND o.email != ''
-               )
-             ) as customer_order_count,
-             (
-               SELECT direction FROM (
-                 SELECT direction, id FROM whatsapp_messages WHERE order_id = o.id AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT direction, id FROM whatsapp_messages WHERE phone = o.phone AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT direction, id FROM whatsapp_messages WHERE phone = REPLACE(o.phone, '+', '') AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT direction, id FROM whatsapp_messages WHERE SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10) AND tenant_id = o.tenant_id
-               ) ORDER BY id DESC LIMIT 1
-             ) as last_wa_direction,
-             (
-               SELECT status FROM (
-                 SELECT status, id FROM whatsapp_messages WHERE order_id = o.id AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT status, id FROM whatsapp_messages WHERE phone = o.phone AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT status, id FROM whatsapp_messages WHERE phone = REPLACE(o.phone, '+', '') AND tenant_id = o.tenant_id
-                 UNION ALL
-                 SELECT status, id FROM whatsapp_messages WHERE SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10) AND tenant_id = o.tenant_id
-               ) ORDER BY id DESC LIMIT 1
-             ) as last_wa_status
+      SELECT o.*, s.shop_domain, s.store_name
       FROM orders o
       JOIN stores s ON o.store_id = s.id
       WHERE ${where}
@@ -256,12 +225,183 @@ router.get('/', (req, res) => {
       LIMIT ? OFFSET ?
     `).all(...queryParams, parseInt(limit), offset);
 
-    // ── WA ERP Status Merge (JS-level, crash-safe) ────────────────────────────
-    // Fetches wa_erp_status from whatsapp_polls in a separate query and merges
-    // it into the order objects. Wrapped in try/catch so if whatsapp_polls
-    // doesn't exist (new containers) or errors for any reason, the orders
-    // response is still sent successfully — wa_erp_status just won't be set.
+    // ── Batched Enrichment (Customer Order Count + Last WA Direction/Status + WA Poll Status) ──
+    // Runs only for the 50–250 returned rows using indexed IN (...) batches instead of correlated subqueries.
     if (orders.length > 0) {
+      const CHUNK_SIZE = 400;
+      const normPhone10 = (p) => (p ? String(p).replace(/[\s\-+(]/g, '').slice(-10) : '');
+      const stripPlus10 = (p) => (p ? String(p).replace(/\+/g, '').slice(-10) : '');
+
+      // 1. Batched customer_order_count (matches normalized phone last-10 OR exact email, deduped by order id)
+      try {
+        const uniquePhone10s = [];
+        const phone10Seen = new Set();
+        const uniqueEmails = [];
+        const emailSeen = new Set();
+
+        for (const o of orders) {
+          if (o.phone && o.phone !== '') {
+            const p10 = normPhone10(o.phone);
+            if (p10 && !phone10Seen.has(p10)) {
+              phone10Seen.add(p10);
+              uniquePhone10s.push(p10);
+            }
+          }
+          if (o.email && o.email !== '') {
+            if (!emailSeen.has(o.email)) {
+              emailSeen.add(o.email);
+              uniqueEmails.push(o.email);
+            }
+          }
+        }
+
+        const phoneOrderIds = new Map();
+        for (let i = 0; i < uniquePhone10s.length; i += CHUNK_SIZE) {
+          const chunk = uniquePhone10s.slice(i, i + CHUNK_SIZE);
+          const ph = chunk.map(() => '?').join(',');
+          const rows = db.prepare(`
+            SELECT id, SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) AS p10
+            FROM orders
+            WHERE SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10) IN (${ph})
+          `).all(...chunk);
+          for (const r of rows) {
+            let set = phoneOrderIds.get(r.p10);
+            if (!set) { set = new Set(); phoneOrderIds.set(r.p10, set); }
+            set.add(r.id);
+          }
+        }
+
+        const emailOrderIds = new Map();
+        for (let i = 0; i < uniqueEmails.length; i += CHUNK_SIZE) {
+          const chunk = uniqueEmails.slice(i, i + CHUNK_SIZE);
+          const ph = chunk.map(() => '?').join(',');
+          const rows = db.prepare(`
+            SELECT id, email
+            FROM orders
+            WHERE email IN (${ph})
+          `).all(...chunk);
+          for (const r of rows) {
+            let set = emailOrderIds.get(r.email);
+            if (!set) { set = new Set(); emailOrderIds.set(r.email, set); }
+            set.add(r.id);
+          }
+        }
+
+        for (const o of orders) {
+          const pSet = (o.phone && o.phone !== '') ? phoneOrderIds.get(normPhone10(o.phone)) : null;
+          const eSet = (o.email && o.email !== '') ? emailOrderIds.get(o.email) : null;
+          if (pSet && eSet) {
+            const merged = new Set(pSet);
+            for (const id of eSet) merged.add(id);
+            o.customer_order_count = merged.size;
+          } else if (pSet) {
+            o.customer_order_count = pSet.size;
+          } else if (eSet) {
+            o.customer_order_count = eSet.size;
+          } else {
+            o.customer_order_count = 0;
+          }
+        }
+      } catch (cntErr) {
+        console.warn('[Customer Count Merge] Skipped:', cntErr.message);
+        for (const o of orders) o.customer_order_count = 1;
+      }
+
+      // 2. Batched last_wa_direction & last_wa_status (replaces 2x duplicate 4-way UNION ALL correlated subqueries)
+      try {
+        const orderIds = orders.map(o => o.id);
+        const waPhone10s = [];
+        const waPhone10Seen = new Set();
+        const waRawPhones = [];
+        const waRawSeen = new Set();
+
+        for (const o of orders) {
+          if (o.phone && o.phone !== '') {
+            const p10 = stripPlus10(o.phone);
+            if (p10 && !waPhone10Seen.has(p10)) {
+              waPhone10Seen.add(p10);
+              waPhone10s.push(p10);
+            }
+            if (p10.length < 10) {
+              const noPlus = String(o.phone).replace(/\+/g, '');
+              for (const raw of [o.phone, noPlus]) {
+                if (raw && !waRawSeen.has(raw)) { waRawSeen.add(raw); waRawPhones.push(raw); }
+              }
+            }
+          }
+        }
+
+        const waByOrder = new Map();
+        for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
+          const chunk = orderIds.slice(i, i + CHUNK_SIZE);
+          const ph = chunk.map(() => '?').join(',');
+          const rows = db.prepare(`
+            SELECT order_id, tenant_id, direction, status, MAX(id) AS max_id
+            FROM whatsapp_messages
+            WHERE order_id IN (${ph})
+            GROUP BY order_id, tenant_id
+          `).all(...chunk);
+          for (const r of rows) {
+            waByOrder.set(`${r.tenant_id ?? ''}::${r.order_id}`, r);
+          }
+        }
+
+        const waByPhone10 = new Map();
+        for (let i = 0; i < waPhone10s.length; i += CHUNK_SIZE) {
+          const chunk = waPhone10s.slice(i, i + CHUNK_SIZE);
+          const ph = chunk.map(() => '?').join(',');
+          const rows = db.prepare(`
+            SELECT SUBSTR(phone, -10) AS p10, tenant_id, direction, status, MAX(id) AS max_id
+            FROM whatsapp_messages
+            WHERE SUBSTR(phone, -10) IN (${ph})
+            GROUP BY SUBSTR(phone, -10), tenant_id
+          `).all(...chunk);
+          for (const r of rows) {
+            waByPhone10.set(`${r.tenant_id ?? ''}::${r.p10}`, r);
+          }
+        }
+
+        const waByRawPhone = new Map();
+        for (let i = 0; i < waRawPhones.length; i += CHUNK_SIZE) {
+          const chunk = waRawPhones.slice(i, i + CHUNK_SIZE);
+          const ph = chunk.map(() => '?').join(',');
+          const rows = db.prepare(`
+            SELECT phone, tenant_id, direction, status, MAX(id) AS max_id
+            FROM whatsapp_messages
+            WHERE phone IN (${ph})
+            GROUP BY phone, tenant_id
+          `).all(...chunk);
+          for (const r of rows) {
+            waByRawPhone.set(`${r.tenant_id ?? ''}::${r.phone}`, r);
+          }
+        }
+
+        for (const o of orders) {
+          const tKey = o.tenant_id ?? '';
+          let best = waByOrder.get(`${tKey}::${o.id}`) || null;
+          if (o.phone && o.phone !== '') {
+            const p10 = stripPlus10(o.phone);
+            const cand10 = p10 ? waByPhone10.get(`${tKey}::${p10}`) : null;
+            if (cand10 && (!best || cand10.max_id > best.max_id)) best = cand10;
+            if (p10.length < 10) {
+              for (const raw of [o.phone, String(o.phone).replace(/\+/g, '')]) {
+                const candRaw = waByRawPhone.get(`${tKey}::${raw}`);
+                if (candRaw && (!best || candRaw.max_id > best.max_id)) best = candRaw;
+              }
+            }
+          }
+          o.last_wa_direction = best ? best.direction : null;
+          o.last_wa_status = best ? best.status : null;
+        }
+      } catch (waMsgErr) {
+        console.warn('[WA Last Message Merge] Skipped:', waMsgErr.message);
+        for (const o of orders) {
+          o.last_wa_direction = null;
+          o.last_wa_status = null;
+        }
+      }
+
+      // 3. WA ERP Status Merge from whatsapp_polls (crash-safe)
       try {
         const orderIds = orders.map(o => o.id);
         const placeholders = orderIds.map(() => '?').join(',');
@@ -283,7 +423,6 @@ router.get('/', (req, res) => {
         }
       } catch (waErr) {
         // Non-fatal: whatsapp_polls may not exist on fresh containers
-        // Orders are still returned correctly without wa_erp_status
         console.warn('[WA Status Merge] Skipped:', waErr.message);
       }
     }

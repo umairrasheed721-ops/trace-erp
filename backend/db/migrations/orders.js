@@ -1258,6 +1258,23 @@ module.exports = [
     } catch (e) {
       console.error('Migration #48 failed:', e.message);
     }
+  },
+
+  // 49. Add normalized-phone expression index & composite (store_id, LOWER(delivery_status), order_date DESC) index for <100ms Command Center loads
+  (db) => {
+    try {
+      db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_orders_phone_norm10
+        ON orders(SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10));
+      `).run();
+      db.prepare(`
+        CREATE INDEX IF NOT EXISTS idx_orders_store_status_date
+        ON orders(store_id, LOWER(delivery_status), order_date DESC);
+      `).run();
+      console.log('✅ [Migration #49] idx_orders_phone_norm10 & idx_orders_store_status_date indexes verified.');
+    } catch (e) {
+      console.error('Migration #49 failed:', e.message);
+    }
   }
 ];
 
