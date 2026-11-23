@@ -1253,7 +1253,6 @@ export default function SearchTool() {
     { id: 'tracking_number', label: 'Tracking # / Courier' },
     { id: 'courier_status', label: 'Courier Status' },
     { id: 'delivery_status', label: 'ERP Status' },
-    { id: 'wa_erp_status', label: '📱 COD Status' },
     { id: 'payment_status', label: 'Payment' },
     { id: 'paid_amount', label: 'Amount Paid' },
     { id: 'price', label: 'Price' },
@@ -1271,7 +1270,7 @@ export default function SearchTool() {
   const [cols, setCols] = useState(() => {
     const saved = localStorage.getItem('trace_search_cols')
     let baseCols = saved ? JSON.parse(saved) : DEFAULT_COLS
-    baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date' && c.id !== 'courier')
+    baseCols = baseCols.filter(c => c.id !== 'customer_history' && c.id !== 'order_date' && c.id !== 'courier' && c.id !== 'wa_erp_status')
     baseCols = baseCols.map(c => c.id === 'ref_number' ? { ...c, label: 'Ref # / Date' } : c)
     baseCols = baseCols.map(c => c.id === 'tracking_number' ? { ...c, label: 'Tracking # / Courier' } : c)
     if (!baseCols.some(c => c.id === 'tags')) {
@@ -1292,8 +1291,8 @@ export default function SearchTool() {
   // Enforce role-based column visibility reactively and persist to localStorage
   useEffect(() => {
     if (!user) return
-    // Always filter out 'courier' since it has been merged
-    let filtered = cols.filter(c => c.id !== 'courier')
+    // Always filter out merged/retired columns ('courier', 'wa_erp_status')
+    let filtered = cols.filter(c => c.id !== 'courier' && c.id !== 'wa_erp_status')
     if (user.role !== 'admin') {
       const restricted = ['cost', 'profit', 'courier_fee', 'order_source', 'status_date', 'payment_ref', 'payment_date', 'paid_amount']
       filtered = filtered.filter(c => !restricted.includes(c.id))
@@ -1335,39 +1334,6 @@ export default function SearchTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
-  // ─── Live WA ERP Status Polling (every 5 seconds) ─────────────────────────
-  // Batch-fetches wa_erp_status for all visible orders from the backend and
-  // merges the results into allOrders state so the badge updates in real-time
-  // without requiring a full page reload.
-  useEffect(() => {
-    const pollWAStatuses = async () => {
-      if (!allOrders || allOrders.length === 0) return;
-      try {
-        const ids = allOrders.map(o => o.id).join(',');
-        const token = localStorage.getItem('trace_token');
-        const res = await fetch(`/api/whatsapp/poll-statuses?order_ids=${ids}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const statuses = data.statuses || {};
-        if (Object.keys(statuses).length === 0) return;
-        setAllOrders(prev => prev.map(o => {
-          const newStatus = statuses[o.id];
-          // Only trigger re-render if the status actually changed
-          if (newStatus !== undefined && (newStatus !== o.wa_erp_status || newStatus !== o.wa_status)) {
-            return { ...o, wa_erp_status: newStatus, wa_status: newStatus };
-          }
-          return o;
-        }));
-      } catch (e) {
-        // Silently ignore polling errors — do not disrupt the UI
-      }
-    };
-
-    const intervalId = setInterval(pollWAStatuses, 5000);
-    return () => clearInterval(intervalId);
-  }, [allOrders.length, activeStoreId]);
   const [draggedIdx, setDraggedIdx] = useState(null)
 
   const onDragStart = (idx) => setDraggedIdx(idx)

@@ -225,14 +225,13 @@ router.get('/', (req, res) => {
       LIMIT ? OFFSET ?
     `).all(...queryParams, parseInt(limit), offset);
 
-    // ── Batched Enrichment (Customer Order Count + Last WA Direction/Status + WA Poll Status) ──
+    // ── Batched Enrichment (Customer Order Count only — WA Bot queries removed) ──
     // Runs only for the 50–250 returned rows using indexed IN (...) batches instead of correlated subqueries.
     if (orders.length > 0) {
       const CHUNK_SIZE = 400;
       const normPhone10 = (p) => (p ? String(p).replace(/[\s\-+(]/g, '').slice(-10) : '');
-      const stripPlus10 = (p) => (p ? String(p).replace(/\+/g, '').slice(-10) : '');
 
-      // 1. Batched customer_order_count (matches normalized phone last-10 OR exact email, deduped by order id)
+      // Batched customer_order_count (matches normalized phone last-10 OR exact email, deduped by order id)
       try {
         const uniquePhone10s = [];
         const phone10Seen = new Set();
@@ -305,125 +304,6 @@ router.get('/', (req, res) => {
       } catch (cntErr) {
         console.warn('[Customer Count Merge] Skipped:', cntErr.message);
         for (const o of orders) o.customer_order_count = 1;
-      }
-
-      // 2. Batched last_wa_direction & last_wa_status (replaces 2x duplicate 4-way UNION ALL correlated subqueries)
-      try {
-        const orderIds = orders.map(o => o.id);
-        const waPhone10s = [];
-        const waPhone10Seen = new Set();
-        const waRawPhones = [];
-        const waRawSeen = new Set();
-
-        for (const o of orders) {
-          if (o.phone && o.phone !== '') {
-            const p10 = stripPlus10(o.phone);
-            if (p10 && !waPhone10Seen.has(p10)) {
-              waPhone10Seen.add(p10);
-              waPhone10s.push(p10);
-            }
-            if (p10.length < 10) {
-              const noPlus = String(o.phone).replace(/\+/g, '');
-              for (const raw of [o.phone, noPlus]) {
-                if (raw && !waRawSeen.has(raw)) { waRawSeen.add(raw); waRawPhones.push(raw); }
-              }
-            }
-          }
-        }
-
-        const waByOrder = new Map();
-        for (let i = 0; i < orderIds.length; i += CHUNK_SIZE) {
-          const chunk = orderIds.slice(i, i + CHUNK_SIZE);
-          const ph = chunk.map(() => '?').join(',');
-          const rows = db.prepare(`
-            SELECT order_id, tenant_id, direction, status, MAX(id) AS max_id
-            FROM whatsapp_messages
-            WHERE order_id IN (${ph})
-            GROUP BY order_id, tenant_id
-          `).all(...chunk);
-          for (const r of rows) {
-            waByOrder.set(`${r.tenant_id ?? ''}::${r.order_id}`, r);
-          }
-        }
-
-        const waByPhone10 = new Map();
-        for (let i = 0; i < waPhone10s.length; i += CHUNK_SIZE) {
-          const chunk = waPhone10s.slice(i, i + CHUNK_SIZE);
-          const ph = chunk.map(() => '?').join(',');
-          const rows = db.prepare(`
-            SELECT SUBSTR(phone, -10) AS p10, tenant_id, direction, status, MAX(id) AS max_id
-            FROM whatsapp_messages
-            WHERE SUBSTR(phone, -10) IN (${ph})
-            GROUP BY SUBSTR(phone, -10), tenant_id
-          `).all(...chunk);
-          for (const r of rows) {
-            waByPhone10.set(`${r.tenant_id ?? ''}::${r.p10}`, r);
-          }
-        }
-
-        const waByRawPhone = new Map();
-        for (let i = 0; i < waRawPhones.length; i += CHUNK_SIZE) {
-          const chunk = waRawPhones.slice(i, i + CHUNK_SIZE);
-          const ph = chunk.map(() => '?').join(',');
-          const rows = db.prepare(`
-            SELECT phone, tenant_id, direction, status, MAX(id) AS max_id
-            FROM whatsapp_messages
-            WHERE phone IN (${ph})
-            GROUP BY phone, tenant_id
-          `).all(...chunk);
-          for (const r of rows) {
-            waByRawPhone.set(`${r.tenant_id ?? ''}::${r.phone}`, r);
-          }
-        }
-
-        for (const o of orders) {
-          const tKey = o.tenant_id ?? '';
-          let best = waByOrder.get(`${tKey}::${o.id}`) || null;
-          if (o.phone && o.phone !== '') {
-            const p10 = stripPlus10(o.phone);
-            const cand10 = p10 ? waByPhone10.get(`${tKey}::${p10}`) : null;
-            if (cand10 && (!best || cand10.max_id > best.max_id)) best = cand10;
-            if (p10.length < 10) {
-              for (const raw of [o.phone, String(o.phone).replace(/\+/g, '')]) {
-                const candRaw = waByRawPhone.get(`${tKey}::${raw}`);
-                if (candRaw && (!best || candRaw.max_id > best.max_id)) best = candRaw;
-              }
-            }
-          }
-          o.last_wa_direction = best ? best.direction : null;
-          o.last_wa_status = best ? best.status : null;
-        }
-      } catch (waMsgErr) {
-        console.warn('[WA Last Message Merge] Skipped:', waMsgErr.message);
-        for (const o of orders) {
-          o.last_wa_direction = null;
-          o.last_wa_status = null;
-        }
-      }
-
-      // 3. WA ERP Status Merge from whatsapp_polls (crash-safe)
-      try {
-        const orderIds = orders.map(o => o.id);
-        const placeholders = orderIds.map(() => '?').join(',');
-        const pollRows = db.prepare(
-          `SELECT order_id, erp_status
-           FROM whatsapp_polls
-           WHERE order_id IN (${placeholders})
-           GROUP BY order_id
-           HAVING id = MAX(id)`
-        ).all(...orderIds);
-
-        if (pollRows && pollRows.length > 0) {
-          const statusMap = {};
-          pollRows.forEach(row => { if (row.order_id) statusMap[row.order_id] = row.erp_status; });
-          orders.forEach(o => {
-            o.wa_status = statusMap[o.id] || null;
-            o.wa_erp_status = statusMap[o.id] || null;
-          });
-        }
-      } catch (waErr) {
-        // Non-fatal: whatsapp_polls may not exist on fresh containers
-        console.warn('[WA Status Merge] Skipped:', waErr.message);
       }
     }
 
@@ -575,50 +455,18 @@ router.get('/by-shopify/:id', (req, res) => {
            (
              SELECT COUNT(*) FROM (
                SELECT id FROM orders 
-               WHERE phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != '' AND SUBSTR(phone, -10) = SUBSTR(o.phone, -10)
+               WHERE phone IS NOT NULL AND phone != '' AND o.phone IS NOT NULL AND o.phone != ''
+                 AND SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10)
+                   = SUBSTR(REPLACE(REPLACE(REPLACE(REPLACE(o.phone, ' ', ''), '-', ''), '+', ''), '(', ''), -10)
                UNION
                SELECT id FROM orders 
                WHERE email = o.email AND o.email IS NOT NULL AND o.email != ''
              )
-           ) as customer_order_count,
-           (
-             SELECT direction FROM (
-               SELECT direction, id FROM whatsapp_messages WHERE order_id = o.id AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT direction, id FROM whatsapp_messages WHERE phone = o.phone AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT direction, id FROM whatsapp_messages WHERE phone = REPLACE(o.phone, '+', '') AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT direction, id FROM whatsapp_messages WHERE SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10) AND tenant_id = o.tenant_id
-             ) ORDER BY id DESC LIMIT 1
-           ) as last_wa_direction,
-           (
-             SELECT status FROM (
-               SELECT status, id FROM whatsapp_messages WHERE order_id = o.id AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT status, id FROM whatsapp_messages WHERE phone = o.phone AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT status, id FROM whatsapp_messages WHERE phone = REPLACE(o.phone, '+', '') AND tenant_id = o.tenant_id
-               UNION ALL
-               SELECT status, id FROM whatsapp_messages WHERE SUBSTR(phone, -10) = SUBSTR(REPLACE(o.phone, '+', ''), -10) AND tenant_id = o.tenant_id
-             ) ORDER BY id DESC LIMIT 1
-           ) as last_wa_status
+           ) as customer_order_count
     FROM orders o 
     JOIN stores s ON o.store_id = s.id 
     WHERE o.shopify_order_id = ?
   `).get(req.params.id);
-
-  if (order) {
-    try {
-      const pollRow = db.prepare(
-        `SELECT erp_status FROM whatsapp_polls WHERE order_id = ? ORDER BY id DESC LIMIT 1`
-      ).get(order.id);
-      order.wa_status = pollRow ? pollRow.erp_status : null;
-      order.wa_erp_status = pollRow ? pollRow.erp_status : null;
-    } catch (waErr) {
-      console.warn('[WA Status Merge Single] Skipped:', waErr.message);
-    }
-  }
 
   res.json(order);
 });

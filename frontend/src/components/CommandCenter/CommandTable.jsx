@@ -36,8 +36,7 @@ const COLUMN_WIDTHS = {
   payment_date: 110,
   postex_weight: 90,
   edit: 130,
-  notes: 180,
-  wa_erp_status: 140
+  notes: 180
 }
 
 // Cost breakdown helper components
