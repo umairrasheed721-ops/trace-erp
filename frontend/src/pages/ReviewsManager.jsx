@@ -234,11 +234,15 @@ export default function ReviewsManager() {
         body: JSON.stringify({ days: daysWindow })
       })
       const json = await res.json()
-      if (json.success) {
-        addToast(`🚀 Review email scan complete! Processed: ${json.data.processed}, Sent: ${json.data.sent}`, 'success')
+      if (json.success && json.data?.success !== false) {
+        if (json.data.sent === 0 && json.data.lastError) {
+          addToast(`❌ Email send failed: ${json.data.lastError}`, 'error')
+        } else {
+          addToast(`🚀 Scan complete! Eligible: ${json.data.processed}, Sent: ${json.data.sent}${json.data.failed ? `, Failed: ${json.data.failed}` : ''}`, 'success')
+        }
         fetchCampaignData()
       } else {
-        addToast(json.error || 'Scan failed', 'error')
+        addToast(json.error || json.data?.error || 'Scan failed', 'error')
       }
     } catch (err) {
       addToast('Failed to trigger email scan', 'error')
@@ -636,7 +640,7 @@ export default function ReviewsManager() {
             flexWrap: 'wrap', marginBottom: 20, background: 'var(--bg-surface)', padding: '14px 20px',
             borderRadius: 14, border: '1px solid var(--border)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)' }}>Window Period:</span>
               <select
                 value={daysWindow}
@@ -651,6 +655,23 @@ export default function ReviewsManager() {
                 <option value={14}>Last 14 Days</option>
                 <option value={30}>Last 30 Days</option>
               </select>
+
+              {campaignStats.emailProvider && (
+                <span
+                  title={campaignStats.emailProvider.error || `Sending from: ${campaignStats.emailProvider.fromEmail}`}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '6px 12px', borderRadius: 99, fontSize: 11, fontWeight: 800,
+                    background: campaignStats.emailProvider.configured ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                    color: campaignStats.emailProvider.configured ? '#16a34a' : '#dc2626',
+                    border: `1px solid ${campaignStats.emailProvider.configured ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`
+                  }}
+                >
+                  {campaignStats.emailProvider.configured
+                    ? `🟢 ${campaignStats.emailProvider.label}${campaignStats.emailProvider.fromEmail ? ` (${campaignStats.emailProvider.fromEmail})` : ''}`
+                    : `⚠️ ${campaignStats.emailProvider.label}`}
+                </span>
+              )}
             </div>
 
             <button

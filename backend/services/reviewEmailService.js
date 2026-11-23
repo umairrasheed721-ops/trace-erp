@@ -8,14 +8,70 @@
  * Uses a secure token so customer can submit review without login.
  */
 
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const db = require('../db');
 
 const BACKEND_URL = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'TRACE Pakistan';
+const EMAIL_API_TIMEOUT_MS = 10000;
+
+/**
+ * Inspects active email provider configuration in priority order:
+ * 1. Resend HTTP API (RESEND_API_KEY)
+ * 2. Brevo HTTP API (BREVO_API_KEY + EMAIL_FROM/EMAIL_USER)
+ * 3. Gmail SMTP via nodemailer (EMAIL_USER + EMAIL_PASS)
+ */
+function getEmailProviderStatus() {
+  if (process.env.RESEND_API_KEY) {
+    return {
+      configured: true,
+      provider: 'resend',
+      label: 'Resend API',
+      fromEmail: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    };
+  }
+  if (process.env.BREVO_API_KEY) {
+    const sender = (process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || '').trim();
+    if (!sender) {
+      return {
+        configured: false,
+        provider: 'brevo',
+        label: 'Brevo (Missing EMAIL_FROM)',
+        fromEmail: '',
+        error: 'BREVO_API_KEY is set, but EMAIL_FROM (your verified Brevo sender email) is missing in Railway Variables.',
+      };
+    }
+    return {
+      configured: true,
+      provider: 'brevo',
+      label: 'Brevo API',
+      fromEmail: sender,
+    };
+  }
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    return {
+      configured: true,
+      provider: 'gmail_smtp',
+      label: 'Gmail SMTP',
+      fromEmail: process.env.EMAIL_USER,
+    };
+  }
+  return {
+    configured: false,
+    provider: 'none',
+    label: 'Not Configured',
+    fromEmail: '',
+    error: 'No email provider configured. Set BREVO_API_KEY (+ EMAIL_FROM) or RESEND_API_KEY in Railway Variables.',
+  };
+}
 
 function getTransporter() {
+  const nodemailer = require('nodemailer');
   return nodemailer.createTransport({
     service: 'gmail',
+    connectionTimeout: EMAIL_API_TIMEOUT_MS,
+    greetingTimeout: EMAIL_API_TIMEOUT_MS,
+    socketTimeout: EMAIL_API_TIMEOUT_MS,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -131,11 +187,6 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 
 function getTemplateFromDb() {
   try {
-    const path = require('path');
-    const { DatabaseSync } = require('node:sqlite');
-    const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../trace_erp.db');
-    const db = new DatabaseSync(DB_PATH);
-    
     db.exec(`
       CREATE TABLE IF NOT EXISTS email_templates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,17 +202,22 @@ function getTemplateFromDb() {
     if (row && row.subject && row.body_html) {
       return { subject: row.subject, body_html: row.body_html };
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('⚠️ [Reviews] Failed to read email template from DB:', e.message);
+  }
   return { subject: DEFAULT_SUBJECT, body_html: DEFAULT_HTML };
 }
 
 /**
  * Send a review request email to a customer.
+ * Auto-selects Resend HTTP API -> Brevo HTTP API -> Gmail SMTP fallback.
+ * Returns { ok: boolean, provider: string, error?: string }.
  */
 async function sendReviewRequestEmail({ orderId, customerName, customerEmail, productHandle, productTitle }) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️ [Reviews] EMAIL_USER/EMAIL_PASS not set — skipping review email');
-    return false;
+  const status = getEmailProviderStatus();
+  if (!status.configured) {
+    console.warn(`⚠️ [Reviews] ${status.error}`);
+    return { ok: false, provider: status.provider, error: status.error };
   }
 
   const token = generateReviewToken(orderId, customerEmail, productHandle);
@@ -184,23 +240,72 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
     .replace(/\{\{review_url\}\}/g, reviewUrl);
 
   try {
+    if (status.provider === 'resend') {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${EMAIL_FROM_NAME} <${status.fromEmail}>`,
+          to: [customerEmail],
+          subject,
+          html,
+        }),
+        signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.message || errBody.error || `Resend HTTP ${res.status}`);
+      }
+      console.log(`📧 [Reviews/Resend] Review email sent to ${customerEmail} for order #${orderId}`);
+      return { ok: true, provider: 'resend' };
+    }
+
+    if (status.provider === 'brevo') {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: EMAIL_FROM_NAME, email: status.fromEmail },
+          to: [{ email: customerEmail, name: fullName }],
+          subject,
+          htmlContent: html,
+        }),
+        signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.message || errBody.code || `Brevo HTTP ${res.status}`);
+      }
+      console.log(`📧 [Reviews/Brevo] Review email sent to ${customerEmail} for order #${orderId}`);
+      return { ok: true, provider: 'brevo' };
+    }
+
+    // Fallback: Gmail SMTP via nodemailer
     const transporter = getTransporter();
     await transporter.sendMail({
-      from: `"TRACE Pakistan" <${process.env.EMAIL_USER}>`,
+      from: `"${EMAIL_FROM_NAME}" <${status.fromEmail}>`,
       to: customerEmail,
       subject,
       html,
     });
-    console.log(`📧 [Reviews] Review request email sent to ${customerEmail} for order #${orderId}`);
-    return true;
+    console.log(`📧 [Reviews/SMTP] Review email sent to ${customerEmail} for order #${orderId}`);
+    return { ok: true, provider: 'gmail_smtp' };
   } catch (err) {
-    console.error(`❌ [Reviews] Failed to send review email to ${customerEmail}:`, err.message);
-    return false;
+    console.error(`❌ [Reviews/${status.provider}] Failed to send review email to ${customerEmail}:`, err.message);
+    return { ok: false, provider: status.provider, error: err.message };
   }
 }
 
 module.exports = {
   sendReviewRequestEmail,
+  getEmailProviderStatus,
   parseReviewToken,
   generateReviewToken,
   getTemplateFromDb,

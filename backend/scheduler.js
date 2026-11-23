@@ -108,6 +108,13 @@ async function runDynamicScheduler() {
 
 async function sendReviewEmails(daysWindow = 7) {
   try {
+    const { getEmailProviderStatus } = require('./services/reviewEmailService');
+    const providerStatus = getEmailProviderStatus();
+    if (!providerStatus.configured) {
+      console.warn(`⚠️ [Reviews] Scan skipped: ${providerStatus.error}`);
+      return { success: false, processed: 0, sent: 0, failed: 0, error: providerStatus.error };
+    }
+
     // Ensure column exists (idempotent)
     try { db.exec("ALTER TABLE orders ADD COLUMN review_email_sent INTEGER DEFAULT 0"); } catch (_) {}
 
@@ -124,9 +131,12 @@ async function sendReviewEmails(daysWindow = 7) {
         AND datetime(status_date) >= datetime('now', '-${windowDays} days')
     `).all();
 
-    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails (Last ${windowDays} days)`);
+    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails (Last ${windowDays} days, provider: ${providerStatus.label})`);
 
+    const delayMs = providerStatus.provider === 'gmail_smtp' ? 3000 : 400;
     let sentCount = 0;
+    let failedCount = 0;
+    let lastError = null;
     for (const order of orders) {
       try {
         let customerEmail = (order.email || '').trim();
@@ -152,7 +162,7 @@ async function sendReviewEmails(daysWindow = 7) {
           continue;
         }
 
-        const sent = await sendReviewRequestEmail({
+        const result = await sendReviewRequestEmail({
           orderId: order.id,
           customerName: order.customer_name,
           customerEmail,
@@ -160,18 +170,27 @@ async function sendReviewEmails(daysWindow = 7) {
           productTitle,
         });
 
-        if (sent) {
+        if (result && result.ok) {
           db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
           sentCount++;
+        } else {
+          failedCount++;
+          lastError = (result && result.error) || 'Email send failed';
+          // Abort early on 3 consecutive failures (e.g. blocked SMTP / invalid API key) instead of burning Railway CPU
+          if (sentCount === 0 && failedCount >= 3) {
+            console.error(`❌ [Reviews] Aborting scan after 3 consecutive failures: ${lastError}`);
+            break;
+          }
         }
 
-        // Add 3 seconds delay between emails to protect Gmail limits
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, delayMs));
       } catch (e) {
+        failedCount++;
+        lastError = e.message;
         console.error(`[Review Email] Failed for order #${order.id}:`, e.message);
       }
     }
-    return { success: true, processed: orders.length, sent: sentCount };
+    return { success: true, processed: orders.length, sent: sentCount, failed: failedCount, lastError, provider: providerStatus.label };
   } catch (e) {
     console.error('[Review Email Scan] Error:', e.message);
     return { success: false, error: e.message };

@@ -602,6 +602,8 @@ router.get('/campaigns/stats', (req, res) => {
         AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
     `).get(...params);
 
+    const { getEmailProviderStatus } = require('../services/reviewEmailService');
+
     res.json({
       success: true,
       data: {
@@ -609,7 +611,8 @@ router.get('/campaigns/stats', (req, res) => {
         totalDelivered: stats?.total_delivered || 0,
         sent: stats?.sent || 0,
         pending: stats?.pending || 0,
-        noEmail: stats?.no_email || 0
+        noEmail: stats?.no_email || 0,
+        emailProvider: getEmailProviderStatus()
       }
     });
   } catch (err) {
@@ -702,7 +705,7 @@ router.post('/campaigns/send-single', async (req, res) => {
     }
 
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');
-    const sent = await sendReviewRequestEmail({
+    const result = await sendReviewRequestEmail({
       orderId: order.id,
       customerName: order.customer_name,
       customerEmail,
@@ -710,11 +713,14 @@ router.post('/campaigns/send-single', async (req, res) => {
       productTitle,
     });
 
-    if (sent) {
+    if (result && result.ok) {
       db.prepare("UPDATE orders SET review_email_sent = 1, email = ? WHERE id = ?").run(customerEmail, order.id);
-      return res.json({ success: true, message: `Review request email sent to ${customerEmail}` });
+      return res.json({ success: true, message: `Review request email sent to ${customerEmail} via ${result.provider}` });
     } else {
-      return res.status(500).json({ success: false, error: 'Failed to send email. Verify EMAIL_USER and EMAIL_PASS environment settings.' });
+      return res.status(500).json({
+        success: false,
+        error: (result && result.error) || 'Failed to send email. Verify BREVO_API_KEY, RESEND_API_KEY, or Gmail SMTP settings.'
+      });
     }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -730,6 +736,9 @@ router.post('/campaigns/trigger-scan', async (req, res) => {
     const days = parseInt(req.body.days) || 7;
     const { sendReviewEmails } = require('../scheduler');
     const result = await sendReviewEmails(days);
+    if (!result.success) {
+      return res.status(500).json({ success: false, error: result.error || 'Email scan failed', data: result });
+    }
     res.json({ success: true, data: result });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
