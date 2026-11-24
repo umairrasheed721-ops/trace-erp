@@ -178,13 +178,15 @@ router.get('/api/public/sync-metafields-all', async (req, res) => {
     { name: 'Show Buy Bundle Button', key: 'show_bundle_button', type: 'boolean', description: 'Enable CHOOSE BUNDLE button on collection card' },
     { name: 'Bundle Deal Target', key: 'bundle_deal_target', type: 'single_line_text_field', description: 'Target deal parameter (e.g. addon_3, addon_2) or custom URL' },
     { name: 'Bundle Button Text', key: 'bundle_button_text', type: 'single_line_text_field', description: 'Custom text for collection card bundle button (e.g. BUY BUNDLE)' },
-    { name: 'Bundle Addon Products', key: 'bundle_addon_products', type: 'list.product_reference', description: 'List of add-on products shown as combo tiers in CRO funnel' },
-    { name: '2-in-1 Combo Discount Code', key: 'bundle_2in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 2-in-1 combo' },
-    { name: '3-Piece Set Discount Code', key: 'bundle_3in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 3-piece set' },
-    { name: 'VIP 4-Piece Discount Code', key: 'bundle_4in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for VIP 4-piece mega pack' },
-    { name: '2-in-1 Combo Discount Amount (Rs)', key: 'bundle_2in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 2-in-1 combo' },
-    { name: '3-Piece Set Discount Amount (Rs)', key: 'bundle_3in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 3-piece set' },
-    { name: 'VIP 4-Piece Discount Amount (Rs)', key: 'bundle_4in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for VIP 4-piece mega pack' },
+    { name: '🎁 BUNDLE ENGINE - 0. Addon Products', key: 'bundle_addon_products', type: 'list.product_reference', description: 'List of add-on products shown as combo tiers in CRO funnel' },
+    { name: '🎁 BUNDLE ENGINE - Tier 1 (2-in-1) Discount Code', key: 'bundle_2in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 2-in-1 combo' },
+    { name: '🎁 BUNDLE ENGINE - Tier 2 (3-Piece) Discount Code', key: 'bundle_3in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for 3-piece set' },
+    { name: '🎁 BUNDLE ENGINE - Tier 3 (VIP 4-Piece) Discount Code', key: 'bundle_4in1_discount_code', type: 'single_line_text_field', description: 'Discount code auto-applied at checkout for VIP 4-piece mega pack' },
+    { name: '🎁 BUNDLE ENGINE - Tier 1 (2-in-1) Discount Amount (Rs)', key: 'bundle_2in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 2-in-1 combo' },
+    { name: '🎁 BUNDLE ENGINE - Tier 2 (3-Piece) Discount Amount (Rs)', key: 'bundle_3in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for 3-piece set' },
+    { name: '🎁 BUNDLE ENGINE - Tier 3 (VIP 4-Piece) Discount Amount (Rs)', key: 'bundle_4in1_discount_amount', type: 'number_integer', description: 'Discount amount subtracted for VIP 4-piece mega pack' },
+    { name: '🎁 BUNDLE ENGINE - Hard Hide Pack of 1', key: 'hide_single_pack', type: 'boolean', description: 'Completely hide Pack of 1 option and force Pack of 2+ to boost AOV' },
+    { name: '🎁 BUNDLE ENGINE - Use Native Sub-Product Pickers', key: 'use_shopify_bundle_pickers', type: 'boolean', description: 'Enable separate per-component variant option pickers (e.g. Hoodie Size + Trouser Size) while retaining TRACE CRO Master Funnel checkout' },
     { name: 'Redirect Target Product', key: 'redirect_target_product', type: 'product_reference', description: 'Target Product to redirect customer to' },
     { name: 'Redirect Default Deal', key: 'redirect_default_deal', type: 'single_line_text_field', description: 'Default Deal to pre-select (addon_2, addon_3)' },
     { name: 'Linked Color Products', key: 'linked_color_products', type: 'list.product_reference', description: 'Linked Color Products for swatches' },
@@ -192,7 +194,10 @@ router.get('/api/public/sync-metafields-all', async (req, res) => {
     { name: 'Product Video', key: 'product_video', type: 'file_reference', description: 'Product Video MP4 file' },
     { name: 'Advance Only', key: 'advance_only', type: 'boolean', description: 'Require 100% advance payment' },
     { name: 'COD Only', key: 'cod_only', type: 'boolean', description: 'Disable Advance Payment and allow Cash on Delivery only' },
-    { name: 'Hide Bundles', key: 'hide_bundles', type: 'boolean', description: 'Hide package bundle deals for product' }
+    { name: 'Hide Bundles', key: 'hide_bundles', type: 'boolean', description: 'Hide package bundle deals for product' },
+    { name: 'Hide Sold Out Variants & Images', key: 'hide_sold_out', type: 'boolean', description: 'When true, sold out variants and their corresponding product images are hidden from swatches, modals, and top gallery.' },
+    { name: 'Show Variants as Individual Cards in Collection', key: 'show_variants_in_collection', type: 'boolean', description: 'Render product variants as separate cards in collection product grid' },
+    { name: 'Hide Sold Out Variants in Collection', key: 'hide_sold_out_variants_in_collection', type: 'boolean', description: 'Hide sold out variant cards from collection grid' }
   ];
 
   const query = `
