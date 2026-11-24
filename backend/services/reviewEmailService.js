@@ -71,6 +71,13 @@ function getStoreRow(storeId) {
   }
 }
 
+function isPrimaryTraceStore(sid, storeRow) {
+  if (!storeRow) return Number(sid) === 1;
+  const name = String(storeRow.store_name || '').toLowerCase().trim();
+  const dom = String(storeRow.shop_domain || '').toLowerCase().trim();
+  return name === 'trace' || name.includes('trace pk') || name.includes('trace pakistan') || dom.includes('tracepk') || dom.includes('041839-3');
+}
+
 /**
  * Resolves strictly isolated email configuration for a specific store_id.
  * Never falls back to global Railway env vars for non-primary stores.
@@ -79,8 +86,9 @@ function getStoreEmailConfig(storeId) {
   ensureStoreEmailTable();
   const sid = Number(storeId) || 1;
   const storeRow = getStoreRow(sid);
-  const storeName = (storeRow?.store_name || (sid === 1 ? 'TRACE Pakistan' : `Store #${sid}`)).trim();
-  const defaultWebsite = sid === 1
+  const isTrace = isPrimaryTraceStore(sid, storeRow);
+  const storeName = (storeRow?.store_name || (isTrace ? 'TRACE Pakistan' : `Store #${sid}`)).trim();
+  const defaultWebsite = isTrace
     ? 'https://tracepk.com'
     : normalizeWebsiteUrl('', storeRow?.shop_domain);
 
@@ -90,15 +98,15 @@ function getStoreEmailConfig(storeId) {
   } catch (_) {}
 
   if (row) {
-    // For Store #1 only: if row exists with empty api_key, allow env key continuity
+    // For primary Trace store only: if row exists with empty api_key, allow env key continuity
     let apiKey = (row.api_key || '').trim();
     let provider = (row.provider || 'brevo').trim().toLowerCase();
     let fromEmail = (row.from_email || '').trim();
-    if (sid === 1 && !apiKey) {
+    if (isTrace && !apiKey) {
       if (process.env.RESEND_API_KEY) { apiKey = process.env.RESEND_API_KEY.trim(); provider = 'resend'; }
       else if (process.env.BREVO_API_KEY) { apiKey = process.env.BREVO_API_KEY.trim(); provider = 'brevo'; }
     }
-    if (sid === 1 && !fromEmail) {
+    if (isTrace && !fromEmail) {
       fromEmail = (process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || '').trim();
     }
 
@@ -111,10 +119,10 @@ function getStoreEmailConfig(storeId) {
       apiKey,
       hasApiKey: Boolean(apiKey),
       maskedApiKey: maskApiKey(apiKey),
-      fromName: (row.from_name || storeName).trim(),
+      fromName: (row.from_name || (isTrace ? 'TRACE Pakistan' : storeName)).trim(),
       fromEmail,
-      replyTo: (row.reply_to || fromEmail || (sid === 1 ? 'trace721.t@gmail.com' : '')).trim(),
-      websiteUrl: normalizeWebsiteUrl(row.website_url, storeRow?.shop_domain || (sid === 1 ? 'tracepk.com' : '')),
+      replyTo: (row.reply_to || fromEmail || (isTrace ? 'trace721.t@gmail.com' : '')).trim(),
+      websiteUrl: normalizeWebsiteUrl(row.website_url, storeRow?.shop_domain || (isTrace ? 'tracepk.com' : '')),
       subject: row.subject || '',
       bodyHtml: row.body_html || '',
       updatedAt: row.updated_at || null,
@@ -122,8 +130,8 @@ function getStoreEmailConfig(storeId) {
     };
   }
 
-  // Primary Store #1 env-var fallback ONLY (zero leak to Store #2..#N)
-  if (sid === 1) {
+  // Primary Trace store env-var fallback ONLY (strictly zero leak to ACE, Rabbi Trends, or any other store)
+  if (isTrace) {
     if (process.env.RESEND_API_KEY) {
       const fromEmail = (process.env.EMAIL_FROM || 'onboarding@resend.dev').trim();
       return {
@@ -538,8 +546,8 @@ function getTemplateFromDb(storeId = 1) {
     if (row && row.subject && row.body_html) {
       return { subject: row.subject, body_html: row.body_html };
     }
-    // Legacy fallback ONLY for Store #1
-    if (sid === 1) {
+    // Legacy fallback ONLY for primary Trace store
+    if (isPrimaryTraceStore(sid, getStoreRow(sid))) {
       const legacy = db.prepare("SELECT subject, body_html FROM email_templates WHERE template_key = 'review_request'").get();
       if (legacy && legacy.subject && legacy.body_html) {
         return { subject: legacy.subject, body_html: legacy.body_html };

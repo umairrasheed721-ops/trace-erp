@@ -1317,6 +1317,56 @@ module.exports = [
     } catch (e) {
       console.error('Migration #50 failed:', e.message);
     }
+  },
+
+  // 51. Seed real Trace store row by name/domain (in case Trace's stores.id != 1) & clean any stray non-Trace id=1 seed
+  (db) => {
+    try {
+      const traceStore = db.prepare(`
+        SELECT id, store_name, shop_domain FROM stores
+        WHERE LOWER(store_name) = 'trace'
+           OR LOWER(store_name) LIKE '%trace pk%'
+           OR LOWER(shop_domain) LIKE '%tracepk%'
+           OR LOWER(shop_domain) LIKE '%041839-3%'
+        ORDER BY id ASC LIMIT 1
+      `).get();
+
+      if (traceStore && (process.env.BREVO_API_KEY || process.env.RESEND_API_KEY)) {
+        const provider = process.env.RESEND_API_KEY ? 'resend' : 'brevo';
+        const apiKey = (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || '').trim();
+        const fromEmail = (process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || '').trim();
+        const fromName = (process.env.EMAIL_FROM_NAME || 'TRACE Pakistan').trim();
+        const replyTo = (process.env.EMAIL_REPLY_TO || 'trace721.t@gmail.com').trim();
+
+        const existingTrace = db.prepare('SELECT store_id FROM store_email_settings WHERE store_id = ?').get(traceStore.id);
+        if (!existingTrace && apiKey && fromEmail) {
+          db.prepare(`
+            INSERT OR IGNORE INTO store_email_settings
+              (store_id, enabled, provider, api_key, from_name, from_email, reply_to, website_url, updated_at)
+            VALUES (?, 1, ?, ?, ?, ?, ?, 'https://tracepk.com', CURRENT_TIMESTAMP)
+          `).run(traceStore.id, provider, apiKey, fromName, fromEmail, replyTo);
+          console.log(`✅ [Migration #51] Auto-seeded real Trace Store #${traceStore.id} (${traceStore.store_name} / ${traceStore.shop_domain}) -> ${fromEmail}`);
+        }
+
+        // If store #1 is NOT Trace, remove the accidental Migration #50 seed from store_id=1 so non-Trace stores stay strictly isolated!
+        if (traceStore.id !== 1) {
+          const store1 = db.prepare('SELECT id, store_name, shop_domain FROM stores WHERE id = 1').get();
+          const s1IsTrace = store1 && (
+            String(store1.store_name || '').toLowerCase().includes('trace') ||
+            String(store1.shop_domain || '').toLowerCase().includes('tracepk') ||
+            String(store1.shop_domain || '').toLowerCase().includes('041839-3')
+          );
+          if (!s1IsTrace) {
+            const del = db.prepare("DELETE FROM store_email_settings WHERE store_id = 1 AND from_email = ?").run(fromEmail);
+            if (del.changes > 0) {
+              console.log(`🛡️ [Migration #51] Removed misplaced Trace seed from non-Trace Store #1 (${store1?.store_name || 'missing'}).`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Migration #51 failed:', e.message);
+    }
   }
 ];
 
