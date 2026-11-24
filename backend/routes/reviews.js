@@ -18,7 +18,16 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
-const { parseReviewToken } = require('../services/reviewEmailService');
+const { parseReviewToken, resolveOrderReviewItems } = require('../services/reviewEmailService');
+
+function escHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 const BACKEND_URL = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
 
@@ -243,9 +252,9 @@ router.get('/reviews/bulk-summary', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PUBLIC: GET /api/public/review-form?token=xxx
-// Renders an HTML form for the customer to submit their review
+// Renders an HTML form for the customer to submit their review (with auto-resolved product listing & multi-item picker)
 // ─────────────────────────────────────────────────────────────────
-router.get('/review-form', (req, res) => {
+router.get('/review-form', async (req, res) => {
   const { token } = req.query;
   const parsed = parseReviewToken(token);
 
@@ -258,19 +267,82 @@ router.get('/review-form', (req, res) => {
     `);
   }
 
-  // Check if already reviewed
-  const existing = db.prepare('SELECT id FROM product_reviews WHERE reviewer_email = ? AND product_handle = ? LIMIT 1')
-    .get(parsed.customerEmail, parsed.productHandle);
+  // Resolve real Shopify product handle(s) & photos from the order (also auto-heals legacy 'general' links)
+  let order = null;
+  let reviewItems = [];
+  if (parsed.orderId && /^\d+$/.test(String(parsed.orderId))) {
+    order = db.prepare('SELECT id, store_id, ref_number, customer_name, line_items, product_titles FROM orders WHERE id = ?')
+      .get(Number(parsed.orderId));
+    if (order) {
+      reviewItems = await resolveOrderReviewItems(order);
+    }
+  }
+  if (reviewItems.length === 0) {
+    reviewItems = [{
+      handle: parsed.productHandle || 'general',
+      title: parsed.orderId === 'TEST-PREVIEW' ? 'TRACE Heavyweight Oversized Hoodie' : (parsed.productHandle || 'Your TRACE item'),
+      variant_title: '',
+      image_url: ''
+    }];
+  }
 
-  if (existing) {
+  // Check which items this customer has already reviewed
+  const reviewedRows = db.prepare('SELECT product_handle FROM product_reviews WHERE reviewer_email = ?')
+    .all(parsed.customerEmail);
+  const reviewedSet = new Set(reviewedRows.map(r => r.product_handle));
+
+  const enrichedItems = reviewItems.map(item => ({
+    ...item,
+    alreadyReviewed: reviewedSet.has(item.handle)
+  }));
+  const unreviewedItems = enrichedItems.filter(i => !i.alreadyReviewed);
+
+  if (unreviewedItems.length === 0) {
     return res.send(`
       <!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff;">
         <h2>✅ Already Reviewed!</h2>
-        <p style="color:#888;">You've already submitted a review for this product. Thank you!</p>
+        <p style="color:#888;">You've already submitted a review for ${enrichedItems.length > 1 ? 'all items in this order' : 'this product'}. Thank you!</p>
         <a href="https://tracepk.com" style="color:#aaa;">Continue Shopping →</a>
       </body></html>
     `);
   }
+
+  const defaultSelected = unreviewedItems[0];
+  const prefillName = order?.customer_name ? escHtml(order.customer_name) : '';
+  const orderBadge = order?.ref_number ? `Order ${escHtml(order.ref_number)}` : '';
+
+  const productSectionHtml = enrichedItems.length > 1
+    ? `
+      <div class="field">
+        <label>Select Product to Review *</label>
+        <div class="product-list">
+          ${enrichedItems.map((item, idx) => {
+            const checked = item.handle === defaultSelected.handle ? 'checked' : '';
+            const disabled = item.alreadyReviewed ? 'disabled' : '';
+            return `
+              <label class="product-option ${item.alreadyReviewed ? 'reviewed' : ''}">
+                <input type="radio" name="product_handle" value="${escHtml(item.handle)}" ${checked} ${disabled}>
+                ${item.image_url ? `<img src="${escHtml(item.image_url)}" alt="" class="prod-thumb">` : `<div class="prod-thumb placeholder">★</div>`}
+                <div class="prod-info">
+                  <div class="prod-title">${escHtml(item.title)}</div>
+                  ${item.alreadyReviewed ? `<div class="prod-meta done">✓ Already reviewed</div>` : (item.variant_title ? `<div class="prod-meta">${escHtml(item.variant_title)}</div>` : '')}
+                </div>
+              </label>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `
+    : `
+      <input type="hidden" name="product_handle" value="${escHtml(defaultSelected.handle)}">
+      <div class="product-banner">
+        ${defaultSelected.image_url ? `<img src="${escHtml(defaultSelected.image_url)}" alt="" class="prod-thumb">` : ''}
+        <div class="prod-info">
+          <div class="prod-title">${escHtml(defaultSelected.title)}</div>
+          ${orderBadge ? `<div class="prod-meta">${orderBadge}</div>` : ''}
+        </div>
+      </div>
+    `;
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -282,28 +354,40 @@ router.get('/review-form', (req, res) => {
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:#141414;border:1px solid #222;border-radius:20px;padding:40px;width:100%;max-width:500px;box-shadow:0 40px 80px rgba(0,0,0,0.6)}
-    .brand{text-align:center;margin-bottom:32px}
-    .brand h1{font-size:24px;font-weight:900;letter-spacing:6px;text-transform:uppercase}
-    .brand p{font-size:11px;color:#555;letter-spacing:3px;margin-top:4px;text-transform:uppercase}
-    h2{font-size:20px;font-weight:700;margin-bottom:8px}
-    .sub{font-size:14px;color:#888;margin-bottom:28px}
-    .stars{display:flex;gap:8px;margin-bottom:24px;flex-direction:row-reverse;justify-content:flex-end}
+    .card{background:#141414;border:1px solid #222;border-radius:20px;padding:36px;width:100%;max-width:500px;box-shadow:0 40px 80px rgba(0,0,0,0.6)}
+    .brand{text-align:center;margin-bottom:24px}
+    .brand h1{font-size:22px;font-weight:900;letter-spacing:6px;text-transform:uppercase}
+    .brand p{font-size:11px;color:#666;letter-spacing:3px;margin-top:4px;text-transform:uppercase}
+    h2{font-size:20px;font-weight:700;margin-bottom:6px}
+    .sub{font-size:13.5px;color:#888;margin-bottom:20px}
+    .product-banner{display:flex;align-items:center;gap:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:20px}
+    .product-list{display:flex;flex-direction:column;gap:8px}
+    .product-option{display:flex;align-items:center;gap:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:10px 12px;cursor:pointer;transition:border-color 0.15s}
+    .product-option:has(input:checked){border-color:#fff;background:#202020}
+    .product-option.reviewed{opacity:0.45;cursor:not-allowed}
+    .product-option input{accent-color:#fff;width:16px;height:16px;flex-shrink:0}
+    .prod-thumb{width:46px;height:46px;border-radius:8px;object-fit:cover;background:#222;flex-shrink:0}
+    .prod-thumb.placeholder{display:flex;align-items:center;justify-content:center;color:#555;font-size:16px}
+    .prod-info{min-width:0;flex:1}
+    .prod-title{font-size:13.5px;font-weight:600;color:#fff;line-height:1.35}
+    .prod-meta{font-size:11.5px;color:#888;margin-top:2px}
+    .prod-meta.done{color:#4ade80}
+    .stars{display:flex;gap:8px;margin-bottom:18px;flex-direction:row-reverse;justify-content:flex-end}
     .stars input{display:none}
     .stars label{font-size:36px;cursor:pointer;color:#333;transition:color 0.15s}
     .stars label:hover,.stars label:hover~label,.stars input:checked~label{color:#FFD700}
-    .field{margin-bottom:18px}
-    .field label{display:block;font-size:12px;font-weight:600;letter-spacing:1px;color:#888;text-transform:uppercase;margin-bottom:8px}
-    .field input,.field textarea{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:14px 16px;color:#fff;font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color 0.2s}
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:11.5px;font-weight:600;letter-spacing:1px;color:#888;text-transform:uppercase;margin-bottom:7px}
+    .field input[type="text"],.field textarea{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:13px 15px;color:#fff;font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color 0.2s}
     .field input:focus,.field textarea:focus{border-color:#444}
-    .field textarea{height:100px;resize:vertical}
-    .btn{width:100%;padding:16px;background:#fff;color:#000;border:none;border-radius:10px;font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s}
-    .btn:hover{opacity:0.85}
+    .field textarea{height:96px;resize:vertical}
+    .btn{width:100%;padding:15px;background:#fff;color:#000;border:none;border-radius:10px;font-size:13.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:opacity 0.2s}
+    .btn:hover{opacity:0.88}
     .btn:disabled{opacity:0.4;cursor:not-allowed}
-    .msg{margin-top:16px;text-align:center;font-size:14px;min-height:20px;color:#888}
+    .msg{margin-top:14px;text-align:center;font-size:13.5px;min-height:20px;color:#888}
     .msg.success{color:#4ade80}
     .msg.error{color:#f87171}
-    .rating-err{font-size:12px;color:#f87171;display:none;margin-bottom:12px}
+    .rating-err{font-size:12px;color:#f87171;display:none;margin-bottom:10px}
   </style>
 </head>
 <body>
@@ -313,7 +397,8 @@ router.get('/review-form', (req, res) => {
   <p class="sub">Share your honest feedback — it helps us and other shoppers.</p>
 
   <form id="reviewForm">
-    <input type="hidden" name="token" value="${token}">
+    <input type="hidden" name="token" value="${escHtml(token)}">
+    ${productSectionHtml}
 
     <div class="field">
       <label>Your Rating *</label>
@@ -329,7 +414,7 @@ router.get('/review-form', (req, res) => {
 
     <div class="field">
       <label>Your Name *</label>
-      <input type="text" name="name" placeholder="e.g. Ahmed K." required maxlength="80">
+      <input type="text" name="name" value="${prefillName}" placeholder="e.g. Ahmed K." required maxlength="80">
     </div>
 
     <div class="field">
@@ -339,7 +424,7 @@ router.get('/review-form', (req, res) => {
 
     <div class="field">
       <label>Your Review *</label>
-      <textarea name="body" placeholder="Tell us about fit, quality, and your overall experience..." required minlength="10" maxlength="2000"></textarea>
+      <textarea name="body" placeholder="Tell us about fit, quality, and your overall experience..." required minlength="5" maxlength="2000"></textarea>
     </div>
 
     <button type="submit" class="btn" id="submitBtn">Submit Review</button>
@@ -362,6 +447,9 @@ router.get('/review-form', (req, res) => {
     }
     ratingErr.style.display = 'none';
 
+    const selectedHandleEl = form.querySelector('input[name="product_handle"]:checked') || form.querySelector('input[name="product_handle"][type="hidden"]');
+    const productHandle = selectedHandleEl ? selectedHandleEl.value : '';
+
     btn.disabled = true;
     btn.textContent = 'Submitting...';
     msg.textContent = '';
@@ -369,6 +457,7 @@ router.get('/review-form', (req, res) => {
 
     const data = {
       token: form.querySelector('[name="token"]').value,
+      product_handle: productHandle,
       rating: parseInt(rating),
       name: form.querySelector('[name="name"]').value.trim(),
       title: form.querySelector('[name="title"]').value.trim(),
@@ -383,7 +472,10 @@ router.get('/review-form', (req, res) => {
       });
       const json = await res.json();
       if (json.success) {
-        form.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">🎉</div><h2>Thank You!</h2><p style="color:#888;margin-top:8px">Your review has been submitted and will appear shortly.</p><a href="https://tracepk.com" style="display:inline-block;margin-top:24px;color:#aaa;text-decoration:none;font-size:13px">← Back to TRACE</a></div>';
+        const nextBtn = json.remainingItems > 0
+          ? '<div style="margin-top:20px"><a href="' + window.location.href + '" style="display:inline-block;background:#fff;color:#000;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:13px">Review your next item (' + json.remainingItems + ' left) →</a></div>'
+          : '';
+        form.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">🎉</div><h2>Thank You!</h2><p style="color:#888;margin-top:8px">Your review has been submitted and will appear on the product page shortly.</p>' + nextBtn + '<a href="https://tracepk.com" style="display:inline-block;margin-top:20px;color:#aaa;text-decoration:none;font-size:13px">← Back to TRACE</a></div>';
       } else {
         throw new Error(json.error || 'Submission failed');
       }
@@ -401,11 +493,11 @@ router.get('/review-form', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PUBLIC: POST /api/public/submit-review
-// Customer submits their review
+// Customer submits their review (strictly bound to order's resolved Shopify product handle)
 // ─────────────────────────────────────────────────────────────────
-router.post('/submit-review', (req, res) => {
+router.post('/submit-review', async (req, res) => {
   try {
-    const { token, rating, name, title, body } = req.body;
+    const { token, rating, name, title, body, product_handle: requestedHandle } = req.body;
 
     if (!token || !rating || !name || !body) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
@@ -425,30 +517,52 @@ router.post('/submit-review', (req, res) => {
       return res.status(400).json({ success: false, error: 'Review is too short' });
     }
 
-    // Check for duplicate
+    // Resolve store_id & authorized product handle(s) from the order (also auto-heals legacy 'general' tokens)
+    let storeId = null;
+    let finalProductHandle = parsed.productHandle || 'general';
+    let orderHandles = [];
+    if (parsed.orderId && /^\d+$/.test(String(parsed.orderId))) {
+      const ord = db.prepare('SELECT id, store_id, line_items, product_titles FROM orders WHERE id = ?').get(Number(parsed.orderId));
+      if (ord) {
+        if (ord.store_id) storeId = ord.store_id;
+        const resolvedItems = await resolveOrderReviewItems(ord);
+        orderHandles = resolvedItems.map(i => i.handle).filter(Boolean);
+        if (requestedHandle && orderHandles.includes(requestedHandle)) {
+          finalProductHandle = requestedHandle;
+        } else if (finalProductHandle === 'general' && orderHandles.length > 0) {
+          finalProductHandle = orderHandles[0];
+        } else if (orderHandles.length > 0 && !orderHandles.includes(finalProductHandle)) {
+          finalProductHandle = orderHandles[0];
+        }
+      }
+    }
+
+    // Check for duplicate on this specific product handle
     const existing = db.prepare('SELECT id FROM product_reviews WHERE reviewer_email = ? AND product_handle = ? LIMIT 1')
-      .get(parsed.customerEmail, parsed.productHandle);
+      .get(parsed.customerEmail, finalProductHandle);
     if (existing) {
       return res.status(409).json({ success: false, error: 'You have already reviewed this product' });
     }
 
-    // Resolve store_id from the order if numeric so review maps to the right store
-    let storeId = null;
-    if (parsed.orderId && /^\d+$/.test(String(parsed.orderId))) {
-      const ord = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(Number(parsed.orderId));
-      if (ord && ord.store_id) storeId = ord.store_id;
-    }
-
-    // Insert as pending (manual moderation)
+    // Insert as pending (manual moderation) — once approved, appears live on /products/<finalProductHandle>
     db.prepare(`
       INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date, store_id)
       VALUES (?, ?, ?, ?, ?, ?, 'customer', 'pending', datetime('now'), ?)
-    `).run(parsed.productHandle, name.trim().substring(0, 80), parsed.customerEmail, ratingNum,
+    `).run(finalProductHandle, name.trim().substring(0, 80), parsed.customerEmail, ratingNum,
            title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000), storeId);
 
-    console.log(`⭐ [Reviews] New pending review from ${parsed.customerEmail} for ${parsed.productHandle} (${ratingNum}★)`);
+    // Count remaining unreviewed items in this order (for multi-item Judge.me-style follow-up)
+    let remainingItems = 0;
+    if (orderHandles.length > 1) {
+      const reviewedRows = db.prepare('SELECT product_handle FROM product_reviews WHERE reviewer_email = ?')
+        .all(parsed.customerEmail);
+      const reviewedSet = new Set(reviewedRows.map(r => r.product_handle));
+      remainingItems = orderHandles.filter(h => !reviewedSet.has(h)).length;
+    }
 
-    res.json({ success: true, message: 'Review submitted and pending approval' });
+    console.log(`⭐ [Reviews] New pending review from ${parsed.customerEmail} for ${finalProductHandle} (${ratingNum}★, store=${storeId})`);
+
+    res.json({ success: true, message: 'Review submitted and pending approval', product_handle: finalProductHandle, remainingItems });
   } catch (err) {
     console.error('[Submit Review] Error:', err.message);
     res.status(500).json({ success: false, error: 'Server error. Please try again.' });
@@ -739,20 +853,26 @@ router.post('/campaigns/send-single', async (req, res) => {
     let productHandle = 'general';
     let productTitle = order.product_titles || 'your recent purchase';
 
-    if (order.line_items) {
+    if (!customerEmail && order.line_items) {
       try {
         const items = JSON.parse(order.line_items);
-        if (Array.isArray(items) && items.length > 0) {
-          const first = items[0];
-          if (!customerEmail && first.email) customerEmail = first.email.trim();
-          if (first.handle) productHandle = first.handle;
-          if (first.title) productTitle = first.title;
+        if (Array.isArray(items) && items.length > 0 && items[0].email) {
+          customerEmail = items[0].email.trim();
         }
       } catch (_) {}
     }
 
     if (!customerEmail) {
       return res.status(400).json({ success: false, error: 'No email address available for this order. Please enter customer email.' });
+    }
+
+    // Resolve real Shopify product handle from products table / GraphQL so review attaches to exact listing
+    const resolvedItems = await resolveOrderReviewItems(order);
+    if (resolvedItems.length > 0) {
+      productHandle = resolvedItems[0].handle;
+      productTitle = resolvedItems.length > 1
+        ? `${resolvedItems[0].title} (+${resolvedItems.length - 1} more)`
+        : resolvedItems[0].title;
     }
 
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');

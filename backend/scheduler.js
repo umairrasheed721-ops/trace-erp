@@ -108,7 +108,7 @@ async function runDynamicScheduler() {
 
 async function sendReviewEmails(daysWindow = 7) {
   try {
-    const { getEmailProviderStatus } = require('./services/reviewEmailService');
+    const { getEmailProviderStatus, resolveOrderReviewItems } = require('./services/reviewEmailService');
     const providerStatus = getEmailProviderStatus();
     if (!providerStatus.configured) {
       console.warn(`⚠️ [Reviews] Scan skipped: ${providerStatus.error}`);
@@ -121,7 +121,7 @@ async function sendReviewEmails(daysWindow = 7) {
     // Find delivered orders within the last X days (default 7 days) where review_email_sent is 0 or NULL
     const windowDays = parseInt(daysWindow) || 7;
     const orders = db.prepare(`
-      SELECT id, ref_number, customer_name, email, phone, product_titles, line_items,
+      SELECT id, store_id, ref_number, customer_name, email, phone, product_titles, line_items,
              delivery_status, status_date
       FROM orders
       WHERE delivery_status IN ('Delivered', 'delivered')
@@ -143,15 +143,12 @@ async function sendReviewEmails(daysWindow = 7) {
         let productHandle = 'general';
         let productTitle = order.product_titles || 'your recent purchase';
 
-        // Try to parse line_items for product handle / title / fallback email
-        if (order.line_items) {
+        // Try fallback email from line_items if needed
+        if (!customerEmail && order.line_items) {
           try {
             const items = JSON.parse(order.line_items);
-            if (Array.isArray(items) && items.length > 0) {
-              const first = items[0];
-              if (!customerEmail && first.email) customerEmail = first.email.trim();
-              if (first.handle) productHandle = first.handle;
-              if (first.title) productTitle = first.title;
+            if (Array.isArray(items) && items.length > 0 && items[0].email) {
+              customerEmail = items[0].email.trim();
             }
           } catch (_) {}
         }
@@ -160,6 +157,15 @@ async function sendReviewEmails(daysWindow = 7) {
           // Mark as -1 (Skipped - No email address available)
           db.prepare("UPDATE orders SET review_email_sent = -1 WHERE id = ?").run(order.id);
           continue;
+        }
+
+        // Resolve real Shopify product handle from products table / Shopify GraphQL so review attaches to exact listing
+        const resolvedItems = await resolveOrderReviewItems(order);
+        if (resolvedItems.length > 0) {
+          productHandle = resolvedItems[0].handle;
+          productTitle = resolvedItems.length > 1
+            ? `${resolvedItems[0].title} (+${resolvedItems.length - 1} more)`
+            : resolvedItems[0].title;
         }
 
         const result = await sendReviewRequestEmail({

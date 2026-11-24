@@ -590,6 +590,19 @@ export default function ReviewsManager() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {reviews.map(r => {
                 const st = REVIEW_STATUS_STYLES[r.status] || REVIEW_STATUS_STYLES.pending
+                const reviewerName = r.reviewer_name || r.customer_name || 'Anonymous Customer'
+                const reviewerEmail = r.reviewer_email || r.email || ''
+                const reviewDateRaw = r.review_date || r.created_at
+                let photoList = Array.isArray(r.photos) ? r.photos : []
+                if (!photoList.length && r.picture_urls) {
+                  try {
+                    const parsed = typeof r.picture_urls === 'string' && r.picture_urls.trim().startsWith('[')
+                      ? JSON.parse(r.picture_urls)
+                      : String(r.picture_urls).split(',').map(u => u.trim()).filter(Boolean)
+                    if (Array.isArray(parsed)) photoList = parsed
+                  } catch (_) {}
+                }
+                const isVerifiedBuyer = Boolean(r.verified || r.source === 'customer')
                 return (
                   <div
                     key={r.id}
@@ -603,9 +616,9 @@ export default function ReviewsManager() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
                           <StarDisplay rating={r.rating} size={15} />
                           <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
-                            {r.customer_name || 'Anonymous Customer'}
+                            {reviewerName}
                           </span>
-                          {r.verified && (
+                          {isVerifiedBuyer && (
                             <span style={{
                               background: 'rgba(16,185,129,0.10)', color: '#059669',
                               fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
@@ -616,14 +629,20 @@ export default function ReviewsManager() {
                           )}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                          <span>Product: <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{r.product_handle}</strong></span>
-                          {r.email && <span style={{ fontFamily: 'monospace' }}>{r.email}</span>}
-                          <span>{new Date(r.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          <span>Product: <strong style={{ color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'monospace' }}>{r.product_handle}</strong></span>
+                          {reviewerEmail && <span style={{ fontFamily: 'monospace' }}>{reviewerEmail}</span>}
+                          {reviewDateRaw && <span>{new Date(reviewDateRaw).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
                         </div>
                       </div>
 
                       <StatusPill {...st} />
                     </div>
+
+                    {r.title && (
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                        {r.title}
+                      </div>
+                    )}
 
                     {r.body && (
                       <p style={{
@@ -634,9 +653,9 @@ export default function ReviewsManager() {
                       </p>
                     )}
 
-                    {Array.isArray(r.photos) && r.photos.length > 0 && (
+                    {photoList.length > 0 && (
                       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                        {r.photos.map((pUrl, pIdx) => (
+                        {photoList.map((pUrl, pIdx) => (
                           <img
                             key={pIdx}
                             src={pUrl}

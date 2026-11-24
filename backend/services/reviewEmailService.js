@@ -14,6 +14,173 @@ const db = require('../db');
 const BACKEND_URL = process.env.APP_URL || 'https://trace-erp-production.up.railway.app';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'TRACE Pakistan';
 const EMAIL_API_TIMEOUT_MS = 10000;
+const SHOPIFY_HANDLE_TIMEOUT_MS = 5000;
+
+/**
+ * Extracts Shopify product handle from a product URL like https://tracepk.com/products/my-hoodie
+ */
+function extractHandleFromUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const match = url.match(/\/products\/([^/?#]+)/i);
+  return match ? decodeURIComponent(match[1]).trim() : '';
+}
+
+/**
+ * Resolves a single order line item's real Shopify product handle from local `products` table:
+ * 1. Explicit item.handle (if present & not 'general')
+ * 2. Exact shopify_variant_id match in products table
+ * 3. Exact SKU match in products table
+ * 4. Title prefix match in products table (products.title is stored as "Title (Variant)")
+ */
+function resolveItemHandleFromDb(storeId, item) {
+  let handle = '';
+  let imageUrl = item?.image_url || '';
+
+  if (item?.handle && item.handle !== 'general') {
+    return { handle: String(item.handle).trim(), image_url: imageUrl };
+  }
+
+  const sid = Number(storeId) || 1;
+  try {
+    // Tier 1: variant_id lookup (most exact)
+    if (item?.variant_id) {
+      const row = db.prepare(`
+        SELECT product_url, image_url FROM products
+        WHERE shopify_variant_id = ? AND product_url IS NOT NULL AND product_url != ''
+        ORDER BY CASE WHEN store_id = ? THEN 0 ELSE 1 END
+        LIMIT 1
+      `).get(String(item.variant_id), sid);
+      if (row) {
+        handle = extractHandleFromUrl(row.product_url);
+        if (!imageUrl && row.image_url) imageUrl = row.image_url;
+        if (handle) return { handle, image_url: imageUrl };
+      }
+    }
+
+    // Tier 2: SKU lookup
+    if (item?.sku && String(item.sku).trim()) {
+      const row = db.prepare(`
+        SELECT product_url, image_url FROM products
+        WHERE sku = ? AND product_url IS NOT NULL AND product_url != ''
+        ORDER BY CASE WHEN store_id = ? THEN 0 ELSE 1 END
+        LIMIT 1
+      `).get(String(item.sku).trim(), sid);
+      if (row) {
+        handle = extractHandleFromUrl(row.product_url);
+        if (!imageUrl && row.image_url) imageUrl = row.image_url;
+        if (handle) return { handle, image_url: imageUrl };
+      }
+    }
+
+    // Tier 3: Title prefix match
+    if (item?.title && String(item.title).trim()) {
+      const cleanTitle = String(item.title).trim().toLowerCase();
+      const row = db.prepare(`
+        SELECT product_url, image_url FROM products
+        WHERE LOWER(title) LIKE ? AND product_url IS NOT NULL AND product_url != ''
+        ORDER BY CASE WHEN store_id = ? THEN 0 ELSE 1 END
+        LIMIT 1
+      `).get(`${cleanTitle}%`, sid);
+      if (row) {
+        handle = extractHandleFromUrl(row.product_url);
+        if (!imageUrl && row.image_url) imageUrl = row.image_url;
+        if (handle) return { handle, image_url: imageUrl };
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ [Reviews] DB handle lookup error:', err.message);
+  }
+
+  return { handle: '', image_url: imageUrl };
+}
+
+/**
+ * Tier 4 fallback: Fetches real Shopify product handle via GraphQL if product isn't in local `products` table yet.
+ */
+async function resolveHandleViaShopifyGraphQL(storeId, variantId) {
+  if (!variantId) return { handle: '', image_url: '' };
+  try {
+    const store = db.prepare('SELECT shop_domain, access_token FROM stores WHERE id = ?').get(Number(storeId) || 1);
+    if (!store || !store.shop_domain || !store.access_token) return { handle: '', image_url: '' };
+
+    const cleanId = String(variantId).replace(/^gid:\/\/shopify\/ProductVariant\//, '');
+    const query = `query { productVariant(id: "gid://shopify/ProductVariant/${cleanId}") { image { url } product { handle featuredImage { url } } } }`;
+    const res = await fetch(`https://${store.shop_domain}/admin/api/2025-10/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': store.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(SHOPIFY_HANDLE_TIMEOUT_MS),
+    });
+    if (!res.ok) return { handle: '', image_url: '' };
+    const json = await res.json();
+    const pv = json?.data?.productVariant;
+    const handle = pv?.product?.handle || '';
+    const imageUrl = pv?.image?.url || pv?.product?.featuredImage?.url || '';
+    return { handle, image_url: imageUrl };
+  } catch (err) {
+    console.warn('⚠️ [Reviews] Shopify GraphQL handle fallback skipped:', err.message);
+    return { handle: '', image_url: '' };
+  }
+}
+
+/**
+ * Resolves all distinct reviewable products (with real Shopify handles & photos) for an order.
+ * Deduplicates multiple variants of the same product so each product listing appears once.
+ */
+async function resolveOrderReviewItems(order) {
+  if (!order) return [];
+  const storeId = order.store_id || 1;
+  let parsedItems = [];
+
+  if (order.line_items) {
+    try {
+      const arr = JSON.parse(order.line_items);
+      if (Array.isArray(arr)) parsedItems = arr;
+    } catch (_) {}
+  }
+
+  const resolved = [];
+  const seenKeys = new Set();
+
+  for (const item of parsedItems) {
+    let { handle, image_url } = resolveItemHandleFromDb(storeId, item);
+    if (!handle && item?.variant_id) {
+      const gql = await resolveHandleViaShopifyGraphQL(storeId, item.variant_id);
+      if (gql.handle) handle = gql.handle;
+      if (!image_url && gql.image_url) image_url = gql.image_url;
+    }
+
+    const title = (item?.title || item?.name || order.product_titles || 'Your TRACE item').trim();
+    const finalHandle = handle || 'general';
+    const dedupKey = finalHandle !== 'general' ? finalHandle : title.toLowerCase();
+    if (seenKeys.has(dedupKey)) continue;
+    seenKeys.add(dedupKey);
+
+    resolved.push({
+      handle: finalHandle,
+      title,
+      variant_title: item?.variant_title || '',
+      image_url: image_url || '',
+    });
+  }
+
+  // Fallback if line_items was empty but product_titles exists
+  if (resolved.length === 0 && order.product_titles) {
+    const firstTitle = String(order.product_titles).split(',')[0].replace(/\s*\(x\d+\)\s*$/i, '').trim();
+    const fromDb = resolveItemHandleFromDb(storeId, { title: firstTitle });
+    resolved.push({
+      handle: fromDb.handle || 'general',
+      title: firstTitle || 'Your TRACE item',
+      variant_title: '',
+      image_url: fromDb.image_url || '',
+    });
+  }
+
+  return resolved;
+}
 
 /**
  * Inspects active email provider configuration in priority order:
@@ -317,6 +484,8 @@ async function sendReviewRequestEmail({ orderId, orderRef, customerName, custome
 module.exports = {
   sendReviewRequestEmail,
   getEmailProviderStatus,
+  resolveOrderReviewItems,
+  extractHandleFromUrl,
   parseReviewToken,
   generateReviewToken,
   getTemplateFromDb,
