@@ -69,6 +69,18 @@ const Icon = {
       <path d="M8.5 2h7" /><path d="M7 16h10" />
     </svg>
   ),
+  Plug: ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22v-5" /><path d="M9 8V2" /><path d="M15 8V2" />
+      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+    </svg>
+  ),
+  Shield: ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
 }
 
 function StarDisplay({ rating, size = 14 }) {
@@ -173,6 +185,25 @@ export default function ReviewsManager() {
   const [templateSaving, setTemplateSaving] = useState(false)
   const [previewDevice, setPreviewDevice] = useState('desktop')
 
+  // Plug & Play Per-Store Email Setup state
+  const [setupLoading, setSetupLoading] = useState(false)
+  const [setupSaving, setSetupSaving] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [setupForm, setSetupForm] = useState({
+    storeId: activeStoreId || 1,
+    storeName: '',
+    shopDomain: '',
+    enabled: false,
+    provider: 'brevo',
+    apiKeyInput: '',
+    hasApiKey: false,
+    maskedApiKey: '',
+    fromName: '',
+    fromEmail: '',
+    replyTo: '',
+    websiteUrl: '',
+  })
+
   // Debounce campaign search
   useEffect(() => {
     const t = setTimeout(() => {
@@ -241,7 +272,9 @@ export default function ReviewsManager() {
   const fetchTemplateData = useCallback(async () => {
     setTemplateLoading(true)
     try {
-      const res = await fetch(`${API}/api/reviews/templates/review_request`, {
+      const params = new URLSearchParams()
+      if (activeStoreId) params.set('store_id', activeStoreId)
+      const res = await fetch(`${API}/api/reviews/templates/review_request?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const json = await res.json()
@@ -254,17 +287,92 @@ export default function ReviewsManager() {
     } finally {
       setTemplateLoading(false)
     }
-  }, [token, addToast])
+  }, [token, activeStoreId, addToast])
+
+  const fetchEmailSettings = useCallback(async () => {
+    setSetupLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (activeStoreId) params.set('store_id', activeStoreId)
+      const res = await fetch(`${API}/api/reviews/settings?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const json = await res.json()
+      if (json.success && json.data) {
+        const d = json.data
+        setSetupForm({
+          storeId: d.storeId,
+          storeName: d.storeName || '',
+          shopDomain: d.shopDomain || '',
+          enabled: Boolean(d.enabled),
+          provider: d.provider || 'brevo',
+          apiKeyInput: '',
+          hasApiKey: Boolean(d.hasApiKey),
+          maskedApiKey: d.maskedApiKey || '',
+          fromName: d.fromName || d.storeName || '',
+          fromEmail: d.fromEmail || '',
+          replyTo: d.replyTo || '',
+          websiteUrl: d.websiteUrl || '',
+        })
+      }
+    } catch (err) {
+      addToast('Failed to load store email settings', 'error')
+    } finally {
+      setSetupLoading(false)
+    }
+  }, [token, activeStoreId, addToast])
 
   useEffect(() => {
     if (activeTab === 'moderation') fetchReviews()
     else if (activeTab === 'campaigns') fetchCampaignData()
     else if (activeTab === 'templates') {
       fetchTemplateData()
-      // Ensure provider info is loaded for live preview header
-      if (!campaignStats.emailProvider) fetchCampaignData()
+      fetchCampaignData()
+    } else if (activeTab === 'setup') {
+      fetchEmailSettings()
+      fetchCampaignData()
     }
-  }, [activeTab, fetchReviews, fetchCampaignData, fetchTemplateData])
+  }, [activeTab, activeStoreId, fetchReviews, fetchCampaignData, fetchTemplateData, fetchEmailSettings])
+
+  async function saveEmailSettings(andOpenTest = false) {
+    if (!setupForm.hasApiKey && !setupForm.apiKeyInput.trim()) {
+      addToast(`Paste this store's ${setupForm.provider === 'resend' ? 'Resend' : 'Brevo'} API key first`, 'error')
+      return
+    }
+    if (!setupForm.fromEmail.trim() || !setupForm.fromEmail.includes('@')) {
+      addToast('Enter a valid verified Sender Email (e.g. orders@yourdomain.com)', 'error')
+      return
+    }
+    setSetupSaving(true)
+    try {
+      const res = await fetch(`${API}/api/reviews/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          store_id: activeStoreId || setupForm.storeId || 1,
+          enabled: setupForm.enabled,
+          provider: setupForm.provider,
+          api_key: setupForm.apiKeyInput.trim() || undefined,
+          from_name: setupForm.fromName.trim(),
+          from_email: setupForm.fromEmail.trim(),
+          reply_to: setupForm.replyTo.trim(),
+          website_url: setupForm.websiteUrl.trim(),
+        })
+      })
+      const json = await res.json()
+      if (json.success) {
+        addToast(json.message || 'Store email settings saved!', 'success')
+        await Promise.all([fetchEmailSettings(), fetchCampaignData()])
+        if (andOpenTest) setShowTestModal(true)
+      } else {
+        addToast(json.error || 'Failed to save email settings', 'error')
+      }
+    } catch (err) {
+      addToast('Failed to save email settings', 'error')
+    } finally {
+      setSetupSaving(false)
+    }
+  }
 
   async function saveTemplate() {
     setTemplateSaving(true)
@@ -272,10 +380,10 @@ export default function ReviewsManager() {
       const res = await fetch(`${API}/api/reviews/templates/review_request`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ subject: templateSubject, bodyHtml: templateHtml })
+        body: JSON.stringify({ store_id: activeStoreId || 1, subject: templateSubject, bodyHtml: templateHtml })
       })
       const json = await res.json()
-      if (json.success) addToast('Email template saved', 'success')
+      if (json.success) addToast('Email template saved for this store', 'success')
       else addToast(json.error || 'Failed to save template', 'error')
     } catch (err) {
       addToast('Failed to save template', 'error')
@@ -285,12 +393,13 @@ export default function ReviewsManager() {
   }
 
   async function resetTemplate() {
-    if (!window.confirm('Reset template to original default design?')) return
+    if (!window.confirm('Reset this store template to original default design?')) return
     setTemplateSaving(true)
     try {
       const res = await fetch(`${API}/api/reviews/templates/review_request/reset`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ store_id: activeStoreId || 1 })
       })
       const json = await res.json()
       if (json.success) {
@@ -333,7 +442,7 @@ export default function ReviewsManager() {
       const res = await fetch(`${API}/api/reviews/campaigns/trigger-scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ days: daysWindow })
+        body: JSON.stringify({ days: daysWindow, store_id: activeStoreId || 1 })
       })
       const json = await res.json()
       if (json.success && json.data?.success !== false) {
@@ -394,7 +503,7 @@ export default function ReviewsManager() {
       const res = await fetch(`${API}/api/reviews/campaigns/send-test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ email: target })
+        body: JSON.stringify({ email: target, store_id: activeStoreId || 1 })
       })
       const json = await res.json()
       if (json.success) {
@@ -419,15 +528,21 @@ export default function ReviewsManager() {
     return Math.round(((campaignStats.sent || 0) / eligible) * 100)
   }, [campaignStats])
 
+  const provider = campaignStats.emailProvider
+  const activeSenderEmail = provider?.fromEmail || setupForm.fromEmail || 'orders@yourdomain.com'
+  const activeBrandName = provider?.fromName || setupForm.fromName || provider?.storeName || 'TRACE Pakistan'
+  const activeWebsiteUrl = provider?.websiteUrl || setupForm.websiteUrl || 'https://tracepk.com'
+  const activeWebsiteDisplay = activeWebsiteUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+
   const previewHtml = (templateHtml || '')
     .replace(/\{\{customer_name\}\}/g, 'Salar Khan')
     .replace(/\{\{first_name\}\}/g, 'Salar')
     .replace(/\{\{order_ref\}\}/g, '#TR35089')
-    .replace(/\{\{product_title\}\}/g, 'TRACE Heavyweight Oversized Hoodie')
+    .replace(/\{\{store_name\}\}/g, activeBrandName)
+    .replace(/\{\{store_url\}\}/g, activeWebsiteUrl)
+    .replace(/\{\{store_url_display\}\}/g, activeWebsiteDisplay)
+    .replace(/\{\{product_title\}\}/g, 'Heavyweight Oversized Hoodie')
     .replace(/\{\{review_url\}\}/g, '#preview-mode')
-
-  const provider = campaignStats.emailProvider
-  const activeSenderEmail = provider?.fromEmail || 'reviews@tracepk.com'
 
   return (
     <div style={{ padding: '20px 24px 36px', maxWidth: 1520, margin: '0 auto' }}>
@@ -445,35 +560,45 @@ export default function ReviewsManager() {
             </h1>
 
             {provider && (
-              <span
-                title={provider.error || `Authenticated sender: ${provider.fromEmail}`}
+              <button
+                type="button"
+                onClick={() => setActiveTab('setup')}
+                title={provider.error || `Click to edit email settings for ${provider.storeName || 'this store'}`}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '3px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 700,
-                  background: provider.configured ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
-                  color: provider.configured ? '#059669' : '#dc2626',
-                  border: `1px solid ${provider.configured ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`
+                  padding: '3.5px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                  background: !provider.configured
+                    ? 'rgba(239,68,68,0.10)'
+                    : provider.enabled
+                      ? 'rgba(16,185,129,0.10)'
+                      : 'rgba(245,158,11,0.10)',
+                  color: !provider.configured
+                    ? '#dc2626'
+                    : provider.enabled
+                      ? '#059669'
+                      : '#b45309',
+                  border: `1px solid ${!provider.configured ? 'rgba(239,68,68,0.25)' : provider.enabled ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.28)'}`
                 }}
               >
                 <span style={{
                   width: 6, height: 6, borderRadius: '50%',
-                  background: provider.configured ? '#10b981' : '#ef4444'
+                  background: !provider.configured ? '#ef4444' : provider.enabled ? '#10b981' : '#f59e0b'
                 }} />
-                {provider.configured
-                  ? `${provider.label} · ${provider.fromEmail}`
-                  : provider.label}
-              </span>
+                {!provider.configured
+                  ? `${provider.storeName ? `${provider.storeName}: ` : ''}Not Configured · Click to Setup`
+                  : `${provider.label} · ${provider.fromEmail}${provider.enabled ? '' : ' (Auto OFF)'}`}
+              </button>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12.5, color: 'var(--text-muted)' }}>
             <Icon.Clock size={12.5} />
-            <span>Automated daily scan at 10:00 AM PKT for orders delivered 24h+ ago</span>
+            <span>Automated daily scan at 10:00 AM PKT (24h+ post-delivery) · Isolated per store</span>
           </div>
         </div>
 
         {/* Segmented Tab Navigation */}
         <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
+          display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap',
           background: 'var(--bg-elevated)', padding: 4, borderRadius: 10,
           border: '1px solid var(--border)'
         }}>
@@ -481,6 +606,7 @@ export default function ReviewsManager() {
             { id: 'moderation', label: 'Moderation', icon: <Icon.Star size={14} /> },
             { id: 'campaigns',  label: 'Email Campaigns', icon: <Icon.Mail size={14} />, badge: campaignStats.pending > 0 ? campaignStats.pending : null },
             { id: 'templates',  label: 'Template Studio', icon: <Icon.Code size={14} /> },
+            { id: 'setup',      label: 'Email Setup', icon: <Icon.Plug size={14} />, alertDot: provider && !provider.configured },
           ].map(tab => {
             const active = activeTab === tab.id
             return (
@@ -508,6 +634,9 @@ export default function ReviewsManager() {
                   }}>
                     {tab.badge}
                   </span>
+                )}
+                {tab.alertDot && (
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} />
                 )}
               </button>
             )
@@ -741,6 +870,38 @@ export default function ReviewsManager() {
       {/* ──────────────────────────────────────────────────────────────── */}
       {activeTab === 'campaigns' && (
         <>
+          {/* Per-Store Setup Banner when selected store has no email provider connected yet */}
+          {provider && !provider.configured && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12,
+              background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.32)',
+              borderRadius: 12, padding: '12px 16px', marginBottom: 16
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ color: '#b45309', display: 'flex' }}><Icon.Shield size={18} /></span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Email not connected for {provider.storeName || 'this store'} yet
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
+                    Each store uses its own isolated Brevo/Resend account (300 free emails/day per store) — no emails will send until configured.
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('setup')}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7.5px 14px', borderRadius: 8, border: 'none',
+                  background: '#2563eb', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                <Icon.Plug size={13.5} />
+                <span>Connect Email</span>
+              </button>
+            </div>
+          )}
+
           {/* Executive KPI Strip (Clickable Filters) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 18 }}>
             {[
@@ -1224,7 +1385,7 @@ export default function ReviewsManager() {
                     Dynamic Variables (Click to append)
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {['{{first_name}}', '{{customer_name}}', '{{order_ref}}', '{{product_title}}', '{{review_url}}'].map(tag => (
+                    {['{{first_name}}', '{{customer_name}}', '{{order_ref}}', '{{product_title}}', '{{store_name}}', '{{store_url_display}}', '{{review_url}}'].map(tag => (
                       <button
                         key={tag}
                         onClick={() => {
@@ -1331,13 +1492,14 @@ export default function ReviewsManager() {
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: '#f59e0b' }} />
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: '#22c55e' }} />
                     </div>
-                    <div><strong style={{ color: '#0f172a' }}>From:</strong> TRACE Pakistan &lt;{activeSenderEmail}&gt;</div>
+                    <div><strong style={{ color: '#0f172a' }}>From:</strong> {activeBrandName} &lt;{activeSenderEmail}&gt;</div>
                     <div style={{ marginTop: 3 }}>
                       <strong style={{ color: '#0f172a' }}>Subject:</strong>{' '}
                       {(templateSubject || '')
                         .replace(/\{\{first_name\}\}/g, 'Salar')
                         .replace(/\{\{customer_name\}\}/g, 'Salar Khan')
-                        .replace(/\{\{order_ref\}\}/g, '#TR35089')}
+                        .replace(/\{\{order_ref\}\}/g, '#TR35089')
+                        .replace(/\{\{store_name\}\}/g, activeBrandName)}
                     </div>
                   </div>
                   <iframe
@@ -1345,6 +1507,283 @@ export default function ReviewsManager() {
                     srcDoc={previewHtml}
                     style={{ width: '100%', height: 500, border: 'none', background: '#ffffff', display: 'block' }}
                   />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* TAB 4: PLUG & PLAY PER-STORE EMAIL SETUP */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {activeTab === 'setup' && (
+        <div>
+          {setupLoading ? (
+            <div style={{ padding: 56, textAlign: 'center', color: 'var(--text-muted)', background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
+              <div className="loading-spinner" style={{ margin: '0 auto 12px' }} />
+              <div style={{ fontSize: 13 }}>Loading store email configuration...</div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(280px, 1fr)', gap: 18, alignItems: 'start' }}>
+
+              {/* Left: Plug & Play Store Connection Form */}
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
+                  gap: 12, paddingBottom: 16, marginBottom: 18, borderBottom: '1px solid var(--border)'
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>
+                        Email Connection — {setupForm.storeName || `Store #${activeStoreId || 1}`}
+                      </h3>
+                      {setupForm.shopDomain && (
+                        <span style={{
+                          fontSize: 11, fontFamily: 'monospace', color: 'var(--text-muted)',
+                          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                          padding: '2px 8px', borderRadius: 6
+                        }}>
+                          {setupForm.shopDomain}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
+                      Plug &amp; play per-store credentials saved in ERP database — no Railway dashboard needed.
+                    </div>
+                  </div>
+
+                  {/* Auto-Send Daily Cron Toggle */}
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                    padding: '7px 12px', borderRadius: 9,
+                    background: setupForm.enabled ? 'rgba(16,185,129,0.10)' : 'var(--bg-elevated)',
+                    border: `1px solid ${setupForm.enabled ? 'rgba(16,185,129,0.30)' : 'var(--border)'}`
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={setupForm.enabled}
+                      onChange={e => setSetupForm(prev => ({ ...prev, enabled: e.target.checked }))}
+                      style={{ width: 16, height: 16, accentColor: '#10b981', cursor: 'pointer' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: setupForm.enabled ? '#059669' : 'var(--text-primary)', lineHeight: 1.2 }}>
+                        {setupForm.enabled ? 'Auto-Send Enabled' : 'Auto-Send Paused'}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>Daily 10:00 AM PKT cron</div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Provider Selector */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Email Provider
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {[
+                      { id: 'brevo', title: 'Brevo API', sub: '300 free emails/day · 1-click GoDaddy DNS' },
+                      { id: 'resend', title: 'Resend API', sub: '100 free emails/day · Custom domain API' },
+                    ].map(p => {
+                      const active = setupForm.provider === p.id
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setSetupForm(prev => ({ ...prev, provider: p.id }))}
+                          style={{
+                            textAlign: 'left', padding: '11px 14px', borderRadius: 9, cursor: 'pointer',
+                            background: active ? 'rgba(37,99,235,0.06)' : 'var(--bg-elevated)',
+                            border: `1.5px solid ${active ? '#2563eb' : 'var(--border)'}`
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{p.title}</div>
+                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>{p.sub}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* API Key Input */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {setupForm.provider === 'resend' ? 'Resend API Key' : 'Brevo API Key'} *
+                    </label>
+                    {setupForm.hasApiKey && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, color: '#059669',
+                        background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.25)',
+                        padding: '1.5px 8px', borderRadius: 99, fontFamily: 'monospace'
+                      }}>
+                        ● Saved ({setupForm.maskedApiKey})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      value={setupForm.apiKeyInput}
+                      onChange={e => setSetupForm(prev => ({ ...prev, apiKeyInput: e.target.value }))}
+                      placeholder={setupForm.hasApiKey
+                        ? 'Leave blank to keep saved key, or paste a new key to replace...'
+                        : (setupForm.provider === 'resend' ? 're_...' : 'xkeysib-...')}
+                      style={{
+                        flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                        borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)',
+                        fontSize: 12.5, fontFamily: 'monospace', outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(s => !s)}
+                      style={{
+                        padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'var(--bg-elevated)', color: 'var(--text-muted)',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                      }}
+                    >
+                      {showApiKey ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Brand & Sender Identity Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Brand / From Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.fromName}
+                      onChange={e => setSetupForm(prev => ({ ...prev, fromName: e.target.value }))}
+                      placeholder="e.g. Rabbi Trends"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                        borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)', fontSize: 13, outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Verified Sender Email *
+                    </label>
+                    <input
+                      type="email"
+                      value={setupForm.fromEmail}
+                      onChange={e => setSetupForm(prev => ({ ...prev, fromEmail: e.target.value }))}
+                      placeholder="orders@yourstore.com"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                        borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)', fontSize: 13,
+                        fontFamily: 'monospace', outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Reply-To Email
+                    </label>
+                    <input
+                      type="email"
+                      value={setupForm.replyTo}
+                      onChange={e => setSetupForm(prev => ({ ...prev, replyTo: e.target.value }))}
+                      placeholder="support@yourstore.com or store Gmail"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                        borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)', fontSize: 13,
+                        fontFamily: 'monospace', outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Store Website URL
+                    </label>
+                    <input
+                      type="text"
+                      value={setupForm.websiteUrl}
+                      onChange={e => setSetupForm(prev => ({ ...prev, websiteUrl: e.target.value }))}
+                      placeholder="https://yourstore.com"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                        borderRadius: 8, padding: '9px 12px', color: 'var(--text-primary)', fontSize: 13,
+                        fontFamily: 'monospace', outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10,
+                  paddingTop: 14, borderTop: '1px solid var(--border)'
+                }}>
+                  <button
+                    type="button"
+                    disabled={setupSaving}
+                    onClick={() => saveEmailSettings(true)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8.5px 15px', borderRadius: 8, border: '1px solid var(--border)',
+                      background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                      fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: setupSaving ? 0.6 : 1
+                    }}
+                  >
+                    <Icon.Flask size={13.5} />
+                    <span>Save &amp; Send Test</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={setupSaving}
+                    onClick={() => saveEmailSettings(false)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '8.5px 18px', borderRadius: 8, border: 'none',
+                      background: '#2563eb', color: '#fff',
+                      fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: setupSaving ? 0.6 : 1
+                    }}
+                  >
+                    <Icon.Check size={13.5} />
+                    <span>{setupSaving ? 'Saving...' : 'Save Settings'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right: Quick Setup Checklist & Isolation Guarantee */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span style={{ color: '#059669', display: 'flex' }}><Icon.Shield size={16} /></span>
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Strict Store Isolation Active
+                    </h4>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                    Every store uses its own separate Brevo/Resend account, API key, sender identity, email template, and public review page. Unconfigured stores are automatically skipped by the 10:00 AM daily scan — zero cross-store email leakage.
+                  </p>
+                </div>
+
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+                  <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>
+                    60-Second Setup for Any New Store
+                  </h4>
+                  <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.7 }}>
+                    <li>Create a free <strong style={{ color: 'var(--text-primary)' }}>Brevo</strong> account using this store&apos;s email (<strong style={{ color: 'var(--text-primary)' }}>300 free emails/day</strong>).</li>
+                    <li>Authenticate the store domain under <strong style={{ color: 'var(--text-primary)' }}>Senders, domains, IPs</strong> and add <code style={{ fontSize: 11.5 }}>orders@store.com</code>.</li>
+                    <li>Under <strong style={{ color: 'var(--text-primary)' }}>Security → Authorized IPs</strong>, deactivate API IP blocking.</li>
+                    <li>Generate an API key (<strong style={{ color: 'var(--text-primary)' }}>Transactional email: All</strong>), paste it here, and click <strong style={{ color: 'var(--text-primary)' }}>Save &amp; Send Test</strong>.</li>
+                  </ol>
                 </div>
               </div>
             </div>

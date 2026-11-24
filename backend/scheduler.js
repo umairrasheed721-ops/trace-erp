@@ -106,98 +106,128 @@ async function runDynamicScheduler() {
   });
 }
 
-async function sendReviewEmails(daysWindow = 7) {
+async function sendReviewEmails(daysWindow = 7, targetStoreId = null) {
   try {
     const { getEmailProviderStatus, resolveOrderReviewItems } = require('./services/reviewEmailService');
-    const providerStatus = getEmailProviderStatus();
-    if (!providerStatus.configured) {
-      console.warn(`⚠️ [Reviews] Scan skipped: ${providerStatus.error}`);
-      return { success: false, processed: 0, sent: 0, failed: 0, error: providerStatus.error };
-    }
 
     // Ensure column exists (idempotent)
     try { db.exec("ALTER TABLE orders ADD COLUMN review_email_sent INTEGER DEFAULT 0"); } catch (_) {}
 
-    // Find delivered orders within the last X days (default 7 days) where review_email_sent is 0 or NULL
     const windowDays = parseInt(daysWindow) || 7;
-    const orders = db.prepare(`
-      SELECT id, store_id, ref_number, customer_name, email, phone, product_titles, line_items,
-             delivery_status, status_date
-      FROM orders
-      WHERE delivery_status IN ('Delivered', 'delivered')
-        AND (review_email_sent IS NULL OR review_email_sent = 0)
-        AND status_date IS NOT NULL
-        AND datetime(status_date) <= datetime('now', '-24 hours')
-        AND datetime(status_date) >= datetime('now', '-${windowDays} days')
-    `).all();
+    const isManualSingleStore = Boolean(targetStoreId);
 
-    console.log(`⭐ [Reviews] Found ${orders.length} eligible delivered orders for review emails (Last ${windowDays} days, provider: ${providerStatus.label})`);
+    // Resolve store list: either single requested store (manual button) or all connected stores (daily cron)
+    const stores = isManualSingleStore
+      ? [{ id: Number(targetStoreId), store_name: `Store #${targetStoreId}` }]
+      : db.prepare('SELECT id, store_name FROM stores ORDER BY id ASC').all();
 
-    const delayMs = providerStatus.provider === 'gmail_smtp' ? 3000 : 400;
-    let sentCount = 0;
-    let failedCount = 0;
+    let totalProcessed = 0;
+    let totalSent = 0;
+    let totalFailed = 0;
     let lastError = null;
-    for (const order of orders) {
-      try {
-        let customerEmail = (order.email || '').trim();
-        let productHandle = 'general';
-        let productTitle = order.product_titles || 'your recent purchase';
+    let lastProviderLabel = '';
 
-        // Try fallback email from line_items if needed
-        if (!customerEmail && order.line_items) {
-          try {
-            const items = JSON.parse(order.line_items);
-            if (Array.isArray(items) && items.length > 0 && items[0].email) {
-              customerEmail = items[0].email.trim();
-            }
-          } catch (_) {}
+    for (const store of stores) {
+      const sid = Number(store.id);
+      const providerStatus = getEmailProviderStatus(sid);
+
+      // Strict Per-Store Isolation: NEVER send if store isn't configured with its own key/sender
+      if (!providerStatus.configured) {
+        if (isManualSingleStore) {
+          return { success: false, processed: 0, sent: 0, failed: 0, error: providerStatus.error };
         }
+        console.log(`⏭️ [Reviews] Skipping Store #${sid} (${providerStatus.storeName}) — email not configured.`);
+        continue;
+      }
 
-        if (!customerEmail) {
-          // Mark as -1 (Skipped - No email address available)
-          db.prepare("UPDATE orders SET review_email_sent = -1 WHERE id = ?").run(order.id);
-          continue;
-        }
+      // Daily cron respects per-store ON/OFF toggle strictly
+      if (!isManualSingleStore && !providerStatus.enabled) {
+        console.log(`⏸️ [Reviews] Skipping Store #${sid} (${providerStatus.storeName}) — auto-send toggle is OFF.`);
+        continue;
+      }
 
-        // Resolve real Shopify product handle from products table / Shopify GraphQL so review attaches to exact listing
-        const resolvedItems = await resolveOrderReviewItems(order);
-        if (resolvedItems.length > 0) {
-          productHandle = resolvedItems[0].handle;
-          productTitle = resolvedItems.length > 1
-            ? `${resolvedItems[0].title} (+${resolvedItems.length - 1} more)`
-            : resolvedItems[0].title;
-        }
+      lastProviderLabel = providerStatus.label;
 
-        const result = await sendReviewRequestEmail({
-          orderId: order.id,
-          orderRef: order.ref_number || `#${order.id}`,
-          customerName: order.customer_name,
-          customerEmail,
-          productHandle,
-          productTitle,
-        });
+      const orders = db.prepare(`
+        SELECT id, store_id, ref_number, customer_name, email, phone, product_titles, line_items,
+               delivery_status, status_date
+        FROM orders
+        WHERE store_id = ?
+          AND delivery_status IN ('Delivered', 'delivered')
+          AND (review_email_sent IS NULL OR review_email_sent = 0)
+          AND status_date IS NOT NULL
+          AND datetime(status_date) <= datetime('now', '-24 hours')
+          AND datetime(status_date) >= datetime('now', '-${windowDays} days')
+      `).all(sid);
 
-        if (result && result.ok) {
-          db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
-          sentCount++;
-        } else {
-          failedCount++;
-          lastError = (result && result.error) || 'Email send failed';
-          // Abort early on 3 consecutive failures (e.g. blocked SMTP / invalid API key) instead of burning Railway CPU
-          if (sentCount === 0 && failedCount >= 3) {
-            console.error(`❌ [Reviews] Aborting scan after 3 consecutive failures: ${lastError}`);
-            break;
+      console.log(`⭐ [Reviews/Store #${sid}] Found ${orders.length} eligible delivered orders (Last ${windowDays}d, ${providerStatus.label}: ${providerStatus.fromEmail})`);
+
+      let storeSent = 0;
+      let storeFailed = 0;
+      for (const order of orders) {
+        totalProcessed++;
+        try {
+          let customerEmail = (order.email || '').trim();
+          let productHandle = 'general';
+          let productTitle = order.product_titles || 'your recent purchase';
+
+          if (!customerEmail && order.line_items) {
+            try {
+              const items = JSON.parse(order.line_items);
+              if (Array.isArray(items) && items.length > 0 && items[0].email) {
+                customerEmail = items[0].email.trim();
+              }
+            } catch (_) {}
           }
-        }
 
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      } catch (e) {
-        failedCount++;
-        lastError = e.message;
-        console.error(`[Review Email] Failed for order #${order.id}:`, e.message);
+          if (!customerEmail) {
+            db.prepare("UPDATE orders SET review_email_sent = -1 WHERE id = ?").run(order.id);
+            continue;
+          }
+
+          const resolvedItems = await resolveOrderReviewItems(order);
+          if (resolvedItems.length > 0) {
+            productHandle = resolvedItems[0].handle;
+            productTitle = resolvedItems.length > 1
+              ? `${resolvedItems[0].title} (+${resolvedItems.length - 1} more)`
+              : resolvedItems[0].title;
+          }
+
+          const result = await sendReviewRequestEmail({
+            storeId: sid,
+            orderId: order.id,
+            orderRef: order.ref_number || `#${order.id}`,
+            customerName: order.customer_name,
+            customerEmail,
+            productHandle,
+            productTitle,
+          });
+
+          if (result && result.ok) {
+            db.prepare("UPDATE orders SET review_email_sent = 1 WHERE id = ?").run(order.id);
+            storeSent++;
+            totalSent++;
+          } else {
+            storeFailed++;
+            totalFailed++;
+            lastError = (result && result.error) || 'Email send failed';
+            if (storeSent === 0 && storeFailed >= 3) {
+              console.error(`❌ [Reviews/Store #${sid}] Aborting store scan after 3 consecutive failures: ${lastError}`);
+              break;
+            }
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 400));
+        } catch (e) {
+          storeFailed++;
+          totalFailed++;
+          lastError = e.message;
+          console.error(`[Review Email/Store #${sid}] Failed for order #${order.id}:`, e.message);
+        }
       }
     }
-    return { success: true, processed: orders.length, sent: sentCount, failed: failedCount, lastError, provider: providerStatus.label };
+
+    return { success: true, processed: totalProcessed, sent: totalSent, failed: totalFailed, lastError, provider: lastProviderLabel };
   } catch (e) {
     console.error('[Review Email Scan] Error:', e.message);
     return { success: false, error: e.message };

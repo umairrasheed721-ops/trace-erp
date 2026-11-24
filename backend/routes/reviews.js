@@ -18,7 +18,15 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
-const { parseReviewToken, resolveOrderReviewItems } = require('../services/reviewEmailService');
+const {
+  parseReviewToken,
+  resolveOrderReviewItems,
+  getStoreEmailConfig,
+  saveStoreEmailConfig,
+  getEmailProviderStatus,
+  saveStoreTemplate,
+  resetStoreTemplate,
+} = require('../services/reviewEmailService');
 
 function escHtml(str) {
   return String(str || '')
@@ -297,12 +305,17 @@ router.get('/review-form', async (req, res) => {
   }));
   const unreviewedItems = enrichedItems.filter(i => !i.alreadyReviewed);
 
+  const storeCfg = getStoreEmailConfig(order?.store_id || 1);
+  const brandName = storeCfg.fromName || storeCfg.storeName || 'TRACE Pakistan';
+  const storeWebsite = storeCfg.websiteUrl || 'https://tracepk.com';
+  const storeWebsiteDisplay = storeWebsite.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+
   if (unreviewedItems.length === 0) {
     return res.send(`
       <!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff;">
         <h2>✅ Already Reviewed!</h2>
         <p style="color:#888;">You've already submitted a review for ${enrichedItems.length > 1 ? 'all items in this order' : 'this product'}. Thank you!</p>
-        <a href="https://tracepk.com" style="color:#aaa;">Continue Shopping →</a>
+        <a href="${escHtml(storeWebsite)}" style="color:#aaa;">Continue Shopping →</a>
       </body></html>
     `);
   }
@@ -349,15 +362,15 @@ router.get('/review-form', async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Write a Review – TRACE Pakistan</title>
+  <title>Write a Review – ${escHtml(brandName)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
     .card{background:#141414;border:1px solid #222;border-radius:20px;padding:36px;width:100%;max-width:500px;box-shadow:0 40px 80px rgba(0,0,0,0.6)}
     .brand{text-align:center;margin-bottom:24px}
-    .brand h1{font-size:22px;font-weight:900;letter-spacing:6px;text-transform:uppercase}
-    .brand p{font-size:11px;color:#666;letter-spacing:3px;margin-top:4px;text-transform:uppercase}
+    .brand h1{font-size:22px;font-weight:900;letter-spacing:4px;text-transform:uppercase}
+    .brand p{font-size:11px;color:#666;letter-spacing:2px;margin-top:4px}
     h2{font-size:20px;font-weight:700;margin-bottom:6px}
     .sub{font-size:13.5px;color:#888;margin-bottom:20px}
     .product-banner{display:flex;align-items:center;gap:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:12px;margin-bottom:20px}
@@ -392,7 +405,7 @@ router.get('/review-form', async (req, res) => {
 </head>
 <body>
 <div class="card">
-  <div class="brand"><h1>TRACE</h1><p>Premium Streetwear</p></div>
+  <div class="brand"><h1>${escHtml(brandName)}</h1><p>${escHtml(storeWebsiteDisplay)}</p></div>
   <h2>How was your experience?</h2>
   <p class="sub">Share your honest feedback — it helps us and other shoppers.</p>
 
@@ -475,7 +488,7 @@ router.get('/review-form', async (req, res) => {
         const nextBtn = json.remainingItems > 0
           ? '<div style="margin-top:20px"><a href="' + window.location.href + '" style="display:inline-block;background:#fff;color:#000;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:13px">Review your next item (' + json.remainingItems + ' left) →</a></div>'
           : '';
-        form.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">🎉</div><h2>Thank You!</h2><p style="color:#888;margin-top:8px">Your review has been submitted and will appear on the product page shortly.</p>' + nextBtn + '<a href="https://tracepk.com" style="display:inline-block;margin-top:20px;color:#aaa;text-decoration:none;font-size:13px">← Back to TRACE</a></div>';
+        form.innerHTML = '<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:16px">🎉</div><h2>Thank You!</h2><p style="color:#888;margin-top:8px">Your review has been submitted and will appear on the product page shortly.</p>' + nextBtn + '<a href="${escHtml(storeWebsite)}" style="display:inline-block;margin-top:20px;color:#aaa;text-decoration:none;font-size:13px">← Back to ${escHtml(brandName)}</a></div>';
       } else {
         throw new Error(json.error || 'Submission failed');
       }
@@ -724,7 +737,7 @@ router.get('/campaigns/stats', (req, res) => {
         AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
     `).get(...params);
 
-    const { getEmailProviderStatus } = require('../services/reviewEmailService');
+    const sid = parseInt(targetStoreId) || 1;
 
     res.json({
       success: true,
@@ -735,7 +748,71 @@ router.get('/campaigns/stats', (req, res) => {
         pending: stats?.pending || 0,
         autoReady: stats?.auto_ready || 0,
         noEmail: stats?.no_email || 0,
-        emailProvider: getEmailProviderStatus()
+        emailProvider: getEmailProviderStatus(sid)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: GET /api/reviews/settings
+// Plug & Play per-store email settings (returns masked API key only)
+// ─────────────────────────────────────────────────────────────────
+router.get('/settings', (req, res) => {
+  try {
+    const sid = parseInt(req.query.store_id || req.headers['x-active-store-id']) || 1;
+    const cfg = getStoreEmailConfig(sid);
+    res.json({
+      success: true,
+      data: {
+        storeId: cfg.storeId,
+        storeName: cfg.storeName,
+        shopDomain: cfg.shopDomain,
+        enabled: cfg.enabled,
+        provider: cfg.provider,
+        hasApiKey: cfg.hasApiKey,
+        maskedApiKey: cfg.maskedApiKey,
+        fromName: cfg.fromName,
+        fromEmail: cfg.fromEmail,
+        replyTo: cfg.replyTo,
+        websiteUrl: cfg.websiteUrl,
+        updatedAt: cfg.updatedAt,
+        source: cfg.source,
+        status: getEmailProviderStatus(sid),
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: PUT /api/reviews/settings
+// Save Plug & Play per-store email credentials (zero Railway vars!)
+// ─────────────────────────────────────────────────────────────────
+router.put('/settings', (req, res) => {
+  try {
+    const sid = parseInt(req.body?.store_id || req.query.store_id || req.headers['x-active-store-id']) || 1;
+    const saved = saveStoreEmailConfig(sid, req.body || {});
+    res.json({
+      success: true,
+      message: `Email settings saved for ${saved.storeName}`,
+      data: {
+        storeId: saved.storeId,
+        storeName: saved.storeName,
+        shopDomain: saved.shopDomain,
+        enabled: saved.enabled,
+        provider: saved.provider,
+        hasApiKey: saved.hasApiKey,
+        maskedApiKey: saved.maskedApiKey,
+        fromName: saved.fromName,
+        fromEmail: saved.fromEmail,
+        replyTo: saved.replyTo,
+        websiteUrl: saved.websiteUrl,
+        updatedAt: saved.updatedAt,
+        status: getEmailProviderStatus(sid),
       }
     });
   } catch (err) {
@@ -811,25 +888,27 @@ router.get('/campaigns/orders', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: POST /api/reviews/campaigns/send-test
-// Send a sample review request email to verify live delivery & layout
+// Send a sample review request email using active store's isolated credentials
 // ─────────────────────────────────────────────────────────────────
 router.post('/campaigns/send-test', async (req, res) => {
   try {
     const email = (req.body?.email || '').trim();
+    const sid = parseInt(req.body?.store_id || req.query.store_id || req.headers['x-active-store-id']) || 1;
     if (!email || !email.includes('@')) {
       return res.status(400).json({ success: false, error: 'Please enter a valid recipient email address.' });
     }
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');
     const result = await sendReviewRequestEmail({
+      storeId: sid,
       orderId: 'TEST-PREVIEW',
       orderRef: '#TR35089',
       customerName: 'Salar Khan',
       customerEmail: email,
       productHandle: 'sample-product',
-      productTitle: 'TRACE Heavyweight Oversized Hoodie',
+      productTitle: 'Heavyweight Oversized Hoodie',
     });
     if (result && result.ok) {
-      return res.json({ success: true, message: `Test email sent to ${email} via ${result.provider}` });
+      return res.json({ success: true, message: `Test email sent to ${email} from ${result.fromEmail} via ${result.provider}` });
     }
     return res.status(500).json({ success: false, error: (result && result.error) || 'Failed to send test email.' });
   } catch (err) {
@@ -839,7 +918,7 @@ router.post('/campaigns/send-test', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: POST /api/reviews/campaigns/send-single
-// Manually send review request email for a single order
+// Manually send review request email for a single order (strictly using order's store credentials)
 // ─────────────────────────────────────────────────────────────────
 router.post('/campaigns/send-single', async (req, res) => {
   try {
@@ -877,6 +956,7 @@ router.post('/campaigns/send-single', async (req, res) => {
 
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');
     const result = await sendReviewRequestEmail({
+      storeId: order.store_id || 1,
       orderId: order.id,
       orderRef: order.ref_number || `#${order.id}`,
       customerName: order.customer_name,
@@ -887,11 +967,11 @@ router.post('/campaigns/send-single', async (req, res) => {
 
     if (result && result.ok) {
       db.prepare("UPDATE orders SET review_email_sent = 1, email = ? WHERE id = ?").run(customerEmail, order.id);
-      return res.json({ success: true, message: `Review request email sent to ${customerEmail} via ${result.provider}` });
+      return res.json({ success: true, message: `Review email sent to ${customerEmail} from ${result.fromEmail}` });
     } else {
       return res.status(500).json({
         success: false,
-        error: (result && result.error) || 'Failed to send email. Verify BREVO_API_KEY, RESEND_API_KEY, or Gmail SMTP settings.'
+        error: (result && result.error) || 'Failed to send email. Check Email Setup for this store.'
       });
     }
   } catch (err) {
@@ -901,13 +981,14 @@ router.post('/campaigns/send-single', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: POST /api/reviews/campaigns/trigger-scan
-// Trigger review email scan for last X days
+// Trigger review email scan strictly for the active store
 // ─────────────────────────────────────────────────────────────────
 router.post('/campaigns/trigger-scan', async (req, res) => {
   try {
     const days = parseInt(req.body.days) || 7;
+    const sid = parseInt(req.body?.store_id || req.query.store_id || req.headers['x-active-store-id']) || 1;
     const { sendReviewEmails } = require('../scheduler');
-    const result = await sendReviewEmails(days);
+    const result = await sendReviewEmails(days, sid);
     if (!result.success) {
       return res.status(500).json({ success: false, error: result.error || 'Email scan failed', data: result });
     }
@@ -919,15 +1000,17 @@ router.post('/campaigns/trigger-scan', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: GET /api/reviews/templates/review_request
-// Get Review Email Template
+// Get per-store Review Email Template
 // ─────────────────────────────────────────────────────────────────
 router.get('/templates/review_request', (req, res) => {
   try {
+    const sid = parseInt(req.query.store_id || req.headers['x-active-store-id']) || 1;
     const { getTemplateFromDb, DEFAULT_SUBJECT, DEFAULT_HTML } = require('../services/reviewEmailService');
-    const tpl = getTemplateFromDb();
+    const tpl = getTemplateFromDb(sid);
     res.json({
       success: true,
       data: {
+        storeId: sid,
         templateKey: 'review_request',
         subject: tpl.subject || DEFAULT_SUBJECT,
         bodyHtml: tpl.body_html || DEFAULT_HTML,
@@ -941,36 +1024,17 @@ router.get('/templates/review_request', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: PUT /api/reviews/templates/review_request
-// Update Review Email Template
+// Update per-store Review Email Template
 // ─────────────────────────────────────────────────────────────────
 router.put('/templates/review_request', (req, res) => {
   try {
+    const sid = parseInt(req.body?.store_id || req.query.store_id || req.headers['x-active-store-id']) || 1;
     const { subject, bodyHtml } = req.body;
     if (!subject || !bodyHtml) {
       return res.status(400).json({ success: false, error: 'Subject and body HTML are required' });
     }
-
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS email_templates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        template_key TEXT UNIQUE,
-        name TEXT,
-        subject TEXT,
-        body_html TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    db.prepare(`
-      INSERT INTO email_templates (template_key, name, subject, body_html, updated_at)
-      VALUES ('review_request', 'Review Request Email', ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(template_key) DO UPDATE SET
-        subject = excluded.subject,
-        body_html = excluded.body_html,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(subject, bodyHtml);
-
-    res.json({ success: true, message: 'Email template updated successfully' });
+    saveStoreTemplate(sid, subject, bodyHtml);
+    res.json({ success: true, message: 'Email template updated for this store' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -978,11 +1042,12 @@ router.put('/templates/review_request', (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // PROTECTED: POST /api/reviews/templates/review_request/reset
-// Reset Review Email Template to Default
+// Reset per-store Review Email Template to Default
 // ─────────────────────────────────────────────────────────────────
 router.post('/templates/review_request/reset', (req, res) => {
   try {
-    db.prepare("DELETE FROM email_templates WHERE template_key = 'review_request'").run();
+    const sid = parseInt(req.body?.store_id || req.query.store_id || req.headers['x-active-store-id']) || 1;
+    resetStoreTemplate(sid);
     const { DEFAULT_SUBJECT, DEFAULT_HTML } = require('../services/reviewEmailService');
     res.json({
       success: true,

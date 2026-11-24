@@ -1275,6 +1275,48 @@ module.exports = [
     } catch (e) {
       console.error('Migration #49 failed:', e.message);
     }
+  },
+
+  // 50. Per-store isolated email settings table (Plug & Play Brevo/Resend per store, zero cross-store leakage)
+  (db) => {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS store_email_settings (
+          store_id INTEGER PRIMARY KEY,
+          enabled INTEGER DEFAULT 0,
+          provider TEXT DEFAULT 'brevo',
+          api_key TEXT DEFAULT '',
+          from_name TEXT DEFAULT '',
+          from_email TEXT DEFAULT '',
+          reply_to TEXT DEFAULT '',
+          website_url TEXT DEFAULT '',
+          subject TEXT DEFAULT '',
+          body_html TEXT DEFAULT '',
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Auto-seed Primary Store #1 (Trace) from existing Railway env vars if not yet stored in DB
+      const existing = db.prepare('SELECT store_id FROM store_email_settings WHERE store_id = 1').get();
+      if (!existing && (process.env.BREVO_API_KEY || process.env.RESEND_API_KEY)) {
+        const provider = process.env.RESEND_API_KEY ? 'resend' : 'brevo';
+        const apiKey = (process.env.RESEND_API_KEY || process.env.BREVO_API_KEY || '').trim();
+        const fromEmail = (process.env.EMAIL_FROM || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_USER || '').trim();
+        const fromName = (process.env.EMAIL_FROM_NAME || 'TRACE Pakistan').trim();
+        const replyTo = (process.env.EMAIL_REPLY_TO || 'trace721.t@gmail.com').trim();
+        if (apiKey && fromEmail) {
+          db.prepare(`
+            INSERT OR IGNORE INTO store_email_settings
+              (store_id, enabled, provider, api_key, from_name, from_email, reply_to, website_url, updated_at)
+            VALUES (1, 1, ?, ?, ?, ?, ?, 'https://tracepk.com', CURRENT_TIMESTAMP)
+          `).run(provider, apiKey, fromName, fromEmail, replyTo);
+          console.log(`✅ [Migration #50] Auto-seeded Store #1 email settings (${provider}: ${fromEmail}).`);
+        }
+      }
+      console.log('✅ [Migration #50] store_email_settings table verified.');
+    } catch (e) {
+      console.error('Migration #50 failed:', e.message);
+    }
   }
 ];
 
