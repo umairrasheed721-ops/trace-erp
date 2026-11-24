@@ -8,7 +8,8 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
 4. **Minimal Diffs**: Make targeted edits (using replace_file_content for contiguous changes) instead of rewriting large sections of files.
 5. **No Code Re-Summarization**: Do not re-summarize completed code changes or walkthrough contents in chat responses; simply point the user to the updated files or walkthrough.md.
 6. **Multi-Store Shopify Safe Sync & Settings Preservation (STRICT)**:
-   - Theme ki online customizer settings aur configurations kisi bhi connected store (`tracepk.com`, `1i7tnb-bb.myshopify.com`, ya future connected store) par kabhi bhi reset, overwrite, ya cross-contaminate nahi honi chahiye.
+   - Theme ki online customizer settings aur configurations kisi bhi connected store (`tracepk.com`, `1vhrbj-01.myshopify.com`, `72d3a1-e7.myshopify.com`, ya future connected store) par kabhi bhi reset, overwrite, ya cross-contaminate nahi honi chahiye.
+   - **Frozen Store Exclusion**: Purana ACE Store (`1i7tnb-bb.myshopify.com`) permanently **FROZEN** hai — is par KABHI bhi theme update, metafield sync, ya push execute nahi karni aur na hi confirmation list mein include karna hai.
    - Before deploying updates to ANY store, the agent MUST run store-aware settings pull (`scratch/pull_theme_settings.js` with target store ID/domain) to fetch and preserve that specific store's latest online `settings_data.json` and section configs.
    - After theme updates, the agent MUST run `node package_clean_theme.js` to refresh the master ZIP file at `/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip`.
 7. **Language Preference & Formatting**: Always reply to the user in Roman Urdu (Urdu written in Latin/English script). Explanations ko hamesha bullet points me format karna hai aur comparisons ke liye Roman Urdu markdown tables ka use karna hai.
@@ -169,13 +170,13 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - Whenever a new page or route is added, removed, or renamed, the agent MUST update `navigationItems.js` so that Sidebar navigation and User Management permissions matrix update simultaneously in 100% parity.
 
 30. **Shopify Multi-Store, Deletion & ZIP Scope Confirmation Guard (STRICT MANDATORY)**:
-    - The agent MUST NEVER perform ANY action (theme update, feature addition, deletion, metafield removal, CSS/Liquid code edit) without FIRST asking the user for explicit scope confirmation across all connected stores and physical ZIP files.
-    - **Automatic Connected Store Lookup**: All theme deployment scripts (`push_theme_files.js`, `register_bundle_metafields.js`, `pull_theme_settings.js`) MUST dynamically fetch or include ALL stores connected in TRACE ERP (`stores` table: Trace Store, Ace Store, Rabbi Trends `72d3a1-e7.myshopify.com`, and any future connected store).
-    - **No Token Confusion**: When a store is connected in TRACE ERP Dashboard, its OAuth token is automatically saved in `stores` DB table. The agent MUST read tokens directly from TRACE ERP database or environment without asking the user for manual `shpat_` tokens.
+    - The agent MUST NEVER perform ANY action (theme update, feature addition, deletion, metafield removal, CSS/Liquid code edit) without FIRST asking the user for explicit scope confirmation across all active connected stores and physical ZIP files.
+    - **Automatic Connected Store Lookup**: All theme deployment scripts (`push_theme_to_all_stores.js`, `pull_theme_settings.js`) MUST dynamically fetch ALL active stores connected in TRACE ERP (`stores` table: Trace Store `tracepk.com`, ACE 2 / ACE STORE `1vhrbj-01.myshopify.com`, Rabbi Trends `72d3a1-e7.myshopify.com`, and any future connected store), **STRICTLY EXCLUDING frozen `1i7tnb-bb.myshopify.com`**.
+    - **No Token Confusion**: When a store is connected in TRACE ERP Dashboard, its OAuth token is automatically saved in `stores` DB table. The agent MUST read tokens directly from TRACE ERP database or production API (`/api/public/get-all-stores`) without asking the user for manual `shpat_` tokens.
     - Before touching ANY online store, DB, or theme file, the agent MUST ask the user in Roman Urdu:
-      > *"Kya ye action/update/deletion tamam connected stores aur ZIP par execute karni hai?*  
+      > *"Kya ye action/update/deletion tamam active connected stores aur ZIP par execute karni hai?*  
       > 1. *Trace Store (`tracepk.com`)*  
-      > 2. *Ace Store (`1i7tnb-bb.myshopify.com`)*  
+      > 2. *ACE 2 / ACE STORE (`1vhrbj-01.myshopify.com`)*  
       > 3. *Rabbi Trends (`72d3a1-e7.myshopify.com`)*  
       > 4. *Physical ZIP File (`/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip`)"*
     - The agent MUST wait for the user's explicit approval ("all", "store 1 only", etc.) BEFORE executing any API call, script, file modification, or deletion.
@@ -190,13 +191,13 @@ To ensure high-performance, cost-effective, and token-efficient pair programming
     - If the feature is missing from the live bundle, the agent MUST immediately inspect git status, stage untracked `backend/public/` build artifacts, push to main, and verify live HTTP response again before replying to the user.
 
 33. **Dynamic All-Stores Theme Push Protocol (STRICT MANDATORY)**:
-    - The agent has access to ALL stores connected in TRACE ERP. For ANY theme update, Liquid feature, metafield creation, or fix:
-      1. **Auto-Read from DB**: Read all connected stores from TRACE ERP `stores` table (`SELECT id, store_name, shop_domain, access_token FROM stores ORDER BY id`). Rabbi Trends credentials are fetched from `https://trace-erp-production.up.railway.app/api/public/get-rabbi-token` since they are not stored in DB.
-      2. **Confirmation First**: Before pushing, ALWAYS ask user in Roman Urdu to confirm which stores to target (e.g., "Kya yeh update tamam connected stores par push karni hai? 1. Trace Store, 2. ACE Store, 3. Rabbi Trends, 4. Physical ZIP").
+    - The agent has access to ALL active stores connected in TRACE ERP. For ANY theme update, Liquid feature, metafield creation, or fix:
+      1. **Auto-Read from Production API**: Fetch active stores dynamically from `https://trace-erp-production.up.railway.app/api/public/get-all-stores?key=trace-erp-deploy-2024` (which automatically excludes frozen store `1i7tnb-bb.myshopify.com`).
+      2. **Confirmation First**: Before pushing, ALWAYS ask user in Roman Urdu to confirm which active stores to target (e.g., "Kya yeh update tamam active stores par push karni hai? 1. Trace Store (`tracepk.com`), 2. ACE 2 / ACE STORE (`1vhrbj-01.myshopify.com`), 3. Rabbi Trends (`72d3a1-e7.myshopify.com`), 4. Physical ZIP"). NEVER include frozen `1i7tnb-bb.myshopify.com`.
       3. **Use Central Push Script**: Always use `scratch/push_theme_to_all_stores.js` for theme file deployments. Supports any file list via CLI args: `node scratch/push_theme_to_all_stores.js snippets/trace-cro-funnel.liquid assets/cart-drawer.js`. No-args = default files.
       4. **ZIP Update**: After every push, update master ZIP at `/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip` using `zip -r` command (NOT `package_clean_theme.js` which hangs on git operations).
       5. **No Hardcoded Tokens**: NEVER hardcode `shpat_` tokens in new scripts. Always read from DB or production API.
-      6. **New Store Auto-Discovery**: If a new store is connected to TRACE ERP (added to `stores` table), it will automatically be included in all future pushes without any script changes.
+      6. **New Store Auto-Discovery**: If a new store is connected to TRACE ERP (added to `stores` table), it will automatically be included in all future pushes without any script changes (unless listed in `FROZEN_THEME_STORE_DOMAINS`).
 
 34. **New-Store Theme Upload Safety — No Store-Hosted File References (STRICT MANDATORY)**:
     - **Root Cause (ACE 2 incident)**: `templates/index.json` contained `"video": "shopify://files/videos/....mp4"` (Trace store's Files library). On a new store Shopify rejects it (`Setting 'video' value does not point to an applicable shopify-hosted video resource`), `index.json` silently fails to import, and the **homepage returns 404** while other pages (collections, pages) still work.

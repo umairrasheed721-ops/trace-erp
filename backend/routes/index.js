@@ -151,6 +151,10 @@ router.get('/api/public/get-ace2-token', (req, res) => {
   }
 });
 
+// Permanently frozen Shopify stores — excluded from all theme & metafield pushes (ERP order history preserved)
+const FROZEN_THEME_STORE_DOMAINS = ['1i7tnb-bb.myshopify.com'];
+const isActiveThemeStore = (s) => s && !FROZEN_THEME_STORE_DOMAINS.includes(String(s.shop_domain || '').toLowerCase());
+
 // ⚡ GET ALL CONNECTED STORES — For local theme push scripts ⚡
 // Usage: GET /api/public/get-all-stores?key=trace-erp-deploy-2024
 router.get('/api/public/get-all-stores', (req, res) => {
@@ -162,7 +166,7 @@ router.get('/api/public/get-all-stores', (req, res) => {
   try {
     const stores = db.prepare(
       "SELECT id, store_name, shop_domain, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING' ORDER BY id"
-    ).all();
+    ).all().filter(isActiveThemeStore);
     res.json({ stores, count: stores.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -210,7 +214,7 @@ router.get('/api/public/sync-metafields-all', async (req, res) => {
   `;
 
   try {
-    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all();
+    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all().filter(isActiveThemeStore);
     const results = [];
 
     for (const store of stores) {
@@ -282,7 +286,7 @@ router.get('/api/public/deploy-theme-all', async (req, res) => {
   const themeDir = path.join(__dirname, '../../shopify_theme');
 
   try {
-    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all();
+    const stores = db.prepare("SELECT id, shop_domain, store_name, access_token FROM stores WHERE access_token IS NOT NULL AND access_token != 'PENDING'").all().filter(isActiveThemeStore);
     const results = [];
 
     for (const store of stores) {
@@ -382,6 +386,9 @@ router.post('/api/public/upload-theme-asset', async (req, res) => {
 
     if (!store || !store.access_token) {
       return res.status(404).json({ error: 'Store not found or token missing' });
+    }
+    if (!isActiveThemeStore(store)) {
+      return res.status(410).json({ error: `Store ${store.shop_domain} is permanently frozen and excluded from theme updates` });
     }
 
     let targetThemeId = theme_id;
