@@ -97,24 +97,28 @@ function generateReviewToken(orderId, customerEmail, productHandle) {
  */
 function parseReviewToken(token) {
   try {
+    if (!token || typeof token !== 'string') return null;
     const decoded = Buffer.from(token, 'base64url').toString('utf8');
     const parts = decoded.split(':');
     if (parts.length < 5) return null;
 
+    // Payload order in generateReviewToken: orderId : customerEmail : productHandle : timestamp : signature
     const signature = parts.pop();
-    const productHandle = parts.pop();
     const timestamp = parts.pop();
+    const productHandle = parts.pop();
     const customerEmail = parts.pop();
-    const orderId = parts.join(':'); // handles emails with colons
+    const orderId = parts.join(':');
 
-    // Verify signature
+    // Verify HMAC signature
     const payload = `${orderId}:${customerEmail}:${productHandle}:${timestamp}`;
     const secret = process.env.JWT_SECRET || 'trace-erp-secret-key-2024';
     const expectedSig = crypto.createHmac('sha256', secret).update(payload).digest('hex').slice(0, 16);
     if (signature !== expectedSig) return null;
 
     // Check expiry — 30 days
-    const age = Date.now() - parseInt(timestamp, 10);
+    const ts = parseInt(timestamp, 10);
+    if (isNaN(ts)) return null;
+    const age = Date.now() - ts;
     if (age > 30 * 24 * 60 * 60 * 1000) return null;
 
     return { orderId, customerEmail, productHandle };

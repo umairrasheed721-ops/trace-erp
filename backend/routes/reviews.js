@@ -432,12 +432,19 @@ router.post('/submit-review', (req, res) => {
       return res.status(409).json({ success: false, error: 'You have already reviewed this product' });
     }
 
+    // Resolve store_id from the order if numeric so review maps to the right store
+    let storeId = null;
+    if (parsed.orderId && /^\d+$/.test(String(parsed.orderId))) {
+      const ord = db.prepare('SELECT store_id FROM orders WHERE id = ?').get(Number(parsed.orderId));
+      if (ord && ord.store_id) storeId = ord.store_id;
+    }
+
     // Insert as pending (manual moderation)
     db.prepare(`
-      INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date)
-      VALUES (?, ?, ?, ?, ?, ?, 'customer', 'pending', datetime('now'))
+      INSERT INTO product_reviews (product_handle, reviewer_name, reviewer_email, rating, title, body, source, status, review_date, store_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'customer', 'pending', datetime('now'), ?)
     `).run(parsed.productHandle, name.trim().substring(0, 80), parsed.customerEmail, ratingNum,
-           title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000));
+           title?.trim().substring(0, 120) || null, body.trim().substring(0, 2000), storeId);
 
     console.log(`⭐ [Reviews] New pending review from ${parsed.customerEmail} for ${parsed.productHandle} (${ratingNum}★)`);
 
