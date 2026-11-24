@@ -164,6 +164,7 @@ async function sendReviewEmails(daysWindow = 7) {
 
         const result = await sendReviewRequestEmail({
           orderId: order.id,
+          orderRef: order.ref_number || `#${order.id}`,
           customerName: order.customer_name,
           customerEmail,
           productHandle,

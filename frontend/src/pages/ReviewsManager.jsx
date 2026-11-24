@@ -422,6 +422,7 @@ export default function ReviewsManager() {
   const previewHtml = (templateHtml || '')
     .replace(/\{\{customer_name\}\}/g, 'Salar Khan')
     .replace(/\{\{first_name\}\}/g, 'Salar')
+    .replace(/\{\{order_ref\}\}/g, '#TR35089')
     .replace(/\{\{product_title\}\}/g, 'TRACE Heavyweight Oversized Hoodie')
     .replace(/\{\{review_url\}\}/g, '#preview-mode')
 
@@ -1204,7 +1205,7 @@ export default function ReviewsManager() {
                     Dynamic Variables (Click to append)
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {['{{customer_name}}', '{{first_name}}', '{{product_title}}', '{{review_url}}'].map(tag => (
+                    {['{{first_name}}', '{{customer_name}}', '{{order_ref}}', '{{product_title}}', '{{review_url}}'].map(tag => (
                       <button
                         key={tag}
                         onClick={() => {
@@ -1303,24 +1304,27 @@ export default function ReviewsManager() {
                 <div style={{
                   maxWidth: previewDevice === 'mobile' ? 375 : '100%',
                   margin: '0 auto', border: '1px solid var(--border)', borderRadius: 12,
-                  overflow: 'hidden', background: '#0a0a0a', transition: 'max-width 0.25s ease'
+                  overflow: 'hidden', background: '#ffffff', transition: 'max-width 0.25s ease'
                 }}>
-                  <div style={{ background: '#18181b', padding: '12px 16px', borderBottom: '1px solid #27272a', fontSize: 12, color: '#a1a1aa' }}>
+                  <div style={{ background: '#f8fafc', padding: '12px 16px', borderBottom: '1px solid #e2e8f0', fontSize: 12, color: '#64748b' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: '#ef4444' }} />
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: '#f59e0b' }} />
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: '#22c55e' }} />
                     </div>
-                    <div><strong style={{ color: '#e4e4e7' }}>From:</strong> TRACE Pakistan &lt;{activeSenderEmail}&gt;</div>
+                    <div><strong style={{ color: '#0f172a' }}>From:</strong> TRACE Pakistan &lt;{activeSenderEmail}&gt;</div>
                     <div style={{ marginTop: 3 }}>
-                      <strong style={{ color: '#e4e4e7' }}>Subject:</strong>{' '}
-                      {(templateSubject || '').replace(/\{\{first_name\}\}/g, 'Salar').replace(/\{\{customer_name\}\}/g, 'Salar Khan')}
+                      <strong style={{ color: '#0f172a' }}>Subject:</strong>{' '}
+                      {(templateSubject || '')
+                        .replace(/\{\{first_name\}\}/g, 'Salar')
+                        .replace(/\{\{customer_name\}\}/g, 'Salar Khan')
+                        .replace(/\{\{order_ref\}\}/g, '#TR35089')}
                     </div>
                   </div>
                   <iframe
                     title="Live Email Preview"
                     srcDoc={previewHtml}
-                    style={{ width: '100%', height: 500, border: 'none', background: '#0a0a0a', display: 'block' }}
+                    style={{ width: '100%', height: 500, border: 'none', background: '#ffffff', display: 'block' }}
                   />
                 </div>
               </div>

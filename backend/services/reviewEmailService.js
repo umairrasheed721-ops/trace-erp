@@ -127,65 +127,48 @@ function parseReviewToken(token) {
   }
 }
 
-const DEFAULT_SUBJECT = 'How was your TRACE order, {{first_name}}? ⭐';
+const DEFAULT_SUBJECT = 'Your TRACE order {{order_ref}} — how was it, {{first_name}}?';
 const DEFAULT_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>How was your TRACE order?</title>
+  <title>Your TRACE order {{order_ref}}</title>
 </head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0a;padding:40px 0;">
-    <tr>
-      <td align="center">
-        <table width="560" cellpadding="0" cellspacing="0" style="background:#141414;border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
-          <!-- Header -->
-          <tr>
-            <td style="background:linear-gradient(135deg,#1a1a1a,#222);padding:36px 40px;text-align:center;border-bottom:1px solid #2a2a2a;">
-              <div style="font-size:28px;font-weight:900;letter-spacing:6px;color:#fff;text-transform:uppercase;">TRACE</div>
-              <div style="font-size:11px;letter-spacing:3px;color:#888;margin-top:4px;text-transform:uppercase;">Premium Streetwear</div>
-            </td>
-          </tr>
-          <!-- Body -->
-          <tr>
-            <td style="padding:40px;">
-              <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#fff;">Hi {{customer_name}}, 👋</p>
-              <p style="margin:0 0 24px;font-size:15px;color:#aaa;line-height:1.6;">
-                Your order has been delivered! We hope you're loving your <strong style="color:#fff;">{{product_title}}</strong>.
-              </p>
+<body style="margin:0;padding:0;background:#ffffff;color:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:540px;margin:0 auto;padding:28px 20px;">
+    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#111827;">
+      Hi {{first_name}},
+    </p>
 
-              <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;padding:24px;text-align:center;margin:0 0 28px;">
-                <p style="margin:0 0 8px;font-size:14px;color:#888;text-transform:uppercase;letter-spacing:2px;">Share Your Experience</p>
-                <div style="font-size:32px;letter-spacing:4px;margin:12px 0;">⭐⭐⭐⭐⭐</div>
-                <p style="margin:0;font-size:13px;color:#666;">It only takes 30 seconds!</p>
-              </div>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">
+      Your TRACE order <strong>{{order_ref}}</strong> (<strong>{{product_title}}</strong>) was recently delivered. We hope everything fits and looks great.
+    </p>
 
-              <div style="text-align:center;margin:0 0 28px;">
-                <a href="{{review_url}}"
-                   style="display:inline-block;background:#fff;color:#000;font-weight:700;font-size:14px;letter-spacing:2px;text-transform:uppercase;padding:16px 40px;border-radius:8px;text-decoration:none;">
-                  Write a Review →
-                </a>
-              </div>
+    <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#374151;">
+      Could you take 20 seconds to rate your item? Your honest feedback helps us improve and helps other shoppers pick the right size.
+    </p>
 
-              <p style="margin:0;font-size:13px;color:#555;text-align:center;line-height:1.6;">
-                Your review helps other customers and helps us improve.<br>
-                Thank you for choosing TRACE.
-              </p>
-            </td>
-          </tr>
-          <!-- Footer -->
-          <tr>
-            <td style="padding:20px 40px;border-top:1px solid #1e1e1e;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#444;">
-                © 2025 TRACE Pakistan · <a href="https://tracepk.com" style="color:#666;text-decoration:none;">tracepk.com</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
+    <div style="margin:22px 0;padding:18px 20px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;text-align:center;">
+      <div style="font-size:13px;color:#6b7280;margin-bottom:8px;">Tap a star to rate {{product_title}}</div>
+      <a href="{{review_url}}" style="text-decoration:none;font-size:30px;letter-spacing:6px;color:#f59e0b;display:inline-block;margin-bottom:14px;">&#9733;&#9733;&#9733;&#9733;&#9733;</a>
+      <div>
+        <a href="{{review_url}}" style="display:inline-block;background:#111827;color:#ffffff;font-size:14px;font-weight:600;padding:11px 24px;border-radius:7px;text-decoration:none;">
+          Write a quick review
+        </a>
+      </div>
+    </div>
+
+    <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#4b5563;">
+      If there is any issue with sizing or quality, just reply directly to this email and our team will sort it out for you.
+    </p>
+
+    <p style="margin:0;font-size:14px;line-height:1.6;color:#111827;">
+      Thanks,<br>
+      <strong>TRACE Pakistan</strong><br>
+      <span style="font-size:12px;color:#6b7280;">tracepk.com</span>
+    </p>
+  </div>
 </body>
 </html>`;
 
@@ -217,7 +200,7 @@ function getTemplateFromDb() {
  * Auto-selects Resend HTTP API -> Brevo HTTP API -> Gmail SMTP fallback.
  * Returns { ok: boolean, provider: string, error?: string }.
  */
-async function sendReviewRequestEmail({ orderId, customerName, customerEmail, productHandle, productTitle }) {
+async function sendReviewRequestEmail({ orderId, orderRef, customerName, customerEmail, productHandle, productTitle }) {
   const status = getEmailProviderStatus();
   if (!status.configured) {
     console.warn(`⚠️ [Reviews] ${status.error}`);
@@ -231,17 +214,35 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
   const firstName = customerName?.split(' ')[0] || 'there';
   const fullName = customerName || 'Valued Customer';
   const itemTitle = productTitle || 'your recent purchase';
+  const refLabel = orderRef ? (String(orderRef).startsWith('#') ? String(orderRef) : `#${orderRef}`) : `#${orderId}`;
+  const replyToEmail = (process.env.EMAIL_REPLY_TO || 'trace721.t@gmail.com').trim();
 
   const subject = (template.subject || DEFAULT_SUBJECT)
     .replace(/\{\{customer_name\}\}/g, fullName)
     .replace(/\{\{first_name\}\}/g, firstName)
-    .replace(/\{\{product_title\}\}/g, itemTitle);
+    .replace(/\{\{product_title\}\}/g, itemTitle)
+    .replace(/\{\{order_ref\}\}/g, refLabel);
 
   const html = (template.body_html || DEFAULT_HTML)
     .replace(/\{\{customer_name\}\}/g, fullName)
     .replace(/\{\{first_name\}\}/g, firstName)
     .replace(/\{\{product_title\}\}/g, itemTitle)
+    .replace(/\{\{order_ref\}\}/g, refLabel)
     .replace(/\{\{review_url\}\}/g, reviewUrl);
+
+  const text = [
+    `Hi ${firstName},`,
+    '',
+    `Your TRACE order ${refLabel} (${itemTitle}) was recently delivered. We hope everything fits and looks great.`,
+    '',
+    'Could you take 20 seconds to leave a quick review? Your honest feedback helps us improve:',
+    reviewUrl,
+    '',
+    'If there is any issue with sizing or quality, just reply directly to this email and our team will help you out.',
+    '',
+    'Thanks,',
+    'TRACE Pakistan (tracepk.com)',
+  ].join('\n');
 
   try {
     if (status.provider === 'resend') {
@@ -254,8 +255,10 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
         body: JSON.stringify({
           from: `${EMAIL_FROM_NAME} <${status.fromEmail}>`,
           to: [customerEmail],
+          reply_to: replyToEmail,
           subject,
           html,
+          text,
         }),
         signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
       });
@@ -278,8 +281,10 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
         body: JSON.stringify({
           sender: { name: EMAIL_FROM_NAME, email: status.fromEmail },
           to: [{ email: customerEmail, name: fullName }],
+          replyTo: { email: replyToEmail, name: EMAIL_FROM_NAME },
           subject,
           htmlContent: html,
+          textContent: text,
         }),
         signal: AbortSignal.timeout(EMAIL_API_TIMEOUT_MS),
       });
@@ -295,9 +300,11 @@ async function sendReviewRequestEmail({ orderId, customerName, customerEmail, pr
     const transporter = getTransporter();
     await transporter.sendMail({
       from: `"${EMAIL_FROM_NAME}" <${status.fromEmail}>`,
+      replyTo: replyToEmail,
       to: customerEmail,
       subject,
       html,
+      text,
     });
     console.log(`📧 [Reviews/SMTP] Review email sent to ${customerEmail} for order #${orderId}`);
     return { ok: true, provider: 'gmail_smtp' };

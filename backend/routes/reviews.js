@@ -708,6 +708,7 @@ router.post('/campaigns/send-test', async (req, res) => {
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');
     const result = await sendReviewRequestEmail({
       orderId: 'TEST-PREVIEW',
+      orderRef: '#TR35089',
       customerName: 'Salar Khan',
       customerEmail: email,
       productHandle: 'sample-product',
@@ -757,6 +758,7 @@ router.post('/campaigns/send-single', async (req, res) => {
     const { sendReviewRequestEmail } = require('../services/reviewEmailService');
     const result = await sendReviewRequestEmail({
       orderId: order.id,
+      orderRef: order.ref_number || `#${order.id}`,
       customerName: order.customer_name,
       customerEmail,
       productHandle,
