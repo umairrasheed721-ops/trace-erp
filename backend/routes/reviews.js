@@ -594,8 +594,9 @@ router.get('/campaigns/stats', (req, res) => {
       SELECT 
         COUNT(*) as total_delivered,
         SUM(CASE WHEN review_email_sent = 1 THEN 1 ELSE 0 END) as sent,
-        SUM(CASE WHEN review_email_sent IS NULL OR review_email_sent = 0 THEN 1 ELSE 0 END) as pending,
-        SUM(CASE WHEN review_email_sent = -1 THEN 1 ELSE 0 END) as no_email
+        SUM(CASE WHEN (review_email_sent IS NULL OR review_email_sent = 0) AND email IS NOT NULL AND TRIM(email) != '' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN (review_email_sent IS NULL OR review_email_sent = 0) AND email IS NOT NULL AND TRIM(email) != '' AND datetime(status_date) <= datetime('now', '-24 hours') THEN 1 ELSE 0 END) as auto_ready,
+        SUM(CASE WHEN review_email_sent = -1 OR ((review_email_sent IS NULL OR review_email_sent = 0) AND (email IS NULL OR TRIM(email) = '')) THEN 1 ELSE 0 END) as no_email
       FROM orders
       WHERE delivery_status IN ('Delivered', 'delivered')
         AND status_date IS NOT NULL
@@ -611,6 +612,7 @@ router.get('/campaigns/stats', (req, res) => {
         totalDelivered: stats?.total_delivered || 0,
         sent: stats?.sent || 0,
         pending: stats?.pending || 0,
+        autoReady: stats?.auto_ready || 0,
         noEmail: stats?.no_email || 0,
         emailProvider: getEmailProviderStatus()
       }
@@ -631,12 +633,26 @@ router.get('/campaigns/orders', (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const offset = (page - 1) * limit;
     const targetStoreId = req.query.store_id || req.headers['x-active-store-id'];
+    const statusFilter = (req.query.status || 'all').toLowerCase();
+    const search = (req.query.search || '').trim();
 
-    let storeFilter = '';
+    let extraFilters = '';
     const params = [];
     if (targetStoreId) {
-      storeFilter = ' AND (store_id = ? OR store_id IS NULL)';
+      extraFilters += ' AND (store_id = ? OR store_id IS NULL)';
       params.push(parseInt(targetStoreId));
+    }
+    if (statusFilter === 'sent') {
+      extraFilters += ' AND review_email_sent = 1';
+    } else if (statusFilter === 'pending') {
+      extraFilters += " AND (review_email_sent IS NULL OR review_email_sent = 0) AND email IS NOT NULL AND TRIM(email) != ''";
+    } else if (statusFilter === 'no_email') {
+      extraFilters += " AND (review_email_sent = -1 OR ((review_email_sent IS NULL OR review_email_sent = 0) AND (email IS NULL OR TRIM(email) = '')))";
+    }
+    if (search) {
+      const like = `%${search}%`;
+      extraFilters += ' AND (ref_number LIKE ? OR customer_name LIKE ? OR email LIKE ? OR product_titles LIKE ?)';
+      params.push(like, like, like, like);
     }
 
     const orders = db.prepare(`
@@ -645,7 +661,7 @@ router.get('/campaigns/orders', (req, res) => {
       FROM orders
       WHERE delivery_status IN ('Delivered', 'delivered')
         AND status_date IS NOT NULL
-        AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
+        AND datetime(status_date) >= datetime('now', '-${days} days')${extraFilters}
       ORDER BY status_date DESC
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset);
@@ -655,7 +671,7 @@ router.get('/campaigns/orders', (req, res) => {
       FROM orders
       WHERE delivery_status IN ('Delivered', 'delivered')
         AND status_date IS NOT NULL
-        AND datetime(status_date) >= datetime('now', '-${days} days')${storeFilter}
+        AND datetime(status_date) >= datetime('now', '-${days} days')${extraFilters}
     `).get(...params);
 
     res.json({
@@ -667,6 +683,33 @@ router.get('/campaigns/orders', (req, res) => {
         limit
       }
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PROTECTED: POST /api/reviews/campaigns/send-test
+// Send a sample review request email to verify live delivery & layout
+// ─────────────────────────────────────────────────────────────────
+router.post('/campaigns/send-test', async (req, res) => {
+  try {
+    const email = (req.body?.email || '').trim();
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid recipient email address.' });
+    }
+    const { sendReviewRequestEmail } = require('../services/reviewEmailService');
+    const result = await sendReviewRequestEmail({
+      orderId: 'TEST-PREVIEW',
+      customerName: 'Salar Khan',
+      customerEmail: email,
+      productHandle: 'sample-product',
+      productTitle: 'TRACE Heavyweight Oversized Hoodie',
+    });
+    if (result && result.ok) {
+      return res.json({ success: true, message: `Test email sent to ${email} via ${result.provider}` });
+    }
+    return res.status(500).json({ success: false, error: (result && result.error) || 'Failed to send test email.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
