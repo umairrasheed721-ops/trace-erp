@@ -682,28 +682,23 @@ function healCostsForStore(storeId) {
           const pName = item.title ? String(item.title).trim() : '';
           const vName = item.variant_title ? String(item.variant_title).trim() : '';
 
-          // 1. Variant ID match (prioritized)
-          if (numericVariantId) {
+          // STRICT MATCHING: 1. SKU -> 2. Shopify Variant ID -> 3. Explicit Admin Alias (zero title guessing, zero cost estimation)
+          if (sku) {
+            const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+            if (skuMatches.length > 0) {
+              skuMatches.sort((a, b) => ((b.landed_cost > 0 ? 1 : 0) - (a.landed_cost > 0 ? 1 : 0)));
+              matchRow = skuMatches[0];
+            }
+          }
+
+          if (!matchRow && numericVariantId) {
             matchRow = catalog.find(c => 
               c.shopify_variant_id && 
               (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
             );
           }
 
-          // 2. SKU match
-          if (!matchRow && sku) {
-            const skuMatches = catalog.filter(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
-            if (skuMatches.length > 0) {
-              skuMatches.sort((a, b) => {
-                const aCost = a.landed_cost || a.shopify_cost || 0;
-                const bCost = b.landed_cost || b.shopify_cost || 0;
-                return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
-              });
-              matchRow = skuMatches[0];
-            }
-          }
-
-          // 2.5 Alias match (Ghost / Custom title mapped to Master SKU)
+          // Explicit Admin Alias (Ghost title strictly mapped to a Master SKU / Variant ID)
           if (!matchRow && pName) {
             const alias = aliases.find(a => 
               a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
@@ -727,37 +722,9 @@ function healCostsForStore(storeId) {
             }
           }
 
-          // 3. Name/Ghost match
-          if (!matchRow && pName) {
-            if (vName) {
-              matchRow = catalog.find(c => 
-                c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
-                c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()
-              );
-            }
-            if (!matchRow && vName) {
-              const fullSearchTitle1 = `${pName} - ${vName}`.toLowerCase();
-              const fullSearchTitle2 = `${pName} - ${vName.split('/').map(x => x.trim()).reverse().join(' / ')}`.toLowerCase();
-              matchRow = catalog.find(c => {
-                const cpt = c.parent_title ? c.parent_title.toLowerCase().trim() : '';
-                return cpt === fullSearchTitle1 || cpt === fullSearchTitle2;
-              });
-            }
-            if (!matchRow) {
-              const parentMatches = catalog.filter(c => c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim());
-              if (parentMatches.length > 0) {
-                parentMatches.sort((a, b) => {
-                  const aCost = a.landed_cost || a.shopify_cost || 0;
-                  const bCost = b.landed_cost || b.shopify_cost || 0;
-                  return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
-                });
-                matchRow = parentMatches[0];
-              }
-            }
-          }
-
-          if (matchRow && (matchRow.landed_cost > 0 || matchRow.shopify_cost > 0)) {
-            totalLanded += (matchRow.landed_cost || matchRow.shopify_cost || 0) * qty;
+          // STRICT VERIFIED COST ONLY: Never fall back to unverified shopify_cost or estimations
+          if (matchRow && (matchRow.landed_cost || 0) > 0) {
+            totalLanded += matchRow.landed_cost * qty;
             totalPackaging += (matchRow.packaging_cost || 0) * qty;
           } else {
             hasMissingCostItem = true;
@@ -776,14 +743,9 @@ function healCostsForStore(storeId) {
           const pName = parts[0].trim();
           const vName = parts.length > 1 ? parts[1].trim() : '';
           
-          let titleMatches = catalog.filter(c => c.parent_title && c.parent_title.toLowerCase().trim() === pName.toLowerCase().trim());
+          // Legacy product_titles-only order: ONLY allow explicit Admin Alias -> Master SKU/Variant ID (zero loose title guessing)
           let matchRow = null;
-          if (vName && titleMatches.length > 0) {
-            matchRow = titleMatches.find(c => c.variant_title && c.variant_title.toLowerCase().trim() === vName.toLowerCase().trim());
-          }
-
-          // Alias check for product_titles
-          if (!matchRow && pName) {
+          if (pName) {
             const alias = aliases.find(a => 
               a.alias_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
               (!a.alias_variant || a.alias_variant.toLowerCase().trim() === vName.toLowerCase().trim())
@@ -805,17 +767,9 @@ function healCostsForStore(storeId) {
               }
             }
           }
-          if (!matchRow && titleMatches.length > 0) {
-            titleMatches.sort((a, b) => {
-              const aCost = a.landed_cost || a.shopify_cost || 0;
-              const bCost = b.landed_cost || b.shopify_cost || 0;
-              return (bCost > 0 ? 1 : 0) - (aCost > 0 ? 1 : 0);
-            });
-            matchRow = titleMatches[0];
-          }
           
-          if (matchRow && (matchRow.landed_cost > 0 || matchRow.shopify_cost > 0)) {
-            totalLanded += (matchRow.landed_cost || matchRow.shopify_cost || 0) * qty;
+          if (matchRow && (matchRow.landed_cost || 0) > 0) {
+            totalLanded += matchRow.landed_cost * qty;
             totalPackaging += (matchRow.packaging_cost || 0) * qty;
           } else {
             hasMissingCostItem = true;

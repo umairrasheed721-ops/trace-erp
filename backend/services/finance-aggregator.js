@@ -35,17 +35,18 @@ class FinanceAggregator {
           const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
           const sku = item.sku ? String(item.sku).trim() : '';
 
-          if (numericVariantId) {
+          // Strict Tier 1 (SKU) -> Tier 2 (Variant ID) -> Tier 3 (Explicit Alias to SKU/Variant ID) — zero title guessing
+          if (sku) {
+            matchRow = catalog.find(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
+          }
+          if (!matchRow && numericVariantId) {
             matchRow = catalog.find(c => 
               c.shopify_variant_id && 
               (String(c.shopify_variant_id).includes(numericVariantId) || String(c.shopify_variant_id) === gidVariantId)
             );
           }
-          if (!matchRow && sku) {
-            matchRow = catalog.find(c => c.sku && String(c.sku).trim().toLowerCase() === sku.toLowerCase());
-          }
 
-          // Alias match
+          // Explicit Alias match
           if (!matchRow) {
             const alias = aliases.find(a => 
               a.alias_title.toLowerCase().trim() === parentName.toLowerCase().trim() &&
@@ -67,13 +68,6 @@ class FinanceAggregator {
                 matchRow = catalog.find(c => c.shopify_variant_id && String(c.shopify_variant_id).includes(String(alias.target_variant_id)));
               }
             }
-          }
-
-          if (!matchRow) {
-            matchRow = catalog.find(c => 
-              c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
-              (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
-            );
           }
 
           const hasLandedCost = matchRow && (matchRow.landed_cost || 0) > 0;
@@ -123,13 +117,7 @@ class FinanceAggregator {
             }
           }
 
-          if (!matchRow) {
-            matchRow = catalog.find(c => 
-              c.parent_title && c.parent_title.toLowerCase() === parentName.toLowerCase() && 
-              (variantName ? (c.variant_title && c.variant_title.toLowerCase() === variantName.toLowerCase()) : true)
-            );
-          }
-
+          // Strict mode: no title fallback when SKU / Variant ID / Explicit Alias is missing
           const hasLandedCost = matchRow && (matchRow.landed_cost || 0) > 0;
           if (hasLandedCost) continue;
 
@@ -262,33 +250,24 @@ class FinanceAggregator {
         const pLower = pName.toLowerCase();
         const vLower = vName.toLowerCase();
 
-        // 1. Normalized Variant ID match (handles numeric order variant_id vs GID in product_master_costs)
-        let matched = Boolean(
-          (numericVarId && variantIdSet.has(numericVarId)) ||
-          (rawVarId && variantIdSet.has(rawVarId))
-        );
+        // 1. Case-insensitive SKU match (Primary)
+        let matched = Boolean(skuLower && skuSet.has(skuLower));
 
-        // 2. Case-insensitive SKU match
-        if (!matched && skuLower) {
-          matched = skuSet.has(skuLower);
+        // 2. Normalized Variant ID match (Secondary)
+        if (!matched) {
+          matched = Boolean(
+            (numericVarId && variantIdSet.has(numericVarId)) ||
+            (rawVarId && variantIdSet.has(rawVarId))
+          );
         }
 
-        // 3. Alias match (previously linked ghost/renamed products)
+        // 3. Explicit Alias match (previously linked ghost/renamed products -> SKU/Variant ID)
         if (!matched) {
           matched = aliasTitleSet.has(pLower) ||
             (vLower && aliasExactSet.has(`${pLower}::${vLower}`)) ||
             (vLower && aliasTitleSet.has(`${pLower} - ${vLower}`));
         }
-
-        // 4. Case-insensitive Title / Variant match
-        if (!matched) {
-          matched = parentVariantSet.has(`${pLower}::${vLower}`) || parentTitleSet.has(pLower);
-        }
-        if (!matched && vLower) {
-          const fullSearchTitle1 = `${pLower} - ${vLower}`;
-          const fullSearchTitle2 = `${pLower} - ${vLower.split('/').map(x => x.trim()).reverse().join(' / ')}`;
-          matched = parentTitleSet.has(fullSearchTitle1) || parentTitleSet.has(fullSearchTitle2);
-        }
+        // Strict mode: zero loose title fallback — unmapped items MUST surface in missingInRegistry!
 
         if (!matched) {
           const key = `${pLower}::${vLower}`;

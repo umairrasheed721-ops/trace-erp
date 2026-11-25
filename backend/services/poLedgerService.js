@@ -306,15 +306,16 @@ function getExecutiveSummary(storeId) {
   const accounts = listAccounts(sid);
   const cashBalance = Math.round(accounts.reduce((s, a) => s + a.current_balance, 0));
 
-  // 2. Shelf Stock Valuation (On Hand > 0) + Backorder Count (Available < 0)
+  // 2. Shelf Stock Valuation (STRICT: verified ERP/PO landed_cost only — zero shopify_cost estimation!)
   const stockRow = db.prepare(`
     SELECT
       COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) > 0 THEN inventory_qty ELSE 0 END), 0) AS shelf_units,
-      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) > 0 THEN inventory_qty * COALESCE(NULLIF(landed_cost, 0), NULLIF(unit_cost, 0), shopify_cost, 0) ELSE 0 END), 0) AS shelf_value,
+      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) > 0 THEN inventory_qty * COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) ELSE 0 END), 0) AS shelf_value,
       COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) < 0 THEN 1 ELSE 0 END), 0) AS backorder_skus,
       COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) < 0 THEN ABS(inventory_qty) ELSE 0 END), 0) AS backorder_units
     FROM product_master_costs
     WHERE store_id = ? AND LOWER(COALESCE(status, 'active')) != 'archived'
+      AND (TRIM(COALESCE(sku, '')) != '' OR TRIM(COALESCE(shopify_variant_id, '')) != '')
   `).get(sid);
 
   // 3. Stock In-Transit with Couriers (Booked / In Transit / Returned — not yet Delivered or Return Received)
@@ -551,10 +552,11 @@ function createBaselinePo(storeId, createdBy = 'Admin') {
   const catalog = db.prepare(`
     SELECT id, shopify_variant_id, sku, parent_title, variant_title,
            COALESCE(inventory_qty, 0) AS inventory_qty,
-           COALESCE(NULLIF(landed_cost, 0), NULLIF(unit_cost, 0), shopify_cost, 0) AS effective_cost
+           COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) AS effective_cost
     FROM product_master_costs
     WHERE store_id = ? AND COALESCE(inventory_qty, 0) > 0
       AND LOWER(COALESCE(status, 'active')) != 'archived'
+      AND (TRIM(COALESCE(sku, '')) != '' OR TRIM(COALESCE(shopify_variant_id, '')) != '')
     ORDER BY parent_title ASC, variant_title ASC
   `).all(sid);
 
@@ -649,10 +651,15 @@ function createPurchaseOrder(storeId, payload = {}, createdBy = 'Admin') {
       pmc = db.prepare('SELECT id, shopify_variant_id, sku, parent_title, variant_title FROM product_master_costs WHERE id = ? AND store_id = ?')
         .get(Number(raw.product_cost_id), sid);
     }
+    const resolvedSku = pmc?.sku || (raw.sku || '').trim();
+    const resolvedVarId = pmc?.shopify_variant_id || (raw.shopify_variant_id || '').trim();
+    if (!resolvedSku && !resolvedVarId) {
+      throw new Error(`SKU or Shopify Variant ID is strictly required for "${pmc?.parent_title || raw.parent_title || 'item'}"`);
+    }
     return {
       product_cost_id: pmc?.id || null,
-      shopify_variant_id: pmc?.shopify_variant_id || raw.shopify_variant_id || '',
-      sku: pmc?.sku || (raw.sku || '').trim(),
+      shopify_variant_id: resolvedVarId,
+      sku: resolvedSku,
       parent_title: pmc?.parent_title || (raw.parent_title || 'Custom Item').trim(),
       variant_title: pmc?.variant_title || (raw.variant_title || '').trim(),
       ordered_qty: qty,
@@ -750,7 +757,7 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
 
       if (pmc) {
         const oldQty = parseInt(pmc.inventory_qty, 10) || 0;
-        const oldCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || parseFloat(pmc.shopify_cost) || 0;
+        const oldCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
         const poLanded = parseFloat(item.landed_unit_cost) || parseFloat(item.unit_cost) || 0;
 
         // Moving Weighted Average Cost:
@@ -863,11 +870,12 @@ function getBackorderDemands(storeId) {
   return db.prepare(`
     SELECT id, shopify_variant_id, sku, parent_title, variant_title,
            inventory_qty, ABS(inventory_qty) AS needed_qty,
-           COALESCE(NULLIF(landed_cost, 0), NULLIF(unit_cost, 0), shopify_cost, 0) AS suggested_cost,
+           COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) AS suggested_cost,
            inventory_policy
     FROM product_master_costs
     WHERE store_id = ? AND COALESCE(inventory_qty, 0) < 0
       AND LOWER(COALESCE(status, 'active')) != 'archived'
+      AND (TRIM(COALESCE(sku, '')) != '' OR TRIM(COALESCE(shopify_variant_id, '')) != '')
     ORDER BY inventory_qty ASC
     LIMIT 150
   `).all(sid);
@@ -885,7 +893,7 @@ function getWarehouseStock(storeId, search = '') {
   let sql = `
     SELECT id, store_id, shopify_variant_id, sku, parent_title, variant_title,
            COALESCE(inventory_qty, 0) AS inventory_qty,
-           COALESCE(NULLIF(landed_cost, 0), NULLIF(unit_cost, 0), shopify_cost, 0) AS avg_cost,
+           COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) AS avg_cost,
            COALESCE(selling_price, 0) AS selling_price,
            COALESCE(inventory_policy, 'deny') AS inventory_policy,
            COALESCE(shared_pool_key, '') AS shared_pool_key,
@@ -925,7 +933,7 @@ async function recordManualStockAdjust(storeId, payload = {}, createdBy = 'Admin
   const pmc = db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(productCostId, sid);
   if (!pmc) throw new Error('SKU not found for this store');
 
-  const unitCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || parseFloat(pmc.shopify_cost) || 0;
+  const unitCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
   const newQty = (parseInt(pmc.inventory_qty, 10) || 0) + qtyDelta;
 
   db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?").run(newQty, pmc.id);

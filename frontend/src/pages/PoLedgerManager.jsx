@@ -1374,7 +1374,12 @@ export default function PoLedgerManager() {
                     return (
                       <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.parent_title}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.parent_title}</span>
+                            {!item.sku && (
+                              <Pill label={item.shopify_variant_id ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                            )}
+                          </div>
                           <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                             {[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}
                           </div>
@@ -1388,8 +1393,12 @@ export default function PoLedgerManager() {
                           </span>
                           {isBackorder && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
                         </td>
-                        <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)', fontWeight: 600 }}>
-                          {fmtRs(item.avg_cost)}
+                        <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          {item.avg_cost > 0 ? (
+                            <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
+                          ) : (
+                            <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                          )}
                         </td>
                         <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
                           {fmtRs(item.stock_value)}

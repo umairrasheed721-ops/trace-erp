@@ -170,38 +170,33 @@ router.get('/breakdown/:orderId', (req, res) => {
       const pName = item.title ? String(item.title).trim() : '';
       const vName = item.variant_title ? String(item.variant_title).trim() : '';
 
+      // Strict Tier 1 (SKU) & Tier 2 (Shopify Variant ID) matching only — zero title guessing
       let cost = db.prepare(`
         SELECT * FROM product_master_costs 
         WHERE store_id = ? 
         AND (
-          shopify_variant_id = ? 
+          (sku != '' AND LOWER(TRIM(sku)) = LOWER(?))
           OR shopify_variant_id = ? 
-          OR (sku = ? AND sku != '')
-          OR (LOWER(parent_title) = ?)
+          OR shopify_variant_id = ?
         )
-        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
-                       WHEN sku = ? AND sku != '' THEN 1
-                       WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
-                       WHEN LOWER(parent_title) = ? THEN 3
-                       ELSE 4 END) ASC
+        ORDER BY (CASE WHEN (sku != '' AND LOWER(TRIM(sku)) = LOWER(?)) THEN 0
+                       WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 1
+                       ELSE 2 END) ASC,
+                 (CASE WHEN COALESCE(landed_cost, 0) > 0 THEN 0 ELSE 1 END) ASC
         LIMIT 1
       `).get(
-        order.store_id, 
-        queryVariantId1, 
-        queryVariantId2, 
-        querySku, 
-        pName.toLowerCase(), 
-        queryVariantId1, 
-        queryVariantId2, 
+        order.store_id,
         querySku,
-        pName.toLowerCase(), 
-        vName.toLowerCase(),
-        pName.toLowerCase()
+        queryVariantId1,
+        queryVariantId2,
+        querySku,
+        queryVariantId1,
+        queryVariantId2
       );
 
       let isAliasMatch = false;
       let aliasData = null;
-      if (!cost || (cost.landed_cost <= 0 && cost.shopify_cost <= 0)) {
+      if (!cost || (cost.landed_cost || 0) <= 0) {
         try {
           aliasData = db.prepare(`
             SELECT pa.*, pmc.id as master_cost_id, pmc.parent_title as master_parent_title, 
@@ -210,8 +205,8 @@ router.get('/breakdown/:orderId', (req, res) => {
             FROM product_aliases pa
             JOIN product_master_costs pmc ON (
               pmc.id = pa.target_master_cost_id 
-              OR (pa.target_sku IS NOT NULL AND pmc.sku = pa.target_sku AND pmc.store_id = pa.store_id)
-              OR (pa.target_variant_id IS NOT NULL AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
+              OR (pa.target_sku IS NOT NULL AND pa.target_sku != '' AND LOWER(TRIM(pmc.sku)) = LOWER(TRIM(pa.target_sku)) AND pmc.store_id = pa.store_id)
+              OR (pa.target_variant_id IS NOT NULL AND pa.target_variant_id != '' AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
             )
             WHERE pa.store_id = ?
             AND (
@@ -246,17 +241,10 @@ router.get('/breakdown/:orderId', (req, res) => {
       if (isAliasMatch) {
         matchType = 'alias';
       } else if (cost) {
-        if (numericVariantId && cost.shopify_variant_id && (String(cost.shopify_variant_id).includes(numericVariantId) || String(numericVariantId).includes(String(cost.shopify_variant_id)))) {
-          matchType = 'variant_id';
-        } else if (sku && cost.sku && String(cost.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()) {
+        if (sku && cost.sku && String(cost.sku).trim().toLowerCase() === String(sku).trim().toLowerCase()) {
           matchType = 'sku';
-        } else if (pName && cost.parent_title && cost.parent_title.toLowerCase().trim() === pName.toLowerCase().trim() &&
-                   vName && cost.variant_title && cost.variant_title.toLowerCase().trim() === vName.toLowerCase().trim()) {
-          matchType = 'ghost';
-        } else if (pName && cost.parent_title && cost.parent_title.toLowerCase().trim() === pName.toLowerCase().trim()) {
-          matchType = 'name_only';
-        } else {
-          matchType = 'catalog_other';
+        } else if (numericVariantId && cost.shopify_variant_id && (String(cost.shopify_variant_id).includes(numericVariantId) || String(numericVariantId).includes(String(cost.shopify_variant_id)))) {
+          matchType = 'variant_id';
         }
       }
 
@@ -265,13 +253,10 @@ router.get('/breakdown/:orderId', (req, res) => {
       if (landed <= 0) {
         if (!cost) {
           reasonCode = 'NOT_IN_CATALOG';
-          reasonHint = 'Item Not in Catalog (Ghost Variant)';
-        } else if (shopifyCost > 0 && unit <= 0) {
-          reasonCode = 'VERIFICATION_PENDING';
-          reasonHint = `Verification Pending (Shopify Cost: Rs ${Math.round(shopifyCost).toLocaleString()})`;
+          reasonHint = 'Unmapped SKU / Variant ID (Link Alias or Assign SKU)';
         } else {
           reasonCode = 'ZERO_COST';
-          reasonHint = 'Cost Missing in Registry (Rs 0)';
+          reasonHint = 'Verified ERP/PO Cost Missing (Rs 0)';
         }
       }
 
