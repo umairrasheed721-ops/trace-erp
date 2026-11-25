@@ -107,9 +107,13 @@ router.post('/pos', (req, res) => {
 router.post('/pos/:id/receive', async (req, res) => {
   try {
     const result = await svc.receivePurchaseOrder(resolveStoreId(req), req.params.id, req.body || {}, resolveActor(req));
-    const pushNote = req.body?.pushToShopify
-      ? ` · Shopify pushed: ${result.shopifyResults.pushed}${result.shopifyResults.failed ? ` (${result.shopifyResults.failed} failed)` : ''}`
-      : '';
+    const mode = result.shopifyResults?.mode || (req.body?.pushToShopify ? 'add_delta' : 'erp_only');
+    const modeLabel = mode === 'set_exact_on_hand'
+      ? 'Shopify On-Hand set exact'
+      : (mode === 'add_delta' ? 'Shopify +Delta pushed' : '');
+    const pushNote = modeLabel
+      ? ` · ${modeLabel}: ${result.shopifyResults.pushed}${result.shopifyResults.failed ? ` (${result.shopifyResults.failed} failed)` : ''}`
+      : ' · ERP Only';
     res.json({
       success: true,
       data: result,

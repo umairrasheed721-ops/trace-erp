@@ -13,6 +13,7 @@
 const db = require('../db');
 const {
   adjustShopifyVariantInventoryDelta,
+  setShopifyVariantOnHandQuantity,
   updateShopifyInventoryPolicy,
 } = require('../engines/shopify_finance');
 
@@ -354,6 +355,69 @@ async function pushDeltaToShopifyAndLinkedPools(storeId, productCostRow, deltaQt
     ok: syncedStores > 0 && errors.length === 0,
     partialOk: syncedStores > 0,
     syncedStores,
+    error: errors.join(' | '),
+  };
+}
+
+/**
+ * Helper: set exact Shopify ON_HAND quantity (Physical Recount mode) for primary store + any linked shared-pool stores.
+ */
+async function pushExactOnHandToShopifyAndLinkedPools(storeId, productCostRow, exactQty, locationCache = null) {
+  const sid = Number(storeId) || 1;
+  const targetQty = Math.max(0, parseInt(exactQty, 10) || 0);
+  if (!productCostRow) return { ok: false, error: 'SKU row missing', syncedStores: 0 };
+
+  const targets = [];
+  if (productCostRow.shopify_variant_id) {
+    targets.push({ storeId: sid, variantId: productCostRow.shopify_variant_id, productCostId: productCostRow.id, isPrimary: true });
+  }
+
+  const poolKey = (productCostRow.shared_pool_key || '').trim();
+  if (poolKey) {
+    const linked = db.prepare(`
+      SELECT id, store_id, shopify_variant_id
+      FROM product_master_costs
+      WHERE shared_pool_key = ? AND store_id != ? AND shopify_variant_id IS NOT NULL AND shopify_variant_id != ''
+    `).all(poolKey, sid);
+    for (const l of linked) {
+      targets.push({ storeId: Number(l.store_id), variantId: l.shopify_variant_id, productCostId: l.id, isPrimary: false });
+    }
+  }
+
+  if (targets.length === 0) {
+    return { ok: false, error: 'No Shopify variant ID linked to this SKU', syncedStores: 0 };
+  }
+
+  let syncedStores = 0;
+  let primaryAvailable = null;
+  const errors = [];
+  for (const t of targets) {
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(t.storeId);
+    if (!store) continue;
+    const cachedLoc = locationCache ? locationCache.get(t.storeId) : null;
+    const res = await setShopifyVariantOnHandQuantity(store, t.variantId, targetQty, cachedLoc);
+    if (res.ok) {
+      if (locationCache && res.locationId) locationCache.set(t.storeId, res.locationId);
+      syncedStores++;
+      if (t.isPrimary && res.available !== null && res.available !== undefined) {
+        primaryAvailable = Number(res.available);
+        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(primaryAvailable, t.productCostId);
+      } else if (!t.isPrimary) {
+        const nextLocal = res.available !== null && res.available !== undefined ? Number(res.available) : targetQty;
+        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(nextLocal, t.productCostId);
+      }
+    } else {
+      errors.push(`Store #${t.storeId}: ${res.error}`);
+    }
+  }
+
+  return {
+    ok: syncedStores > 0 && errors.length === 0,
+    partialOk: syncedStores > 0,
+    syncedStores,
+    primaryAvailable,
     error: errors.join(' | '),
   };
 }
@@ -859,7 +923,13 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
   if (po.status === 'cancelled') throw new Error('Cannot receive a cancelled PO');
   if (po.is_baseline) throw new Error('Baseline PO is already received');
 
-  const pushToShopify = Boolean(payload.pushToShopify);
+  // Normalize 3-Mode Shopify Sync: 'add_delta' | 'set_exact_on_hand' | 'erp_only'
+  let syncMode = String(payload.shopifySyncMode || '').trim().toLowerCase();
+  if (!['add_delta', 'set_exact_on_hand', 'erp_only'].includes(syncMode)) {
+    syncMode = payload.pushToShopify ? 'add_delta' : 'erp_only';
+  }
+  const isRecountSetExact = syncMode === 'set_exact_on_hand';
+  const pushToShopify = syncMode === 'add_delta' || isRecountSetExact;
   const receiveNotes = (payload.notes || '').trim();
   const closeShort = Boolean(payload.closeShort);
   const receiveMap = new Map();
@@ -867,7 +937,9 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
   if (Array.isArray(payload.items) && payload.items.length > 0) {
     for (const entry of payload.items) {
       const q = Math.max(0, parseInt(entry.receiveNowQty, 10) || 0);
-      if (q > 0) receiveMap.set(Number(entry.itemId), q);
+      if (q > 0 || (isRecountSetExact && entry.receiveNowQty !== '' && entry.receiveNowQty !== undefined && q === 0)) {
+        receiveMap.set(Number(entry.itemId), q);
+      }
     }
   } else {
     // Default: receive remaining qty of all items
@@ -887,8 +959,9 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
   db.exec('BEGIN');
   try {
     for (const item of po.items) {
+      if (!receiveMap.has(item.id)) continue;
       const addQty = receiveMap.get(item.id) || 0;
-      if (addQty <= 0) continue;
+      if (addQty <= 0 && !isRecountSetExact) continue;
 
       let pmc = null;
       if (item.product_cost_id) {
@@ -896,33 +969,55 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
       }
 
       const oldQty = pmc ? (parseInt(pmc.inventory_qty, 10) || 0) : 0;
-      // If SKU had negative backorders (Continue Selling), those waiting orders consume from this incoming batch first
-      const backorderAbsorbed = oldQty < 0 ? Math.min(addQty, Math.abs(oldQty)) : 0;
-      const batchRemainingAdd = Math.max(0, addQty - backorderAbsorbed);
-
       const newReceivedQty = (item.received_qty || 0) + addQty;
-      const newRemainingQty = (item.remaining_qty || 0) + batchRemainingAdd;
-      db.prepare('UPDATE purchase_order_items SET received_qty = ?, remaining_qty = ? WHERE id = ?')
-        .run(newReceivedQty, newRemainingQty, item.id);
+      let movementType = 'PO_RECEIVE';
+      let ledgerDelta = addQty;
 
-      if (pmc) {
-        const nextQty = oldQty + addQty;
-        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(nextQty, pmc.id);
+      if (isRecountSetExact) {
+        // PHYSICAL RECOUNT MODE: Close any older open FIFO batches for this SKU so THIS PO is the clean final shelf batch
+        if (pmc) {
+          db.prepare(`
+            UPDATE purchase_order_items
+            SET remaining_qty = 0
+            WHERE store_id = ? AND product_cost_id = ? AND id != ? AND COALESCE(remaining_qty, 0) > 0
+          `).run(sid, pmc.id, item.id);
+        }
+        db.prepare('UPDATE purchase_order_items SET received_qty = ?, remaining_qty = ? WHERE id = ?')
+          .run(newReceivedQty, addQty, item.id);
 
-        // STRICT FIFO: Active SKU cost stays on the OLDEST open PO batch (remaining_qty > 0, id ASC).
-        // If no older batch is open (or stock was 0 / negative), it immediately adopts this PO's exact landed rate!
-        syncSkuFifoCost(sid, pmc.id, 'po_receive_fifo');
+        if (pmc) {
+          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(addQty, pmc.id);
+          syncSkuFifoCost(sid, pmc.id, 'po_recount_fifo');
+        }
+        movementType = 'PO_RECOUNT_SET';
+        ledgerDelta = addQty - oldQty;
+      } else {
+        // STANDARD ADD (+DELTA) MODE: Incoming shipment adds on top of existing shelf stock
+        const backorderAbsorbed = oldQty < 0 ? Math.min(addQty, Math.abs(oldQty)) : 0;
+        const batchRemainingAdd = Math.max(0, addQty - backorderAbsorbed);
+        const newRemainingQty = (item.remaining_qty || 0) + batchRemainingAdd;
+        db.prepare('UPDATE purchase_order_items SET received_qty = ?, remaining_qty = ? WHERE id = ?')
+          .run(newReceivedQty, newRemainingQty, item.id);
+
+        if (pmc) {
+          const nextQty = oldQty + addQty;
+          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(nextQty, pmc.id);
+          syncSkuFifoCost(sid, pmc.id, 'po_receive_fifo');
+        }
       }
 
       const invLog = db.prepare(`
         INSERT INTO inventory_ledger
           (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
-        VALUES (?, ?, ?, ?, ?, 'PO_RECEIVE', ?, ?, 'po', ?, ?, 0, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'po', ?, ?, 0, ?, ?)
       `).run(
         sid, pmc?.id || null, item.sku || '', item.parent_title, item.variant_title || '',
-        addQty, item.landed_unit_cost || item.unit_cost || 0,
-        String(po.id), po.po_number, receiveNotes || `Received against ${po.po_number}`, createdBy
+        movementType, ledgerDelta, item.landed_unit_cost || item.unit_cost || 0,
+        String(po.id), po.po_number,
+        receiveNotes || (isRecountSetExact ? `Recount Set Exact On-Hand = ${addQty} (${po.po_number})` : `Received against ${po.po_number}`),
+        createdBy
       );
 
       receivedWork.push({
@@ -958,12 +1053,15 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
     throw err;
   }
 
-  // Post-commit: Optional Shopify Delta Push (+ Linked Shared Pool mirror)
-  const shopifyResults = { pushed: 0, failed: 0, errors: [] };
+  // Post-commit: Optional Shopify Push ('add_delta' OR 'set_exact_on_hand')
+  const shopifyResults = { mode: syncMode, pushed: 0, failed: 0, errors: [] };
   if (pushToShopify && receivedWork.length > 0) {
+    const locationCache = new Map();
     for (const work of receivedWork) {
       if (!work.pmc) continue;
-      const res = await pushDeltaToShopifyAndLinkedPools(sid, work.pmc, work.addQty);
+      const res = isRecountSetExact
+        ? await pushExactOnHandToShopifyAndLinkedPools(sid, work.pmc, work.addQty, locationCache)
+        : await pushDeltaToShopifyAndLinkedPools(sid, work.pmc, work.addQty);
       if (res.ok || res.partialOk) {
         shopifyResults.pushed++;
         db.prepare('UPDATE inventory_ledger SET shopify_pushed = 1, shopify_error = ? WHERE id = ?')

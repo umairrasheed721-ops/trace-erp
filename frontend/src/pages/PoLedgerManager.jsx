@@ -202,7 +202,7 @@ export default function PoLedgerManager() {
 
   // Modals
   const [newPoOpen, setNewPoOpen] = useState(false)
-  const [poForm, setPoForm] = useState({ supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false })
+  const [poForm, setPoForm] = useState({ supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false, shopifySyncMode: 'add_delta' })
   const [skuPickerSearch, setSkuPickerSearch] = useState('')
   // Shopify-style Add Products picker & bulk quickie states
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -346,6 +346,7 @@ export default function PoLedgerManager() {
         landing_cost: '',
         notes: `Auto-generated from ${rows.length} Continue Selling backorder SKUs`,
         receiveImmediately: false,
+        shopifySyncMode: 'add_delta',
         items: rows.map(r => ({
           product_cost_id: r.id,
           shopify_variant_id: r.shopify_variant_id || '',
@@ -371,6 +372,7 @@ export default function PoLedgerManager() {
       landing_cost: '',
       notes: '',
       receiveImmediately: false,
+      shopifySyncMode: 'add_delta',
       items: [],
     })
     setSkuPickerSearch('')
@@ -547,22 +549,26 @@ export default function PoLedgerManager() {
         return
       }
 
-      // Optional 1-click quickie: immediately receive full stock & push +Qty to Shopify
+      // Optional 1-click quickie: immediately receive full stock using chosen 3-Mode Shopify Sync
       if (poForm.receiveImmediately && j.data?.id && Array.isArray(j.data?.items)) {
+        const mode = poForm.shopifySyncMode || 'add_delta'
         const recRes = await fetch(`${API}/api/po-ledger/pos/${j.data.id}/receive`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             store_id: activeStoreId,
             items: j.data.items.map(it => ({ itemId: it.id, receiveNowQty: it.ordered_qty || 0 })),
-            pushToShopify: true,
+            shopifySyncMode: mode,
+            pushToShopify: mode !== 'erp_only',
             closeShort: false,
-            notes: 'Received immediately on PO creation',
+            notes: mode === 'set_exact_on_hand'
+              ? 'Recount PO received immediately (Set Exact On-Hand on Shopify)'
+              : 'Received immediately on PO creation',
           }),
         })
         const recJ = await recRes.json()
         if (recJ.success) {
-          addToast(`${j.data.po_number} created & received immediately (+stock pushed to Shopify)!`, 'success')
+          addToast(recJ.message || `${j.data.po_number} created & received!`, 'success')
         } else {
           addToast(`${j.data.po_number} created, but auto-receive failed: ${recJ.error || 'Check Receive button'}`, 'warning')
         }
@@ -587,7 +593,7 @@ export default function PoLedgerManager() {
       for (const it of j.data.items || []) {
         qtys[it.id] = Math.max(0, (it.ordered_qty || 0) - (it.received_qty || 0))
       }
-      setReceiveModal({ po: j.data, qtys, pushToShopify: true, closeShort: false, notes: '' })
+      setReceiveModal({ po: j.data, qtys, shopifySyncMode: 'add_delta', pushToShopify: true, closeShort: false, notes: '' })
     } finally {
       setBusyKey('')
     }
@@ -598,6 +604,7 @@ export default function PoLedgerManager() {
     if (!receiveModal) return
     setBusyKey('confirmReceive')
     try {
+      const mode = receiveModal.shopifySyncMode || (receiveModal.pushToShopify ? 'add_delta' : 'erp_only')
       const itemsPayload = (receiveModal.po.items || []).map(it => ({
         itemId: it.id,
         receiveNowQty: Math.max(0, parseInt(receiveModal.qtys[it.id], 10) || 0),
@@ -608,7 +615,8 @@ export default function PoLedgerManager() {
         body: JSON.stringify({
           store_id: activeStoreId,
           items: itemsPayload,
-          pushToShopify: receiveModal.pushToShopify,
+          shopifySyncMode: mode,
+          pushToShopify: mode !== 'erp_only',
           closeShort: receiveModal.closeShort,
           notes: receiveModal.notes,
         }),
@@ -2298,15 +2306,69 @@ export default function PoLedgerManager() {
                 background: poForm.receiveImmediately ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
                 border: `1px solid ${poForm.receiveImmediately ? 'rgba(16,185,129,0.45)' : 'var(--border)'}`,
                 color: poForm.receiveImmediately ? '#059669' : 'var(--text-secondary)',
-              }} title="Stock already in warehouse? Tick this to auto-receive full qty & push stock to Shopify in 1 step.">
+              }} title="Stock already in warehouse? Tick this to receive full qty immediately & choose how Shopify stock should sync.">
                 <input
                   type="checkbox"
                   checked={Boolean(poForm.receiveImmediately)}
                   onChange={e => setPoForm(p => ({ ...p, receiveImmediately: e.target.checked }))}
                 />
-                ⚡ Receive Immediately + Push to Shopify
+                ⚡ Receive Stock Immediately
               </label>
             </div>
+
+            {/* 3-Mode Shopify Sync Selector (shown when Receive Immediately is ticked) */}
+            {poForm.receiveImmediately && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                {[
+                  {
+                    id: 'add_delta',
+                    title: '➕ Add to Existing (+Qty)',
+                    desc: 'New shipment — adds PO qty on top of current Shopify stock.',
+                    color: '#059669',
+                    bg: 'rgba(16,185,129,0.10)',
+                    bd: 'rgba(16,185,129,0.45)',
+                  },
+                  {
+                    id: 'set_exact_on_hand',
+                    title: '🎯 Set Exact On-Hand (Recount)',
+                    desc: 'Final physical shelf count — sets Shopify On-Hand = PO qty (keeps pending orders safe!).',
+                    color: '#7c3aed',
+                    bg: 'rgba(124,58,237,0.10)',
+                    bd: 'rgba(124,58,237,0.45)',
+                  },
+                  {
+                    id: 'erp_only',
+                    title: '🔕 ERP Only (No Push)',
+                    desc: 'Updates ERP & FIFO cost only; Shopify stock stays untouched.',
+                    color: '#64748b',
+                    bg: 'rgba(100,116,139,0.10)',
+                    bd: 'rgba(100,116,139,0.45)',
+                  },
+                ].map(opt => {
+                  const active = (poForm.shopifySyncMode || 'add_delta') === opt.id
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPoForm(p => ({ ...p, shopifySyncMode: opt.id }))}
+                      style={{
+                        textAlign: 'left', padding: '9px 11px', borderRadius: 9, cursor: 'pointer',
+                        background: active ? opt.bg : 'var(--bg-elevated)',
+                        border: `1.5px solid ${active ? opt.bd : 'var(--border)'}`,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 800, color: active ? opt.color : 'var(--text-primary)' }}>
+                        {active ? '● ' : '○ '}{opt.title}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.35 }}>
+                        {opt.desc}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Footer Totals & Submit */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
@@ -2330,14 +2392,20 @@ export default function PoLedgerManager() {
                   disabled={busyKey === 'createPo' || poForm.items.length === 0}
                   style={{
                     padding: '8px 18px', borderRadius: 8, border: 'none',
-                    background: poForm.receiveImmediately ? '#059669' : '#2563eb',
+                    background: !poForm.receiveImmediately
+                      ? '#2563eb'
+                      : (poForm.shopifySyncMode === 'set_exact_on_hand' ? '#7c3aed' : '#059669'),
                     color: '#fff', fontWeight: 700, cursor: poForm.items.length === 0 ? 'not-allowed' : 'pointer',
                     opacity: poForm.items.length === 0 ? 0.5 : 1,
                   }}
                 >
                   {busyKey === 'createPo'
-                    ? (poForm.receiveImmediately ? 'Creating & Receiving...' : 'Creating...')
-                    : (poForm.receiveImmediately ? '⚡ Create & Receive PO' : 'Create Purchase Order')}
+                    ? (poForm.receiveImmediately ? 'Creating & Syncing...' : 'Creating...')
+                    : (!poForm.receiveImmediately
+                        ? 'Create Purchase Order'
+                        : (poForm.shopifySyncMode === 'set_exact_on_hand'
+                            ? '🎯 Create & Set Exact On-Hand'
+                            : (poForm.shopifySyncMode === 'erp_only' ? '⚡ Create & Receive (ERP Only)' : '⚡ Create & Add Stock to Shopify')))}
                 </button>
               </div>
             </div>
@@ -2844,24 +2912,65 @@ export default function PoLedgerManager() {
               </table>
             </div>
 
-            <label style={{
-              display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer',
-              padding: '10px 12px', borderRadius: 9,
-              background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.30)',
-            }}>
-              <input
-                type="checkbox"
-                checked={receiveModal.pushToShopify}
-                onChange={e => setReceiveModal(m => ({ ...m, pushToShopify: e.target.checked }))}
-                style={{ marginTop: 2, accentColor: '#059669' }}
-              />
-              <span style={{ fontSize: 12.5, color: 'var(--text-primary)', lineHeight: 1.45 }}>
-                <strong>Push +Qty Delta to Shopify</strong>
-                <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-muted)' }}>
-                  Adds exact delta (+Qty) to Shopify (safe for negative Continue Selling backorders &amp; linked Shared Pools). Uncheck if stock is already entered on Shopify.
-                </span>
-              </span>
-            </label>
+            {/* 3-Mode Shopify Inventory Sync Selector */}
+            <div>
+              <label style={{ ...labelStyle, marginBottom: 6 }}>Shopify Inventory Sync Mode</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {[
+                  {
+                    id: 'add_delta',
+                    title: '➕ Add to Existing Stock (+Qty Delta)',
+                    desc: 'Standard new shipment — adds received qty on top of current Shopify & ERP stock (safe for negative Continue Selling backorders).',
+                    color: '#059669',
+                    bg: 'rgba(16,185,129,0.09)',
+                    bd: 'rgba(16,185,129,0.42)',
+                  },
+                  {
+                    id: 'set_exact_on_hand',
+                    title: '🎯 Set Exact On-Hand (Physical Recount / Final Qty)',
+                    desc: 'Sets Shopify On-Hand = exact PO qty (automatically preserves pending Committed orders so Available = On-Hand − Committed!) and replaces stale old FIFO batches — zero double-counting.',
+                    color: '#7c3aed',
+                    bg: 'rgba(124,58,237,0.09)',
+                    bd: 'rgba(124,58,237,0.42)',
+                  },
+                  {
+                    id: 'erp_only',
+                    title: '🔕 ERP Only (Do Not Push to Shopify)',
+                    desc: 'Records PO & FIFO cost inside TRACE ERP only — use when Shopify quantities are already 100% correct.',
+                    color: '#64748b',
+                    bg: 'rgba(100,116,139,0.08)',
+                    bd: 'rgba(100,116,139,0.40)',
+                  },
+                ].map(opt => {
+                  const active = (receiveModal.shopifySyncMode || 'add_delta') === opt.id
+                  return (
+                    <label
+                      key={opt.id}
+                      onClick={() => setReceiveModal(m => ({ ...m, shopifySyncMode: opt.id, pushToShopify: opt.id !== 'erp_only' }))}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer',
+                        padding: '9px 12px', borderRadius: 9,
+                        background: active ? opt.bg : 'var(--bg-elevated)',
+                        border: `1.5px solid ${active ? opt.bd : 'var(--border)'}`,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="receiveSyncMode"
+                        checked={active}
+                        onChange={() => setReceiveModal(m => ({ ...m, shopifySyncMode: opt.id, pushToShopify: opt.id !== 'erp_only' }))}
+                        style={{ marginTop: 3, accentColor: opt.color }}
+                      />
+                      <span style={{ fontSize: 12.5, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                        <strong style={{ color: active ? opt.color : 'var(--text-primary)' }}>{opt.title}</strong>
+                        <span style={{ display: 'block', fontSize: 11.2, color: 'var(--text-muted)', marginTop: 1 }}>{opt.desc}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
               <input
@@ -2874,8 +2983,20 @@ export default function PoLedgerManager() {
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
               <button type="button" onClick={() => setReceiveModal(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-              <button type="submit" disabled={busyKey === 'confirmReceive'} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#059669', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
-                {busyKey === 'confirmReceive' ? 'Receiving...' : 'Confirm Stock Receipt'}
+              <button
+                type="submit"
+                disabled={busyKey === 'confirmReceive'}
+                style={{
+                  padding: '8px 18px', borderRadius: 8, border: 'none',
+                  background: receiveModal.shopifySyncMode === 'set_exact_on_hand' ? '#7c3aed' : '#059669',
+                  color: '#fff', fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                {busyKey === 'confirmReceive'
+                  ? 'Syncing...'
+                  : (receiveModal.shopifySyncMode === 'set_exact_on_hand'
+                      ? '🎯 Confirm & Set Exact On-Hand'
+                      : (receiveModal.shopifySyncMode === 'erp_only' ? 'Confirm Receipt (ERP Only)' : 'Confirm & Add Stock to Shopify'))}
               </button>
             </div>
           </form>

@@ -941,6 +941,128 @@ async function adjustShopifyVariantInventoryDelta(store, shopifyVariantId, delta
 }
 
 /**
+ * Set a Shopify variant's exact ON_HAND inventory quantity (Physical Recount mode).
+ * Uses GraphQL inventorySetQuantities (name: "on_hand", ignoreCompareQuantity: true)
+ * so Shopify automatically preserves Committed (unfulfilled orders) and recalculates Available = On Hand - Committed!
+ */
+async function setShopifyVariantOnHandQuantity(store, shopifyVariantId, exactOnHandQty, cachedLocationId = null) {
+  const targetQty = Math.max(0, parseInt(exactOnHandQty, 10));
+  if (!store?.shop_domain || !store?.access_token) {
+    return { ok: false, error: 'Store Shopify credentials missing' };
+  }
+  if (!shopifyVariantId || !Number.isFinite(targetQty)) {
+    return { ok: false, error: 'Invalid variant ID or target quantity' };
+  }
+  const numericVariantId = String(shopifyVariantId).includes('/')
+    ? String(shopifyVariantId).split('/').pop()
+    : String(shopifyVariantId).trim();
+
+  if (!/^\d+$/.test(numericVariantId)) {
+    return { ok: false, error: `Non-numeric Shopify variant ID: ${shopifyVariantId}` };
+  }
+
+  try {
+    const varRes = await shopifyFetch(store, `variants/${numericVariantId}.json?fields=id,inventory_item_id`);
+    if (!varRes.ok) {
+      const txt = await varRes.text().catch(() => '');
+      return { ok: false, error: `Variant fetch failed (${varRes.status}): ${txt.slice(0, 120)}` };
+    }
+    const varData = await varRes.json();
+    const inventoryItemId = varData?.variant?.inventory_item_id;
+    if (!inventoryItemId) {
+      return { ok: false, error: 'inventory_item_id not found on Shopify variant' };
+    }
+
+    const locationId = cachedLocationId || await getPrimaryLocationId(store);
+    if (!locationId) {
+      return { ok: false, error: 'Shopify primary location_id unavailable (check read_locations scope)' };
+    }
+
+    // 1. Preferred: Shopify GraphQL inventorySetQuantities (sets exact ON_HAND, keeps Committed intact)
+    const mutation = `
+      mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+        inventorySetQuantities(input: $input) {
+          inventoryAdjustmentGroup {
+            reason
+            changes {
+              name
+              delta
+              quantityAfterChange
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const variables = {
+      input: {
+        name: 'on_hand',
+        reason: 'correction',
+        ignoreCompareQuantity: true,
+        quantities: [{
+          inventoryItemId: `gid://shopify/InventoryItem/${inventoryItemId}`,
+          locationId: `gid://shopify/Location/${locationId}`,
+          quantity: targetQty,
+        }],
+      },
+    };
+
+    const gqlRes = await shopifyFetch(store, 'graphql.json', {
+      method: 'POST',
+      body: JSON.stringify({ query: mutation, variables }),
+    });
+
+    if (gqlRes.ok) {
+      const gqlData = await gqlRes.json().catch(() => ({}));
+      const userErrors = gqlData?.data?.inventorySetQuantities?.userErrors || [];
+      if (!gqlData?.errors && userErrors.length === 0 && gqlData?.data?.inventorySetQuantities) {
+        const changes = gqlData.data.inventorySetQuantities.inventoryAdjustmentGroup?.changes || [];
+        const availChange = changes.find(c => c.name === 'available');
+        const onHandChange = changes.find(c => c.name === 'on_hand');
+        return {
+          ok: true,
+          mode: 'on_hand',
+          onHand: onHandChange?.quantityAfterChange ?? targetQty,
+          available: availChange?.quantityAfterChange ?? null,
+          locationId,
+          inventoryItemId,
+        };
+      }
+      const errMsg = userErrors.map(e => e.message).join('; ') || JSON.stringify(gqlData?.errors || 'GraphQL error');
+      console.warn(`⚠️ [shopify_finance] inventorySetQuantities(on_hand) notice for variant ${numericVariantId}: ${errMsg}`);
+    }
+
+    // 2. Fallback: REST inventory_levels/set.json if GraphQL mutation unavailable
+    const setRes = await shopifyFetch(store, 'inventory_levels/set.json', {
+      method: 'POST',
+      body: JSON.stringify({
+        location_id: Number(locationId),
+        inventory_item_id: Number(inventoryItemId),
+        available: targetQty,
+      }),
+    });
+    if (!setRes.ok) {
+      const errTxt = await setRes.text().catch(() => '');
+      return { ok: false, error: `Shopify set failed (${setRes.status}): ${errTxt.slice(0, 140)}` };
+    }
+    const setData = await setRes.json().catch(() => ({}));
+    return {
+      ok: true,
+      mode: 'available_fallback',
+      onHand: targetQty,
+      available: setData?.inventory_level?.available ?? targetQty,
+      locationId,
+      inventoryItemId,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Toggle Shopify Continue Selling When Out of Stock policy ('continue' | 'deny') for a variant.
  */
 async function updateShopifyInventoryPolicy(store, shopifyVariantId, policy = 'deny') {
@@ -991,6 +1113,7 @@ module.exports = {
   getShopifySingleProductCosts,
   markShopifyOrderDelivered,
   adjustShopifyVariantInventoryDelta,
+  setShopifyVariantOnHandQuantity,
   updateShopifyInventoryPolicy
 };
 
