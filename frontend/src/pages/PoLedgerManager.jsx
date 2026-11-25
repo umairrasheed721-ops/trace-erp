@@ -619,7 +619,7 @@ export default function PoLedgerManager() {
             Purchase Orders &amp; Store Ledger
           </h1>
           <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 3 }}>
-            Per-store isolated PO costing (Moving Weighted Avg), Warehouse Stock &amp; Real Cashflow Khata
+            Per-store isolated FIFO PO costing (Batch-by-Batch), Warehouse Stock &amp; Real Cashflow Khata
           </div>
         </div>
 
@@ -820,7 +820,7 @@ export default function PoLedgerManager() {
             </div>
 
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Partial receiving supported · Moving Weighted Average updates automatically on receive
+              Partial receiving supported · Strict FIFO batch costing (oldest PO batch consumed first)
             </span>
           </div>
 
@@ -874,6 +874,13 @@ export default function PoLedgerManager() {
                           <td style={{ padding: '11px 12px', fontVariantNumeric: 'tabular-nums' }}>
                             {p.is_baseline ? (
                               <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Payable Rs. 0</span>
+                            ) : p.status === 'cancelled' ? (
+                              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Cancelled</span>
+                            ) : (Number(p.billed_cost) || 0) <= 0 ? (
+                              <>
+                                <div style={{ fontWeight: 700, color: '#b45309' }}>Pending Receipt</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Paid: {fmtRs(p.paid_amount)}</div>
+                              </>
                             ) : (
                               <>
                                 <div style={{ fontWeight: 700, color: p.remaining_payable > 0 ? '#dc2626' : '#059669' }}>
@@ -1377,7 +1384,7 @@ export default function PoLedgerManager() {
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
                     <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Product / Variant</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Qty</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Avg Landed Cost</th>
+                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active FIFO Cost</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Value</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Continue Selling</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shared Pool</th>
@@ -1412,7 +1419,12 @@ export default function PoLedgerManager() {
                         </td>
                         <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                           {item.avg_cost > 0 ? (
-                            <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
+                            <div>
+                              <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
+                              {item.open_batches > 1 && (
+                                <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{item.open_batches} FIFO batches</div>
+                              )}
+                            </div>
                           ) : (
                             <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
                           )}
@@ -1705,6 +1717,7 @@ export default function PoLedgerManager() {
                     <th style={{ padding: '7px 10px' }}>Product</th>
                     <th style={{ padding: '7px 8px' }}>Ordered</th>
                     <th style={{ padding: '7px 8px' }}>Received</th>
+                    <th style={{ padding: '7px 8px' }}>FIFO Left</th>
                     <th style={{ padding: '7px 8px' }}>Unit</th>
                     <th style={{ padding: '7px 8px' }}>Landed</th>
                     <th style={{ padding: '7px 10px', textAlign: 'right' }}>Line Total</th>
@@ -1719,6 +1732,9 @@ export default function PoLedgerManager() {
                       </td>
                       <td style={{ padding: '7px 8px' }}>{it.ordered_qty}</td>
                       <td style={{ padding: '7px 8px', color: '#059669', fontWeight: 700 }}>{it.received_qty}</td>
+                      <td style={{ padding: '7px 8px', fontWeight: 700, color: (it.remaining_qty || 0) > 0 ? '#2563eb' : 'var(--text-muted)' }}>
+                        {it.received_qty > 0 ? ((it.remaining_qty || 0) > 0 ? `${it.remaining_qty} left` : '0 (Done)') : '—'}
+                      </td>
                       <td style={{ padding: '7px 8px' }}>{fmtRs(it.unit_cost)}</td>
                       <td style={{ padding: '7px 8px' }}>{fmtRs(it.landed_unit_cost)}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{fmtRs(it.line_total)}</td>

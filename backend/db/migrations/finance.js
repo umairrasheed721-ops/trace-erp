@@ -275,5 +275,18 @@ module.exports = [
     } catch (e) {
       console.error('❌ [Finance Migration #12] Error:', e.message);
     }
+  },
+
+  // 13. Add FIFO remaining_qty batch tracking to purchase_order_items
+  (db) => {
+    try {
+      try { db.exec('ALTER TABLE purchase_order_items ADD COLUMN remaining_qty INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      db.exec('CREATE INDEX IF NOT EXISTS idx_po_items_fifo ON purchase_order_items(store_id, product_cost_id, remaining_qty, id)');
+      // One-time safe backfill for any already-received PO rows before Migration #13
+      db.exec('UPDATE purchase_order_items SET remaining_qty = received_qty WHERE received_qty > 0 AND remaining_qty = 0');
+      console.log('✅ [Finance Migration #13] FIFO remaining_qty batch tracking verified.');
+    } catch (e) {
+      console.error('❌ [Finance Migration #13] Error:', e.message);
+    }
   }
 ];

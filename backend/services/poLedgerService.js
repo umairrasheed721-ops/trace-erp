@@ -128,9 +128,147 @@ function ensurePoLedgerTables() {
     `);
     try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shared_pool_key TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE manual_expenses ADD COLUMN account_id INTEGER"); } catch (_) {}
+    try { db.exec('ALTER TABLE purchase_order_items ADD COLUMN remaining_qty INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     _tablesReady = true;
   } catch (e) {
     console.error('[poLedgerService] ensurePoLedgerTables error:', e.message);
+  }
+}
+
+/**
+ * LEAN FIFO HELPERS:
+ * Active FIFO Cost = landed_unit_cost of the OLDEST open PO batch (remaining_qty > 0, id ASC).
+ * When that batch hits 0 remaining, active cost automatically flips to the next open PO batch.
+ */
+function getActiveFifoUnitCost(storeId, productCostId) {
+  const sid = Number(storeId) || 1;
+  const pid = Number(productCostId);
+  if (!pid) return 0;
+
+  const oldestOpen = db.prepare(`
+    SELECT i.landed_unit_cost, i.unit_cost
+    FROM purchase_order_items i
+    JOIN purchase_orders po ON po.id = i.po_id
+    WHERE i.store_id = ? AND i.product_cost_id = ? AND COALESCE(i.remaining_qty, 0) > 0
+      AND po.status != 'cancelled'
+    ORDER BY i.id ASC
+    LIMIT 1
+  `).get(sid, pid);
+  if (oldestOpen) return parseFloat(oldestOpen.landed_unit_cost) || parseFloat(oldestOpen.unit_cost) || 0;
+
+  const latestRec = db.prepare(`
+    SELECT i.landed_unit_cost, i.unit_cost
+    FROM purchase_order_items i
+    JOIN purchase_orders po ON po.id = i.po_id
+    WHERE i.store_id = ? AND i.product_cost_id = ? AND COALESCE(i.received_qty, 0) > 0
+      AND po.status != 'cancelled'
+    ORDER BY i.id DESC
+    LIMIT 1
+  `).get(sid, pid);
+  if (latestRec) return parseFloat(latestRec.landed_unit_cost) || parseFloat(latestRec.unit_cost) || 0;
+
+  const pmc = db.prepare('SELECT landed_cost, unit_cost FROM product_master_costs WHERE id = ? AND store_id = ?').get(pid, sid);
+  return parseFloat(pmc?.landed_cost) || parseFloat(pmc?.unit_cost) || 0;
+}
+
+function syncSkuFifoCost(storeId, productCostId, changedBy = 'po_fifo') {
+  const sid = Number(storeId) || 1;
+  const pid = Number(productCostId);
+  if (!pid) return 0;
+
+  const pmc = db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(pid, sid);
+  if (!pmc) return 0;
+
+  const nextCost = getActiveFifoUnitCost(sid, pid);
+  const oldCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
+
+  if (nextCost > 0 && Math.abs(nextCost - oldCost) >= 0.01) {
+    db.prepare("UPDATE product_master_costs SET unit_cost = ?, landed_cost = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(nextCost, nextCost, pid);
+    try {
+      db.prepare(`
+        INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, old_shopify_cost, new_shopify_cost, changed_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(sid, pmc.parent_title, pmc.variant_title || '', pmc.shopify_variant_id || null, oldCost, nextCost, pmc.shopify_cost || 0, pmc.shopify_cost || 0, changedBy);
+    } catch (_) {}
+  }
+  return nextCost || oldCost;
+}
+
+/**
+ * Consumes qty from oldest open FIFO PO batches (id ASC), updates remaining_qty,
+ * rolls SKU's active FIFO cost forward if a batch closes, and returns exact split cost.
+ */
+function consumeFifoBatches(storeId, productCostId, qtyToConsume) {
+  const sid = Number(storeId) || 1;
+  const pid = Number(productCostId);
+  let remainingToTake = Math.abs(parseInt(qtyToConsume, 10) || 0);
+  if (!pid || remainingToTake <= 0) return { totalCost: 0, avgUnitCost: 0, allocations: [] };
+
+  const openBatches = db.prepare(`
+    SELECT i.id, i.remaining_qty, i.landed_unit_cost, i.unit_cost
+    FROM purchase_order_items i
+    JOIN purchase_orders po ON po.id = i.po_id
+    WHERE i.store_id = ? AND i.product_cost_id = ? AND COALESCE(i.remaining_qty, 0) > 0
+      AND po.status != 'cancelled'
+    ORDER BY i.id ASC
+  `).all(sid, pid);
+
+  let totalCost = 0;
+  let consumedQty = 0;
+  const allocations = [];
+  const decStmt = db.prepare('UPDATE purchase_order_items SET remaining_qty = MAX(0, COALESCE(remaining_qty, 0) - ?) WHERE id = ?');
+
+  for (const b of openBatches) {
+    if (remainingToTake <= 0) break;
+    const take = Math.min(remainingToTake, Number(b.remaining_qty) || 0);
+    if (take <= 0) continue;
+    const rate = parseFloat(b.landed_unit_cost) || parseFloat(b.unit_cost) || 0;
+    decStmt.run(take, b.id);
+    totalCost += take * rate;
+    consumedQty += take;
+    remainingToTake -= take;
+    allocations.push({ poItemId: b.id, qty: take, unitCost: rate });
+  }
+
+  // Any leftover qty not covered by PO batches falls back strictly to verified active FIFO/SKU cost
+  if (remainingToTake > 0) {
+    const fallbackRate = getActiveFifoUnitCost(sid, pid);
+    totalCost += remainingToTake * fallbackRate;
+    consumedQty += remainingToTake;
+    allocations.push({ poItemId: null, qty: remainingToTake, unitCost: fallbackRate });
+  }
+
+  // Flip SKU's active FIFO cost if oldest batch just hit 0
+  syncSkuFifoCost(sid, pid, 'fifo_rollover');
+
+  totalCost = Math.round(totalCost * 100) / 100;
+  const avgUnitCost = consumedQty > 0 ? Math.round((totalCost / consumedQty) * 100) / 100 : 0;
+  return { totalCost, avgUnitCost, allocations };
+}
+
+/**
+ * Restores returned/added qty cleanly into the latest received PO batch for this SKU.
+ */
+function restoreFifoBatch(storeId, productCostId, qtyToRestore) {
+  const sid = Number(storeId) || 1;
+  const pid = Number(productCostId);
+  const addQty = Math.abs(parseInt(qtyToRestore, 10) || 0);
+  if (!pid || addQty <= 0) return;
+
+  const latestBatch = db.prepare(`
+    SELECT i.id
+    FROM purchase_order_items i
+    JOIN purchase_orders po ON po.id = i.po_id
+    WHERE i.store_id = ? AND i.product_cost_id = ? AND COALESCE(i.received_qty, 0) > 0
+      AND po.status != 'cancelled'
+    ORDER BY i.id DESC
+    LIMIT 1
+  `).get(sid, pid);
+
+  if (latestBatch) {
+    db.prepare('UPDATE purchase_order_items SET remaining_qty = COALESCE(remaining_qty, 0) + ? WHERE id = ?').run(addQty, latestBatch.id);
+    syncSkuFifoCost(sid, pid, 'fifo_restore');
   }
 }
 
@@ -306,16 +444,21 @@ function getExecutiveSummary(storeId) {
   const accounts = listAccounts(sid);
   const cashBalance = Math.round(accounts.reduce((s, a) => s + a.current_balance, 0));
 
-  // 2. Shelf Stock Valuation (STRICT: verified ERP/PO landed_cost only — zero shopify_cost estimation!)
+  // 2. Shelf Stock Valuation (STRICT FIFO batch valuation when open PO batches exist, else verified landed_cost)
   const stockRow = db.prepare(`
     SELECT
-      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) > 0 THEN inventory_qty ELSE 0 END), 0) AS shelf_units,
-      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) > 0 THEN inventory_qty * COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) ELSE 0 END), 0) AS shelf_value,
-      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) < 0 THEN 1 ELSE 0 END), 0) AS backorder_skus,
-      COALESCE(SUM(CASE WHEN COALESCE(inventory_qty, 0) < 0 THEN ABS(inventory_qty) ELSE 0 END), 0) AS backorder_units
-    FROM product_master_costs
-    WHERE store_id = ? AND LOWER(COALESCE(status, 'active')) != 'archived'
-      AND (TRIM(COALESCE(sku, '')) != '' OR TRIM(COALESCE(shopify_variant_id, '')) != '')
+      COALESCE(SUM(CASE WHEN COALESCE(p.inventory_qty, 0) > 0 THEN p.inventory_qty ELSE 0 END), 0) AS shelf_units,
+      COALESCE(SUM(CASE
+        WHEN COALESCE(p.inventory_qty, 0) <= 0 THEN 0
+        WHEN COALESCE((SELECT SUM(i.remaining_qty) FROM purchase_order_items i JOIN purchase_orders po ON po.id = i.po_id WHERE i.store_id = p.store_id AND i.product_cost_id = p.id AND po.status != 'cancelled' AND i.remaining_qty > 0), 0) > 0
+          THEN COALESCE((SELECT SUM(i.remaining_qty * COALESCE(NULLIF(i.landed_unit_cost, 0), i.unit_cost, 0)) FROM purchase_order_items i JOIN purchase_orders po ON po.id = i.po_id WHERE i.store_id = p.store_id AND i.product_cost_id = p.id AND po.status != 'cancelled' AND i.remaining_qty > 0), 0)
+        ELSE p.inventory_qty * COALESCE(NULLIF(p.landed_cost, 0), p.unit_cost, 0)
+      END), 0) AS shelf_value,
+      COALESCE(SUM(CASE WHEN COALESCE(p.inventory_qty, 0) < 0 THEN 1 ELSE 0 END), 0) AS backorder_skus,
+      COALESCE(SUM(CASE WHEN COALESCE(p.inventory_qty, 0) < 0 THEN ABS(p.inventory_qty) ELSE 0 END), 0) AS backorder_units
+    FROM product_master_costs p
+    WHERE p.store_id = ? AND LOWER(COALESCE(p.status, 'active')) != 'archived'
+      AND (TRIM(COALESCE(p.sku, '')) != '' OR TRIM(COALESCE(p.shopify_variant_id, '')) != '')
   `).get(sid);
 
   // 3. Stock In-Transit with Couriers (Booked / In Transit / Returned — not yet Delivered or Return Received)
@@ -593,8 +736,8 @@ function createBaselinePo(storeId, createdBy = 'Admin') {
 
     const insertItem = db.prepare(`
       INSERT INTO purchase_order_items
-        (po_id, store_id, product_cost_id, shopify_variant_id, sku, parent_title, variant_title, ordered_qty, received_qty, unit_cost, landed_unit_cost, line_total)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (po_id, store_id, product_cost_id, shopify_variant_id, sku, parent_title, variant_title, ordered_qty, received_qty, remaining_qty, unit_cost, landed_unit_cost, line_total)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertInv = db.prepare(`
       INSERT INTO inventory_ledger
@@ -607,7 +750,7 @@ function createBaselinePo(storeId, createdBy = 'Admin') {
       insertItem.run(
         poId, sid, item.id, item.shopify_variant_id || '', item.sku || '',
         item.parent_title, item.variant_title || '',
-        item.inventory_qty, item.inventory_qty, item.effective_cost, item.effective_cost, lineTotal
+        item.inventory_qty, item.inventory_qty, item.inventory_qty, item.effective_cost, item.effective_cost, lineTotal
       );
       insertInv.run(
         sid, item.id, item.sku || '', item.parent_title, item.variant_title || '',
@@ -747,41 +890,29 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
       const addQty = receiveMap.get(item.id) || 0;
       if (addQty <= 0) continue;
 
-      const newReceivedQty = (item.received_qty || 0) + addQty;
-      db.prepare('UPDATE purchase_order_items SET received_qty = ? WHERE id = ?').run(newReceivedQty, item.id);
-
       let pmc = null;
       if (item.product_cost_id) {
         pmc = db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(item.product_cost_id, sid);
       }
 
+      const oldQty = pmc ? (parseInt(pmc.inventory_qty, 10) || 0) : 0;
+      // If SKU had negative backorders (Continue Selling), those waiting orders consume from this incoming batch first
+      const backorderAbsorbed = oldQty < 0 ? Math.min(addQty, Math.abs(oldQty)) : 0;
+      const batchRemainingAdd = Math.max(0, addQty - backorderAbsorbed);
+
+      const newReceivedQty = (item.received_qty || 0) + addQty;
+      const newRemainingQty = (item.remaining_qty || 0) + batchRemainingAdd;
+      db.prepare('UPDATE purchase_order_items SET received_qty = ?, remaining_qty = ? WHERE id = ?')
+        .run(newReceivedQty, newRemainingQty, item.id);
+
       if (pmc) {
-        const oldQty = parseInt(pmc.inventory_qty, 10) || 0;
-        const oldCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
-        const poLanded = parseFloat(item.landed_unit_cost) || parseFloat(item.unit_cost) || 0;
-
-        // Moving Weighted Average Cost:
-        // If current stock <= 0 (including Continue Selling negative backorders), adopt new PO landed rate cleanly.
-        let nextLandedCost = poLanded;
-        if (oldQty > 0 && oldCost > 0) {
-          nextLandedCost = Math.round(((oldQty * oldCost + addQty * poLanded) / (oldQty + addQty)) * 100) / 100;
-        }
         const nextQty = oldQty + addQty;
+        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(nextQty, pmc.id);
 
-        db.prepare(`
-          UPDATE product_master_costs
-          SET unit_cost = ?, landed_cost = ?, inventory_qty = ?, updated_at = datetime('now')
-          WHERE id = ?
-        `).run(nextLandedCost, nextLandedCost, nextQty, pmc.id);
-
-        if (Math.abs(nextLandedCost - oldCost) >= 0.01) {
-          try {
-            db.prepare(`
-              INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, old_shopify_cost, new_shopify_cost, changed_by)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'po_receive')
-            `).run(sid, pmc.parent_title, pmc.variant_title || '', pmc.shopify_variant_id || null, oldCost, nextLandedCost, pmc.shopify_cost || 0, pmc.shopify_cost || 0);
-          } catch (_) {}
-        }
+        // STRICT FIFO: Active SKU cost stays on the OLDEST open PO batch (remaining_qty > 0, id ASC).
+        // If no older batch is open (or stock was 0 / negative), it immediately adopts this PO's exact landed rate!
+        syncSkuFifoCost(sid, pmc.id, 'po_receive_fifo');
       }
 
       const invLog = db.prepare(`
@@ -891,27 +1022,40 @@ function getWarehouseStock(storeId, search = '') {
   const q = (search || '').trim().toLowerCase();
 
   let sql = `
-    SELECT id, store_id, shopify_variant_id, sku, parent_title, variant_title,
-           COALESCE(inventory_qty, 0) AS inventory_qty,
-           COALESCE(NULLIF(landed_cost, 0), unit_cost, 0) AS avg_cost,
-           COALESCE(selling_price, 0) AS selling_price,
-           COALESCE(inventory_policy, 'deny') AS inventory_policy,
-           COALESCE(shared_pool_key, '') AS shared_pool_key,
-           status
-    FROM product_master_costs
-    WHERE store_id = ? AND LOWER(COALESCE(status, 'active')) != 'archived'
+    SELECT p.id, p.store_id, p.shopify_variant_id, p.sku, p.parent_title, p.variant_title,
+           COALESCE(p.inventory_qty, 0) AS inventory_qty,
+           COALESCE(NULLIF(p.landed_cost, 0), p.unit_cost, 0) AS avg_cost,
+           COALESCE(p.selling_price, 0) AS selling_price,
+           COALESCE(p.inventory_policy, 'deny') AS inventory_policy,
+           COALESCE(p.shared_pool_key, '') AS shared_pool_key,
+           p.status,
+           COALESCE((
+             SELECT COUNT(*) FROM purchase_order_items i
+             JOIN purchase_orders po ON po.id = i.po_id
+             WHERE i.store_id = p.store_id AND i.product_cost_id = p.id AND po.status != 'cancelled' AND COALESCE(i.remaining_qty, 0) > 0
+           ), 0) AS open_batches,
+           COALESCE((
+             SELECT SUM(i.remaining_qty * COALESCE(NULLIF(i.landed_unit_cost, 0), i.unit_cost, 0))
+             FROM purchase_order_items i
+             JOIN purchase_orders po ON po.id = i.po_id
+             WHERE i.store_id = p.store_id AND i.product_cost_id = p.id AND po.status != 'cancelled' AND COALESCE(i.remaining_qty, 0) > 0
+           ), 0) AS fifo_batch_value
+    FROM product_master_costs p
+    WHERE p.store_id = ? AND LOWER(COALESCE(p.status, 'active')) != 'archived'
   `;
   const params = [sid];
   if (q) {
-    sql += ' AND (LOWER(parent_title) LIKE ? OR LOWER(variant_title) LIKE ? OR LOWER(COALESCE(sku, \'\')) LIKE ? OR LOWER(COALESCE(shared_pool_key, \'\')) LIKE ?)';
+    sql += ' AND (LOWER(p.parent_title) LIKE ? OR LOWER(p.variant_title) LIKE ? OR LOWER(COALESCE(p.sku, \'\')) LIKE ? OR LOWER(COALESCE(p.shared_pool_key, \'\')) LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
-  sql += ' ORDER BY (CASE WHEN inventory_qty < 0 THEN 0 ELSE 1 END) ASC, parent_title ASC, variant_title ASC LIMIT 300';
+  sql += ' ORDER BY (CASE WHEN p.inventory_qty < 0 THEN 0 ELSE 1 END) ASC, p.parent_title ASC, p.variant_title ASC LIMIT 300';
 
   const rows = db.prepare(sql).all(...params);
   return rows.map(r => ({
     ...r,
-    stock_value: r.inventory_qty > 0 ? Math.round(r.inventory_qty * r.avg_cost) : 0,
+    stock_value: r.inventory_qty > 0
+      ? (r.open_batches > 0 ? Math.round(r.fifo_batch_value) : Math.round(r.inventory_qty * r.avg_cost))
+      : 0,
   }));
 }
 
@@ -933,10 +1077,16 @@ async function recordManualStockAdjust(storeId, payload = {}, createdBy = 'Admin
   const pmc = db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(productCostId, sid);
   if (!pmc) throw new Error('SKU not found for this store');
 
-  const unitCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
   const newQty = (parseInt(pmc.inventory_qty, 10) || 0) + qtyDelta;
+  let unitCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
 
   db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?").run(newQty, pmc.id);
+  if (qtyDelta < 0) {
+    const consumed = consumeFifoBatches(sid, pmc.id, Math.abs(qtyDelta));
+    if (consumed.avgUnitCost > 0) unitCost = consumed.avgUnitCost;
+  } else if (qtyDelta > 0) {
+    restoreFifoBatch(sid, pmc.id, qtyDelta);
+  }
   const invLog = db.prepare(`
     INSERT INTO inventory_ledger
       (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
@@ -988,6 +1138,7 @@ async function recordSupplierReturn(storeId, payload = {}, createdBy = 'Admin') 
     if (pmc) {
       db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, updated_at = datetime('now') WHERE id = ?")
         .run(qty, pmc.id);
+      consumeFifoBatches(sid, pmc.id, qty);
       const invInfo = db.prepare(`
         INSERT INTO inventory_ledger
           (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
@@ -1331,6 +1482,10 @@ function autoPostCprToLedger(storeId, { courier, cpr, amount, settlementDate }, 
 module.exports = {
   ensurePoLedgerTables,
   ensureDefaultAccounts,
+  getActiveFifoUnitCost,
+  syncSkuFifoCost,
+  consumeFifoBatches,
+  restoreFifoBatch,
   getExecutiveSummary,
   listSuppliers,
   saveSupplier,
