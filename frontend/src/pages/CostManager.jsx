@@ -1104,60 +1104,52 @@ export default function CostManager() {
   }
   
   return (
-    <div className="page-container cost-manager" style={{ padding: 30 }}>
-      {/* ── Premium Header ── */}
+    <div className="page-container cost-manager" style={{ padding: '18px 24px 32px' }}>
+      {/* ── Compact Executive Header ── */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 50%, rgba(79,70,229,0.05) 100%)',
-        border: '1px solid rgba(99,102,241,0.2)',
-        borderRadius: 20,
-        padding: '28px 32px',
-        marginBottom: 28,
+        background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.05) 55%, rgba(79,70,229,0.03) 100%)',
+        border: '1px solid var(--border)',
+        borderRadius: 14,
+        padding: '15px 20px',
+        marginBottom: 14,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 12,
         position: 'relative',
         overflow: 'hidden'
       }}>
-        {/* Decorative background orb */}
-        <div style={{
-          position: 'absolute', top: -40, right: -40,
-          width: 180, height: 180,
-          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
-          borderRadius: '50%',
-          pointerEvents: 'none'
-        }} />
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6 }}>
-            <div style={{
-              width: 44, height: 44,
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              borderRadius: 12,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20,
-              boxShadow: '0 4px 16px rgba(99,102,241,0.35)'
-            }}>🛡️</div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Costing & Watchdog</h1>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>PO-driven FIFO costs · live Shopify inventory · zero-leak margin watchdog</p>
-            </div>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 38, height: 38,
+            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+            borderRadius: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18,
+            boxShadow: '0 3px 10px rgba(79,70,229,0.28)',
+            flexShrink: 0
+          }}>🛡️</div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>Costing &amp; Watchdog</h1>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>PO-driven FIFO costs · live Shopify inventory · zero-leak margin watchdog</p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, position: 'relative', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Hybrid Auto-Sync Status Badge */}
+        <div style={{ display: 'flex', gap: 8, position: 'relative', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* High-Contrast Auto-Sync Status Badge */}
           <div 
             title="Hybrid Cost Sync: Real-time webhook micro-sync active + 6-hour background cron"
             style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '8px 14px', borderRadius: 10,
-              background: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-              fontSize: '0.82rem', color: '#34d399', fontWeight: 600,
-              boxShadow: '0 2px 8px rgba(16,185,129,0.1)'
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 9,
+              background: 'rgba(5, 150, 105, 0.10)',
+              border: '1px solid rgba(5, 150, 105, 0.32)',
+              fontSize: '0.78rem', color: '#047857', fontWeight: 700
             }}
           >
             <span style={{ 
-              width: 8, height: 8, borderRadius: '50%', background: '#10b981', 
-              boxShadow: '0 0 8px #10b981', display: 'inline-block' 
+              width: 7, height: 7, borderRadius: '50%', background: '#10b981', 
+              boxShadow: '0 0 6px #10b981', display: 'inline-block' 
             }} />
             <span>Auto-Sync: {formatRelativeTime(lastCostSyncedAt)}</span>
           </div>
@@ -1166,11 +1158,11 @@ export default function CostManager() {
             onClick={handleDiagnose}
             disabled={isDiagnosing || isSyncing}
             style={{
-              padding: '9px 16px', borderRadius: 10, border: '1px solid rgba(251,146,60,0.35)',
-              background: 'rgba(251,146,60,0.08)', color: '#fb923c',
-              fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer',
+              padding: '7px 14px', borderRadius: 9, border: '1px solid rgba(234,88,12,0.35)',
+              background: 'rgba(234,88,12,0.09)', color: '#c2410c',
+              fontWeight: 700, fontSize: '0.79rem', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all 0.2s ease', opacity: isDiagnosing || isSyncing ? 0.6 : 1
+              transition: 'all 0.16s ease', opacity: isDiagnosing || isSyncing ? 0.6 : 1
             }}
           >
             {isDiagnosing ? '⏳ Diagnosing...' : '🔬 Diagnose'}
@@ -1179,18 +1171,18 @@ export default function CostManager() {
             onClick={handleSyncShopify}
             disabled={isSyncing}
             style={{
-              padding: '9px 18px', borderRadius: 10,
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(5, 150, 105, 0.25))',
-              color: '#10b981', fontWeight: 700, fontSize: '0.83rem',
+              padding: '7px 15px', borderRadius: 9,
+              border: '1px solid rgba(5, 150, 105, 0.42)',
+              background: '#059669',
+              color: '#ffffff', fontWeight: 700, fontSize: '0.79rem',
               cursor: isSyncing ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', gap: 7,
-              boxShadow: '0 4px 14px rgba(16,185,129,0.2)',
-              transition: 'all 0.2s ease', opacity: isSyncing ? 0.7 : 1
+              display: 'flex', alignItems: 'center', gap: 6,
+              boxShadow: '0 2px 8px rgba(5,150,105,0.22)',
+              transition: 'all 0.16s ease', opacity: isSyncing ? 0.7 : 1
             }}
             title="Manually pull & sync all products, variants, SKUs, and live stock directly from Shopify"
           >
-            <span style={{ fontSize: '0.95rem', display: 'inline-block', transform: isSyncing ? 'rotate(180deg)' : 'none', transition: 'transform 0.5s' }}>🔄</span>
+            <span style={{ fontSize: '0.88rem', display: 'inline-block', transform: isSyncing ? 'rotate(180deg)' : 'none', transition: 'transform 0.5s' }}>🔄</span>
             <span>{isSyncing ? 'Syncing...' : 'Manual Sync'}</span>
           </button>
         </div>
@@ -1314,138 +1306,160 @@ export default function CostManager() {
       )}
 
       {activeTab === 'watchdog' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 220px', gap: 14, marginBottom: 28 }}>
-          {/* Not in Registry */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 260px', gap: 12, marginBottom: 14 }}>
+          {/* Compact Uniform Watchdog KPI Cards */}
           {[{
             key: 'missing',
             label: 'Not in Registry',
-            sub: 'Variants never mapped',
+            sub: `${auditData.missingInRegistry.length} unmapped variant${auditData.missingInRegistry.length !== 1 ? 's' : ''}`,
             count: auditData.missingInRegistry.length,
             icon: '📦',
-            color: '#ef4444',
-            glow: 'rgba(239,68,68,0.15)',
-            grad: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05))'
+            color: '#dc2626',
+            glow: 'rgba(220,38,38,0.12)',
+            grad: 'linear-gradient(135deg, rgba(239,68,68,0.10), rgba(239,68,68,0.03))'
           },{
             key: 'zero',
-            label: 'Zero Cost Entry',
-            sub: 'Mapped but cost is Rs. 0',
+            label: 'Zero Cost Variants',
+            sub: `Rs. 0 across ${lists.pending.length} product${lists.pending.length !== 1 ? 's' : ''}`,
             count: auditData.zeroCostInRegistry.length,
             icon: '⚠️',
-            color: '#f97316',
-            glow: 'rgba(249,115,22,0.15)',
-            grad: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(249,115,22,0.05))'
+            color: '#d97706',
+            glow: 'rgba(217,119,6,0.12)',
+            grad: 'linear-gradient(135deg, rgba(245,158,11,0.10), rgba(245,158,11,0.03))'
           },{
             key: 'orders',
             label: 'At-Risk Orders',
             sub: 'Active orders with Rs. 0 cost',
             count: auditData.pendingOrdersWithMissingCost.length,
             icon: '🔥',
-            color: '#3b82f6',
-            glow: 'rgba(59,130,246,0.15)',
-            grad: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(59,130,246,0.05))'
+            color: '#2563eb',
+            glow: 'rgba(37,99,235,0.12)',
+            grad: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(59,130,246,0.03))'
           }].map(card => (
             <div
               key={card.key}
               onClick={() => setAuditFilter(card.key)}
               style={{
                 cursor: 'pointer',
-                borderRadius: 16,
+                borderRadius: 12,
                 border: auditFilter === card.key ? `1.5px solid ${card.color}` : '1px solid var(--border)',
                 background: auditFilter === card.key ? card.grad : 'var(--bg-surface)',
-                padding: '20px 22px',
+                padding: '13px 16px',
                 position: 'relative',
                 overflow: 'hidden',
-                transition: 'all 0.25s ease',
-                boxShadow: auditFilter === card.key ? `0 4px 20px ${card.glow}` : 'none'
+                transition: 'all 0.18s ease',
+                boxShadow: auditFilter === card.key ? `0 3px 14px ${card.glow}` : '0 1px 3px rgba(0,0,0,0.02)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between'
               }}
             >
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: card.color, opacity: auditFilter === card.key ? 1 : 0.3, transition: 'opacity 0.25s' }} />
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 36, fontWeight: 900, color: card.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2.5, background: card.color, opacity: auditFilter === card.key ? 1 : 0.35 }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: card.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                   {card.count}
                 </div>
                 <div style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: `${card.color}22`,
+                  width: 32, height: 32, borderRadius: 8,
+                  background: `${card.color}18`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18
+                  fontSize: 15
                 }}>{card.icon}</div>
               </div>
-              <div style={{ marginTop: 12, fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{card.label}</div>
-              <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: 3 }}>{card.sub}</div>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.84rem', lineHeight: 1.2 }}>{card.label}</div>
+                <div style={{ fontSize: '0.71rem', color: 'var(--text-muted)', marginTop: 2 }}>{card.sub}</div>
+              </div>
             </div>
           ))}
 
-          {/* Health Score Ring */}
+          {/* Percentage-Accurate Centered Health Score Ring Card */}
           {(() => {
             const totalIssues = auditData.missingInRegistry.length + auditData.zeroCostInRegistry.length + auditData.pendingOrdersWithMissingCost.length;
-            const healthScore = totalIssues === 0 ? 100 : Math.max(0, 100 - (totalIssues * 5));
-            const healthColor = healthScore === 100 ? '#22c55e' : healthScore >= 70 ? '#f59e0b' : '#ef4444';
-            const r = 38; const circ = 2 * Math.PI * r;
+            const totalSkus = Math.max(costs.length, 1);
+            const costedSkus = Math.max(0, costs.length - auditData.zeroCostInRegistry.length);
+            const skuCoveragePct = costs.length > 0 ? (costedSkus / totalSkus) * 100 : 100;
+            const orderPenalty = Math.min(25, auditData.pendingOrdersWithMissingCost.length * 3);
+            const missingPenalty = Math.min(20, auditData.missingInRegistry.length * 1);
+            const healthScore = totalIssues === 0 ? 100 : Math.max(1, Math.min(99, Math.round(skuCoveragePct - orderPenalty - missingPenalty)));
+            const healthColor = healthScore >= 90 ? '#059669' : healthScore >= 65 ? '#d97706' : '#dc2626';
+            const r = 26; const circ = 2 * Math.PI * r;
             const dash = (healthScore / 100) * circ;
             return (
-              <div style={{
-                borderRadius: 16,
-                border: `1.5px solid ${healthColor}44`,
-                background: `${healthColor}0d`,
-                padding: '20px 22px',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                textAlign: 'center', position: 'relative', overflow: 'hidden'
-              }}>
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: healthColor }} />
-                <svg width={92} height={92} viewBox="0 0 92 92" style={{ transform: 'rotate(-90deg)' }}>
-                  <circle cx={46} cy={46} r={r} fill="none" stroke="var(--border)" strokeWidth={7} />
-                  <circle cx={46} cy={46} r={r} fill="none" stroke={healthColor} strokeWidth={7}
-                    strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-                    style={{ transition: 'stroke-dasharray 0.8s ease' }} />
-                </svg>
-                <div style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: healthColor, lineHeight: 1 }}>{healthScore}</div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>/ 100</div>
+              <div
+                title={`SKU Cost Coverage: ${Math.round(skuCoveragePct)}% (${costedSkus}/${costs.length} variants) · ${totalIssues} active watchdog alerts`}
+                style={{
+                  borderRadius: 12,
+                  border: `1.5px solid ${healthColor}44`,
+                  background: `${healthColor}0c`,
+                  padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  position: 'relative', overflow: 'hidden'
+                }}
+              >
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2.5, background: healthColor }} />
+                <div style={{ position: 'relative', width: 64, height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width={64} height={64} viewBox="0 0 64 64" style={{ transform: 'rotate(-90deg)' }}>
+                    <circle cx={32} cy={32} r={r} fill="none" stroke="var(--border)" strokeWidth={5.5} />
+                    {healthScore > 0 && (
+                      <circle cx={32} cy={32} r={r} fill="none" stroke={healthColor} strokeWidth={5.5}
+                        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+                        style={{ transition: 'stroke-dasharray 0.7s ease' }} />
+                    )}
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ fontSize: 17, fontWeight: 900, color: healthColor, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{healthScore}</div>
+                    <div style={{ fontSize: '0.56rem', color: 'var(--text-muted)', fontWeight: 700, marginTop: 1 }}>/100</div>
+                  </div>
                 </div>
-                <div style={{ marginTop: 10, fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)' }}>Health Score</div>
-                <div style={{ fontSize: '0.7rem', color: healthColor, fontWeight: 600, marginTop: 2 }}>
-                  {healthScore === 100 ? '✅ All Clear' : `${totalIssues} issue${totalIssues !== 1 ? 's' : ''}`}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>Health Score</div>
+                  <div style={{ fontSize: '0.71rem', color: healthColor, fontWeight: 700, marginTop: 3 }}>
+                    {healthScore === 100 ? '✅ All Clear' : `${totalIssues} alert${totalIssues !== 1 ? 's' : ''}`}
+                  </div>
+                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    {Math.round(skuCoveragePct)}% SKUs costed
+                  </div>
                 </div>
               </div>
             )
           })()}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 14 }}>
           {[{
             label: '💰 Shelf Inventory Value', value: `Rs ${Math.round(totals.acceptedValue).toLocaleString()}`,
             sub: `${totals.acceptedQty.toLocaleString()} Shopify units · ${totals.fifoUnits.toLocaleString()} FIFO PO units`,
-            grad: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', shadow: '0 8px 24px rgba(79,70,229,0.22)', dark: true
+            grad: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)', color: '#fff', shadow: '0 4px 16px rgba(67,56,202,0.22)', dark: true
           },{
             label: '📈 Avg Gross Margin', value: `${avgMargin}%`, sub: `Across verified SKUs · ${totals.atRiskCount} low (<20%)`,
-            vColor: avgMargin >= 40 ? '#22c55e' : avgMargin >= 20 ? '#f59e0b' : '#ef4444',
-            bar: { width: Math.min(avgMargin, 100), color: avgMargin >= 40 ? '#22c55e' : avgMargin >= 20 ? '#f59e0b' : '#ef4444' }
+            vColor: avgMargin >= 40 ? '#059669' : avgMargin >= 20 ? '#d97706' : '#dc2626',
+            bar: { width: Math.min(avgMargin, 100), color: avgMargin >= 40 ? '#10b981' : avgMargin >= 20 ? '#f59e0b' : '#ef4444' }
           },{
             label: '📦 Stock Health', value: `${totals.inStockSkus} In Stock`,
             sub: `${totals.outOfStockSkus} Out of Stock${totals.backorderUnits > 0 ? ` · -${totals.backorderUnits} Backorder` : ''}`,
-            vColor: totals.backorderUnits > 0 ? '#a855f7' : (totals.inStockSkus > 0 ? '#10b981' : '#ef4444'),
-            border: totals.backorderUnits > 0 ? 'rgba(168,85,247,0.35)' : 'var(--border)'
+            vColor: totals.backorderUnits > 0 ? '#7c3aed' : (totals.inStockSkus > 0 ? '#059669' : '#dc2626'),
+            border: totals.backorderUnits > 0 ? 'rgba(124,58,237,0.35)' : 'var(--border)'
           },{
-            label: '⏳ Uncosted SKUs (Rs 0)', value: totals.uncostedSkus,
-            sub: totals.uncostedSkus > 0 ? 'Click to view — needs PO / Baseline' : 'All SKUs have verified PO/Master cost',
-            vColor: totals.uncostedSkus > 0 ? '#f59e0b' : '#22c55e',
-            border: totals.uncostedSkus > 0 ? 'rgba(245,158,11,0.35)' : 'var(--border)',
+            label: '⏳ Uncosted SKUs (Rs 0)', value: `${totals.uncostedSkus} vars`,
+            sub: totals.uncostedSkus > 0 ? `${lists.pending.length} products — needs PO / Baseline` : 'All SKUs have verified PO/Master cost',
+            vColor: totals.uncostedSkus > 0 ? '#d97706' : '#059669',
+            border: totals.uncostedSkus > 0 ? 'rgba(217,119,6,0.35)' : 'var(--border)',
             onClick: () => setActiveTab('pending')
           }].map((c, i) => (
             <div key={i} onClick={c.onClick} style={{
               background: c.grad || 'var(--bg-surface)',
               border: `1px solid ${c.border || 'var(--border)'}`,
-              padding: '18px 20px', borderRadius: 16,
-              boxShadow: c.shadow || '0 1px 4px rgba(0,0,0,0.03)',
+              padding: '13px 16px', borderRadius: 12,
+              boxShadow: c.shadow || '0 1px 3px rgba(0,0,0,0.02)',
               position: 'relative', overflow: 'hidden',
               color: c.dark ? '#fff' : 'var(--text-primary)',
               cursor: c.onClick ? 'pointer' : 'default',
               transition: 'transform 0.15s ease'
             }}>
-              <div style={{ fontSize: '0.69rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.9, opacity: c.dark ? 0.85 : 0.6, marginBottom: 9 }}>{c.label}</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 900, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums', color: c.dark ? '#fff' : (c.vColor || 'var(--text-primary)') }}>{c.value}</div>
-              <div style={{ fontSize: '0.73rem', marginTop: 7, opacity: c.dark ? 0.82 : 0.65 }}>{c.sub}</div>
+              <div style={{ fontSize: '0.67rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.7, opacity: c.dark ? 0.88 : 0.65, marginBottom: 6 }}>{c.label}</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums', color: c.dark ? '#fff' : (c.vColor || 'var(--text-primary)') }}>{c.value}</div>
+              <div style={{ fontSize: '0.71rem', marginTop: 5, opacity: c.dark ? 0.85 : 0.68 }}>{c.sub}</div>
               {c.bar && (
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: 'var(--border)' }}>
                   <div style={{ height: '100%', width: `${c.bar.width}%`, background: c.bar.color, transition: 'width 0.6s ease' }} />
@@ -1456,52 +1470,102 @@ export default function CostManager() {
         </div>
       )}
 
-      {/* ── Global Advanced Search & Filter Command Bar ── */}
+      {/* ── Global Advanced Search & Filter Command Bar (Tab-Aware!) ── */}
       {(() => {
+        const isCatalogTab = ['catalog', 'pending', 'verified', 'drift', 'continue_selling'].includes(activeTab);
         const globalTabs = [
-          { key: 'watchdog', label: 'Watchdog', count: filteredWatchdog.total, color: '#ef4444', icon: '🛡️' },
-          { key: 'catalog',  label: 'Catalog',  count: lists.catalog.length,  color: '#3b82f6', icon: '📦' },
-          { key: 'pending',  label: 'Pending (Rs 0)', count: lists.pending.length,  color: '#f59e0b', icon: '⏳' },
-          { key: 'verified', label: 'Verified (FIFO)', count: lists.verified.length, color: '#22c55e', icon: '✅' },
-          { key: 'drift',    label: 'Price Drift', count: lists.drift.length, color: '#eab308', icon: '⚡' },
-          { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#a855f7', icon: '🔄' },
-          { key: 'ghosts',   label: 'Ghosts',   count: filteredGhosts.length, color: '#8b5cf6', icon: '👻' },
-          { key: 'aliases',  label: 'Aliases',  count: filteredAliases.length, color: '#ec4899', icon: '🔗' },
-          { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#f43f5e', icon: '🆔' },
+          { key: 'watchdog', label: 'Watchdog', count: filteredWatchdog.total, color: '#dc2626', icon: '🛡️', title: `${filteredWatchdog.total} total alerts across variants & orders` },
+          { key: 'catalog',  label: 'Catalog',  count: lists.catalog.length,  color: '#2563eb', icon: '📦', title: `${lists.catalog.length} parent products` },
+          { key: 'pending',  label: 'Pending (Rs 0)', count: lists.pending.length,  color: '#d97706', icon: '⏳', title: `${lists.pending.length} parent products (${totals.uncostedSkus} variants at Rs 0)` },
+          { key: 'verified', label: 'Verified (FIFO)', count: lists.verified.length, color: '#059669', icon: '✅', title: `${lists.verified.length} fully costed parent products` },
+          { key: 'drift',    label: 'Price Drift', count: lists.drift.length, color: '#b45309', icon: '⚡', title: 'Shopify cost vs ERP unit cost differences' },
+          { key: 'continue_selling', label: 'Continue Selling', count: lists.continue_selling.length, color: '#7c3aed', icon: '🔄', title: 'Pre-order / Continue Selling products' },
+          { key: 'ghosts',   label: 'Ghosts',   count: filteredGhosts.length, color: '#6d28d9', icon: '👻', title: 'Deleted or renamed products from historical orders' },
+          { key: 'aliases',  label: 'Aliases',  count: filteredAliases.length, color: '#be185d', icon: '🔗', title: 'Explicit Ghost-to-SKU links' },
+          { key: 'sku_checker', label: 'SKU Checker', count: skuCheckerData.duplicates.length + skuCheckerData.missingSkus.length, color: '#e11d48', icon: '🆔', title: 'Duplicate or missing SKU codes' },
         ];
         const matchingTabs = hasActiveFilters ? globalTabs.filter(t => t.count > 0) : [];
         const chipStyle = (active, color) => ({
           display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '5px 11px', borderRadius: 20, fontSize: '0.75rem', fontWeight: active ? 700 : 600,
-          cursor: 'pointer', transition: 'all 0.16s ease', whiteSpace: 'nowrap',
-          background: active ? `${color}20` : 'var(--bg-elevated)',
+          padding: '4px 10px', borderRadius: 20, fontSize: '0.73rem', fontWeight: active ? 700 : 600,
+          cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+          background: active ? `${color}1c` : 'var(--bg-elevated)',
           color: active ? color : 'var(--text-secondary)',
           border: `1px solid ${active ? color : 'var(--border)'}`,
-          boxShadow: active ? `0 0 0 1px ${color}33` : 'none'
+          boxShadow: active ? `0 0 0 1px ${color}28` : 'none'
+        });
+        const compactSelectStyle = (active = false, activeColor = '#2563eb') => ({
+          width: 'auto', minWidth: 0, height: 35, borderRadius: 9, fontSize: '0.79rem',
+          padding: '0 26px 0 10px', cursor: 'pointer',
+          background: active ? `${activeColor}14` : 'var(--bg-elevated)',
+          borderColor: active ? activeColor : 'var(--border)',
+          color: active ? activeColor : 'var(--text-primary)',
+          fontWeight: active ? 700 : 500,
+          flexShrink: 0
         });
 
         return (
           <>
+            {/* ── Segmented Tab Bar (Directly below KPIs for clean navigation) ── */}
+            <div style={{
+              display: 'flex', gap: 3, marginBottom: 10,
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 12, padding: 4,
+              flexWrap: 'wrap'
+            }}>
+              {globalTabs.map(t => (
+                <button
+                  key={t.key}
+                  title={t.title}
+                  onClick={() => setActiveTab(t.key)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                    background: activeTab === t.key ? 'var(--bg-surface)' : 'transparent',
+                    color: activeTab === t.key ? t.color : 'var(--text-secondary)',
+                    fontWeight: activeTab === t.key ? 700 : 600,
+                    fontSize: '0.8rem',
+                    boxShadow: activeTab === t.key ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <span style={{ fontSize: '0.85rem' }}>{t.icon}</span>
+                  <span>{t.label}</span>
+                  {t.count > 0 && (
+                    <span style={{
+                      background: activeTab === t.key ? t.color : 'var(--border)',
+                      color: activeTab === t.key ? '#fff' : 'var(--text-secondary)',
+                      borderRadius: 20, padding: '1px 6px', fontSize: '0.66rem', fontWeight: 700, minWidth: 18, textAlign: 'center'
+                    }}>{t.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Compact Tab-Aware Search & Filter Bar ── */}
             <div style={{
               background: 'var(--bg-surface)',
               border: '1px solid var(--border)',
-              borderRadius: 16,
-              padding: '14px 16px',
-              marginBottom: 16,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+              borderRadius: 12,
+              padding: '10px 13px',
+              marginBottom: 12,
               display: 'flex',
               flexDirection: 'column',
-              gap: 11
+              gap: 8
             }}>
-              {/* Row 1: Primary Global Search Input + Status / Sort / Margin / Grouping Controls */}
-              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: '1 1 280px', minWidth: 220 }}>
-                  <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', opacity: 0.65, pointerEvents: 'none' }}>🔍</span>
+              {/* Row 1: Search Input + Catalog-Only Compact Dropdowns */}
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
+                  <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: '0.88rem', opacity: 0.6, pointerEvents: 'none' }}>🔍</span>
                   <input
                     ref={searchInputRef}
                     type="text"
                     className="form-input"
-                    placeholder="Global search: product, variant, SKU (RT-10169), cost (1850), ghosts, alerts..."
+                    placeholder={isCatalogTab
+                      ? 'Search product, variant, SKU (AR-000275), cost...'
+                      : 'Global search across alerts, products, SKUs, ghosts & aliases...'}
                     value={search}
                     onChange={e => {
                       setSearch(e.target.value)
@@ -1509,12 +1573,12 @@ export default function CostManager() {
                       setAliasSearch(e.target.value)
                     }}
                     style={{
-                      paddingLeft: 38,
-                      paddingRight: search ? 38 : 74,
+                      paddingLeft: 34,
+                      paddingRight: search ? 34 : 66,
                       width: '100%',
-                      height: 38,
-                      borderRadius: 10,
-                      fontSize: '0.85rem',
+                      height: 35,
+                      borderRadius: 9,
+                      fontSize: '0.82rem',
                       background: 'var(--bg-elevated)',
                       borderColor: search ? 'var(--brand)' : 'var(--border)'
                     }}
@@ -1525,153 +1589,133 @@ export default function CostManager() {
                       title="Clear search (Esc)"
                       onClick={() => { setSearch(''); setGhostSearch(''); setAliasSearch(''); searchInputRef.current?.focus(); }}
                       style={{
-                        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                        position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)',
                         border: 'none', background: 'var(--border)', color: 'var(--text-primary)',
-                        borderRadius: '50%', width: 22, height: 22, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700
+                        borderRadius: '50%', width: 20, height: 20, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700
                       }}
                     >✕</button>
                   ) : (
                     <span style={{
-                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                      fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
+                      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                      fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
                       background: 'var(--bg-surface)', border: '1px solid var(--border)',
-                      borderRadius: 6, padding: '2px 7px', pointerEvents: 'none', letterSpacing: '0.02em'
+                      borderRadius: 5, padding: '1px 6px', pointerEvents: 'none'
                     }}>⌘K /</span>
                   )}
                 </div>
 
-                <select
-                  className="form-input"
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value)}
-                  style={{
-                    width: 'auto', height: 38, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer',
-                    background: filterStatus !== 'all' ? 'rgba(59,130,246,0.12)' : 'var(--bg-elevated)',
-                    borderColor: filterStatus !== 'all' ? '#3b82f6' : 'var(--border)',
-                    fontWeight: filterStatus !== 'all' ? 700 : 500
-                  }}
-                  title="Filter by Shopify Product Status"
-                >
-                  <option value="all">Status: All</option>
-                  <option value="active">🟢 Active</option>
-                  <option value="draft">📝 Draft</option>
-                  <option value="unlisted">🚫 Unlisted</option>
-                  <option value="archived">📦 Archived</option>
-                </select>
+                {isCatalogTab && (
+                  <>
+                    <select
+                      className="form-input"
+                      value={filterStatus}
+                      onChange={e => setFilterStatus(e.target.value)}
+                      style={compactSelectStyle(filterStatus !== 'all', '#2563eb')}
+                      title="Filter by Shopify Product Status"
+                    >
+                      <option value="all">Status: All</option>
+                      <option value="active">🟢 Active</option>
+                      <option value="draft">📝 Draft</option>
+                      <option value="unlisted">🚫 Unlisted</option>
+                      <option value="archived">📦 Archived</option>
+                    </select>
 
-                <select
-                  className="form-input"
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value)}
-                  style={{ width: 'auto', height: 38, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
-                >
-                  <option value="value">Sort: By Value</option>
-                  <option value="stock">Sort: By Stock</option>
-                  <option value="margin">Sort: By Margin</option>
-                  <option value="pending">Sort: Most Uncosted</option>
-                  <option value="name">Sort: By Name</option>
-                </select>
+                    <select
+                      className="form-input"
+                      value={sortBy}
+                      onChange={e => setSortBy(e.target.value)}
+                      style={compactSelectStyle(false)}
+                    >
+                      <option value="value">Sort: Value</option>
+                      <option value="stock">Sort: Stock</option>
+                      <option value="margin">Sort: Margin</option>
+                      <option value="pending">Sort: Uncosted</option>
+                      <option value="name">Sort: A–Z</option>
+                    </select>
 
-                <select
-                  className="form-input"
-                  value={filterMargin}
-                  onChange={e => setFilterMargin(e.target.value)}
-                  style={{ width: 'auto', height: 38, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
-                >
-                  <option value="all">Margin: All</option>
-                  <option value="high">Margin: High (&gt;40%)</option>
-                  <option value="mid">Margin: Mid (20–40%)</option>
-                  <option value="low">Margin: Low (&lt;20%) ⚠️</option>
-                </select>
+                    <select
+                      className="form-input"
+                      value={filterMargin}
+                      onChange={e => setFilterMargin(e.target.value)}
+                      style={compactSelectStyle(filterMargin !== 'all', '#d97706')}
+                    >
+                      <option value="all">Margin: All</option>
+                      <option value="high">High (&gt;40%)</option>
+                      <option value="mid">Mid (20–40%)</option>
+                      <option value="low">Low (&lt;20%) ⚠️</option>
+                    </select>
 
-                <select
-                  className="form-input"
-                  value={groupVariantsBy}
-                  onChange={e => setGroupVariantsBy(e.target.value)}
-                  style={{ width: 'auto', height: 38, borderRadius: 10, fontSize: '0.82rem', cursor: 'pointer', background: 'var(--bg-elevated)' }}
-                >
-                  <option value="none">Group: Flat List</option>
-                  <option value="opt1">Group by Size (Option 1)</option>
-                  <option value="opt2">Group by Color (Option 2)</option>
-                </select>
-              </div>
+                    <select
+                      className="form-input"
+                      value={groupVariantsBy}
+                      onChange={e => setGroupVariantsBy(e.target.value)}
+                      style={compactSelectStyle(groupVariantsBy !== 'none', '#7c3aed')}
+                    >
+                      <option value="none">Flat List</option>
+                      <option value="opt1">By Size</option>
+                      <option value="opt2">By Color</option>
+                    </select>
+                  </>
+                )}
 
-              {/* Row 2: 1-Click Quick Filter Chips + Clear All */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 7 }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 2 }}>
-                    Quick Filters:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setFilterMissingSku(v => !v)}
-                    style={chipStyle(filterMissingSku, '#ef4444')}
-                    title="Filter products/variants with blank SKU"
-                  >
-                    ❌ Missing SKU
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterPartialOnly(v => !v)}
-                    style={chipStyle(filterPartialOnly, '#d97706')}
-                    title="Filter products where some variants have cost and some are Rs 0"
-                  >
-                    ⚠️ Partial Costed
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStock(s => s === 'in_stock' ? 'all' : 'in_stock')}
-                    style={chipStyle(filterStock === 'in_stock', '#22c55e')}
-                    title="Show only items with Stock > 0"
-                  >
-                    📦 In Stock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterStock(s => s === 'out_of_stock' ? 'all' : 'out_of_stock')}
-                    style={chipStyle(filterStock === 'out_of_stock', '#64748b')}
-                    title="Show only items with Stock <= 0"
-                  >
-                    🚫 Out of Stock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFilterZeroCost(v => !v)}
-                    style={chipStyle(filterZeroCost, '#f97316')}
-                    title="Show products with any Rs. 0 cost variant"
-                  >
-                    💸 Zero Cost (Rs 0)
-                  </button>
-                </div>
-
-                {hasActiveFilters && (
+                {!isCatalogTab && hasActiveFilters && (
                   <button
                     type="button"
                     onClick={handleClearAllFilters}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5,
-                      padding: '5px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
-                      background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
-                      border: '1px solid rgba(239, 68, 68, 0.35)', cursor: 'pointer'
+                      padding: '6px 11px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 700,
+                      background: 'rgba(220, 38, 38, 0.10)', color: '#dc2626',
+                      border: '1px solid rgba(220, 38, 38, 0.30)', cursor: 'pointer'
                     }}
                   >
-                    ✕ Clear All
+                    ✕ Clear
                   </button>
                 )}
               </div>
+
+              {/* Row 2: 1-Click Quick Filter Chips (Catalog/Cost tabs only — never shown as dead controls on Watchdog!) */}
+              {isCatalogTab && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 2 }}>
+                      Filters:
+                    </span>
+                    <button type="button" onClick={() => setFilterMissingSku(v => !v)} style={chipStyle(filterMissingSku, '#dc2626')}>❌ Missing SKU</button>
+                    <button type="button" onClick={() => setFilterPartialOnly(v => !v)} style={chipStyle(filterPartialOnly, '#d97706')}>⚠️ Partial Costed</button>
+                    <button type="button" onClick={() => setFilterStock(s => s === 'in_stock' ? 'all' : 'in_stock')} style={chipStyle(filterStock === 'in_stock', '#059669')}>📦 In Stock</button>
+                    <button type="button" onClick={() => setFilterStock(s => s === 'out_of_stock' ? 'all' : 'out_of_stock')} style={chipStyle(filterStock === 'out_of_stock', '#475569')}>🚫 Out of Stock</button>
+                    <button type="button" onClick={() => setFilterZeroCost(v => !v)} style={chipStyle(filterZeroCost, '#ea580c')}>💸 Zero Cost (Rs 0)</button>
+                  </div>
+
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllFilters}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        padding: '4px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
+                        background: 'rgba(220, 38, 38, 0.10)', color: '#dc2626',
+                        border: '1px solid rgba(220, 38, 38, 0.32)', cursor: 'pointer'
+                      }}
+                    >
+                      ✕ Clear All
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Row 3: Live Cross-Tab Match Strip (Visible whenever Search or Quick Filters are active) */}
               {hasActiveFilters && (
                 <div style={{
                   display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
-                  paddingTop: 9, borderTop: '1px dashed var(--border)'
+                  paddingTop: 7, borderTop: '1px dashed var(--border)'
                 }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginRight: 4 }}>
-                    🔀 Matches across tabs:
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', marginRight: 2 }}>
+                    🔀 Matches:
                   </span>
                   {matchingTabs.length === 0 ? (
-                    <span style={{ fontSize: '0.76rem', color: '#ef4444', fontWeight: 600 }}>
+                    <span style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: 600 }}>
                       No matches found in any tab — try clearing filters.
                     </span>
                   ) : (
@@ -1681,12 +1725,12 @@ export default function CostManager() {
                         type="button"
                         onClick={() => setActiveTab(t.key)}
                         style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                          padding: '3px 10px', borderRadius: 16, fontSize: '0.73rem', fontWeight: 700,
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2.5px 9px', borderRadius: 16, fontSize: '0.71rem', fontWeight: 700,
                           cursor: 'pointer', transition: 'all 0.15s ease',
                           background: activeTab === t.key ? t.color : `${t.color}16`,
                           color: activeTab === t.key ? '#fff' : t.color,
-                          border: `1px solid ${activeTab === t.key ? t.color : `${t.color}55`}`
+                          border: `1px solid ${activeTab === t.key ? t.color : `${t.color}48`}`
                         }}
                       >
                         <span>{t.icon}</span>
@@ -1697,44 +1741,6 @@ export default function CostManager() {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* ── Segmented Tab Bar (Clean 9 Tabs) ── */}
-            <div style={{
-              display: 'flex', gap: 4, marginBottom: 20,
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 14, padding: 5,
-              flexWrap: 'wrap'
-            }}>
-              {globalTabs.map(t => (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: activeTab === t.key ? 'var(--bg-surface)' : 'transparent',
-                    color: activeTab === t.key ? t.color : 'var(--text-muted)',
-                    fontWeight: activeTab === t.key ? 700 : 500,
-                    fontSize: '0.82rem',
-                    boxShadow: activeTab === t.key ? '0 1px 6px rgba(0,0,0,0.12)' : 'none',
-                    transition: 'all 0.16s ease',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <span style={{ fontSize: '0.88rem' }}>{t.icon}</span>
-                  {t.label}
-                  {t.count > 0 && (
-                    <span style={{
-                      background: activeTab === t.key ? t.color : 'var(--border)',
-                      color: activeTab === t.key ? '#fff' : 'var(--text-muted)',
-                      borderRadius: 20, padding: '1px 7px', fontSize: '0.67rem', fontWeight: 700, minWidth: 20, textAlign: 'center',
-                      transition: 'all 0.16s ease'
-                    }}>{t.count}</span>
-                  )}
-                </button>
-              ))}
             </div>
           </>
         );
@@ -2606,19 +2612,21 @@ export default function CostManager() {
       )}
 
       {activeTab === 'watchdog' && (
-        <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)' }}>
-          {/* Panel Header */}
+        <div className="stat-card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 12 }}>
+          {/* Compact Unified Panel Header */}
           <div style={{
-            padding: '16px 24px',
+            padding: '11px 16px',
             borderBottom: '1px solid var(--border)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 10,
             background: 'var(--bg-elevated)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '1.1rem' }}>🚨</span>
-              <h3 style={{ margin: 0, fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>Priority Prevention List</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '1rem' }}>🚨</span>
+              <h3 style={{ margin: 0, fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>Priority Prevention List</h3>
               {(() => {
                 const totalAlerts = filteredWatchdog.total;
                 const multiGroups = watchdogGroupedRows.filter(r => r._kind === 'group' && r.variants.length > 1);
@@ -2627,9 +2635,9 @@ export default function CostManager() {
                   <>
                     {totalAlerts > 0 && (
                       <span style={{
-                        background: 'var(--red-dim)', color: 'var(--red)',
-                        border: '1px solid var(--red)', borderRadius: 12,
-                        padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700
+                        background: 'rgba(220,38,38,0.10)', color: '#dc2626',
+                        border: '1px solid rgba(220,38,38,0.30)', borderRadius: 20,
+                        padding: '2px 9px', fontSize: '0.7rem', fontWeight: 700
                       }}>
                         {watchdogGroupedRows.length} group{watchdogGroupedRows.length !== 1 ? 's' : ''} · {totalAlerts} alert{totalAlerts !== 1 ? 's' : ''}
                       </span>
@@ -2638,14 +2646,11 @@ export default function CostManager() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (allExpanded) {
-                            setExpandedWatchdogGroups(new Set());
-                          } else {
-                            setExpandedWatchdogGroups(new Set(multiGroups.map(g => g.groupKey)));
-                          }
+                          if (allExpanded) setExpandedWatchdogGroups(new Set());
+                          else setExpandedWatchdogGroups(new Set(multiGroups.map(g => g.groupKey)));
                         }}
                         style={{
-                          padding: '3px 10px', borderRadius: 8, fontSize: '0.72rem', fontWeight: 600,
+                          padding: '3px 9px', borderRadius: 7, fontSize: '0.71rem', fontWeight: 600,
                           background: 'var(--bg-surface)', color: 'var(--text-secondary)',
                           border: '1px solid var(--border)', cursor: 'pointer'
                         }}
@@ -2658,38 +2663,38 @@ export default function CostManager() {
               })()}
             </div>
 
-            {/* Filter Tabs */}
-            <div style={{ display: 'flex', gap: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: 4, borderRadius: 8 }}>
+            {/* Unified Filter Pills (Rs 0 Parity!) */}
+            <div style={{ display: 'flex', gap: 3, background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: 3, borderRadius: 8 }}>
               {[
                 { id: 'all', label: 'All Alerts', count: filteredWatchdog.total },
                 { id: 'missing', label: 'Missing Mapping', count: filteredWatchdog.missing.length },
-                { id: 'zero', label: '$0 Costs', count: filteredWatchdog.zero.length },
+                { id: 'zero', label: 'Rs 0 Costs', count: filteredWatchdog.zero.length },
                 { id: 'orders', label: 'Order Risks', count: filteredWatchdog.orders.length },
               ].map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setAuditFilter(tab.id)}
                   style={{
-                    padding: '6px 14px',
+                    padding: '5px 11px',
                     borderRadius: 6,
                     border: 'none',
-                    background: auditFilter === tab.id ? 'var(--bg-active)' : 'transparent',
+                    background: auditFilter === tab.id ? 'var(--bg-elevated)' : 'transparent',
                     color: auditFilter === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
-                    fontWeight: auditFilter === tab.id ? 600 : 400,
-                    fontSize: '0.8rem',
+                    fontWeight: auditFilter === tab.id ? 700 : 500,
+                    fontSize: '0.76rem',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
+                    transition: 'all 0.14s ease',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6
+                    gap: 5
                   }}
                 >
                   {tab.label}
                   {tab.count > 0 && (
                     <span style={{
-                      background: auditFilter === tab.id ? 'var(--brand)' : 'var(--border)',
+                      background: auditFilter === tab.id ? '#dc2626' : 'var(--border)',
                       color: auditFilter === tab.id ? '#fff' : 'var(--text-secondary)',
-                      borderRadius: 10, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 700
+                      borderRadius: 10, padding: '1px 6px', fontSize: '0.66rem', fontWeight: 700
                     }}>
                       {tab.count}
                     </span>
