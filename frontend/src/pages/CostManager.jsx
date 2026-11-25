@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import LinkSkuModal from '../components/LinkSkuModal'
+import GhostSkuGuide from '../components/GhostSkuGuide'
 
 const isGhostMatch = (ghost, searchQuery) => {
   if (!searchQuery || !searchQuery.trim()) return true;
@@ -3013,8 +3014,9 @@ export default function CostManager() {
               </div>
             </div>
           )}
+          <GhostSkuGuide mode="inline" context="costing" defaultOpen={true} />
           <div style={{ background: 'var(--brand-glow)', padding: 15, borderRadius: 8, marginBottom: 20, border: '1px solid var(--brand)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <p style={{ margin: 0, color: 'var(--brand)' }}>Found <strong>{filteredGhosts.length}</strong>{filteredGhosts.length !== ghosts.length ? ` of ${ghosts.length}` : ''} products in your history that are missing costs. Fill them in below to fix your P&L.</p>
+            <p style={{ margin: 0, color: 'var(--brand)' }}>Found <strong>{filteredGhosts.length}</strong>{filteredGhosts.length !== ghosts.length ? ` of ${ghosts.length}` : ''} unmapped items (no matching SKU, Variant ID, or Alias). Link each ghost to a real Master SKU below to heal your P&amp;L.</p>
           </div>
           
           <div className="table-container" style={{ background: 'var(--bg-surface)', borderRadius: 12, border: '1px solid var(--border)' }}>
@@ -3173,6 +3175,7 @@ export default function CostManager() {
 
       {activeTab === 'aliases' && (
         <div style={{ animation: 'slideDown 0.3s ease' }}>
+          <GhostSkuGuide mode="inline" context="costing" defaultOpen={false} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>

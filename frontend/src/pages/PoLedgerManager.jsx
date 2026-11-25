@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
+import GhostSkuGuide from '../components/GhostSkuGuide'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -169,6 +170,7 @@ export default function PoLedgerManager() {
 
   const [adjustModal, setAdjustModal] = useState(null) // { item, qty_delta, movement_type, notes, pushToShopify }
   const [poolModal, setPoolModal] = useState(null)     // { item, shared_pool_key }
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const headers = useMemo(() => ({
     Authorization: `Bearer ${token}`,
@@ -663,6 +665,20 @@ export default function PoLedgerManager() {
               )
             })}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setGuideOpen(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 12px', borderRadius: 9,
+              border: '1px solid rgba(37,99,235,0.32)',
+              background: 'rgba(37,99,235,0.08)', color: '#2563eb',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            <span>? Ghost &amp; SKU Guide</span>
+          </button>
 
           <button
             type="button"
@@ -1280,6 +1296,7 @@ export default function PoLedgerManager() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'inventory' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <GhostSkuGuide mode="inline" context="po" defaultOpen={false} />
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
             background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '11px 14px',
@@ -2050,6 +2067,8 @@ export default function PoLedgerManager() {
           </form>
         </ModalShell>
       )}
+      {/* 11. Ghost & Strict SKU Quick Guide Modal */}
+      {guideOpen && <GhostSkuGuide mode="modal" context="po" onClose={() => setGuideOpen(false)} />}
     </div>
   )
 }
