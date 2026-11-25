@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Trace ERP WhatsApp Web Helper",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Auto-paste order messages and product images into WhatsApp Web from TRACE ERP Bulk Queue.",
   "permissions": ["storage", "activeTab", "scripting", "clipboardWrite", "tabs"],
   "host_permissions": [

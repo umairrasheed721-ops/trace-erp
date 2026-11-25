@@ -1021,7 +1021,7 @@ router.get('/extension-order-info', async (req, res) => {
         address: order.address || '',
         city: order.city || '',
         tracking_number: order.tracking_number,
-        courier_name: order.courier_name || '',
+        courier_name: order.courier || order.courier_name || '',
         delivery_status: order.delivery_status || 'Pending',
         courier_status: order.courier_status || 'N/A',
         line_items: (function() {
@@ -1123,6 +1123,55 @@ router.post('/extension-add-note', async (req, res) => {
     res.json({ success: true, shopify_order_id: cleanNum, note });
   } catch (err) {
     console.error('❌ [Extension Add Note Error]:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// OPTIONS /api/public/extension-cancel-booking
+router.options('/extension-cancel-booking', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+// POST /api/public/extension-cancel-booking
+// Mutual 1-click booking cancel from Chrome Extension (Courier API + Shopify Fulfillment + ERP Pending + FIFO Restore)
+router.post('/extension-cancel-booking', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { shopify_order_id, ref_number } = req.body || {};
+  if (!shopify_order_id && !ref_number) {
+    return res.status(400).json({ success: false, error: 'shopify_order_id or ref_number is required' });
+  }
+
+  try {
+    const cleanShopifyId = shopify_order_id ? String(shopify_order_id).replace(/\D/g, '') : '';
+    const cleanRef = ref_number ? String(ref_number).trim() : '';
+    let localOrder = null;
+
+    if (cleanShopifyId) {
+      localOrder = db.db.prepare('SELECT id FROM orders WHERE shopify_order_id = ? LIMIT 1').get(cleanShopifyId);
+    }
+    if (!localOrder && cleanRef) {
+      const withHash = cleanRef.startsWith('#') ? cleanRef : `#${cleanRef}`;
+      const noHash = cleanRef.replace(/^#/, '');
+      localOrder = db.db.prepare('SELECT id FROM orders WHERE ref_number = ? OR ref_number = ? LIMIT 1').get(withHash, noHash);
+    }
+
+    if (!localOrder) {
+      return res.status(404).json({ success: false, error: 'Order not found in TRACE ERP database' });
+    }
+
+    const { cancelOrderBookingCore } = require('../controllers/ordersController');
+    const result = await cancelOrderBookingCore(localOrder.id, 'ChromeExtension', { strictBookedOnly: true });
+    if (!result.ok) {
+      return res.status(result.status || 500).json({ success: false, error: result.error });
+    }
+
+    console.log(`🚫 [Extension Cancel Booking] Order ${result.refNumber} (CN: ${result.cancelledTracking}) cancelled mutually.`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('❌ [Extension Cancel Booking Error]:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

@@ -4,6 +4,7 @@
   const ERP_API_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-tag-order';
   const ERP_INFO_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-order-info';
   const ERP_NOTE_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-add-note';
+  const ERP_CANCEL_BOOKING_URL = 'https://trace-erp-production.up.railway.app/api/public/extension-cancel-booking';
 
   const PRESET_TAGS = [
     { label: '🟢 WhatsApp', tag: 'WhatsApp', color: '#10b981', shortcut: 'Alt+W' },
@@ -586,6 +587,62 @@
     }
   }
 
+  async function cancelBookingViaErp(shopifyOrderId, ord, fallbackOrderName, buttonEl) {
+    const refLabel = (ord && ord.ref_number) ? ord.ref_number : (fallbackOrderName || `#${shopifyOrderId}`);
+    const courierLabel = (ord && ord.courier_name) ? ord.courier_name : 'Courier';
+    const trackingLabel = (ord && ord.tracking_number) ? ord.tracking_number : 'N/A';
+
+    const confirmed = window.confirm(
+      `Cancel booking for ${refLabel}?\n\nCourier: ${courierLabel}\nTracking #: ${trackingLabel}\n\nThis will cancel the CN on ${courierLabel}, unfulfill on Shopify, set ERP status to Pending, and restore FIFO stock.`
+    );
+    if (!confirmed) return;
+
+    const origText = buttonEl ? buttonEl.innerText : '';
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.style.opacity = '0.55';
+      buttonEl.innerText = '⏳ Cancelling Booking...';
+    }
+
+    try {
+      const response = await fetch(ERP_CANCEL_BOOKING_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopify_order_id: shopifyOrderId,
+          ref_number: refLabel
+        })
+      });
+
+      const resData = await response.json();
+      if (resData.success) {
+        const fifoTag = resData.fifoRestored ? ' + FIFO restored' : '';
+        createNotificationToast(
+          `✅ Booking cancelled (CN <strong>#${resData.cancelledTracking || trackingLabel}</strong>)${fifoTag}! Reloading...`,
+          'success'
+        );
+        setTimeout(() => {
+          window.location.reload();
+        }, 900);
+      } else {
+        createNotificationToast(`⚠️ Cancel failed: ${resData.error || 'Server error'}`, 'error');
+        if (buttonEl) {
+          buttonEl.disabled = false;
+          buttonEl.style.opacity = '1';
+          buttonEl.innerText = origText;
+        }
+      }
+    } catch (err) {
+      console.error('[TRACE CS Cancel Booking Error]:', err);
+      createNotificationToast(`❌ Network/Server Error`, 'error');
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.style.opacity = '1';
+        buttonEl.innerText = origText;
+      }
+    }
+  }
+
   function makeDraggable(element, handle) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     handle.style.cursor = 'grab';
@@ -647,7 +704,7 @@
 
     const bar = document.createElement('div');
     bar.id = 'trace-cs-tagger-bar';
-    bar.setAttribute('data-version', '10.7');
+    bar.setAttribute('data-version', '10.8');
     bar.className = 'trace-cs-tagger-bar';
 
     bar.style.cssText = `
@@ -738,6 +795,12 @@
           <a id="trace-cs-sim-btn" href="tel:" style="display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; background: #2563eb !important; color: #ffffff !important; text-decoration: none !important; border-radius: 6px !important; padding: 6px 4px !important; font-size: 10px !important; font-weight: 700 !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important; white-space: nowrap !important;" title="Direct Cellular SIM Phone Call">
             📞 Direct SIM Call
           </a>
+        </div>
+
+        <div id="trace-cs-cancel-booking-container" style="display: none !important; margin-top: 5px !important;">
+          <button type="button" id="trace-cs-cancel-booking-btn" style="width: 100% !important; display: flex !important; align-items: center !important; justify-content: center !important; gap: 5px !important; background: rgba(220, 38, 38, 0.18) !important; color: #fca5a5 !important; border: 1px solid #ef4444 !important; border-radius: 6px !important; padding: 6px !important; font-size: 10px !important; font-weight: 800 !important; cursor: pointer !important;" title="Cancel booking on Courier + Shopify Fulfillment + ERP & restore FIFO stock">
+            🚫 Cancel Booking
+          </button>
         </div>
       </div>
     `;
@@ -862,6 +925,25 @@
           let trackingText = `🚚 ${ord.courier_name || 'Courier'}: <strong>${ord.courier_status || ord.delivery_status}</strong>`;
           if (ord.tracking_number) trackingText += ` (#${ord.tracking_number})`;
           banner.innerHTML = trackingText;
+        }
+
+        const cancelWrap = liveBar.querySelector('#trace-cs-cancel-booking-container');
+        const cancelBtn = liveBar.querySelector('#trace-cs-cancel-booking-btn');
+        const stLower = (ord.delivery_status || '').trim().toLowerCase();
+        const canCancelBooking = Boolean(ord.tracking_number) && ['booked', 'pending', 'confirmed', ''].includes(stLower);
+        if (cancelWrap && cancelBtn) {
+          if (canCancelBooking) {
+            cancelWrap.style.setProperty('display', 'block', 'important');
+            cancelBtn.innerText = `🚫 Cancel Booking${ord.courier_name ? ` (${ord.courier_name})` : ''}`;
+            cancelBtn.title = `Cancel CN #${ord.tracking_number} on Courier + Shopify + ERP & restore FIFO stock`;
+            cancelBtn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              cancelBookingViaErp(orderId, ord, orderName, cancelBtn);
+            };
+          } else {
+            cancelWrap.style.setProperty('display', 'none', 'important');
+          }
         }
       } else {
         if (banner) banner.innerHTML = `🚚 Status: <strong>Shopify Admin Order</strong>`;

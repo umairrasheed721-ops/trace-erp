@@ -590,48 +590,101 @@ exports.bookInstaworld = async (req, res) => {
   }
 };
 
-exports.cancelBooking = async (req, res) => {
+async function cancelOrderBookingCore(orderId, actor = 'CancelBooking', options = {}) {
   const { cancelPostExOrder } = require('../engines/postex');
   const { cancelInstaworldOrder } = require('../engines/instaworld');
-  
+  const { strictBookedOnly = false } = options;
+
+  const order = db.prepare(`
+    SELECT o.*, s.shop_domain, s.access_token, s.postex_token,
+           s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url
+    FROM orders o JOIN stores s ON o.store_id = s.id
+    WHERE o.id = ?
+  `).get(orderId);
+
+  if (!order || !order.tracking_number) {
+    return { ok: false, status: 404, error: 'Order has no active booking to cancel' };
+  }
+
+  const statusLower = (order.delivery_status || '').trim().toLowerCase();
+  const blockedFinal = ['delivered', 'returned', 'return received', 'cancelled'];
+  if (blockedFinal.includes(statusLower)) {
+    return { ok: false, status: 409, error: `Cannot cancel booking when order status is '${order.delivery_status}'` };
+  }
+  if (strictBookedOnly && !['booked', 'pending', 'confirmed', ''].includes(statusLower)) {
+    return { ok: false, status: 409, error: `Cannot cancel booking from extension while status is '${order.delivery_status}'` };
+  }
+
+  const courier = (order.courier || '').toLowerCase();
+  let success = false;
+
+  if (courier.includes('postex')) {
+    success = await cancelPostExOrder(order, order.tracking_number);
+  } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
+    success = await cancelInstaworldOrder(order, order.tracking_number);
+  } else {
+    // Manual cancellation for others
+    success = true;
+  }
+
+  if (!success) {
+    return { ok: false, status: 500, error: 'Courier API rejected cancellation' };
+  }
+
+  // Cancel Shopify fulfillment (non-blocking)
+  let shopifyFulfillmentCancelled = false;
   try {
-    const order = db.prepare('SELECT o.*, s.shop_domain, s.access_token, s.postex_token, s.instaworld_key, s.instaworld_key_backup, s.instaworld_key_3, s.gas_proxy_url FROM orders o JOIN stores s ON o.store_id = s.id WHERE o.id = ?').get(req.params.id);
-    if (!order || !order.tracking_number) return res.status(404).json({ error: 'Order has no booking to cancel' });
-
-    const courier = (order.courier || '').toLowerCase();
-    let success = false;
-
-    if (courier.includes('postex')) {
-      success = await cancelPostExOrder(order, order.tracking_number);
-    } else if (courier.includes('insta') || courier.includes('tcs') || courier.includes('lcs') || courier.includes('leopard')) {
-      success = await cancelInstaworldOrder(order, order.tracking_number);
-    } else {
-      // Manual cancellation for others
-      success = true;
+    if (order.shopify_order_id) {
+      const { cancelShopifyFulfillment } = require('../engines/shopify');
+      shopifyFulfillmentCancelled = Boolean(await cancelShopifyFulfillment(order, order.shopify_order_id));
     }
+  } catch (shopifyErr) {
+    console.warn(`⚠️ Failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
+  }
 
-    if (success) {
-      // Cancel Shopify fulfillment (non-blocking)
-      try {
-        if (order.shopify_order_id) {
-          const { cancelShopifyFulfillment } = require('../engines/shopify');
-          await cancelShopifyFulfillment(order, order.shopify_order_id);
-        }
-      } catch (shopifyErr) {
-        console.warn(`⚠️ Failed to cancel Shopify fulfillment for order ${order.shopify_order_id}:`, shopifyErr.message);
-      }
+  // Reset ERP status cleanly to Pending (Rule 12: clear tracking_number & courier_status alongside Pending)
+  db.prepare(`
+    UPDATE orders
+    SET tracking_number = NULL,
+        courier = NULL,
+        courier_status = NULL,
+        delivery_status = 'Pending',
+        status_date = datetime('now')
+    WHERE id = ?
+  `).run(order.id);
 
-      db.prepare('UPDATE orders SET tracking_number = NULL, delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
-        .run(req.params.id);
-      try {
-        const { reverseOrderFifoOnCancel } = require('../services/poLedgerService');
-        reverseOrderFifoOnCancel(req.params.id, req.user?.username || 'CancelBooking');
-      } catch (fifoErr) { console.warn('[cancelBooking FIFO Notice]:', fifoErr.message); }
-      broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
-      res.json({ success: true });
-    } else {
-      res.status(500).json({ error: 'Courier API rejected cancellation' });
+  let fifoRestored = false;
+  try {
+    const { reverseOrderFifoOnCancel } = require('../services/poLedgerService');
+    const fifoRes = reverseOrderFifoOnCancel(order.id, actor);
+    fifoRestored = Boolean(fifoRes && fifoRes.reversed);
+  } catch (fifoErr) {
+    console.warn('[cancelBooking FIFO Notice]:', fifoErr.message);
+  }
+
+  broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
+
+  return {
+    ok: true,
+    orderId: order.id,
+    shopifyOrderId: order.shopify_order_id,
+    refNumber: order.ref_number || `#${order.id}`,
+    cancelledTracking: order.tracking_number,
+    courier: order.courier || '',
+    shopifyFulfillmentCancelled,
+    fifoRestored,
+  };
+}
+
+exports.cancelOrderBookingCore = cancelOrderBookingCore;
+
+exports.cancelBooking = async (req, res) => {
+  try {
+    const result = await cancelOrderBookingCore(req.params.id, req.user?.username || 'CancelBooking');
+    if (!result.ok) {
+      return res.status(result.status || 500).json({ error: result.error });
     }
+    res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
