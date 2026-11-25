@@ -568,6 +568,7 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
       WHERE id = ?
     `);
 
+    const cancelledOrderIds = [];
     const updateMany = db.transaction(rows => {
       for (const row of rows) {
         const fresh = shopifyMap[String(row.shopify_order_id)];
@@ -642,15 +643,28 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
 
         let newDeliveryStatus = row.delivery_status;
         const mappedStatus = mapShopifyStatus(fresh);
-        
+        const shopifyFulfillmentCancelled = !isProtected
+          && (row.delivery_status || '').toLowerCase() === 'booked'
+          && !fresh.fulfillment_status
+          && fulfillments.length === 0
+          && !tracking
+          && (fresh.fulfillments || []).some(f => f.status === 'cancelled');
+
         if (isProtected) {
           // Stay protected
         } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
           newDeliveryStatus = mappedStatus;
+        } else if (shopifyFulfillmentCancelled) {
+          newDeliveryStatus = 'Pending';
         } else if (fresh.fulfillment_status === 'fulfilled' || tracking) {
           if (!newDeliveryStatus || newDeliveryStatus.toLowerCase() === 'pending') {
             newDeliveryStatus = 'Booked';
           }
+        }
+
+        const canReverseCancel = !['delivered', 'returned', 'return received'].includes(dbStatus);
+        if (canReverseCancel && (isCancelled || mappedStatus === 'Cancelled' || shopifyFulfillmentCancelled)) {
+          cancelledOrderIds.push(row.id);
         }
 
         const oldTracking = row.tracking_number || '';
@@ -707,6 +721,18 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
     });
 
     updateMany(sheetOrders);
+
+    // Autopilot FIFO restore if staff cancelled an already-booked order/fulfillment on Shopify
+    if (cancelledOrderIds.length > 0) {
+      try {
+        const { reverseOrderFifoOnCancel } = require('../../services/poLedgerService');
+        for (const oid of cancelledOrderIds) {
+          try { reverseOrderFifoOnCancel(oid, 'ShopifyCancel'); } catch (_) {}
+        }
+      } catch (fifoErr) {
+        console.warn('[ShopifyRefresh FIFO Cancel Notice]:', fifoErr.message);
+      }
+    }
 
     // Direct reconciliation for all pending/unfulfilled orders in local database
     try {
@@ -833,11 +859,20 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
 
     let newDeliveryStatus = existing ? existing.delivery_status : 'Pending';
     const mappedStatus = mapShopifyStatus(order);
+    const shopifyFulfillmentCancelled = Boolean(existing)
+      && !isProtected
+      && (existing.delivery_status || '').toLowerCase() === 'booked'
+      && !order.fulfillment_status
+      && fulfillments.length === 0
+      && !tracking
+      && (order.fulfillments || []).some(f => f.status === 'cancelled');
 
     if (isProtected) {
       // Stay protected
     } else if (mappedStatus === 'Cancelled' || mappedStatus === 'Voided' || mappedStatus === 'Returned' || mappedStatus === 'Delivered') {
       newDeliveryStatus = mappedStatus;
+    } else if (shopifyFulfillmentCancelled) {
+      newDeliveryStatus = 'Pending';
     } else if (order.fulfillment_status === 'fulfilled' && (newDeliveryStatus === 'Pending' || !newDeliveryStatus)) {
       newDeliveryStatus = 'Booked';
     }
@@ -910,6 +945,15 @@ async function syncSingleShopifyOrder(store, shopifyOrderId) {
         order.email || order.contact_email || customer.email || addr.email || '',
         existing.id
       );
+      const canReverseCancel = !['delivered', 'returned', 'return received'].includes(dbStatus);
+      if (canReverseCancel && (isCancelled || mappedStatus === 'Cancelled' || shopifyFulfillmentCancelled)) {
+        try {
+          const { reverseOrderFifoOnCancel } = require('../../services/poLedgerService');
+          reverseOrderFifoOnCancel(existing.id, shopifyFulfillmentCancelled ? 'ShopifyFulfillmentCancel' : 'ShopifyCancel');
+        } catch (fifoErr) {
+          console.warn('[HybridSync FIFO Cancel Notice]:', fifoErr.message);
+        }
+      }
       console.log(`⚡ [Hybrid Sync] Updated order ${shopifyOrderId}`);
       try { require('../../sse').broadcast('order_updated', { storeId, shopifyOrderId }); } catch(e) {}
     } else {
@@ -1072,6 +1116,16 @@ async function syncSpecificOrders(store, shopifyIds) {
         shopifyShipping, shopifyDiscount,
         String(fresh.id), store.id
       );
+      if (newStatus === 'Cancelled' || (!fresh.fulfillment_status && !tracking && (fresh.fulfillments || []).some(f => f.status === 'cancelled'))) {
+        try {
+          const localOrd = db.prepare('SELECT id, delivery_status FROM orders WHERE shopify_order_id = ? AND store_id = ?').get(String(fresh.id), store.id);
+          const localStatus = (localOrd?.delivery_status || '').trim().toLowerCase();
+          if (localOrd && !['delivered', 'returned', 'return received'].includes(localStatus)) {
+            const { reverseOrderFifoOnCancel } = require('../../services/poLedgerService');
+            reverseOrderFifoOnCancel(localOrd.id, 'ShopifySyncCancel');
+          }
+        } catch (_) {}
+      }
       updatedCount++;
     }
   } catch (e) {

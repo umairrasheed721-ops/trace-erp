@@ -19,6 +19,12 @@ function markOrderAsCancelled(storeId, shopifyOrderId) {
       return false;
     }
 
+    const priorStatus = (order.delivery_status || '').trim().toLowerCase();
+    if (['delivered', 'returned', 'return received'].includes(priorStatus)) {
+      console.log(`[SyncService] Invalidation skipped: Order ${shopifyOrderId} is already in final status '${order.delivery_status}'.`);
+      return false;
+    }
+
     // Update status to Cancelled and update status_date
     const result = db.prepare(`
       UPDATE orders 
@@ -28,6 +34,14 @@ function markOrderAsCancelled(storeId, shopifyOrderId) {
     `).run(order.id);
 
     if (result.changes > 0) {
+      // Autopilot FIFO restore if this order had already been booked/allocated before Shopify cancel
+      try {
+        const { reverseOrderFifoOnCancel } = require('./poLedgerService');
+        reverseOrderFifoOnCancel(order.id, 'ShopifyWebhookCancel');
+      } catch (fifoErr) {
+        console.warn('[SyncService FIFO Cancel Notice]:', fifoErr.message);
+      }
+
       console.log(`[SyncService] Invalidation Success: Mapped order ${shopifyOrderId} to Cancelled`);
       // Broadcast to frontend to instantly update lists/UI
       try {
