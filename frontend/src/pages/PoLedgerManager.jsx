@@ -143,6 +143,7 @@ export default function PoLedgerManager() {
   const [accounts, setAccounts] = useState([])
   const [ledgerEntries, setLedgerEntries] = useState([])
   const [inventory, setInventory] = useState([])
+  const [fullCatalog, setFullCatalog] = useState([])
   const [invLedger, setInvLedger] = useState([])
 
   // Filters
@@ -155,8 +156,18 @@ export default function PoLedgerManager() {
 
   // Modals
   const [newPoOpen, setNewPoOpen] = useState(false)
-  const [poForm, setPoForm] = useState({ supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [] })
+  const [poForm, setPoForm] = useState({ supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false })
   const [skuPickerSearch, setSkuPickerSearch] = useState('')
+  // Shopify-style Add Products picker & bulk quickie states
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [pickerSearchBy, setPickerSearchBy] = useState('all') // 'all' | 'title' | 'sku'
+  const [pickerFilter, setPickerFilter] = useState('all') // 'all' | 'active' | 'draft' | 'backorder' | 'oos' | 'low'
+  const [pickerSelected, setPickerSelected] = useState(() => new Set())
+  const [collapsedPickerParents, setCollapsedPickerParents] = useState(() => new Set())
+  const [bulkQtyInput, setBulkQtyInput] = useState('')
+  const [bulkCostInput, setBulkCostInput] = useState('')
+  const [groupQuickFill, setGroupQuickFill] = useState({}) // { [parentTitle]: { qty: '', cost: '' } }
 
   const [receiveModal, setReceiveModal] = useState(null) // { po, qtys: {}, pushToShopify: true, closeShort: false, notes: '' }
   const [viewPoModal, setViewPoModal] = useState(null)
@@ -224,7 +235,10 @@ export default function PoLedgerManager() {
         fetch(`${API}/api/po-ledger/inventory/ledger${qs}`, { headers }),
       ])
       const [invJ, logJ] = await Promise.all([invRes.json(), logRes.json()])
-      if (invJ.success) setInventory(invJ.data || [])
+      if (invJ.success) {
+        setInventory(invJ.data || [])
+        if (!searchText.trim()) setFullCatalog(invJ.data || [])
+      }
       if (logJ.success) setInvLedger(logJ.data || [])
     } catch (_) {}
   }, [activeStoreId, invSearch, qs, headers])
@@ -284,12 +298,15 @@ export default function PoLedgerManager() {
         order_date: new Date().toISOString().slice(0, 10),
         landing_cost: '',
         notes: `Auto-generated from ${rows.length} Continue Selling backorder SKUs`,
+        receiveImmediately: false,
         items: rows.map(r => ({
           product_cost_id: r.id,
           shopify_variant_id: r.shopify_variant_id || '',
           sku: r.sku || '',
           parent_title: r.parent_title,
           variant_title: r.variant_title || '',
+          variant_image_url: r.variant_image_url || '',
+          inventory_qty: r.inventory_qty || 0,
           ordered_qty: r.needed_qty,
           unit_cost: r.suggested_cost || 0,
         })),
@@ -306,31 +323,155 @@ export default function PoLedgerManager() {
       order_date: new Date().toISOString().slice(0, 10),
       landing_cost: '',
       notes: '',
+      receiveImmediately: false,
       items: [],
     })
     setSkuPickerSearch('')
+    setBulkQtyInput('')
+    setBulkCostInput('')
+    setGroupQuickFill({})
     setNewPoOpen(true)
+    if (fullCatalog.length === 0) fetchInventory('')
   }
+
+  const makePoItemFromCatalog = (skuRow, defaultQty = null) => ({
+    product_cost_id: skuRow.id,
+    shopify_variant_id: skuRow.shopify_variant_id || '',
+    sku: skuRow.sku || '',
+    parent_title: skuRow.parent_title,
+    variant_title: skuRow.variant_title || '',
+    variant_image_url: skuRow.variant_image_url || '',
+    inventory_qty: Number(skuRow.inventory_qty) || 0,
+    ordered_qty: defaultQty !== null ? defaultQty : (skuRow.inventory_qty < 0 ? Math.abs(skuRow.inventory_qty) : 10),
+    unit_cost: Number(skuRow.unit_cost) || Number(skuRow.avg_cost) || 0,
+  })
 
   const addSkuToPoForm = (skuRow) => {
     setPoForm(prev => {
       if (prev.items.some(i => i.product_cost_id === skuRow.id)) return prev
-      return {
-        ...prev,
-        items: [
-          ...prev.items,
-          {
-            product_cost_id: skuRow.id,
-            shopify_variant_id: skuRow.shopify_variant_id || '',
-            sku: skuRow.sku || '',
-            parent_title: skuRow.parent_title,
-            variant_title: skuRow.variant_title || '',
-            ordered_qty: skuRow.inventory_qty < 0 ? Math.abs(skuRow.inventory_qty) : 10,
-            unit_cost: skuRow.avg_cost || 0,
-          },
-        ],
-      }
+      return { ...prev, items: [...prev.items, makePoItemFromCatalog(skuRow)] }
     })
+  }
+
+  const addMultipleSkusToPoForm = (rows, defaultQtyFn = null) => {
+    if (!rows || rows.length === 0) return 0
+    const currentExisting = new Set(poForm.items.map(i => i.product_cost_id))
+    const newRows = rows.filter(r => !currentExisting.has(r.id))
+    if (newRows.length === 0) return 0
+    setPoForm(prev => {
+      const existing = new Set(prev.items.map(i => i.product_cost_id))
+      const next = [...prev.items]
+      for (const r of newRows) {
+        if (existing.has(r.id)) continue
+        existing.add(r.id)
+        const q = typeof defaultQtyFn === 'function' ? defaultQtyFn(r) : null
+        next.push(makePoItemFromCatalog(r, q))
+      }
+      return { ...prev, items: next }
+    })
+    return newRows.length
+  }
+
+  const openShopifyProductPicker = (initialQuery = '') => {
+    const preselected = new Set(poForm.items.map(i => i.product_cost_id))
+    setPickerSelected(preselected)
+    setPickerSearch(initialQuery || skuPickerSearch || '')
+    setPickerSearchBy('all')
+    setPickerFilter('all')
+    setCollapsedPickerParents(new Set())
+    setPickerOpen(true)
+    if (fullCatalog.length === 0) fetchInventory('')
+  }
+
+  const commitPickerSelection = () => {
+    const catalog = fullCatalog.length > 0 ? fullCatalog : inventory
+    const catalogById = new Map(catalog.map(r => [r.id, r]))
+    setPoForm(prev => {
+      const existingById = new Map(prev.items.map(i => [i.product_cost_id, i]))
+      const nextItems = []
+      // Keep existing items still checked (preserving typed qtys & unit costs)
+      for (const it of prev.items) {
+        if (pickerSelected.has(it.product_cost_id)) nextItems.push(it)
+      }
+      // Append newly selected items
+      for (const id of pickerSelected) {
+        if (!existingById.has(id)) {
+          const row = catalogById.get(id)
+          if (row) nextItems.push(makePoItemFromCatalog(row))
+        }
+      }
+      return { ...prev, items: nextItems }
+    })
+    setPickerOpen(false)
+    setSkuPickerSearch('')
+  }
+
+  const handleCloneLastPo = async () => {
+    const lastPo = pos.find(p => !p.is_baseline && p.status !== 'cancelled') || pos[0]
+    if (!lastPo) return addToast('No previous Purchase Order to clone yet', 'info')
+    setBusyKey('clonePo')
+    try {
+      const res = await fetch(`${API}/api/po-ledger/pos/${lastPo.id}${qs}`, { headers })
+      const j = await res.json()
+      if (!j.success || !j.data?.items?.length) return addToast('Could not load last PO items', 'error')
+      const catalog = fullCatalog.length > 0 ? fullCatalog : inventory
+      const byId = new Map(catalog.map(c => [c.id, c]))
+      setPoForm(prev => ({
+        ...prev,
+        supplier_id: j.data.supplier_id ? String(j.data.supplier_id) : prev.supplier_id,
+        landing_cost: j.data.landing_cost || prev.landing_cost,
+        notes: `Cloned from ${lastPo.po_number}`,
+        items: j.data.items.map(it => {
+          const cat = byId.get(it.product_cost_id)
+          return {
+            product_cost_id: it.product_cost_id,
+            shopify_variant_id: it.shopify_variant_id || cat?.shopify_variant_id || '',
+            sku: it.sku || cat?.sku || '',
+            parent_title: it.parent_title,
+            variant_title: it.variant_title || '',
+            variant_image_url: cat?.variant_image_url || '',
+            inventory_qty: cat?.inventory_qty || 0,
+            ordered_qty: it.ordered_qty || 10,
+            unit_cost: it.unit_cost || 0,
+          }
+        }),
+      }))
+      addToast(`Cloned ${j.data.items.length} variants from ${lastPo.po_number}`, 'success')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const applyAllQty = (qtyVal) => {
+    const q = Math.max(1, parseInt(qtyVal, 10) || 1)
+    setPoForm(prev => ({ ...prev, items: prev.items.map(it => ({ ...it, ordered_qty: q })) }))
+  }
+
+  const applyAllCost = (costVal, onlyBlank = false) => {
+    const c = Math.max(0, parseFloat(costVal) || 0)
+    setPoForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => {
+        if (onlyBlank && (parseFloat(it.unit_cost) || 0) > 0) return it
+        return { ...it, unit_cost: c }
+      }),
+    }))
+  }
+
+  const applyGroupQty = (parentTitle, qtyVal) => {
+    const q = Math.max(1, parseInt(qtyVal, 10) || 1)
+    setPoForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => it.parent_title === parentTitle ? { ...it, ordered_qty: q } : it),
+    }))
+  }
+
+  const applyGroupCost = (parentTitle, costVal) => {
+    const c = Math.max(0, parseFloat(costVal) || 0)
+    setPoForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => it.parent_title === parentTitle ? { ...it, unit_cost: c } : it),
+    }))
   }
 
   const handleCreatePo = async (e) => {
@@ -354,13 +495,36 @@ export default function PoLedgerManager() {
         }),
       })
       const j = await res.json()
-      if (j.success) {
-        addToast(j.message, 'success')
-        setNewPoOpen(false)
-        await refreshAll()
-      } else {
+      if (!j.success) {
         addToast(j.error || 'Failed to create PO', 'error')
+        return
       }
+
+      // Optional 1-click quickie: immediately receive full stock & push +Qty to Shopify
+      if (poForm.receiveImmediately && j.data?.id && Array.isArray(j.data?.items)) {
+        const recRes = await fetch(`${API}/api/po-ledger/pos/${j.data.id}/receive`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            items: j.data.items.map(it => ({ itemId: it.id, receiveNowQty: it.ordered_qty || 0 })),
+            pushToShopify: true,
+            closeShort: false,
+            notes: 'Received immediately on PO creation',
+          }),
+        })
+        const recJ = await recRes.json()
+        if (recJ.success) {
+          addToast(`${j.data.po_number} created & received immediately (+stock pushed to Shopify)!`, 'success')
+        } else {
+          addToast(`${j.data.po_number} created, but auto-receive failed: ${recJ.error || 'Check Receive button'}`, 'warning')
+        }
+      } else {
+        addToast(j.message, 'success')
+      }
+
+      setNewPoOpen(false)
+      await refreshAll()
     } finally {
       setBusyKey('')
     }
@@ -593,18 +757,116 @@ export default function PoLedgerManager() {
     textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 5,
   }
 
-  const filteredCatalogForPo = useMemo(() => {
-    const q = skuPickerSearch.trim().toLowerCase()
-    if (!q) return inventory.slice(0, 12)
-    return inventory.filter(i =>
-      (i.parent_title || '').toLowerCase().includes(q)
-      || (i.variant_title || '').toLowerCase().includes(q)
-      || (i.sku || '').toLowerCase().includes(q)
-    ).slice(0, 15)
-  }, [inventory, skuPickerSearch])
+  const poCatalogSource = fullCatalog.length > 0 ? fullCatalog : inventory
 
+  // Group entire catalog by parent_title for Shopify-style Product/Variant picker & quick-adds
+  const groupedCatalogForPo = useMemo(() => {
+    const map = new Map()
+    for (const row of poCatalogSource) {
+      const key = row.parent_title || 'Untitled Product'
+      let g = map.get(key)
+      if (!g) {
+        g = {
+          parent_title: key,
+          status: (row.status || 'active').toLowerCase(),
+          image: row.variant_image_url || '',
+          totalQty: 0,
+          variants: [],
+        }
+        map.set(key, g)
+      }
+      if (!g.image && row.variant_image_url) g.image = row.variant_image_url
+      g.totalQty += (Number(row.inventory_qty) || 0)
+      g.variants.push(row)
+    }
+    return Array.from(map.values())
+  }, [poCatalogSource])
+
+  // Fast inline suggestions when typing directly in PO search box
+  const quickInlineMatches = useMemo(() => {
+    const q = skuPickerSearch.trim().toLowerCase()
+    if (!q) return []
+    return groupedCatalogForPo
+      .map(g => {
+        const titleHit = g.parent_title.toLowerCase().includes(q)
+        const matchedVariants = titleHit
+          ? g.variants
+          : g.variants.filter(v => (v.variant_title || '').toLowerCase().includes(q) || (v.sku || '').toLowerCase().includes(q))
+        return matchedVariants.length > 0 ? { ...g, matchedVariants } : null
+      })
+      .filter(Boolean)
+      .slice(0, 8)
+  }, [groupedCatalogForPo, skuPickerSearch])
+
+  // Filtered products inside the Shopify-style "Add products" modal
+  const pickerGroups = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase()
+    return groupedCatalogForPo
+      .map(g => {
+        const filteredVars = g.variants.filter(v => {
+          const qty = Number(v.inventory_qty) || 0
+          const st = (v.status || 'active').toLowerCase()
+          if (pickerFilter === 'active' && st !== 'active') return false
+          if (pickerFilter === 'draft' && st !== 'draft') return false
+          if (pickerFilter === 'backorder' && qty >= 0) return false
+          if (pickerFilter === 'oos' && qty !== 0) return false
+          if (pickerFilter === 'low' && (qty <= 0 || qty > 5)) return false
+          if (!q) return true
+          if (pickerSearchBy === 'sku') return (v.sku || '').toLowerCase().includes(q)
+          if (pickerSearchBy === 'title') return g.parent_title.toLowerCase().includes(q) || (v.variant_title || '').toLowerCase().includes(q)
+          return g.parent_title.toLowerCase().includes(q) || (v.variant_title || '').toLowerCase().includes(q) || (v.sku || '').toLowerCase().includes(q)
+        })
+        if (filteredVars.length === 0) return null
+        return { ...g, variants: filteredVars }
+      })
+      .filter(Boolean)
+  }, [groupedCatalogForPo, pickerSearch, pickerSearchBy, pickerFilter])
+
+  // Quick-add counts for 1-click toolbar buttons
+  const quickAddCounts = useMemo(() => {
+    let backorders = 0, lowStock = 0, outOfStock = 0
+    for (const r of poCatalogSource) {
+      const qty = Number(r.inventory_qty) || 0
+      const st = (r.status || 'active').toLowerCase()
+      if (qty < 0) backorders++
+      if (st === 'active' && qty > 0 && qty <= 5) lowStock++
+      if (st === 'active' && qty === 0) outOfStock++
+    }
+    return { backorders, lowStock, outOfStock }
+  }, [poCatalogSource])
+
+  // Group selected PO items by parent_title for per-product quick-fill bars
+  const groupedPoItems = useMemo(() => {
+    const map = new Map()
+    poForm.items.forEach((it, idx) => {
+      const key = it.parent_title || 'Untitled Product'
+      let g = map.get(key)
+      if (!g) {
+        const catGroup = groupedCatalogForPo.find(cg => cg.parent_title === key)
+        g = {
+          parent_title: key,
+          image: it.variant_image_url || catGroup?.image || '',
+          allCatalogVariants: catGroup?.variants || [],
+          entries: [],
+          totalUnits: 0,
+          subtotal: 0,
+        }
+        map.set(key, g)
+      }
+      const q = parseInt(it.ordered_qty, 10) || 0
+      const c = parseFloat(it.unit_cost) || 0
+      g.entries.push({ item: it, idx })
+      g.totalUnits += q
+      g.subtotal += q * c
+    })
+    return Array.from(map.values())
+  }, [poForm.items, groupedCatalogForPo])
+
+  const poTotalUnits = poForm.items.reduce((s, i) => s + (parseInt(i.ordered_qty, 10) || 0), 0)
   const poSubtotalPreview = poForm.items.reduce((s, i) => s + (parseInt(i.ordered_qty, 10) || 0) * (parseFloat(i.unit_cost) || 0), 0)
-  const poTotalPreview = poSubtotalPreview + (parseFloat(poForm.landing_cost) || 0)
+  const poLandingPreview = parseFloat(poForm.landing_cost) || 0
+  const poFreightPerUnit = poTotalUnits > 0 && poLandingPreview > 0 ? Math.round((poLandingPreview / poTotalUnits) * 100) / 100 : 0
+  const poTotalPreview = poSubtotalPreview + poLandingPreview
 
   return (
     <div style={{ padding: '20px 24px 40px', maxWidth: 1540, margin: '0 auto' }}>
@@ -1488,11 +1750,12 @@ export default function PoLedgerManager() {
       {/* MODALS                                                             */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
 
-      {/* 1. Create Purchase Order Modal */}
+      {/* 1. Create Purchase Order Modal (Shopify-Style Variant Picker + Fast Quickies) */}
       {newPoOpen && (
-        <ModalShell title="New Purchase Order" subtitle="Select supplier, add SKUs & optional freight/stitching landing cost" onClose={() => setNewPoOpen(false)} maxWidth={780}>
+        <ModalShell title="New Purchase Order" subtitle="Select supplier, browse products & variants like Shopify, and bulk-fill quantities or costs in seconds" onClose={() => { setPickerOpen(false); setNewPoOpen(false) }} maxWidth={980}>
           <form onSubmit={handleCreatePo} style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.9fr 0.9fr', gap: 10 }}>
+            {/* Top Supplier / Date / Landing Cost Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 0.9fr', gap: 10 }}>
               <div>
                 <label style={labelStyle}>Supplier</label>
                 <select
@@ -1514,104 +1777,794 @@ export default function PoLedgerManager() {
               </div>
             </div>
 
-            {/* SKU Picker */}
-            <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 11 }}>
-              <label style={labelStyle}>Add SKUs from Catalog</label>
-              <input
-                type="text"
-                value={skuPickerSearch}
-                onChange={e => setSkuPickerSearch(e.target.value)}
-                placeholder="Type product title or SKU to add..."
-                style={{ ...inputStyle, background: 'var(--bg-surface)', marginBottom: 8 }}
-              />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 110, overflowY: 'auto' }}>
-                {filteredCatalogForPo.map(row => (
+            {/* Shopify-Style Add Products Bar + 1-Click Quick-Add Chips */}
+            <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>Add Products &amp; Variants</label>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {groupedCatalogForPo.length} products · {poCatalogSource.length} variants in catalog
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.6, fontSize: 13 }}>🔍</span>
+                  <input
+                    type="text"
+                    value={skuPickerSearch}
+                    onChange={e => setSkuPickerSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        openShopifyProductPicker(skuPickerSearch)
+                      }
+                    }}
+                    placeholder="Search products or SKU — or click Browse to pick multiple variants like Shopify..."
+                    style={{ ...inputStyle, background: 'var(--bg-surface)', paddingLeft: 32 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openShopifyProductPicker(skuPickerSearch)}
+                  style={{
+                    padding: '8px 16px', borderRadius: 8, border: '1px solid #2563eb',
+                    background: 'rgba(37,99,235,0.10)', color: '#2563eb', fontWeight: 700,
+                    fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  🛍️ Browse Products
+                </button>
+              </div>
+
+              {/* Instant Inline Match Dropdown when typing */}
+              {quickInlineMatches.length > 0 && (
+                <div style={{
+                  marginTop: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                  borderRadius: 9, maxHeight: 200, overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
+                }}>
+                  {quickInlineMatches.map(g => {
+                    const alreadyIds = new Set(poForm.items.map(i => i.product_cost_id))
+                    const remaining = g.matchedVariants.filter(v => !alreadyIds.has(v.id))
+                    return (
+                      <div key={g.parent_title} style={{ padding: '8px 11px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                          {g.image ? (
+                            <img src={g.image} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 32, height: 32, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>📦</div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {g.parent_title}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {g.matchedVariants.length} variant{g.matchedVariants.length > 1 ? 's' : ''} matched · Stock: {g.totalQty}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => openShopifyProductPicker(g.parent_title)}
+                            style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                          >
+                            Pick Sizes
+                          </button>
+                          <button
+                            type="button"
+                            disabled={remaining.length === 0}
+                            onClick={() => {
+                              const n = addMultipleSkusToPoForm(remaining)
+                              if (n > 0) addToast(`Added ${n} variants of "${g.parent_title}"`, 'success')
+                              setSkuPickerSearch('')
+                            }}
+                            style={{
+                              padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: remaining.length ? 'pointer' : 'default',
+                              background: remaining.length ? '#2563eb' : 'var(--bg-elevated)',
+                              color: remaining.length ? '#fff' : 'var(--text-muted)', border: 'none',
+                            }}
+                          >
+                            {remaining.length > 0 ? `+ Add All (${remaining.length})` : '✓ All Added'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* 1-Click Quick-Add Power Chips */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>⚡ Quick Add:</span>
+                <button
+                  type="button"
+                  disabled={quickAddCounts.backorders === 0}
+                  onClick={() => {
+                    const rows = poCatalogSource.filter(r => (Number(r.inventory_qty) || 0) < 0)
+                    const n = addMultipleSkusToPoForm(rows, r => Math.abs(Number(r.inventory_qty) || 1))
+                    addToast(n > 0 ? `Added ${n} backorder SKU(s) with exact needed qty` : 'All backorder SKUs already in PO', 'info')
+                  }}
+                  style={{
+                    padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: quickAddCounts.backorders ? 'pointer' : 'not-allowed',
+                    background: 'rgba(239,68,68,0.10)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.32)',
+                    opacity: quickAddCounts.backorders ? 1 : 0.45,
+                  }}
+                >
+                  🔴 All Backorders ({quickAddCounts.backorders})
+                </button>
+                <button
+                  type="button"
+                  disabled={quickAddCounts.lowStock === 0}
+                  onClick={() => {
+                    const rows = poCatalogSource.filter(r => (r.status || 'active').toLowerCase() === 'active' && (Number(r.inventory_qty) || 0) > 0 && (Number(r.inventory_qty) || 0) <= 5)
+                    const n = addMultipleSkusToPoForm(rows, () => 10)
+                    addToast(n > 0 ? `Added ${n} low-stock SKU(s)` : 'All low-stock SKUs already in PO', 'info')
+                  }}
+                  style={{
+                    padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: quickAddCounts.lowStock ? 'pointer' : 'not-allowed',
+                    background: 'rgba(245,158,11,0.10)', color: '#b45309', border: '1px solid rgba(245,158,11,0.32)',
+                    opacity: quickAddCounts.lowStock ? 1 : 0.45,
+                  }}
+                >
+                  ⚠️ Low Stock ≤5 ({quickAddCounts.lowStock})
+                </button>
+                <button
+                  type="button"
+                  disabled={quickAddCounts.outOfStock === 0}
+                  onClick={() => {
+                    const rows = poCatalogSource.filter(r => (r.status || 'active').toLowerCase() === 'active' && (Number(r.inventory_qty) || 0) === 0)
+                    const n = addMultipleSkusToPoForm(rows, () => 10)
+                    addToast(n > 0 ? `Added ${n} out-of-stock active SKU(s)` : 'All out-of-stock SKUs already in PO', 'info')
+                  }}
+                  style={{
+                    padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: quickAddCounts.outOfStock ? 'pointer' : 'not-allowed',
+                    background: 'rgba(100,116,139,0.10)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
+                    opacity: quickAddCounts.outOfStock ? 1 : 0.45,
+                  }}
+                >
+                  🚫 Out of Stock ({quickAddCounts.outOfStock})
+                </button>
+                {pos.length > 0 && (
                   <button
-                    key={row.id}
                     type="button"
-                    onClick={() => addSkuToPoForm(row)}
+                    disabled={busyKey === 'clonePo'}
+                    onClick={handleCloneLastPo}
                     style={{
-                      padding: '4.5px 9px', borderRadius: 7, fontSize: 11.5, cursor: 'pointer',
-                      background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+                      padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                      background: 'rgba(124,58,237,0.10)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.32)',
                     }}
                   >
-                    + {row.parent_title}{row.variant_title ? ` (${row.variant_title})` : ''} [{row.inventory_qty}]
+                    {busyKey === 'clonePo' ? '⏳ Cloning...' : '🔁 Clone Last PO'}
                   </button>
-                ))}
+                )}
               </div>
             </div>
 
-            {/* Selected Items */}
+            {/* Global Bulk Quickies Bar (When items exist) */}
             {poForm.items.length > 0 && (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                      <th style={{ padding: '7px 10px' }}>Product</th>
-                      <th style={{ padding: '7px 8px', width: 90 }}>Qty</th>
-                      <th style={{ padding: '7px 8px', width: 115 }}>Unit Cost (Rs.)</th>
-                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>Total</th>
-                      <th style={{ padding: '7px 8px', width: 32 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {poForm.items.map((it, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '7px 10px' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{it.parent_title}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{it.variant_title || it.sku}</div>
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            type="number" min="1" value={it.ordered_qty}
-                            onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: e.target.value } : x) }))}
-                            style={{ ...inputStyle, padding: '5px 7px' }}
-                          />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input
-                            type="number" min="0" step="0.01" value={it.unit_cost}
-                            onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, unit_cost: e.target.value } : x) }))}
-                            style={{ ...inputStyle, padding: '5px 7px' }}
-                          />
-                        </td>
-                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtRs((parseInt(it.ordered_qty, 10) || 0) * (parseFloat(it.unit_cost) || 0))}
-                        </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => setPoForm(p => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
-                            style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}
-                          >
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+                padding: '8px 12px', borderRadius: 10,
+                background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.22)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb' }}>⚡ All Qty:</span>
+                  {[5, 10, 20, 50].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => applyAllQty(preset)}
+                      style={{
+                        padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                  <input
+                    type="number" min="1" placeholder="Qty"
+                    value={bulkQtyInput}
+                    onChange={e => setBulkQtyInput(e.target.value)}
+                    style={{ width: 58, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 11.5, color: 'var(--text-primary)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { if (bulkQtyInput) applyAllQty(bulkQtyInput) }}
+                    style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: '#2563eb', color: '#fff', border: 'none' }}
+                  >
+                    Set All
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#059669' }}>💰 All Cost:</span>
+                  <input
+                    type="number" min="0" step="0.01" placeholder="Rs."
+                    value={bulkCostInput}
+                    onChange={e => setBulkCostInput(e.target.value)}
+                    style={{ width: 78, padding: '3px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 11.5, color: 'var(--text-primary)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { if (bulkCostInput !== '') applyAllCost(bulkCostInput, false) }}
+                    style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: '#059669', color: '#fff', border: 'none' }}
+                  >
+                    Apply All
+                  </button>
+                  <button
+                    type="button"
+                    title="Only fill variants whose Unit Cost is currently Rs. 0"
+                    onClick={() => { if (bulkCostInput !== '') applyAllCost(bulkCostInput, true) }}
+                    style={{ padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-surface)', color: '#059669', border: '1px solid rgba(5,150,105,0.35)' }}
+                  >
+                    Rs 0 Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPoForm(p => ({ ...p, items: [] }))}
+                    style={{ marginLeft: 4, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.10)', color: '#dc2626', border: 'none' }}
+                  >
+                    Clear All
+                  </button>
+                </div>
               </div>
             )}
 
-            <div>
-              <label style={labelStyle}>Notes (Optional)</label>
-              <input type="text" value={poForm.notes} onChange={e => setPoForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. Winter fabric batch #2" style={inputStyle} />
+            {/* Selected Items — Product-Grouped with Per-Product Quickies */}
+            {poForm.items.length > 0 ? (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', maxHeight: 330, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                    <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      <th style={{ padding: '8px 11px' }}>Product / Variant</th>
+                      <th style={{ padding: '8px 8px', width: 118, textAlign: 'center' }}>Order Qty</th>
+                      <th style={{ padding: '8px 8px', width: 135 }}>Unit Cost (Rs.)</th>
+                      <th style={{ padding: '8px 11px', textAlign: 'right', width: 105 }}>Line Total</th>
+                      <th style={{ padding: '8px 8px', width: 32 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedPoItems.map(group => {
+                      const inGroupIds = new Set(group.entries.map(e => e.item.product_cost_id))
+                      const missingVariants = group.allCatalogVariants.filter(v => !inGroupIds.has(v.id))
+                      const gQuick = groupQuickFill[group.parent_title] || { qty: '', cost: '' }
+
+                      return (
+                        <React.Fragment key={group.parent_title}>
+                          {/* Parent Group Header with Inline Group Quick-Fill */}
+                          <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={5} style={{ padding: '7px 11px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {group.image ? (
+                                    <img src={group.image} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)' }} />
+                                  ) : (
+                                    <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>📦</div>
+                                  )}
+                                  <div>
+                                    <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text-primary)' }}>{group.parent_title}</span>
+                                    <span style={{ marginLeft: 7, fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>
+                                      {group.entries.length} variant{group.entries.length > 1 ? 's' : ''} · {group.totalUnits} pcs · {fmtRs(group.subtotal)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                                  {/* Per-product Qty quickie */}
+                                  <input
+                                    type="number" min="1" placeholder="Grp Qty"
+                                    value={gQuick.qty}
+                                    onChange={e => setGroupQuickFill(prev => ({ ...prev, [group.parent_title]: { ...gQuick, qty: e.target.value } }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (gQuick.qty) applyGroupQty(group.parent_title, gQuick.qty) } }}
+                                    style={{ width: 62, padding: '2.5px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 11, color: 'var(--text-primary)' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    title="Apply Qty to all variants of this product"
+                                    onClick={() => { if (gQuick.qty) applyGroupQty(group.parent_title, gQuick.qty) }}
+                                    style={{ padding: '2.5px 7px', borderRadius: 5, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', background: 'rgba(37,99,235,0.12)', color: '#2563eb', border: '1px solid rgba(37,99,235,0.3)' }}
+                                  >
+                                    Set Qty
+                                  </button>
+
+                                  {/* Per-product Cost quickie */}
+                                  <input
+                                    type="number" min="0" step="0.01" placeholder="Grp Rs."
+                                    value={gQuick.cost}
+                                    onChange={e => setGroupQuickFill(prev => ({ ...prev, [group.parent_title]: { ...gQuick, cost: e.target.value } }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (gQuick.cost !== '') applyGroupCost(group.parent_title, gQuick.cost) } }}
+                                    style={{ width: 68, padding: '2.5px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 11, color: 'var(--text-primary)' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    title="Apply Unit Cost to all variants of this product"
+                                    onClick={() => { if (gQuick.cost !== '') applyGroupCost(group.parent_title, gQuick.cost) }}
+                                    style={{ padding: '2.5px 7px', borderRadius: 5, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', background: 'rgba(5,150,105,0.12)', color: '#059669', border: '1px solid rgba(5,150,105,0.3)' }}
+                                  >
+                                    Set Cost
+                                  </button>
+
+                                  {missingVariants.length > 0 && (
+                                    <button
+                                      type="button"
+                                      title="Add all remaining unselected sizes/colors of this product"
+                                      onClick={() => {
+                                        const refCost = parseFloat(group.entries[0]?.item?.unit_cost) || 0
+                                        const refQty = parseInt(group.entries[0]?.item?.ordered_qty, 10) || 10
+                                        addMultipleSkusToPoForm(missingVariants, () => refQty)
+                                        if (refCost > 0) {
+                                          setPoForm(prev => ({
+                                            ...prev,
+                                            items: prev.items.map(x => x.parent_title === group.parent_title && (parseFloat(x.unit_cost) || 0) === 0 ? { ...x, unit_cost: refCost } : x),
+                                          }))
+                                        }
+                                      }}
+                                      style={{ padding: '2.5px 8px', borderRadius: 5, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.3)' }}
+                                    >
+                                      +{missingVariants.length} Remaining
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    title="Remove entire product group"
+                                    onClick={() => setPoForm(p => ({ ...p, items: p.items.filter(x => x.parent_title !== group.parent_title) }))}
+                                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800, fontSize: 12, padding: '2px 4px' }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Variant Sub-Rows */}
+                          {group.entries.map(({ item: it, idx }) => {
+                            const qtyNum = parseInt(it.ordered_qty, 10) || 0
+                            const costNum = parseFloat(it.unit_cost) || 0
+                            const invNum = Number(it.inventory_qty) || 0
+                            return (
+                              <tr key={it.product_cost_id || idx} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
+                                <td style={{ padding: '7px 11px 7px 34px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{it.variant_title || 'Default'}</span>
+                                    {it.sku && (
+                                      <span style={{ fontSize: 10, fontFamily: 'monospace', padding: '1px 5px', borderRadius: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                                        {it.sku}
+                                      </span>
+                                    )}
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 700,
+                                      color: invNum < 0 ? '#dc2626' : (invNum === 0 ? '#b45309' : 'var(--text-muted)'),
+                                    }}>
+                                      Avail: {invNum}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: Math.max(1, (parseInt(x.ordered_qty, 10) || 1) - 1) } : x) }))}
+                                      style={{ width: 24, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 800 }}
+                                    >−</button>
+                                    <input
+                                      type="number" min="1" value={it.ordered_qty}
+                                      onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: e.target.value } : x) }))}
+                                      style={{ ...inputStyle, width: 54, padding: '4px 5px', textAlign: 'center', fontWeight: 700 }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: (parseInt(x.ordered_qty, 10) || 0) + 1 } : x) }))}
+                                      style={{ width: 24, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 800 }}
+                                    >+</button>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="number" min="0" step="0.01" value={it.unit_cost}
+                                    onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, unit_cost: e.target.value } : x) }))}
+                                    style={{ ...inputStyle, padding: '4.5px 7px', fontWeight: 700, borderColor: costNum <= 0 ? 'rgba(239,68,68,0.5)' : 'var(--border)' }}
+                                  />
+                                  {poFreightPerUnit > 0 && (
+                                    <div style={{ fontSize: 10, color: '#6366f1', fontWeight: 600, marginTop: 2 }}>
+                                      Landed: Rs {(costNum + poFreightPerUnit).toFixed(0)} (+{poFreightPerUnit})
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '7px 11px', textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                                  {fmtRs(qtyNum * costNum)}
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPoForm(p => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
+                                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </React.Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div
+                onClick={() => openShopifyProductPicker('')}
+                style={{
+                  border: '1.5px dashed var(--border)', borderRadius: 11, padding: '24px 16px',
+                  textAlign: 'center', cursor: 'pointer', background: 'var(--bg-elevated)',
+                }}
+              >
+                <div style={{ fontSize: 22, marginBottom: 4 }}>🛍️</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>No products added yet — click to Browse Products &amp; Variants</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>Select whole products or individual sizes/colors in one shot, or use the Quick Add chips above.</div>
+              </div>
+            )}
+
+            {/* Notes + Optional Receive Immediately Toggle */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
+              <div>
+                <label style={labelStyle}>Notes (Optional)</label>
+                <input type="text" value={poForm.notes} onChange={e => setPoForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. Winter fabric batch #2" style={inputStyle} />
+              </div>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+                background: poForm.receiveImmediately ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
+                border: `1px solid ${poForm.receiveImmediately ? 'rgba(16,185,129,0.45)' : 'var(--border)'}`,
+                color: poForm.receiveImmediately ? '#059669' : 'var(--text-secondary)',
+              }} title="Stock already in warehouse? Tick this to auto-receive full qty & push stock to Shopify in 1 step.">
+                <input
+                  type="checkbox"
+                  checked={Boolean(poForm.receiveImmediately)}
+                  onChange={e => setPoForm(p => ({ ...p, receiveImmediately: e.target.checked }))}
+                />
+                ⚡ Receive Immediately + Push to Shopify
+              </label>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)' }}>
-                PO Total: {fmtRs(poTotalPreview)}
+            {/* Footer Totals & Submit */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <strong>{poForm.items.length}</strong> variants · <strong>{poTotalUnits}</strong> units
+                </span>
+                {poLandingPreview > 0 && (
+                  <span style={{ color: '#6366f1', fontWeight: 700, fontSize: 12 }}>
+                    Subtotal {fmtRs(poSubtotalPreview)} + Freight {fmtRs(poLandingPreview)}
+                  </span>
+                )}
+                <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)' }}>
+                  PO Total: {fmtRs(poTotalPreview)}
+                </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => setNewPoOpen(false)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                <button type="submit" disabled={busyKey === 'createPo'} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
-                  {busyKey === 'createPo' ? 'Creating...' : 'Create Purchase Order'}
+                <button type="button" onClick={() => { setPickerOpen(false); setNewPoOpen(false) }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                <button
+                  type="submit"
+                  disabled={busyKey === 'createPo' || poForm.items.length === 0}
+                  style={{
+                    padding: '8px 18px', borderRadius: 8, border: 'none',
+                    background: poForm.receiveImmediately ? '#059669' : '#2563eb',
+                    color: '#fff', fontWeight: 700, cursor: poForm.items.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: poForm.items.length === 0 ? 0.5 : 1,
+                  }}
+                >
+                  {busyKey === 'createPo'
+                    ? (poForm.receiveImmediately ? 'Creating & Receiving...' : 'Creating...')
+                    : (poForm.receiveImmediately ? '⚡ Create & Receive PO' : 'Create Purchase Order')}
                 </button>
               </div>
             </div>
           </form>
         </ModalShell>
+      )}
+
+      {/* 1b. Shopify-Style Nested "Add products" Multi-Variant Picker Modal */}
+      {pickerOpen && (
+        <div
+          onClick={() => setPickerOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10020,
+            background: 'rgba(15,23,42,0.58)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 740, maxHeight: '86vh',
+              display: 'flex', flexDirection: 'column',
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 16, boxShadow: '0 28px 70px rgba(0,0,0,0.38)', overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)' }}>Add products</h3>
+              <button type="button" onClick={() => setPickerOpen(false)} style={{ background: 'none', border: 'none', fontSize: 17, color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>✕</button>
+            </div>
+
+            {/* Search + Search By + Quick Filter Chips */}
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 9, background: 'var(--bg-surface)' }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 }}>🔍</span>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={pickerSearch}
+                    onChange={e => setPickerSearch(e.target.value)}
+                    placeholder="Search products, variants, or SKUs..."
+                    style={{ ...inputStyle, paddingLeft: 32, background: 'var(--bg-elevated)' }}
+                  />
+                </div>
+                <select
+                  value={pickerSearchBy}
+                  onChange={e => setPickerSearchBy(e.target.value)}
+                  style={{ ...inputStyle, width: 'auto', minWidth: 135, background: 'var(--bg-elevated)', cursor: 'pointer' }}
+                >
+                  <option value="all">Search by All</option>
+                  <option value="title">Search by Title</option>
+                  <option value="sku">Search by SKU</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'active', label: '🟢 Active' },
+                  { id: 'draft', label: '📝 Draft' },
+                  { id: 'backorder', label: '🔴 Backorder (<0)' },
+                  { id: 'oos', label: '🚫 Out of Stock (0)' },
+                  { id: 'low', label: '⚠️ Low Stock (≤5)' },
+                ].map(f => {
+                  const active = pickerFilter === f.id
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setPickerFilter(f.id)}
+                      style={{
+                        padding: '3.5px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: active ? 700 : 600, cursor: 'pointer',
+                        background: active ? 'rgba(37,99,235,0.14)' : 'var(--bg-elevated)',
+                        color: active ? '#2563eb' : 'var(--text-secondary)',
+                        border: `1px solid ${active ? '#2563eb' : 'var(--border)'}`,
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Column Header */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 90px 82px', padding: '8px 18px',
+              background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)',
+              fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)',
+            }}>
+              <div>Product</div>
+              <div style={{ textAlign: 'right' }}>Cost</div>
+              <div style={{ textAlign: 'right' }}>Available</div>
+            </div>
+
+            {/* Scrollable Shopify-Style Product + Variant Tree */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {pickerGroups.length === 0 ? (
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                  No matching products found. Try clearing search or filter chips.
+                </div>
+              ) : (
+                pickerGroups.map(g => {
+                  const ids = g.variants.map(v => v.id)
+                  const selectedCount = ids.filter(id => pickerSelected.has(id)).length
+                  const allChecked = ids.length > 0 && selectedCount === ids.length
+                  const someChecked = selectedCount > 0 && selectedCount < ids.length
+                  const isCollapsed = collapsedPickerParents.has(g.parent_title)
+
+                  const toggleParentCheck = () => {
+                    setPickerSelected(prev => {
+                      const next = new Set(prev)
+                      if (allChecked) ids.forEach(id => next.delete(id))
+                      else ids.forEach(id => next.add(id))
+                      return next
+                    })
+                  }
+
+                  const toggleVariantCheck = (id) => {
+                    setPickerSelected(prev => {
+                      const next = new Set(prev)
+                      if (next.has(id)) next.delete(id)
+                      else next.add(id)
+                      return next
+                    })
+                  }
+
+                  const stBadge = g.status === 'draft'
+                    ? { label: 'Draft', bg: 'rgba(14,165,233,0.16)', color: '#0284c7' }
+                    : g.status === 'unlisted'
+                      ? { label: 'Unlisted', bg: 'rgba(219,39,119,0.14)', color: '#db2777' }
+                      : null
+
+                  return (
+                    <div key={g.parent_title} style={{ borderBottom: '1px solid var(--border)' }}>
+                      {/* Parent Row */}
+                      <div
+                        style={{
+                          display: 'grid', gridTemplateColumns: '1fr 90px 82px', alignItems: 'center',
+                          padding: '10px 18px', background: allChecked ? 'rgba(37,99,235,0.05)' : 'var(--bg-surface)',
+                          cursor: 'pointer',
+                        }}
+                        onClick={toggleParentCheck}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={allChecked}
+                            ref={el => { if (el) el.indeterminate = someChecked }}
+                            onChange={toggleParentCheck}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#2563eb' }}
+                          />
+                          {g.image ? (
+                            <img src={g.image} alt="" style={{ width: 38, height: 38, borderRadius: 7, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 38, height: 38, borderRadius: 7, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📦</div>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text-primary)' }}>{g.parent_title}</span>
+                            {stBadge && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: stBadge.bg, color: stBadge.color }}>
+                                {stBadge.label}
+                              </span>
+                            )}
+                            {selectedCount > 0 && (
+                              <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2563eb' }}>
+                                ({selectedCount}/{ids.length})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setCollapsedPickerParents(prev => {
+                                const next = new Set(prev)
+                                if (next.has(g.parent_title)) next.delete(g.parent_title)
+                                else next.add(g.parent_title)
+                                return next
+                              })
+                            }}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11.5, fontWeight: 600 }}
+                          >
+                            {isCollapsed ? `▸ ${g.variants.length} vars` : `▾ Hide`}
+                          </button>
+                        </div>
+                        <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: g.totalQty < 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                          {g.totalQty}
+                        </div>
+                      </div>
+
+                      {/* Indented Variant Sub-Rows */}
+                      {!isCollapsed && g.variants.map(v => {
+                        const checked = pickerSelected.has(v.id)
+                        const qty = Number(v.inventory_qty) || 0
+                        const costVal = Number(v.unit_cost) || Number(v.avg_cost) || 0
+                        return (
+                          <div
+                            key={v.id}
+                            onClick={() => toggleVariantCheck(v.id)}
+                            style={{
+                              display: 'grid', gridTemplateColumns: '1fr 90px 82px', alignItems: 'center',
+                              padding: '8px 18px 8px 54px',
+                              borderTop: '1px solid var(--border)',
+                              background: checked ? 'rgba(37,99,235,0.06)' : 'var(--bg-elevated)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleVariantCheck(v.id)}
+                                onClick={e => e.stopPropagation()}
+                                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#2563eb' }}
+                              />
+                              <span style={{ fontSize: 13, fontWeight: checked ? 700 : 500, color: 'var(--text-primary)' }}>
+                                {v.variant_title || 'Default'}
+                              </span>
+                              {v.sku && (
+                                <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                                  {v.sku}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ textAlign: 'right', fontSize: 12, color: costVal > 0 ? 'var(--text-secondary)' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                              {costVal > 0 ? `Rs ${costVal.toLocaleString()}` : 'Rs 0'}
+                            </div>
+                            <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: qty < 0 ? '#dc2626' : (qty === 0 ? 'var(--text-muted)' : '#059669') }}>
+                              {qty}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Sticky Footer */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+              padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-surface)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  padding: '4px 11px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                  background: pickerSelected.size > 0 ? 'rgba(37,99,235,0.12)' : 'var(--bg-elevated)',
+                  color: pickerSelected.size > 0 ? '#2563eb' : 'var(--text-muted)',
+                }}>
+                  {pickerSelected.size} variant{pickerSelected.size !== 1 ? 's' : ''} selected
+                </span>
+                {pickerGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerSelected(prev => {
+                        const next = new Set(prev)
+                        pickerGroups.forEach(g => g.variants.forEach(v => next.add(v.id)))
+                        return next
+                      })
+                    }}
+                    style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 700, color: '#2563eb', cursor: 'pointer' }}
+                  >
+                    Select All Shown
+                  </button>
+                )}
+                {pickerSelected.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerSelected(new Set())}
+                    style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 600, color: '#dc2626', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={commitPickerSelection}
+                  style={{
+                    padding: '7px 16px', borderRadius: 8, border: 'none',
+                    background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
+                  }}
+                >
+                  Add to purchase order
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 2. Receive PO Modal (Partial Receiving + ☑ Push +Qty to Shopify) */}

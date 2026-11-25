@@ -1023,7 +1023,10 @@ function getWarehouseStock(storeId, search = '') {
 
   let sql = `
     SELECT p.id, p.store_id, p.shopify_variant_id, p.sku, p.parent_title, p.variant_title,
+           COALESCE(p.variant_image_url, '') AS variant_image_url,
            COALESCE(p.inventory_qty, 0) AS inventory_qty,
+           COALESCE(p.unit_cost, 0) AS unit_cost,
+           COALESCE(p.packaging_cost, 0) AS packaging_cost,
            COALESCE(NULLIF(p.landed_cost, 0), p.unit_cost, 0) AS avg_cost,
            COALESCE(p.selling_price, 0) AS selling_price,
            COALESCE(p.inventory_policy, 'deny') AS inventory_policy,
@@ -1048,7 +1051,7 @@ function getWarehouseStock(storeId, search = '') {
     sql += ' AND (LOWER(p.parent_title) LIKE ? OR LOWER(p.variant_title) LIKE ? OR LOWER(COALESCE(p.sku, \'\')) LIKE ? OR LOWER(COALESCE(p.shared_pool_key, \'\')) LIKE ?)';
     params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
-  sql += ' ORDER BY (CASE WHEN p.inventory_qty < 0 THEN 0 ELSE 1 END) ASC, p.parent_title ASC, p.variant_title ASC LIMIT 300';
+  sql += ' ORDER BY (CASE WHEN p.inventory_qty < 0 THEN 0 ELSE 1 END) ASC, p.parent_title ASC, p.variant_title ASC LIMIT 2500';
 
   const rows = db.prepare(sql).all(...params);
   return rows.map(r => ({
