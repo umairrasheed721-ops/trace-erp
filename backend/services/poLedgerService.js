@@ -833,8 +833,14 @@ function createBaselinePo(storeId, createdBy = 'Admin') {
 function createPurchaseOrder(storeId, payload = {}, createdBy = 'Admin') {
   ensurePoLedgerTables();
   const sid = Number(storeId) || 1;
-  const items = Array.isArray(payload.items) ? payload.items.filter(i => (parseInt(i.ordered_qty, 10) || 0) > 0) : [];
-  if (items.length === 0) throw new Error('Add at least one SKU with quantity > 0');
+  const allowZeroQty = Boolean(payload.allowZeroQty);
+  const items = Array.isArray(payload.items)
+    ? payload.items.filter(i => {
+        const q = parseInt(i.ordered_qty, 10);
+        return Number.isFinite(q) && (allowZeroQty ? q >= 0 : q > 0);
+      })
+    : [];
+  if (items.length === 0) throw new Error(allowZeroQty ? 'Add at least one SKU to recount' : 'Add at least one SKU with quantity > 0');
 
   const supplierId = payload.supplier_id ? Number(payload.supplier_id) : null;
   const poNumber = (payload.po_number || '').trim() || generateNextPoNumber(sid);
@@ -1035,7 +1041,7 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
     const billedCost = Math.round(updatedItems.reduce((s, r) => s + (r.received_qty || 0) * (r.landed_unit_cost || 0), 0) * 100) / 100;
 
     let nextStatus = po.status;
-    if (closeShort || (totalReceived >= totalOrdered && totalOrdered > 0)) {
+    if (closeShort || (totalReceived >= totalOrdered && (totalOrdered > 0 || isRecountSetExact))) {
       nextStatus = 'received';
     } else if (totalReceived > 0) {
       nextStatus = 'partial';

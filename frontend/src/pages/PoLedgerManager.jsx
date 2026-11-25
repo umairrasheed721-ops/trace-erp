@@ -202,7 +202,7 @@ export default function PoLedgerManager() {
 
   // Modals
   const [newPoOpen, setNewPoOpen] = useState(false)
-  const [poForm, setPoForm] = useState({ supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false, shopifySyncMode: 'add_delta' })
+  const [poForm, setPoForm] = useState({ poType: 'shipment', supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false, shopifySyncMode: 'add_delta' })
   const [skuPickerSearch, setSkuPickerSearch] = useState('')
   // Shopify-style Add Products picker & bulk quickie states
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -341,6 +341,7 @@ export default function PoLedgerManager() {
         return
       }
       setPoForm({
+        poType: 'shipment',
         supplier_id: suppliers[0]?.id ? String(suppliers[0].id) : '',
         order_date: new Date().toISOString().slice(0, 10),
         landing_cost: '',
@@ -367,6 +368,7 @@ export default function PoLedgerManager() {
 
   const openBlankPo = () => {
     setPoForm({
+      poType: 'shipment',
       supplier_id: suppliers[0]?.id ? String(suppliers[0].id) : '',
       order_date: new Date().toISOString().slice(0, 10),
       landing_cost: '',
@@ -383,22 +385,69 @@ export default function PoLedgerManager() {
     if (fullCatalog.length === 0) fetchInventory('')
   }
 
-  const makePoItemFromCatalog = (skuRow, defaultQty = null) => ({
-    product_cost_id: skuRow.id,
-    shopify_variant_id: skuRow.shopify_variant_id || '',
-    sku: skuRow.sku || '',
-    parent_title: skuRow.parent_title,
-    variant_title: skuRow.variant_title || '',
-    variant_image_url: skuRow.variant_image_url || '',
-    inventory_qty: Number(skuRow.inventory_qty) || 0,
-    ordered_qty: defaultQty !== null ? defaultQty : (skuRow.inventory_qty < 0 ? Math.abs(skuRow.inventory_qty) : 10),
-    unit_cost: Number(skuRow.unit_cost) || Number(skuRow.avg_cost) || 0,
-  })
+  const switchPoType = (nextType) => {
+    setPoForm(prev => {
+      if (prev.poType === nextType) return prev
+      if (nextType === 'recount') {
+        return {
+          ...prev,
+          poType: 'recount',
+          supplier_id: '', // Avoid accidental Supplier Khata billing on already-paid opening stock
+          receiveImmediately: true,
+          shopifySyncMode: 'set_exact_on_hand',
+          items: prev.items.map(it => ({
+            ...it,
+            ordered_qty: Math.max(0, Number(it.inventory_qty) || 0),
+          })),
+        }
+      }
+      return {
+        ...prev,
+        poType: 'shipment',
+        supplier_id: prev.supplier_id || (suppliers[0]?.id ? String(suppliers[0].id) : ''),
+        receiveImmediately: false,
+        shopifySyncMode: 'add_delta',
+        items: prev.items.map(it => ({
+          ...it,
+          ordered_qty: (parseInt(it.ordered_qty, 10) || 0) <= 0 ? 10 : it.ordered_qty,
+        })),
+      }
+    })
+  }
+
+  const fillCurrentStockForAll = () => {
+    setPoForm(prev => ({
+      ...prev,
+      items: prev.items.map(it => ({
+        ...it,
+        ordered_qty: Math.max(0, Number(it.inventory_qty) || 0),
+      })),
+    }))
+    addToast('Filled all rows with current Shopify stock — now edit only changed SKUs', 'info')
+  }
+
+  const makePoItemFromCatalog = (skuRow, defaultQty = null, isRecountMode = false) => {
+    const curInv = Number(skuRow.inventory_qty) || 0
+    const qty = defaultQty !== null
+      ? defaultQty
+      : (isRecountMode ? Math.max(0, curInv) : (curInv < 0 ? Math.abs(curInv) : 10))
+    return {
+      product_cost_id: skuRow.id,
+      shopify_variant_id: skuRow.shopify_variant_id || '',
+      sku: skuRow.sku || '',
+      parent_title: skuRow.parent_title,
+      variant_title: skuRow.variant_title || '',
+      variant_image_url: skuRow.variant_image_url || '',
+      inventory_qty: curInv,
+      ordered_qty: qty,
+      unit_cost: Number(skuRow.unit_cost) || Number(skuRow.avg_cost) || 0,
+    }
+  }
 
   const addSkuToPoForm = (skuRow) => {
     setPoForm(prev => {
       if (prev.items.some(i => i.product_cost_id === skuRow.id)) return prev
-      return { ...prev, items: [...prev.items, makePoItemFromCatalog(skuRow)] }
+      return { ...prev, items: [...prev.items, makePoItemFromCatalog(skuRow, null, prev.poType === 'recount')] }
     })
   }
 
@@ -408,13 +457,14 @@ export default function PoLedgerManager() {
     const newRows = rows.filter(r => !currentExisting.has(r.id))
     if (newRows.length === 0) return 0
     setPoForm(prev => {
+      const isRec = prev.poType === 'recount'
       const existing = new Set(prev.items.map(i => i.product_cost_id))
       const next = [...prev.items]
       for (const r of newRows) {
         if (existing.has(r.id)) continue
         existing.add(r.id)
         const q = typeof defaultQtyFn === 'function' ? defaultQtyFn(r) : null
-        next.push(makePoItemFromCatalog(r, q))
+        next.push(makePoItemFromCatalog(r, q, isRec))
       }
       return { ...prev, items: next }
     })
@@ -436,17 +486,18 @@ export default function PoLedgerManager() {
     const catalog = fullCatalog.length > 0 ? fullCatalog : inventory
     const catalogById = new Map(catalog.map(r => [r.id, r]))
     setPoForm(prev => {
+      const isRec = prev.poType === 'recount'
       const existingById = new Map(prev.items.map(i => [i.product_cost_id, i]))
       const nextItems = []
       // Keep existing items still checked (preserving typed qtys & unit costs)
       for (const it of prev.items) {
         if (pickerSelected.has(it.product_cost_id)) nextItems.push(it)
       }
-      // Append newly selected items
+      // Append newly selected items (pre-filled with current stock in Recount mode!)
       for (const id of pickerSelected) {
         if (!existingById.has(id)) {
           const row = catalogById.get(id)
-          if (row) nextItems.push(makePoItemFromCatalog(row))
+          if (row) nextItems.push(makePoItemFromCatalog(row, null, isRec))
         }
       }
       return { ...prev, items: nextItems }
@@ -492,7 +543,8 @@ export default function PoLedgerManager() {
   }
 
   const applyAllQty = (qtyVal) => {
-    const q = Math.max(1, parseInt(qtyVal, 10) || 1)
+    const minQ = poForm.poType === 'recount' ? 0 : 1
+    const q = Math.max(minQ, parseInt(qtyVal, 10) || 0)
     setPoForm(prev => ({ ...prev, items: prev.items.map(it => ({ ...it, ordered_qty: q })) }))
   }
 
@@ -508,7 +560,8 @@ export default function PoLedgerManager() {
   }
 
   const applyGroupQty = (parentTitle, qtyVal) => {
-    const q = Math.max(1, parseInt(qtyVal, 10) || 1)
+    const minQ = poForm.poType === 'recount' ? 0 : 1
+    const q = Math.max(minQ, parseInt(qtyVal, 10) || 0)
     setPoForm(prev => ({
       ...prev,
       items: prev.items.map(it => it.parent_title === parentTitle ? { ...it, ordered_qty: q } : it),
@@ -529,6 +582,7 @@ export default function PoLedgerManager() {
       addToast('Add at least one SKU to the Purchase Order', 'error')
       return
     }
+    const isRecount = poForm.poType === 'recount'
     setBusyKey('createPo')
     try {
       const res = await fetch(`${API}/api/po-ledger/pos`, {
@@ -539,7 +593,8 @@ export default function PoLedgerManager() {
           supplier_id: poForm.supplier_id ? Number(poForm.supplier_id) : null,
           order_date: poForm.order_date,
           landing_cost: parseFloat(poForm.landing_cost) || 0,
-          notes: poForm.notes,
+          notes: poForm.notes || (isRecount ? 'Physical Stock Recount (Exact On-Hand)' : ''),
+          allowZeroQty: isRecount,
           items: poForm.items,
         }),
       })
@@ -549,15 +604,18 @@ export default function PoLedgerManager() {
         return
       }
 
-      // Optional 1-click quickie: immediately receive full stock using chosen 3-Mode Shopify Sync
-      if (poForm.receiveImmediately && j.data?.id && Array.isArray(j.data?.items)) {
-        const mode = poForm.shopifySyncMode || 'add_delta'
+      // Immediately receive when in Recount mode OR Receive Immediately is checked
+      const shouldReceiveNow = isRecount || poForm.receiveImmediately
+      if (shouldReceiveNow && j.data?.id && Array.isArray(j.data?.items)) {
+        const mode = isRecount
+          ? (poForm.shopifySyncMode === 'erp_only' ? 'erp_only' : 'set_exact_on_hand')
+          : (poForm.shopifySyncMode || 'add_delta')
         const recRes = await fetch(`${API}/api/po-ledger/pos/${j.data.id}/receive`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             store_id: activeStoreId,
-            items: j.data.items.map(it => ({ itemId: it.id, receiveNowQty: it.ordered_qty || 0 })),
+            items: j.data.items.map(it => ({ itemId: it.id, receiveNowQty: Math.max(0, parseInt(it.ordered_qty, 10) || 0) })),
             shopifySyncMode: mode,
             pushToShopify: mode !== 'erp_only',
             closeShort: false,
@@ -953,6 +1011,22 @@ export default function PoLedgerManager() {
   const poLandingPreview = parseFloat(poForm.landing_cost) || 0
   const poFreightPerUnit = poTotalUnits > 0 && poLandingPreview > 0 ? Math.round((poLandingPreview / poTotalUnits) * 100) / 100 : 0
   const poTotalPreview = poSubtotalPreview + poLandingPreview
+
+  // Live Recount impact summary (Changed SKUs, Unchanged SKUs, Net Delta)
+  const recountImpact = useMemo(() => {
+    let changedSkus = 0, unchangedSkus = 0, netDelta = 0
+    for (const it of poForm.items) {
+      const cur = Number(it.inventory_qty) || 0
+      const target = Math.max(0, parseInt(it.ordered_qty, 10) || 0)
+      const diff = target - cur
+      if (diff === 0) unchangedSkus++
+      else {
+        changedSkus++
+        netDelta += diff
+      }
+    }
+    return { changedSkus, unchangedSkus, netDelta }
+  }, [poForm.items])
 
   return (
     <div style={{ padding: '20px 24px 40px', maxWidth: 1540, margin: '0 auto' }}>
@@ -1836,25 +1910,89 @@ export default function PoLedgerManager() {
       {/* MODALS                                                             */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
 
-      {/* 1. Create Purchase Order Modal (Shopify-Style Variant Picker + Fast Quickies) */}
-      {newPoOpen && (
-        <ModalShell title="New Purchase Order" subtitle="Select supplier, browse products & variants like Shopify, and bulk-fill quantities or costs in seconds" onClose={() => { setPickerOpen(false); setNewPoOpen(false) }} maxWidth={980}>
+      {/* 1. Create Purchase Order Modal (Top Mode Switcher + Shopify-Style Variant Picker + Live Delta Preview) */}
+      {newPoOpen && (() => {
+        const isRecount = poForm.poType === 'recount'
+        return (
+        <ModalShell
+          title={isRecount ? '🎯 Physical Stock Recount (Final Actual Qty)' : 'New Purchase Order'}
+          subtitle={isRecount
+            ? 'Rows pre-fill from current stock — edit only changed SKUs to set exact Shopify On-Hand & clean FIFO batch'
+            : 'Select supplier, browse products & variants like Shopify, and bulk-fill quantities or costs in seconds'}
+          onClose={() => { setPickerOpen(false); setNewPoOpen(false) }}
+          maxWidth={980}
+        >
           <form onSubmit={handleCreatePo} style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
+            {/* TOP PO PURPOSE SWITCHER (Always visible at top — zero confusion!) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
+              {[
+                {
+                  id: 'shipment',
+                  title: '📦 New Purchase Order (+Add Stock)',
+                  desc: 'Buying new maal from supplier — adds +Qty on top of existing Shopify & ERP stock.',
+                  color: '#2563eb',
+                  bg: 'rgba(37,99,235,0.09)',
+                  bd: 'rgba(37,99,235,0.45)',
+                },
+                {
+                  id: 'recount',
+                  title: '🎯 Physical Recount / Final Stock (Set Exact On-Hand)',
+                  desc: 'Actual godown count — pre-fills current stock, shows live Before → After diff, and sets exact Shopify On-Hand.',
+                  color: '#7c3aed',
+                  bg: 'rgba(124,58,237,0.10)',
+                  bd: 'rgba(124,58,237,0.48)',
+                },
+              ].map(m => {
+                const active = poForm.poType === m.id
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => switchPoType(m.id)}
+                    style={{
+                      textAlign: 'left', padding: '10px 13px', borderRadius: 11, cursor: 'pointer',
+                      background: active ? m.bg : 'var(--bg-elevated)',
+                      border: `1.5px solid ${active ? m.bd : 'var(--border)'}`,
+                      boxShadow: active ? `0 2px 10px ${m.bg}` : 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: active ? m.color : 'var(--text-primary)' }}>
+                      {active ? '● ' : '○ '}{m.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.35 }}>
+                      {m.desc}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
             {/* Top Supplier / Date / Landing Cost Row */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 0.9fr', gap: 10 }}>
               <div>
-                <label style={labelStyle}>Supplier</label>
+                <label style={labelStyle}>
+                  Supplier {isRecount && <span style={{ color: '#b45309', fontWeight: 700, textTransform: 'none' }}>(Leave blank for paid stock)</span>}
+                </label>
                 <select
                   value={poForm.supplier_id}
                   onChange={e => setPoForm(p => ({ ...p, supplier_id: e.target.value }))}
-                  style={inputStyle}
+                  style={{
+                    ...inputStyle,
+                    borderColor: isRecount && poForm.supplier_id ? '#f59e0b' : 'var(--border)',
+                  }}
                 >
-                  <option value="">Select Supplier (Optional)</option>
+                  <option value="">{isRecount ? 'None — Already Paid Opening/Recount Stock (No Khata Bill)' : 'Select Supplier (Optional)'}</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                {isRecount && poForm.supplier_id && (
+                  <div style={{ fontSize: 10.5, color: '#b45309', fontWeight: 600, marginTop: 3 }}>
+                    ⚠️ Supplier selected — {fmtRs(poTotalPreview)} will be billed to this supplier&apos;s Khata. Leave blank if already paid!
+                  </div>
+                )}
               </div>
               <div>
-                <label style={labelStyle}>Order Date</label>
+                <label style={labelStyle}>{isRecount ? 'Recount Date' : 'Order Date'}</label>
                 <input type="date" value={poForm.order_date} onChange={e => setPoForm(p => ({ ...p, order_date: e.target.value }))} style={inputStyle} />
               </div>
               <div>
@@ -2031,11 +2169,27 @@ export default function PoLedgerManager() {
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
                 padding: '8px 12px', borderRadius: 10,
-                background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.22)',
+                background: isRecount ? 'rgba(124,58,237,0.06)' : 'rgba(37,99,235,0.06)',
+                border: `1px solid ${isRecount ? 'rgba(124,58,237,0.25)' : 'rgba(37,99,235,0.22)'}`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: '#2563eb' }}>⚡ All Qty:</span>
-                  {[5, 10, 20, 50].map(preset => (
+                  {isRecount && (
+                    <button
+                      type="button"
+                      onClick={fillCurrentStockForAll}
+                      title="Reset all rows to current Shopify stock so you only edit changed SKUs"
+                      style={{
+                        padding: '3.5px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'rgba(124,58,237,0.14)', border: '1px solid rgba(124,58,237,0.40)', color: '#7c3aed',
+                      }}
+                    >
+                      📋 Load Current Stock
+                    </button>
+                  )}
+                  <span style={{ fontSize: 11, fontWeight: 800, color: isRecount ? '#7c3aed' : '#2563eb' }}>
+                    ⚡ {isRecount ? 'Set All Shelf:' : 'All Qty:'}
+                  </span>
+                  {(isRecount ? [0, 5, 10, 20, 50] : [5, 10, 20, 50]).map(preset => (
                     <button
                       key={preset}
                       type="button"
@@ -2049,15 +2203,15 @@ export default function PoLedgerManager() {
                     </button>
                   ))}
                   <input
-                    type="number" min="1" placeholder="Qty"
+                    type="number" min={isRecount ? '0' : '1'} placeholder="Qty"
                     value={bulkQtyInput}
                     onChange={e => setBulkQtyInput(e.target.value)}
                     style={{ width: 58, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-surface)', fontSize: 11.5, color: 'var(--text-primary)' }}
                   />
                   <button
                     type="button"
-                    onClick={() => { if (bulkQtyInput) applyAllQty(bulkQtyInput) }}
-                    style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: '#2563eb', color: '#fff', border: 'none' }}
+                    onClick={() => { if (bulkQtyInput !== '') applyAllQty(bulkQtyInput) }}
+                    style={{ padding: '3px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: isRecount ? '#7c3aed' : '#2563eb', color: '#fff', border: 'none' }}
                   >
                     Set All
                   </button>
@@ -2104,8 +2258,10 @@ export default function PoLedgerManager() {
                   <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                     <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                       <th style={{ padding: '8px 11px' }}>Product / Variant</th>
-                      <th style={{ padding: '8px 8px', width: 118, textAlign: 'center' }}>Order Qty</th>
-                      <th style={{ padding: '8px 8px', width: 135 }}>Unit Cost (Rs.)</th>
+                      <th style={{ padding: '8px 8px', width: 150, textAlign: 'center', color: isRecount ? '#7c3aed' : 'var(--text-muted)' }}>
+                        {isRecount ? '🎯 Final Shelf Qty' : 'Order Qty'}
+                      </th>
+                      <th style={{ padding: '8px 8px', width: 130 }}>Unit Cost (Rs.)</th>
                       <th style={{ padding: '8px 11px', textAlign: 'right', width: 105 }}>Line Total</th>
                       <th style={{ padding: '8px 8px', width: 32 }} />
                     </tr>
@@ -2232,19 +2388,33 @@ export default function PoLedgerManager() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
                                     <button
                                       type="button"
-                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: Math.max(1, (parseInt(x.ordered_qty, 10) || 1) - 1) } : x) }))}
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: Math.max(isRecount ? 0 : 1, (parseInt(x.ordered_qty, 10) || 0) - 1) } : x) }))}
                                       style={{ width: 24, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 800 }}
                                     >−</button>
                                     <input
-                                      type="number" min="1" value={it.ordered_qty}
+                                      type="number" min={isRecount ? '0' : '1'} value={it.ordered_qty}
                                       onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: e.target.value } : x) }))}
-                                      style={{ ...inputStyle, width: 54, padding: '4px 5px', textAlign: 'center', fontWeight: 700 }}
+                                      style={{
+                                        ...inputStyle, width: 56, padding: '4px 5px', textAlign: 'center', fontWeight: 800,
+                                        borderColor: isRecount && qtyNum !== invNum ? (qtyNum < invNum ? '#ef4444' : '#10b981') : 'var(--border)',
+                                      }}
                                     />
                                     <button
                                       type="button"
                                       onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: (parseInt(x.ordered_qty, 10) || 0) + 1 } : x) }))}
                                       style={{ width: 24, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 800 }}
                                     >+</button>
+                                  </div>
+                                  {/* Live Before -> After Stock Preview Pill */}
+                                  <div style={{ textAlign: 'center', marginTop: 3, fontSize: 10, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                                    {isRecount ? (() => {
+                                      const diff = qtyNum - invNum
+                                      if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>= Same ({invNum})</span>
+                                      if (diff > 0) return <span style={{ color: '#059669' }}>{invNum} → {qtyNum} (+{diff})</span>
+                                      return <span style={{ color: '#dc2626' }}>{invNum} → {qtyNum} (−{Math.abs(diff)})</span>
+                                    })() : (
+                                      <span style={{ color: '#059669' }}>{invNum} → {invNum + qtyNum} (+{qtyNum})</span>
+                                    )}
                                   </div>
                                 </td>
                                 <td style={{ padding: '6px 8px' }}>
@@ -2294,95 +2464,85 @@ export default function PoLedgerManager() {
               </div>
             )}
 
-            {/* Notes + Optional Receive Immediately Toggle */}
+            {/* Notes + Clean Mode-Specific Shopify Sync Toggle */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
               <div>
                 <label style={labelStyle}>Notes (Optional)</label>
-                <input type="text" value={poForm.notes} onChange={e => setPoForm(p => ({ ...p, notes: e.target.value }))} placeholder="e.g. Winter fabric batch #2" style={inputStyle} />
-              </div>
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
-                background: poForm.receiveImmediately ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
-                border: `1px solid ${poForm.receiveImmediately ? 'rgba(16,185,129,0.45)' : 'var(--border)'}`,
-                color: poForm.receiveImmediately ? '#059669' : 'var(--text-secondary)',
-              }} title="Stock already in warehouse? Tick this to receive full qty immediately & choose how Shopify stock should sync.">
                 <input
-                  type="checkbox"
-                  checked={Boolean(poForm.receiveImmediately)}
-                  onChange={e => setPoForm(p => ({ ...p, receiveImmediately: e.target.checked }))}
+                  type="text"
+                  value={poForm.notes}
+                  onChange={e => setPoForm(p => ({ ...p, notes: e.target.value }))}
+                  placeholder={isRecount ? 'e.g. Nov warehouse physical shelf recount' : 'e.g. Winter fabric batch #2'}
+                  style={inputStyle}
                 />
-                ⚡ Receive Stock Immediately
-              </label>
+              </div>
+              {isRecount ? (
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+                  background: poForm.shopifySyncMode !== 'erp_only' ? 'rgba(124,58,237,0.12)' : 'var(--bg-elevated)',
+                  border: `1px solid ${poForm.shopifySyncMode !== 'erp_only' ? 'rgba(124,58,237,0.45)' : 'var(--border)'}`,
+                  color: poForm.shopifySyncMode !== 'erp_only' ? '#7c3aed' : 'var(--text-secondary)',
+                }} title="Sets Shopify On-Hand = exact recounted shelf qty (keeps pending unfulfilled Committed orders safe!). Uncheck for ERP Only.">
+                  <input
+                    type="checkbox"
+                    checked={poForm.shopifySyncMode !== 'erp_only'}
+                    onChange={e => setPoForm(p => ({ ...p, shopifySyncMode: e.target.checked ? 'set_exact_on_hand' : 'erp_only' }))}
+                  />
+                  🎯 Push Exact On-Hand to Shopify
+                </label>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+                    background: poForm.receiveImmediately ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
+                    border: `1px solid ${poForm.receiveImmediately ? 'rgba(16,185,129,0.45)' : 'var(--border)'}`,
+                    color: poForm.receiveImmediately ? '#059669' : 'var(--text-secondary)',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(poForm.receiveImmediately)}
+                      onChange={e => setPoForm(p => ({ ...p, receiveImmediately: e.target.checked, shopifySyncMode: e.target.checked ? 'add_delta' : p.shopifySyncMode }))}
+                    />
+                    ⚡ Receive Immediately
+                  </label>
+                  {poForm.receiveImmediately && (
+                    <select
+                      value={poForm.shopifySyncMode === 'erp_only' ? 'erp_only' : 'add_delta'}
+                      onChange={e => setPoForm(p => ({ ...p, shopifySyncMode: e.target.value }))}
+                      style={{ ...inputStyle, width: 'auto', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      <option value="add_delta">➕ Add (+Qty) to Shopify</option>
+                      <option value="erp_only">🔕 ERP Only (No Push)</option>
+                    </select>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* 3-Mode Shopify Sync Selector (shown when Receive Immediately is ticked) */}
-            {poForm.receiveImmediately && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {[
-                  {
-                    id: 'add_delta',
-                    title: '➕ Add to Existing (+Qty)',
-                    desc: 'New shipment — adds PO qty on top of current Shopify stock.',
-                    color: '#059669',
-                    bg: 'rgba(16,185,129,0.10)',
-                    bd: 'rgba(16,185,129,0.45)',
-                  },
-                  {
-                    id: 'set_exact_on_hand',
-                    title: '🎯 Set Exact On-Hand (Recount)',
-                    desc: 'Final physical shelf count — sets Shopify On-Hand = PO qty (keeps pending orders safe!).',
-                    color: '#7c3aed',
-                    bg: 'rgba(124,58,237,0.10)',
-                    bd: 'rgba(124,58,237,0.45)',
-                  },
-                  {
-                    id: 'erp_only',
-                    title: '🔕 ERP Only (No Push)',
-                    desc: 'Updates ERP & FIFO cost only; Shopify stock stays untouched.',
-                    color: '#64748b',
-                    bg: 'rgba(100,116,139,0.10)',
-                    bd: 'rgba(100,116,139,0.45)',
-                  },
-                ].map(opt => {
-                  const active = (poForm.shopifySyncMode || 'add_delta') === opt.id
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setPoForm(p => ({ ...p, shopifySyncMode: opt.id }))}
-                      style={{
-                        textAlign: 'left', padding: '9px 11px', borderRadius: 9, cursor: 'pointer',
-                        background: active ? opt.bg : 'var(--bg-elevated)',
-                        border: `1.5px solid ${active ? opt.bd : 'var(--border)'}`,
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 800, color: active ? opt.color : 'var(--text-primary)' }}>
-                        {active ? '● ' : '○ '}{opt.title}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.35 }}>
-                        {opt.desc}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Footer Totals & Submit */}
+            {/* Footer Totals, Live Recount Impact & Submit */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 12.5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12.5 }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
                   <strong>{poForm.items.length}</strong> variants · <strong>{poTotalUnits}</strong> units
                 </span>
+                {isRecount && poForm.items.length > 0 && (
+                  <span style={{
+                    padding: '2.5px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 800,
+                    background: recountImpact.changedSkus > 0 ? 'rgba(124,58,237,0.12)' : 'var(--bg-elevated)',
+                    color: recountImpact.changedSkus > 0 ? '#7c3aed' : 'var(--text-muted)',
+                  }}>
+                    🎯 {recountImpact.changedSkus} changed ({recountImpact.netDelta >= 0 ? `+${recountImpact.netDelta}` : `−${Math.abs(recountImpact.netDelta)}`} pcs) · {recountImpact.unchangedSkus} unchanged
+                  </span>
+                )}
                 {poLandingPreview > 0 && (
                   <span style={{ color: '#6366f1', fontWeight: 700, fontSize: 12 }}>
                     Subtotal {fmtRs(poSubtotalPreview)} + Freight {fmtRs(poLandingPreview)}
                   </span>
                 )}
                 <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--text-primary)' }}>
-                  PO Total: {fmtRs(poTotalPreview)}
+                  {isRecount ? 'Stock Value:' : 'PO Total:'} {fmtRs(poTotalPreview)}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -2392,26 +2552,25 @@ export default function PoLedgerManager() {
                   disabled={busyKey === 'createPo' || poForm.items.length === 0}
                   style={{
                     padding: '8px 18px', borderRadius: 8, border: 'none',
-                    background: !poForm.receiveImmediately
-                      ? '#2563eb'
-                      : (poForm.shopifySyncMode === 'set_exact_on_hand' ? '#7c3aed' : '#059669'),
+                    background: isRecount ? '#7c3aed' : (poForm.receiveImmediately ? '#059669' : '#2563eb'),
                     color: '#fff', fontWeight: 700, cursor: poForm.items.length === 0 ? 'not-allowed' : 'pointer',
                     opacity: poForm.items.length === 0 ? 0.5 : 1,
                   }}
                 >
                   {busyKey === 'createPo'
-                    ? (poForm.receiveImmediately ? 'Creating & Syncing...' : 'Creating...')
-                    : (!poForm.receiveImmediately
-                        ? 'Create Purchase Order'
-                        : (poForm.shopifySyncMode === 'set_exact_on_hand'
-                            ? '🎯 Create & Set Exact On-Hand'
-                            : (poForm.shopifySyncMode === 'erp_only' ? '⚡ Create & Receive (ERP Only)' : '⚡ Create & Add Stock to Shopify')))}
+                    ? (isRecount ? 'Syncing Recount...' : (poForm.receiveImmediately ? 'Creating & Syncing...' : 'Creating...'))
+                    : (isRecount
+                        ? (poForm.shopifySyncMode === 'erp_only' ? '🎯 Save Recount (ERP Only)' : '🎯 Save Recount & Set Exact On-Hand')
+                        : (poForm.receiveImmediately
+                            ? (poForm.shopifySyncMode === 'erp_only' ? '⚡ Create & Receive (ERP Only)' : '⚡ Create & Add Stock to Shopify')
+                            : 'Create Purchase Order'))}
                 </button>
               </div>
             </div>
           </form>
         </ModalShell>
-      )}
+        )
+      })()}
 
       {/* 1b. Shopify-Style Nested "Add products" Multi-Variant Picker Modal */}
       {pickerOpen && (
