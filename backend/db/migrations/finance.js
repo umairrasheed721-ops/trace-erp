@@ -150,5 +150,130 @@ module.exports = [
         db.exec(sql);
       } catch (_) {}
     });
+  },
+
+  // 12. Per-Store Purchase Orders, Inventory Ledger & Unified Financial Ledger
+  (db) => {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS suppliers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          phone TEXT DEFAULT '',
+          contact_person TEXT DEFAULT '',
+          city TEXT DEFAULT '',
+          opening_balance REAL DEFAULT 0,
+          notes TEXT DEFAULT '',
+          is_active INTEGER DEFAULT 1,
+          created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_suppliers_store ON suppliers(store_id, is_active);
+
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          po_number TEXT NOT NULL,
+          supplier_id INTEGER,
+          status TEXT DEFAULT 'ordered',
+          is_baseline INTEGER DEFAULT 0,
+          order_date TEXT NOT NULL,
+          received_date TEXT,
+          subtotal_cost REAL DEFAULT 0,
+          landing_cost REAL DEFAULT 0,
+          total_cost REAL DEFAULT 0,
+          billed_cost REAL DEFAULT 0,
+          paid_amount REAL DEFAULT 0,
+          notes TEXT DEFAULT '',
+          created_by TEXT DEFAULT 'Admin',
+          created_at TEXT DEFAULT (datetime('now', '+5 hours')),
+          updated_at TEXT DEFAULT (datetime('now', '+5 hours')),
+          UNIQUE(store_id, po_number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_po_store_status ON purchase_orders(store_id, status, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_po_supplier ON purchase_orders(store_id, supplier_id);
+
+        CREATE TABLE IF NOT EXISTS purchase_order_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+          store_id INTEGER NOT NULL,
+          product_cost_id INTEGER,
+          shopify_variant_id TEXT DEFAULT '',
+          sku TEXT DEFAULT '',
+          parent_title TEXT NOT NULL,
+          variant_title TEXT DEFAULT '',
+          ordered_qty INTEGER NOT NULL DEFAULT 0,
+          received_qty INTEGER NOT NULL DEFAULT 0,
+          unit_cost REAL NOT NULL DEFAULT 0,
+          landed_unit_cost REAL NOT NULL DEFAULT 0,
+          line_total REAL NOT NULL DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_po_items_po ON purchase_order_items(po_id);
+
+        CREATE TABLE IF NOT EXISTS inventory_ledger (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          product_cost_id INTEGER,
+          sku TEXT DEFAULT '',
+          parent_title TEXT NOT NULL,
+          variant_title TEXT DEFAULT '',
+          movement_type TEXT NOT NULL,
+          qty_delta INTEGER NOT NULL DEFAULT 0,
+          unit_cost REAL DEFAULT 0,
+          ref_type TEXT DEFAULT '',
+          ref_id TEXT DEFAULT '',
+          ref_label TEXT DEFAULT '',
+          shopify_pushed INTEGER DEFAULT 0,
+          shopify_error TEXT DEFAULT '',
+          notes TEXT DEFAULT '',
+          created_by TEXT DEFAULT 'Admin',
+          created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_inv_ledger_store ON inventory_ledger(store_id, id DESC);
+
+        CREATE TABLE IF NOT EXISTS financial_accounts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          account_type TEXT DEFAULT 'bank',
+          opening_balance REAL DEFAULT 0,
+          is_default INTEGER DEFAULT 0,
+          is_active INTEGER DEFAULT 1,
+          notes TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_fin_accounts_store ON financial_accounts(store_id, is_active);
+
+        CREATE TABLE IF NOT EXISTS ledger_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          entry_date TEXT NOT NULL,
+          entry_type TEXT NOT NULL,
+          direction TEXT NOT NULL,
+          amount REAL NOT NULL DEFAULT 0,
+          account_id INTEGER,
+          supplier_id INTEGER,
+          po_id INTEGER,
+          ref_type TEXT DEFAULT '',
+          ref_id TEXT DEFAULT '',
+          ref_label TEXT DEFAULT '',
+          description TEXT DEFAULT '',
+          is_void INTEGER DEFAULT 0,
+          void_reason TEXT DEFAULT '',
+          created_by TEXT DEFAULT 'Admin',
+          created_at TEXT DEFAULT (datetime('now', '+5 hours'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_ledger_entries_store_date ON ledger_entries(store_id, entry_date DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_ledger_entries_account ON ledger_entries(store_id, account_id, is_void);
+        CREATE INDEX IF NOT EXISTS idx_ledger_entries_supplier ON ledger_entries(store_id, supplier_id, is_void);
+        CREATE INDEX IF NOT EXISTS idx_ledger_entries_ref ON ledger_entries(store_id, ref_type, ref_id);
+      `);
+      try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shared_pool_key TEXT DEFAULT ''"); } catch (_) {}
+      try { db.exec("ALTER TABLE manual_expenses ADD COLUMN account_id INTEGER"); } catch (_) {}
+      console.log('✅ [Finance Migration #12] PO, Inventory Ledger & Financial Ledger tables verified.');
+    } catch (e) {
+      console.error('❌ [Finance Migration #12] Error:', e.message);
+    }
   }
 ];

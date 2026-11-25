@@ -81,6 +81,10 @@ router.post('/', (req, res) => {
     );
 
     const created = db.prepare('SELECT * FROM manual_expenses WHERE id = ?').get(info.lastInsertRowid);
+    try {
+      const { autoPostExpenseToLedger } = require('../services/poLedgerService');
+      autoPostExpenseToLedger(created, req.user?.username || req.user?.email || 'Admin');
+    } catch (_) {}
     res.json({ success: true, expense: created });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -109,6 +113,10 @@ router.put('/:id', (req, res) => {
     );
 
     const updated = db.prepare('SELECT * FROM manual_expenses WHERE id = ?').get(id);
+    try {
+      const { autoPostExpenseToLedger } = require('../services/poLedgerService');
+      autoPostExpenseToLedger(updated, req.user?.username || req.user?.email || 'Admin');
+    } catch (_) {}
     res.json({ success: true, expense: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -120,6 +128,10 @@ router.delete('/:id', (req, res) => {
   const { id } = req.params;
   try {
     db.prepare('DELETE FROM manual_expenses WHERE id = ?').run(id);
+    try {
+      const { voidExpenseInLedger } = require('../services/poLedgerService');
+      voidExpenseInLedger(id, req.user?.username || req.user?.email || 'Admin');
+    } catch (_) {}
     res.json({ success: true, deletedId: id });
   } catch (err) {
     res.status(500).json({ error: err.message });

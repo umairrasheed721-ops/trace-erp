@@ -51,6 +51,7 @@ const bulkRoutes        = require('./bulk_booking');
 const postexRoutes      = safeRequire('./postex',       'PostEx');
 const reviewsRoutes     = safeRequire('./reviews',      'Reviews');
 const remarketingRoutes = safeRequire('./remarketing',  'Remarketing');
+const poLedgerRoutes    = safeRequire('./po-ledger',    'PoLedger');
 const abandonedRoutes   = safeRequire('./abandoned',    'Abandoned');
 const shipperAdviceRoutes = safeRequire('./shipper-advice', 'ShipperAdvice');
 const expensesRoutes    = safeRequire('./expenses',     'Expenses');
@@ -79,6 +80,7 @@ router.use('/api/bulk', bulkRoutes);
 router.use('/api/postex', postexRoutes);
 router.use('/api/reviews', reviewsRoutes);
 router.use('/api/remarketing', remarketingRoutes);
+router.use('/api/po-ledger', poLedgerRoutes);
 router.use('/api/abandoned', abandonedRoutes);
 router.use('/api/expenses', expensesRoutes);
 router.use('/api/whatsapp', whatsappRoutes);
@@ -96,6 +98,7 @@ const ROUTE_MAP = {
   'CostManager': ['/api/cost-manager', './cost-manager'],
   'Settings':    ['/api/settings',    './settings'],
   'Remarketing': ['/api/remarketing', './remarketing'],
+  'PoLedger':    ['/api/po-ledger',   './po-ledger'],
 };
 
 setInterval(() => {

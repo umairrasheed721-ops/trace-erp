@@ -877,6 +877,104 @@ async function markShopifyOrderDelivered(store, orderIdOrRef) {
   }
 }
 
+/**
+ * Adjust a Shopify variant's available inventory by a relative DELTA (+qty or -qty).
+ * Uses delta adjustment (never blind SET) so Continue Selling negative stock stays 100% accurate.
+ */
+async function adjustShopifyVariantInventoryDelta(store, shopifyVariantId, deltaQty) {
+  const delta = parseInt(deltaQty, 10);
+  if (!store?.shop_domain || !store?.access_token) {
+    return { ok: false, error: 'Store Shopify credentials missing' };
+  }
+  if (!shopifyVariantId || !Number.isFinite(delta) || delta === 0) {
+    return { ok: false, error: 'Invalid variant ID or zero delta' };
+  }
+  const numericVariantId = String(shopifyVariantId).includes('/')
+    ? String(shopifyVariantId).split('/').pop()
+    : String(shopifyVariantId).trim();
+
+  if (!/^\d+$/.test(numericVariantId)) {
+    return { ok: false, error: `Non-numeric Shopify variant ID: ${shopifyVariantId}` };
+  }
+
+  try {
+    const varRes = await shopifyFetch(store, `variants/${numericVariantId}.json?fields=id,inventory_item_id`);
+    if (!varRes.ok) {
+      const txt = await varRes.text().catch(() => '');
+      return { ok: false, error: `Variant fetch failed (${varRes.status}): ${txt.slice(0, 120)}` };
+    }
+    const varData = await varRes.json();
+    const inventoryItemId = varData?.variant?.inventory_item_id;
+    if (!inventoryItemId) {
+      return { ok: false, error: 'inventory_item_id not found on Shopify variant' };
+    }
+
+    const locationId = await getPrimaryLocationId(store);
+    if (!locationId) {
+      return { ok: false, error: 'Shopify primary location_id unavailable (check read_locations scope)' };
+    }
+
+    const adjRes = await shopifyFetch(store, 'inventory_levels/adjust.json', {
+      method: 'POST',
+      body: JSON.stringify({
+        location_id: Number(locationId),
+        inventory_item_id: Number(inventoryItemId),
+        available_adjustment: delta,
+      }),
+    });
+
+    if (!adjRes.ok) {
+      const errTxt = await adjRes.text().catch(() => '');
+      return { ok: false, error: `Shopify adjust failed (${adjRes.status}): ${errTxt.slice(0, 140)}` };
+    }
+
+    const adjData = await adjRes.json().catch(() => ({}));
+    return {
+      ok: true,
+      available: adjData?.inventory_level?.available,
+      locationId,
+      inventoryItemId,
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Toggle Shopify Continue Selling When Out of Stock policy ('continue' | 'deny') for a variant.
+ */
+async function updateShopifyInventoryPolicy(store, shopifyVariantId, policy = 'deny') {
+  const cleanPolicy = String(policy).toLowerCase() === 'continue' ? 'continue' : 'deny';
+  if (!store?.shop_domain || !store?.access_token) {
+    return { ok: false, error: 'Store Shopify credentials missing' };
+  }
+  const numericVariantId = String(shopifyVariantId || '').includes('/')
+    ? String(shopifyVariantId).split('/').pop()
+    : String(shopifyVariantId || '').trim();
+  if (!/^\d+$/.test(numericVariantId)) {
+    return { ok: false, error: 'Variant not linked to Shopify' };
+  }
+
+  try {
+    const res = await shopifyFetch(store, `variants/${numericVariantId}.json`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        variant: {
+          id: Number(numericVariantId),
+          inventory_policy: cleanPolicy,
+        },
+      }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      return { ok: false, error: `Shopify policy update failed (${res.status}): ${txt.slice(0, 140)}` };
+    }
+    return { ok: true, inventory_policy: cleanPolicy };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 module.exports = {
   getPrimaryLocationId,
   processSmartRestock,
@@ -891,6 +989,8 @@ module.exports = {
   getShopifyOrderStatus,
   getShopifyInventoryCosts,
   getShopifySingleProductCosts,
-  markShopifyOrderDelivered
+  markShopifyOrderDelivered,
+  adjustShopifyVariantInventoryDelta,
+  updateShopifyInventoryPolicy
 };
 

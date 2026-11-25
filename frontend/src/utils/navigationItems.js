@@ -7,6 +7,7 @@ export const NAV_ITEMS = [
   { id: '/finance', label: 'Finance Engine', icon: '💰', to: '/finance', adminOnly: true },
   { id: '/payout-reconciler', label: 'Payout Reconciler', icon: '💸', to: '/payout-reconciler', adminOnly: true },
   { id: '/costing', label: 'Costing & Watchdog', icon: '🛡️', to: '/costing', adminOnly: true },
+  { id: '/po-ledger', label: 'PO & Ledger', icon: '📒', to: '/po-ledger', adminOnly: true },
   { id: '/reports', label: 'Profit & Loss', icon: '📊', to: '/reports', adminOnly: true },
   { id: '/expenses', label: 'Expense Manager', icon: '📝', to: '/expenses', adminOnly: true },
   { id: '/reviews', label: 'Reviews Manager', icon: '⭐', to: '/reviews', adminOnly: true },

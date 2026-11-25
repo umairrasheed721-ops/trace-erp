@@ -652,6 +652,11 @@ router.post('/lock-cpr', (req, res) => {
 
   try {
     executeLock();
+    try {
+      const { autoPostCprToLedger } = require('../../services/poLedgerService');
+      const bankAmt = parseFloat(actualBankDeposit) > 0 ? parseFloat(actualBankDeposit) : (parseFloat(netPayout) || 0);
+      autoPostCprToLedger(Number(store_id), { courier, cpr, amount: bankAmt, settlementDate }, req.user?.username || req.user?.email || 'Admin');
+    } catch (_) {}
     res.json({ success: true, message: `CPR ${cpr} successfully locked and cleared!` });
   } catch (e) {
     res.status(500).json({ error: e.message });
