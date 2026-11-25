@@ -97,6 +97,13 @@ router.post('/returns/bulk-verify', authenticateToken, async (req, res) => {
         if (shopifyStatus.includes('✅')) restocked = 1;
       }
 
+      if (restocked || !restockShopify) {
+        try {
+          const { restoreOrderFifoOnReturn } = require('../../services/poLedgerService');
+          restoreOrderFifoOnReturn(store_id, order, null, req.user?.username || 'ReturnsBulkVerify');
+        } catch (fifoErr) { console.warn('[Returns Bulk FIFO Notice]:', fifoErr.message); }
+      }
+
       db.prepare(`
         INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
         VALUES (?, ?, ?, ?, ?)
@@ -180,6 +187,11 @@ router.post('/returns/verify-by-tracking', authenticateToken, async (req, res) =
       if (shopifyStatus.includes('✅')) restocked = 1;
     }
 
+    try {
+      const { restoreOrderFifoOnReturn } = require('../../services/poLedgerService');
+      restoreOrderFifoOnReturn(store_id, order, null, req.user?.username || 'ReturnVerifyTrack');
+    } catch (fifoErr) { console.warn('[Returns Track FIFO Notice]:', fifoErr.message); }
+
     db.prepare(`
       INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
       VALUES (?, ?, ?, ?, ?)
@@ -258,6 +270,12 @@ router.post('/returns', authenticateToken, async (req, res) => {
     results.push({ tracking: track, erpStatus, shopifyStatus });
 
     if (erpStatus === '✅ Updated' || (restockShopify && shopifyStatus.includes('✅'))) {
+      if (erpStatus === '✅ Updated') {
+        try {
+          const { restoreOrderFifoOnReturn } = require('../../services/poLedgerService');
+          restoreOrderFifoOnReturn(store_id, order, null, req.user?.username || 'ReturnsBatch');
+        } catch (fifoErr) { console.warn('[Returns Batch FIFO Notice]:', fifoErr.message); }
+      }
       db.prepare(`
         INSERT INTO returns_log (store_id, order_id, tracking_number, restocked_shopify, processed_by)
         VALUES (?, ?, ?, ?, ?)
@@ -487,6 +505,12 @@ router.post('/returns/partial-exchange', authenticateToken, async (req, res) => 
     const auditLine = `\n[Exchange Partial Return ${todayStr}] ${itemsSummaryText}${notes ? ` | Note: ${notes}` : ''}`;
 
     if (!restockFailed) {
+      if (itemsToRestock.length > 0 && (restockSucceeded || !store.access_token)) {
+        try {
+          const { restoreOrderFifoOnReturn } = require('../../services/poLedgerService');
+          restoreOrderFifoOnReturn(sid, order, itemsToRestock, req.user?.username || 'PartialExchange', String(Date.now()));
+        } catch (fifoErr) { console.warn('[Partial Exchange FIFO Notice]:', fifoErr.message); }
+      }
       db.prepare("UPDATE orders SET cs_notes = COALESCE(cs_notes, '') || ? WHERE id = ?")
         .run(auditLine, order.id);
 

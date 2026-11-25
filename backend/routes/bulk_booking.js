@@ -102,6 +102,10 @@ async function processBulkBooking(storeId, ids, courier) {
       
       const dbCourier = isInstaworld ? 'Instaworld' : courier;
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, dbCourier, id);
+      try {
+        const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
+        allocateOrderFifoOnDispatch(id, 'BulkBook');
+      } catch (fifoErr) { console.warn('[BulkBook FIFO Notice]:', fifoErr.message); }
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, dbCourier); } catch(e) {}
       
@@ -196,6 +200,10 @@ router.post('/cancel', async (req, res) => {
         }
 
         db.prepare("UPDATE orders SET tracking_number = NULL, courier = NULL, delivery_status = 'Confirmed' WHERE id = ?").run(id);
+        try {
+          const { reverseOrderFifoOnCancel } = require('../services/poLedgerService');
+          reverseOrderFifoOnCancel(id, 'BulkCancel');
+        } catch (fifoErr) { console.warn('[BulkCancel FIFO Notice]:', fifoErr.message); }
         success++;
       } else {
         failed++;

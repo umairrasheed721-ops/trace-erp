@@ -1479,9 +1479,284 @@ function autoPostCprToLedger(storeId, { courier, cpr, amount, settlementDate }, 
   }
 }
 
+/**
+ * Strict line-item Master SKU lookup: 1. SKU -> 2. Shopify Variant ID -> 3. Explicit Alias.
+ */
+function resolveOrderLineItemMasterCost(storeId, item) {
+  const sid = Number(storeId) || 1;
+  const variantId = item?.variant_id ? String(item.variant_id).trim() : '';
+  const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+  const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+  const sku = item?.sku ? String(item.sku).trim() : '';
+  const pName = item?.title ? String(item.title).trim() : '';
+  const vName = item?.variant_title ? String(item.variant_title).trim() : '';
+
+  const qSku = sku || '__NONE__';
+  const qVar1 = numericVariantId || '__NONE__';
+  const qVar2 = gidVariantId || '__NONE__';
+
+  let pmc = db.prepare(`
+    SELECT * FROM product_master_costs
+    WHERE store_id = ?
+      AND (
+        (sku != '' AND LOWER(TRIM(sku)) = LOWER(?))
+        OR shopify_variant_id = ?
+        OR shopify_variant_id = ?
+      )
+    ORDER BY (CASE WHEN (sku != '' AND LOWER(TRIM(sku)) = LOWER(?)) THEN 0 ELSE 1 END) ASC,
+             (CASE WHEN COALESCE(landed_cost, 0) > 0 THEN 0 ELSE 1 END) ASC
+    LIMIT 1
+  `).get(sid, qSku, qVar1, qVar2, qSku);
+
+  if ((!pmc || (pmc.landed_cost || 0) <= 0) && pName) {
+    try {
+      const aliasTarget = db.prepare(`
+        SELECT pmc.*
+        FROM product_aliases pa
+        JOIN product_master_costs pmc ON (
+          pmc.id = pa.target_master_cost_id
+          OR (pa.target_sku IS NOT NULL AND pa.target_sku != '' AND LOWER(TRIM(pmc.sku)) = LOWER(TRIM(pa.target_sku)) AND pmc.store_id = pa.store_id)
+          OR (pa.target_variant_id IS NOT NULL AND pa.target_variant_id != '' AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
+        )
+        WHERE pa.store_id = ?
+          AND (
+            (LOWER(pa.alias_title) = ? AND (LOWER(pa.alias_variant) = ? OR pa.alias_variant = ''))
+            OR LOWER(pa.alias_title) = ?
+            OR LOWER(pa.alias_title) = ?
+          )
+        LIMIT 1
+      `).get(sid, pName.toLowerCase(), vName.toLowerCase(), `${pName} - ${vName}`.toLowerCase(), pName.toLowerCase());
+      if (aliasTarget) pmc = aliasTarget;
+    } catch (_) {}
+  }
+
+  return pmc || null;
+}
+
+/**
+ * Automates FIFO batch consumption when an order is booked / dispatched:
+ * - Strictly idempotent (never double-consumes the same order)
+ * - Consumes remaining_qty from oldest open PO batch(es) if open batches exist
+ * - Locks exact FIFO CGS onto orders.cost & rolls product_master_costs.landed_cost forward when a batch empties
+ */
+function allocateOrderFifoOnDispatch(orderId, actor = 'System') {
+  ensurePoLedgerTables();
+  const oid = Number(orderId);
+  if (!oid) return { skipped: true };
+
+  const order = db.prepare('SELECT id, store_id, ref_number, tracking_number, line_items, delivery_status, cost, cost_locked FROM orders WHERE id = ?').get(oid);
+  if (!order) return { skipped: true };
+
+  const sid = Number(order.store_id) || 1;
+  let items = [];
+  try {
+    if (order.line_items) items = JSON.parse(order.line_items);
+  } catch (_) {}
+  if (!Array.isArray(items) || items.length === 0) return { skipped: true };
+
+  // Idempotency check: count net active ORDER_DISPATCH entries for this order
+  const netState = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN movement_type = 'ORDER_DISPATCH' THEN 1 ELSE 0 END), 0) AS dispatches,
+      COALESCE(SUM(CASE WHEN movement_type = 'ORDER_CANCEL_RESTORE' THEN 1 ELSE 0 END), 0) AS cancels
+    FROM inventory_ledger
+    WHERE store_id = ? AND ref_type = 'order_dispatch' AND ref_id = ?
+  `).get(sid, String(oid));
+  if ((netState?.dispatches || 0) > (netState?.cancels || 0)) {
+    return { skipped: true, reason: 'Already allocated' };
+  }
+
+  let totalFifoCost = 0;
+  let totalPkg = 0;
+  let allVerified = true;
+  let allocatedLines = 0;
+  const refLabel = order.ref_number || order.tracking_number || `#${oid}`;
+
+  db.exec('BEGIN');
+  try {
+    const insLog = db.prepare(`
+      INSERT INTO inventory_ledger
+        (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, 'ORDER_DISPATCH', ?, ?, 'order_dispatch', ?, ?, 1, ?, ?)
+    `);
+
+    for (const item of items) {
+      const qty = Math.abs(parseInt(item.current_quantity !== undefined ? item.current_quantity : item.quantity, 10) || 0);
+      if (qty <= 0) continue;
+
+      const pmc = resolveOrderLineItemMasterCost(sid, item);
+      if (!pmc) {
+        allVerified = false;
+        continue;
+      }
+
+      const openRemRow = db.prepare(`
+        SELECT COALESCE(SUM(i.remaining_qty), 0) AS rem
+        FROM purchase_order_items i
+        JOIN purchase_orders po ON po.id = i.po_id
+        WHERE i.store_id = ? AND i.product_cost_id = ? AND COALESCE(i.remaining_qty, 0) > 0 AND po.status != 'cancelled'
+      `).get(sid, pmc.id);
+
+      let lineLanded = 0;
+      let lineAvgUnit = parseFloat(pmc.landed_cost) || 0;
+      if ((openRemRow?.rem || 0) > 0) {
+        const consumed = consumeFifoBatches(sid, pmc.id, qty);
+        lineLanded = consumed.totalCost;
+        lineAvgUnit = consumed.avgUnitCost || lineAvgUnit;
+      } else {
+        lineLanded = lineAvgUnit * qty;
+      }
+
+      if (lineAvgUnit <= 0) {
+        allVerified = false;
+      } else {
+        totalFifoCost += lineLanded;
+        totalPkg += (parseFloat(pmc.packaging_cost) || 0) * qty;
+      }
+
+      insLog.run(
+        sid, pmc.id, pmc.sku || item.sku || '', pmc.parent_title, pmc.variant_title || '',
+        -qty, lineAvgUnit, String(oid), refLabel,
+        `Booked / dispatched order ${refLabel}`, actor
+      );
+      allocatedLines++;
+    }
+
+    if (allocatedLines > 0 && allVerified && totalFifoCost > 0 && !order.cost_locked) {
+      db.prepare('UPDATE orders SET cost = ?, packaging_cost = ?, cost_locked = 1 WHERE id = ?')
+        .run(Math.round(totalFifoCost * 100) / 100, Math.round(totalPkg * 100) / 100, oid);
+    }
+
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  return { allocated: true, allocatedLines, totalFifoCost: Math.round(totalFifoCost * 100) / 100 };
+}
+
+/**
+ * Reverses FIFO batch allocation when an already-booked order's booking is cancelled before dispatch.
+ */
+function reverseOrderFifoOnCancel(orderId, actor = 'System') {
+  ensurePoLedgerTables();
+  const oid = Number(orderId);
+  if (!oid) return { skipped: true };
+
+  const order = db.prepare('SELECT id, store_id, ref_number FROM orders WHERE id = ?').get(oid);
+  if (!order) return { skipped: true };
+
+  const sid = Number(order.store_id) || 1;
+  const rows = db.prepare(`
+    SELECT product_cost_id, sku, parent_title, variant_title, unit_cost,
+           SUM(CASE WHEN movement_type = 'ORDER_DISPATCH' THEN ABS(qty_delta)
+                    WHEN movement_type = 'ORDER_CANCEL_RESTORE' THEN -ABS(qty_delta)
+                    ELSE 0 END) AS net_qty
+    FROM inventory_ledger
+    WHERE store_id = ? AND ref_type = 'order_dispatch' AND ref_id = ? AND product_cost_id IS NOT NULL
+    GROUP BY product_cost_id
+    HAVING net_qty > 0
+  `).all(sid, String(oid));
+
+  if (rows.length === 0) return { skipped: true };
+
+  db.exec('BEGIN');
+  try {
+    const insLog = db.prepare(`
+      INSERT INTO inventory_ledger
+        (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, 'ORDER_CANCEL_RESTORE', ?, ?, 'order_dispatch', ?, ?, 1, ?, ?)
+    `);
+    for (const r of rows) {
+      restoreFifoBatch(sid, r.product_cost_id, r.net_qty);
+      insLog.run(
+        sid, r.product_cost_id, r.sku || '', r.parent_title, r.variant_title || '',
+        r.net_qty, r.unit_cost || 0, String(oid), order.ref_number || `#${oid}`,
+        `Booking cancelled on ${order.ref_number || `#${oid}`}`, actor
+      );
+    }
+    db.prepare('UPDATE orders SET cost_locked = 0 WHERE id = ?').run(oid);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  return { reversed: true, lines: rows.length };
+}
+
+/**
+ * Restores stock to FIFO batches & inventory_qty when ReturnsManager scans Return Received (Good).
+ */
+function restoreOrderFifoOnReturn(storeId, order, specificItems = null, actor = 'System', partialRefKey = '') {
+  ensurePoLedgerTables();
+  if (!order || !order.id) return { skipped: true };
+  const sid = Number(storeId || order.store_id) || 1;
+  const refType = specificItems ? 'order_partial_return' : 'order_return';
+  const refId = specificItems && partialRefKey ? `${order.id}:${partialRefKey}` : String(order.id);
+
+  const already = db.prepare(`
+    SELECT id FROM inventory_ledger
+    WHERE store_id = ? AND ref_type = ? AND ref_id = ? AND movement_type = 'RETURN_RESTOCK'
+    LIMIT 1
+  `).get(sid, refType, refId);
+  if (already) return { skipped: true, reason: 'Already restocked in FIFO ledger' };
+
+  let items = specificItems;
+  if (!Array.isArray(items)) {
+    try {
+      items = order.line_items ? JSON.parse(order.line_items) : [];
+    } catch (_) {
+      items = [];
+    }
+  }
+  if (!Array.isArray(items) || items.length === 0) return { skipped: true };
+
+  let restoredLines = 0;
+  db.exec('BEGIN');
+  try {
+    const insLog = db.prepare(`
+      INSERT INTO inventory_ledger
+        (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, 'RETURN_RESTOCK', ?, ?, ?, ?, ?, 1, ?, ?)
+    `);
+    for (const item of items) {
+      const qty = Math.abs(parseInt(item.current_quantity !== undefined ? item.current_quantity : item.quantity, 10) || 0);
+      if (qty <= 0) continue;
+
+      const pmc = resolveOrderLineItemMasterCost(sid, item);
+      if (!pmc) continue;
+
+      db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
+        .run(qty, pmc.id);
+      restoreFifoBatch(sid, pmc.id, qty);
+
+      insLog.run(
+        sid, pmc.id, pmc.sku || item.sku || '', pmc.parent_title, pmc.variant_title || '',
+        qty, parseFloat(pmc.landed_cost) || 0,
+        refType, refId, order.ref_number || order.tracking_number || `#${order.id}`,
+        `Return Received restock (${order.ref_number || order.tracking_number || order.id})`,
+        actor
+      );
+      restoredLines++;
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  return { restored: true, restoredLines };
+}
+
 module.exports = {
   ensurePoLedgerTables,
   ensureDefaultAccounts,
+  resolveOrderLineItemMasterCost,
+  allocateOrderFifoOnDispatch,
+  reverseOrderFifoOnCancel,
+  restoreOrderFifoOnReturn,
   getActiveFifoUnitCost,
   syncSkuFifoCost,
   consumeFifoBatches,

@@ -104,21 +104,19 @@ function extractTrackingFromOrder(order) {
   return tracking;
 }
 
+// STRICT COST LOOKUP: Tier 1 (SKU) -> Tier 2 (Shopify Variant ID) -> Tier 3 (Explicit Alias). Zero title guessing or shopify_cost estimation!
 const registryLookupStmt = db.prepare(`
   SELECT landed_cost, shopify_cost FROM product_master_costs 
   WHERE store_id = ? 
   AND (
-    shopify_variant_id = ? 
+    (sku != '' AND LOWER(TRIM(sku)) = LOWER(?))
     OR shopify_variant_id = ? 
-    OR (sku = ? AND sku != '')
-    OR LOWER(parent_title) = ?
+    OR shopify_variant_id = ?
   )
-  ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
-                 WHEN sku = ? AND sku != '' THEN 1
-                 WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
-                 WHEN LOWER(parent_title) = ? THEN 3
-                 ELSE 4 END) ASC,
-           (CASE WHEN landed_cost > 0 OR shopify_cost > 0 THEN 0 ELSE 1 END) ASC
+  ORDER BY (CASE WHEN (sku != '' AND LOWER(TRIM(sku)) = LOWER(?)) THEN 0
+                 WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 1
+                 ELSE 2 END) ASC,
+           (CASE WHEN COALESCE(landed_cost, 0) > 0 THEN 0 ELSE 1 END) ASC
   LIMIT 1
 `);
 
@@ -127,8 +125,8 @@ const aliasLookupStmt = db.prepare(`
   FROM product_aliases pa
   JOIN product_master_costs pmc ON (
     pmc.id = pa.target_master_cost_id 
-    OR (pa.target_sku IS NOT NULL AND pmc.sku = pa.target_sku AND pmc.store_id = pa.store_id)
-    OR (pa.target_variant_id IS NOT NULL AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
+    OR (pa.target_sku IS NOT NULL AND pa.target_sku != '' AND LOWER(TRIM(pmc.sku)) = LOWER(TRIM(pa.target_sku)) AND pmc.store_id = pa.store_id)
+    OR (pa.target_variant_id IS NOT NULL AND pa.target_variant_id != '' AND pmc.shopify_variant_id = pa.target_variant_id AND pmc.store_id = pa.store_id)
   )
   WHERE pa.store_id = ?
   AND (
@@ -189,20 +187,16 @@ function calculateOrderCost(storeId, lineItems, costMap) {
 
     const registry = registryLookupStmt.get(
       storeId,
+      querySku,
       queryVariantId1,
       queryVariantId2,
       querySku,
-      pName.toLowerCase(),
       queryVariantId1,
-      queryVariantId2,
-      querySku,
-      pName.toLowerCase(),
-      vName.toLowerCase(),
-      pName.toLowerCase()
+      queryVariantId2
     );
     
     let aliasMatch = null;
-    if (!registry || (registry.landed_cost <= 0 && registry.shopify_cost <= 0)) {
+    if (!registry || (registry.landed_cost || 0) <= 0) {
       try {
         aliasMatch = aliasLookupStmt.get(
           storeId,
@@ -214,35 +208,18 @@ function calculateOrderCost(storeId, lineItems, costMap) {
       } catch (_) {}
     }
 
-    if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
-      unitCost = registry.landed_cost || registry.shopify_cost || 0;
+    // Strict verified ERP/PO landed_cost only — never fall back to unverified shopify_cost
+    if (registry && (registry.landed_cost || 0) > 0) {
+      unitCost = registry.landed_cost;
       
       if (shopifyCost > 0 && Math.abs(shopifyCost - unitCost) > (unitCost * 0.05)) {
         logAudit(storeId, 'WARN', `Cost Drift: ${item.name} registry cost is ${unitCost} but Shopify says ${shopifyCost}. Difference: ${Math.round(Math.abs(shopifyCost - unitCost))}`);
       }
-    } else if (aliasMatch && (aliasMatch.landed_cost > 0 || aliasMatch.shopify_cost > 0)) {
-      unitCost = aliasMatch.landed_cost || aliasMatch.shopify_cost || 0;
+    } else if (aliasMatch && (aliasMatch.landed_cost || 0) > 0) {
+      unitCost = aliasMatch.landed_cost;
       if (!item.sku && aliasMatch.master_sku) {
         item.sku = aliasMatch.master_sku;
       }
-    } else if (shopifyCost > 0) {
-      unitCost = shopifyCost;
-      // Auto-baseline into product_master_costs so that healCosts and registry stay in 100% parity
-      try {
-        const cleanParent = pName || item.name || 'Unnamed Product';
-        const cleanVariant = vName || '';
-        db.prepare(`
-          INSERT INTO product_master_costs (
-            store_id, shopify_variant_id, sku, parent_title, variant_title, 
-            unit_cost, landed_cost, shopify_cost, packaging_cost, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
-          ON CONFLICT(store_id, parent_title, variant_title) DO UPDATE SET
-            shopify_cost = excluded.shopify_cost,
-            landed_cost = CASE WHEN product_master_costs.landed_cost > 0 THEN product_master_costs.landed_cost ELSE excluded.shopify_cost END,
-            shopify_variant_id = COALESCE(product_master_costs.shopify_variant_id, excluded.shopify_variant_id),
-            sku = COALESCE(product_master_costs.sku, excluded.sku)
-        `).run(storeId, gidVariantId || numericVariantId, sku, cleanParent, cleanVariant, shopifyCost, shopifyCost, shopifyCost);
-      } catch (_) {}
     } else {
       unitCost = 0;
     }
@@ -612,51 +589,44 @@ async function refreshShopifyUpdates(store, onProgress, options = {}) {
             const qty = item.current_quantity !== undefined ? item.current_quantity : item.quantity;
             if (qty === 0) continue;
             
-            let unitCost = costMap[String(item.variant_id)] || 0;
+            let unitCost = 0;
+            const variantId = item.variant_id ? String(item.variant_id) : '';
+            const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
+            const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
+            const sku = item.sku ? String(item.sku).trim() : '';
+            const pName = item.title ? String(item.title).trim() : (item.name ? String(item.name).split(' - ')[0].trim() : '');
+            const vName = item.variant_title ? String(item.variant_title).trim() : (item.name && item.name.includes(' - ') ? String(item.name).split(' - ').slice(1).join(' - ').trim() : '');
+
+            const queryVariantId1 = numericVariantId || '__NONE__';
+            const queryVariantId2 = gidVariantId || '__NONE__';
+            const querySku = sku || '__NONE__';
+
+            const registry = registryLookupStmt.get(
+              storeId,
+              querySku,
+              queryVariantId1,
+              queryVariantId2,
+              querySku,
+              queryVariantId1,
+              queryVariantId2
+            );
             
-            if (unitCost === 0) {
-              const variantId = item.variant_id ? String(item.variant_id) : '';
-              const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
-              const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
-              const sku = item.sku ? String(item.sku).trim() : '';
-              const pName = item.title ? String(item.title).trim() : (item.name ? String(item.name).split(' - ')[0].trim() : '');
-              const vName = item.variant_title ? String(item.variant_title).trim() : (item.name && item.name.includes(' - ') ? String(item.name).split(' - ').slice(1).join(' - ').trim() : '');
-
-              const queryVariantId1 = numericVariantId || '__NONE__';
-              const queryVariantId2 = gidVariantId || '__NONE__';
-              const querySku = sku || '__NONE__';
-
-              const registry = registryLookupStmt.get(
-                storeId,
-                queryVariantId1,
-                queryVariantId2,
-                querySku,
-                pName.toLowerCase(),
-                queryVariantId1,
-                queryVariantId2,
-                querySku,
-                pName.toLowerCase(),
-                vName.toLowerCase(),
-                pName.toLowerCase()
-              );
-              
-              if (registry && (registry.landed_cost > 0 || registry.shopify_cost > 0)) {
-                unitCost = registry.landed_cost || registry.shopify_cost || 0;
-              } else {
-                try {
-                  const aliasMatch = aliasLookupStmt.get(
-                    storeId,
-                    pName.toLowerCase(),
-                    vName.toLowerCase(),
-                    `${pName} - ${vName}`.toLowerCase(),
-                    pName.toLowerCase()
-                  );
-                  if (aliasMatch && (aliasMatch.landed_cost > 0 || aliasMatch.shopify_cost > 0)) {
-                    unitCost = aliasMatch.landed_cost || aliasMatch.shopify_cost || 0;
-                    if (!item.sku && aliasMatch.master_sku) item.sku = aliasMatch.master_sku;
-                  }
-                } catch (_) {}
-              }
+            if (registry && (registry.landed_cost || 0) > 0) {
+              unitCost = registry.landed_cost;
+            } else {
+              try {
+                const aliasMatch = aliasLookupStmt.get(
+                  storeId,
+                  pName.toLowerCase(),
+                  vName.toLowerCase(),
+                  `${pName} - ${vName}`.toLowerCase(),
+                  pName.toLowerCase()
+                );
+                if (aliasMatch && (aliasMatch.landed_cost || 0) > 0) {
+                  unitCost = aliasMatch.landed_cost;
+                  if (!item.sku && aliasMatch.master_sku) item.sku = aliasMatch.master_sku;
+                }
+              } catch (_) {}
             }
 
             totalCost += unitCost * qty;

@@ -125,6 +125,10 @@ router.post('/bulk-book-postex', async (req, res) => {
 
       const trackingNumber = await createPostExOrder(order, order);
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, 'PostEx', id);
+      try {
+        const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
+        allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkPostEx');
+      } catch (_) {}
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx'); } catch(e) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
@@ -252,6 +256,10 @@ router.post('/bulk-book-instaworld', async (req, res) => {
 
       const trackingNumber = await createInstaworldOrder(order, order, courier_name);
       db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?").run(trackingNumber, courier_name, id);
+      try {
+        const { allocateOrderFifoOnDispatch } = require('../../services/poLedgerService');
+        allocateOrderFifoOnDispatch(id, req.user?.username || 'BulkInstaworld');
+      } catch (_) {}
       
       try { await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, courier_name); } catch(e) {}
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });

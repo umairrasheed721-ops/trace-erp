@@ -65,56 +65,14 @@ exports.csUpdate = async (req, res) => {
 
     const newItemsStr = JSON.stringify(line_items || []);
     
-    // Calculate new total cost based on new line items using robust multi-layer matching (matching breakdown logic)
+    // Strict SKU / Shopify Variant ID / Alias cost lookup (zero title guessing, zero shopify_cost estimation)
     let totalCost = 0;
     let hasMissingCostItem = false;
+    const { resolveOrderLineItemMasterCost } = require('../services/poLedgerService');
     const items = line_items || [];
     for (const item of items) {
-      const variantId = item.variant_id ? String(item.variant_id) : '';
-      const numericVariantId = variantId.includes('/') ? variantId.split('/').pop() : variantId;
-      const gidVariantId = numericVariantId ? `gid://shopify/ProductVariant/${numericVariantId}` : '';
-      const sku = item.sku ? String(item.sku).trim() : '';
-
-      const queryVariantId1 = numericVariantId || '__NONE__';
-      const queryVariantId2 = gidVariantId || '__NONE__';
-      const querySku = sku || '__NONE__';
-      const pName = item.title ? String(item.title).trim() : '';
-      const vName = item.variant_title ? String(item.variant_title).trim() : '';
-
-      const costRow = db.db.prepare(`
-        SELECT landed_cost, unit_cost, shopify_cost FROM product_master_costs 
-        WHERE store_id = ? 
-        AND (
-          shopify_variant_id = ? 
-          OR shopify_variant_id = ? 
-          OR (sku = ? AND sku != '')
-          OR (LOWER(parent_title) = ?)
-        )
-        ORDER BY (CASE WHEN shopify_variant_id = ? OR shopify_variant_id = ? THEN 0 
-                       WHEN sku = ? AND sku != '' THEN 1
-                       WHEN LOWER(parent_title) = ? AND LOWER(variant_title) = ? THEN 2
-                       WHEN LOWER(parent_title) = ? THEN 3
-                       ELSE 4 END) ASC,
-                 (CASE WHEN landed_cost > 0 OR unit_cost > 0 OR shopify_cost > 0 THEN 0 ELSE 1 END) ASC
-        LIMIT 1
-      `).get(
-        oldOrder.store_id,
-        queryVariantId1,
-        queryVariantId2,
-        querySku,
-        pName.toLowerCase(),
-        queryVariantId1,
-        queryVariantId2,
-        querySku,
-        pName.toLowerCase(),
-        vName.toLowerCase(),
-        pName.toLowerCase()
-      );
-
-      const landed = costRow ? costRow.landed_cost : 0;
-      const unit = costRow ? costRow.unit_cost : 0;
-      const shopify = costRow ? costRow.shopify_cost : 0;
-      const resolvedUnitCost = landed || unit || shopify || 0;
+      const costRow = resolveOrderLineItemMasterCost(oldOrder.store_id, item);
+      const resolvedUnitCost = costRow && (costRow.landed_cost || 0) > 0 ? costRow.landed_cost : 0;
 
       if (resolvedUnitCost > 0) {
         totalCost += (resolvedUnitCost * item.quantity);
@@ -554,6 +512,12 @@ exports.bookPostex = async (req, res) => {
     db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, 'PostEx', req.params.id);
 
+    // 2b. Autopilot FIFO batch consume & cost lock
+    try {
+      const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
+      allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
+    } catch (fifoErr) { console.warn('[bookPostex FIFO Notice]:', fifoErr.message); }
+
     // 3. Fulfill in Shopify
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'PostEx');
@@ -604,6 +568,12 @@ exports.bookInstaworld = async (req, res) => {
     db.prepare("UPDATE orders SET tracking_number = ?, courier = ?, delivery_status = 'Booked', status_date = datetime('now') WHERE id = ?")
       .run(trackingNumber, 'Instaworld', req.params.id);
 
+    // 2b. Autopilot FIFO batch consume & cost lock
+    try {
+      const { allocateOrderFifoOnDispatch } = require('../services/poLedgerService');
+      allocateOrderFifoOnDispatch(req.params.id, req.user?.username || 'Booking');
+    } catch (fifoErr) { console.warn('[bookInstaworld FIFO Notice]:', fifoErr.message); }
+
     // 3. Fulfill in Shopify
     try {
       await fulfillShopifyOrder(order, order.shopify_order_id, trackingNumber, 'Instaworld');
@@ -653,6 +623,10 @@ exports.cancelBooking = async (req, res) => {
 
       db.prepare('UPDATE orders SET tracking_number = NULL, delivery_status = "Confirmed", status_date = datetime("now") WHERE id = ?')
         .run(req.params.id);
+      try {
+        const { reverseOrderFifoOnCancel } = require('../services/poLedgerService');
+        reverseOrderFifoOnCancel(req.params.id, req.user?.username || 'CancelBooking');
+      } catch (fifoErr) { console.warn('[cancelBooking FIFO Notice]:', fifoErr.message); }
       broadcast('order_updated', { storeId: order.store_id, shopifyOrderId: order.shopify_order_id });
       res.json({ success: true });
     } else {
