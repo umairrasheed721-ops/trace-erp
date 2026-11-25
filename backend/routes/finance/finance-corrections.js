@@ -668,8 +668,61 @@ router.get('/master-costs', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
   try {
-    const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC, variant_title ASC').all(Number(store_id));
-    res.json(costs);
+    const sid = Number(store_id);
+    const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC, variant_title ASC').all(sid);
+
+    // Single lightweight query to attach live FIFO PO batches per SKU (zero N+1)
+    const batchMap = new Map();
+    try {
+      const openBatches = db.prepare(`
+        SELECT i.product_cost_id, i.remaining_qty,
+               COALESCE(NULLIF(i.landed_unit_cost, 0), i.unit_cost, 0) AS batch_unit_cost,
+               po.id AS po_id, po.po_number, po.received_date, po.order_date, po.is_baseline
+        FROM purchase_order_items i
+        JOIN purchase_orders po ON po.id = i.po_id
+        WHERE i.store_id = ?
+          AND COALESCE(i.remaining_qty, 0) > 0
+          AND po.status != 'cancelled'
+        ORDER BY COALESCE(po.received_date, po.order_date) ASC, po.id ASC, i.id ASC
+      `).all(sid);
+
+      for (const b of openBatches) {
+        if (!b.product_cost_id) continue;
+        let list = batchMap.get(b.product_cost_id);
+        if (!list) {
+          list = [];
+          batchMap.set(b.product_cost_id, list);
+        }
+        list.push({
+          po_id: b.po_id,
+          po_number: b.po_number,
+          remaining_qty: Number(b.remaining_qty) || 0,
+          batch_unit_cost: Number(b.batch_unit_cost) || 0,
+          received_date: b.received_date || b.order_date || '',
+          is_baseline: Boolean(b.is_baseline),
+        });
+      }
+    } catch (_) {
+      // Safe fallback if purchase_orders tables not yet initialized
+    }
+
+    const enriched = costs.map((c) => {
+      const batches = batchMap.get(c.id) || [];
+      const active = batches[0] || null;
+      const fifoRemainingQty = batches.reduce((s, b) => s + b.remaining_qty, 0);
+      return {
+        ...c,
+        active_po_id: active ? active.po_id : null,
+        active_po_number: active ? active.po_number : null,
+        active_po_is_baseline: active ? active.is_baseline : false,
+        fifo_unit_cost: active ? active.batch_unit_cost : 0,
+        fifo_remaining_qty: fifoRemainingQty,
+        fifo_batch_count: batches.length,
+        fifo_batches: batches.slice(0, 5),
+      };
+    });
+
+    res.json(enriched);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -821,12 +874,29 @@ function healCostsForStore(storeId) {
 
 // POST /api/finance/master-costs
 router.post('/master-costs', (req, res) => {
-  const { store_id, parent_title, variant_title, unit_cost, packaging_cost } = req.body;
+  const { store_id, parent_title, variant_title, unit_cost, packaging_cost, packaging_only } = req.body;
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
 
   try {
-    const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
-    const existing = db.prepare('SELECT unit_cost, shopify_cost, shopify_variant_id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(Number(store_id), parent_title, variant_title || '');
+    const sid = Number(store_id);
+    const pkgCost = parseFloat(packaging_cost) || 0;
+    const existing = db.prepare('SELECT id, unit_cost, packaging_cost, shopify_cost, shopify_variant_id FROM product_master_costs WHERE store_id = ? AND parent_title = ? AND variant_title = ?').get(sid, parent_title, variant_title || '');
+
+    // Half-locked packaging-only update: preserve PO/FIFO-driven unit_cost strictly
+    if (packaging_only && existing) {
+      const preservedUnit = parseFloat(existing.unit_cost) || 0;
+      const landed = preservedUnit + pkgCost;
+      db.prepare(`
+        UPDATE product_master_costs
+        SET packaging_cost = ?, landed_cost = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(pkgCost, landed, existing.id);
+      healCostsForStore(sid);
+      return res.json({ success: true, unit_cost: preservedUnit, packaging_cost: pkgCost, landed_cost: landed });
+    }
+
+    const finalUnitCost = parseFloat(unit_cost) || 0;
+    const landed_cost = finalUnitCost + pkgCost;
     db.prepare(`
       INSERT INTO product_master_costs (store_id, parent_title, variant_title, unit_cost, packaging_cost, landed_cost, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
@@ -835,15 +905,15 @@ router.post('/master-costs', (req, res) => {
         packaging_cost = excluded.packaging_cost,
         landed_cost = excluded.landed_cost,
         updated_at = datetime('now')
-    `).run(Number(store_id), parent_title, variant_title || '', unit_cost || 0, packaging_cost || 0, landed_cost);
+    `).run(sid, parent_title, variant_title || '', finalUnitCost, pkgCost, landed_cost);
     // Log cost change
     try {
       db.prepare(`INSERT INTO cost_change_log (store_id, parent_title, variant_title, shopify_variant_id, old_cost, new_cost, changed_by) VALUES (?,?,?,?,?,?,'manual')`)
-        .run(Number(store_id), parent_title, variant_title || '', existing?.shopify_variant_id || null, existing?.unit_cost ?? null, parseFloat(unit_cost) || 0);
+        .run(sid, parent_title, variant_title || '', existing?.shopify_variant_id || null, existing?.unit_cost ?? null, finalUnitCost);
     } catch (_) {}
 
     // Auto-heal orders on master cost updates
-    healCostsForStore(store_id);
+    healCostsForStore(sid);
 
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1009,16 +1079,25 @@ router.post('/accept-shopify-cost', (req, res) => {
 
 // POST /api/finance/bulk-sync-parent-costs
 router.post('/bulk-sync-parent-costs', (req, res) => {
-  const { store_id, parent_title, unit_cost, packaging_cost } = req.body;
+  const { store_id, parent_title, unit_cost, packaging_cost, packaging_only } = req.body;
   if (!store_id || !parent_title) return res.status(400).json({ error: 'store_id and parent_title required' });
 
   try {
-    const landed_cost = (parseFloat(unit_cost) || 0) + (parseFloat(packaging_cost) || 0);
-    db.prepare(`
-      UPDATE product_master_costs 
-      SET unit_cost = ?, packaging_cost = ?, landed_cost = ?, updated_at = datetime('now')
-      WHERE store_id = ? AND parent_title = ?
-    `).run(unit_cost || 0, packaging_cost || 0, landed_cost, Number(store_id), parent_title);
+    const pkgCost = parseFloat(packaging_cost) || 0;
+    if (packaging_only) {
+      db.prepare(`
+        UPDATE product_master_costs 
+        SET packaging_cost = ?, landed_cost = COALESCE(unit_cost, 0) + ?, updated_at = datetime('now')
+        WHERE store_id = ? AND parent_title = ?
+      `).run(pkgCost, pkgCost, Number(store_id), parent_title);
+    } else {
+      const landed_cost = (parseFloat(unit_cost) || 0) + pkgCost;
+      db.prepare(`
+        UPDATE product_master_costs 
+        SET unit_cost = ?, packaging_cost = ?, landed_cost = ?, updated_at = datetime('now')
+        WHERE store_id = ? AND parent_title = ?
+      `).run(unit_cost || 0, pkgCost, landed_cost, Number(store_id), parent_title);
+    }
 
     // Auto-heal orders matching this parent title
     healCostsForStore(store_id);
@@ -1144,20 +1223,33 @@ router.post('/bulk-delete-master-variants', (req, res) => {
 
 // POST /api/finance/bulk-sync-variants-costs
 router.post('/bulk-sync-variants-costs', (req, res) => {
-  const { store_id, ids, unit_cost, packaging_cost } = req.body;
+  const { store_id, ids, unit_cost, packaging_cost, packaging_only } = req.body;
   if (!store_id || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'store_id and ids array required' });
 
   try {
-    const landed = Number(unit_cost || 0) + Number(packaging_cost || 0);
+    const pkgCost = Number(packaging_cost || 0);
     const placeholders = ids.map(() => '?').join(',');
-    const result = db.prepare(`
-      UPDATE product_master_costs 
-      SET unit_cost = ?,
-          packaging_cost = ?,
-          landed_cost = ?,
-          updated_at = datetime('now')
-      WHERE store_id = ? AND id IN (${placeholders})
-    `).run(Number(unit_cost || 0), Number(packaging_cost || 0), landed, Number(store_id), ...ids);
+    let result;
+    if (packaging_only) {
+      result = db.prepare(`
+        UPDATE product_master_costs 
+        SET packaging_cost = ?,
+            landed_cost = COALESCE(unit_cost, 0) + ?,
+            updated_at = datetime('now')
+        WHERE store_id = ? AND id IN (${placeholders})
+      `).run(pkgCost, pkgCost, Number(store_id), ...ids);
+    } else {
+      const landed = Number(unit_cost || 0) + pkgCost;
+      result = db.prepare(`
+        UPDATE product_master_costs 
+        SET unit_cost = ?,
+            packaging_cost = ?,
+            landed_cost = ?,
+            updated_at = datetime('now')
+        WHERE store_id = ? AND id IN (${placeholders})
+      `).run(Number(unit_cost || 0), pkgCost, landed, Number(store_id), ...ids);
+    }
+    healCostsForStore(store_id);
     res.json({ success: true, count: result.changes });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
