@@ -6,6 +6,52 @@ const API = import.meta.env.VITE_API_URL || ''
 
 const fmtRs = (v) => `Rs. ${Math.round(Number(v) || 0).toLocaleString()}`
 
+const SIZE_RANK_MAP = {
+  xxxs: 1, '3xs': 1, xxs: 2, '2xs': 2, xs: 3, small: 4, s: 4,
+  medium: 5, m: 5, large: 6, l: 6, xl: 7, '1xl': 7,
+  xxl: 8, '2xl': 8, xxxl: 9, '3xl': 9, xxxxl: 10, '4xl': 10,
+  '5xl': 11, '6xl': 12, '7xl': 13, free: 90, 'free size': 90, 'one size': 90, os: 90,
+}
+
+function getSizeRank(token) {
+  const clean = String(token || '').trim().toLowerCase()
+  if (!clean) return null
+  if (SIZE_RANK_MAP[clean] !== undefined) return SIZE_RANK_MAP[clean]
+  if (/^\d+(\.\d+)?(\s*(in|cm|yr|yrs|y|m))?$/i.test(clean)) return 100 + parseFloat(clean)
+  return null
+}
+
+function parseVariantParts(variantTitle) {
+  const parts = String(variantTitle || '').split('/').map(s => s.trim()).filter(Boolean)
+  if (parts.length === 0) return { size: '', color: '', sizeRank: 9999 }
+  if (parts.length === 1) {
+    const r = getSizeRank(parts[0])
+    return r !== null ? { size: parts[0], color: '', sizeRank: r } : { size: '', color: parts[0], sizeRank: 9999 }
+  }
+  const r0 = getSizeRank(parts[0])
+  const r1 = getSizeRank(parts[1])
+  if (r0 !== null && r1 === null) return { size: parts[0], color: parts.slice(1).join(' / '), sizeRank: r0 }
+  if (r1 !== null && r0 === null) return { size: parts[1], color: parts[0], sizeRank: r1 }
+  return { size: parts[0], color: parts.slice(1).join(' / '), sizeRank: r0 ?? 9999 }
+}
+
+function sortVariantsSmart(variants, mode = 'color') {
+  return [...variants].sort((a, b) => {
+    const pa = parseVariantParts(a.variant_title)
+    const pb = parseVariantParts(b.variant_title)
+    if (mode === 'size') {
+      if (pa.sizeRank !== pb.sizeRank) return pa.sizeRank - pb.sizeRank
+      const sCmp = pa.size.localeCompare(pb.size)
+      if (sCmp !== 0) return sCmp
+      return pa.color.localeCompare(pb.color)
+    }
+    const cCmp = pa.color.localeCompare(pb.color)
+    if (cCmp !== 0) return cCmp
+    if (pa.sizeRank !== pb.sizeRank) return pa.sizeRank - pb.sizeRank
+    return (a.variant_title || '').localeCompare(b.variant_title || '')
+  })
+}
+
 const Svg = {
   Box: ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -163,6 +209,7 @@ export default function PoLedgerManager() {
   const [pickerSearch, setPickerSearch] = useState('')
   const [pickerSearchBy, setPickerSearchBy] = useState('all') // 'all' | 'title' | 'sku'
   const [pickerFilter, setPickerFilter] = useState('all') // 'all' | 'active' | 'draft' | 'backorder' | 'oos' | 'low'
+  const [pickerGroupBy, setPickerGroupBy] = useState('color') // 'color' | 'size'
   const [pickerSelected, setPickerSelected] = useState(() => new Set())
   const [collapsedPickerParents, setCollapsedPickerParents] = useState(() => new Set())
   const [bulkQtyInput, setBulkQtyInput] = useState('')
@@ -817,10 +864,31 @@ export default function PoLedgerManager() {
           return g.parent_title.toLowerCase().includes(q) || (v.variant_title || '').toLowerCase().includes(q) || (v.sku || '').toLowerCase().includes(q)
         })
         if (filteredVars.length === 0) return null
-        return { ...g, variants: filteredVars }
+        const sortedVars = sortVariantsSmart(filteredVars, pickerGroupBy)
+        // Build unique Colors & natural-ordered Sizes for 1-click chips
+        const colorMap = new Map()
+        const sizeMap = new Map()
+        for (const v of sortedVars) {
+          const p = parseVariantParts(v.variant_title)
+          if (p.color) {
+            if (!colorMap.has(p.color)) colorMap.set(p.color, [])
+            colorMap.get(p.color).push(v.id)
+          }
+          if (p.size) {
+            if (!sizeMap.has(p.size)) sizeMap.set(p.size, { rank: p.sizeRank, ids: [] })
+            sizeMap.get(p.size).ids.push(v.id)
+          }
+        }
+        const colors = Array.from(colorMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([label, ids]) => ({ label, ids }))
+        const sizes = Array.from(sizeMap.entries())
+          .sort((a, b) => a[1].rank - b[1].rank || a[0].localeCompare(b[0]))
+          .map(([label, info]) => ({ label, ids: info.ids }))
+        return { ...g, variants: sortedVars, colors, sizes }
       })
       .filter(Boolean)
-  }, [groupedCatalogForPo, pickerSearch, pickerSearchBy, pickerFilter])
+  }, [groupedCatalogForPo, pickerSearch, pickerSearchBy, pickerFilter, pickerGroupBy])
 
   // Quick-add counts for 1-click toolbar buttons
   const quickAddCounts = useMemo(() => {
@@ -859,7 +927,17 @@ export default function PoLedgerManager() {
       g.totalUnits += q
       g.subtotal += q * c
     })
-    return Array.from(map.values())
+    return Array.from(map.values()).map(g => ({
+      ...g,
+      entries: [...g.entries].sort((a, b) => {
+        const pa = parseVariantParts(a.item.variant_title)
+        const pb = parseVariantParts(b.item.variant_title)
+        const cCmp = pa.color.localeCompare(pb.color)
+        if (cCmp !== 0) return cCmp
+        if (pa.sizeRank !== pb.sizeRank) return pa.sizeRank - pb.sizeRank
+        return (a.item.variant_title || '').localeCompare(b.item.variant_title || '')
+      }),
+    }))
   }, [poForm.items, groupedCatalogForPo])
 
   const poTotalUnits = poForm.items.reduce((s, i) => s + (parseInt(i.ordered_qty, 10) || 0), 0)
@@ -2317,32 +2395,56 @@ export default function PoLedgerManager() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'active', label: '🟢 Active' },
-                  { id: 'draft', label: '📝 Draft' },
-                  { id: 'backorder', label: '🔴 Backorder (<0)' },
-                  { id: 'oos', label: '🚫 Out of Stock (0)' },
-                  { id: 'low', label: '⚠️ Low Stock (≤5)' },
-                ].map(f => {
-                  const active = pickerFilter === f.id
-                  return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'active', label: '🟢 Active' },
+                    { id: 'draft', label: '📝 Draft' },
+                    { id: 'backorder', label: '🔴 Backorder (<0)' },
+                    { id: 'oos', label: '🚫 Out of Stock (0)' },
+                    { id: 'low', label: '⚠️ Low Stock (≤5)' },
+                  ].map(f => {
+                    const active = pickerFilter === f.id
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setPickerFilter(f.id)}
+                        style={{
+                          padding: '3.5px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: active ? 700 : 600, cursor: 'pointer',
+                          background: active ? 'rgba(37,99,235,0.14)' : 'var(--bg-elevated)',
+                          color: active ? '#2563eb' : 'var(--text-secondary)',
+                          border: `1px solid ${active ? '#2563eb' : 'var(--border)'}`,
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Group/Order Toggle: By Color vs By Size */}
+                <div style={{ display: 'inline-flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 2 }}>
+                  {[
+                    { id: 'color', label: '🎨 By Color' },
+                    { id: 'size', label: '📏 By Size' },
+                  ].map(m => (
                     <button
-                      key={f.id}
+                      key={m.id}
                       type="button"
-                      onClick={() => setPickerFilter(f.id)}
+                      onClick={() => setPickerGroupBy(m.id)}
                       style={{
-                        padding: '3.5px 10px', borderRadius: 20, fontSize: 11.5, fontWeight: active ? 700 : 600, cursor: 'pointer',
-                        background: active ? 'rgba(37,99,235,0.14)' : 'var(--bg-elevated)',
-                        color: active ? '#2563eb' : 'var(--text-secondary)',
-                        border: `1px solid ${active ? '#2563eb' : 'var(--border)'}`,
+                        padding: '3px 9px', borderRadius: 6, border: 'none', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: pickerGroupBy === m.id ? 'var(--bg-surface)' : 'transparent',
+                        color: pickerGroupBy === m.id ? '#2563eb' : 'var(--text-muted)',
+                        boxShadow: pickerGroupBy === m.id ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
                       }}
                     >
-                      {f.label}
+                      {m.label}
                     </button>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2456,49 +2558,175 @@ export default function PoLedgerManager() {
                         </div>
                       </div>
 
-                      {/* Indented Variant Sub-Rows */}
-                      {!isCollapsed && g.variants.map(v => {
-                        const checked = pickerSelected.has(v.id)
-                        const qty = Number(v.inventory_qty) || 0
-                        const costVal = Number(v.unit_cost) || Number(v.avg_cost) || 0
-                        return (
-                          <div
-                            key={v.id}
-                            onClick={() => toggleVariantCheck(v.id)}
-                            style={{
-                              display: 'grid', gridTemplateColumns: '1fr 90px 82px', alignItems: 'center',
-                              padding: '8px 18px 8px 54px',
-                              borderTop: '1px solid var(--border)',
-                              background: checked ? 'rgba(37,99,235,0.06)' : 'var(--bg-elevated)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleVariantCheck(v.id)}
-                                onClick={e => e.stopPropagation()}
-                                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#2563eb' }}
-                              />
-                              <span style={{ fontSize: 13, fontWeight: checked ? 700 : 500, color: 'var(--text-primary)' }}>
-                                {v.variant_title || 'Default'}
-                              </span>
-                              {v.sku && (
-                                <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
-                                  {v.sku}
-                                </span>
+                      {/* 1-Click Color & Size Quick-Select Chips under Parent Row */}
+                      {!isCollapsed && g.variants.length > 1 && (g.colors.length > 0 || g.sizes.length > 0) && (
+                        <div style={{
+                          padding: '7px 18px 8px 46px',
+                          borderTop: '1px solid var(--border)',
+                          background: 'rgba(37,99,235,0.03)',
+                          display: 'flex', flexDirection: 'column', gap: 5,
+                        }}>
+                          {g.colors.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: 46 }}>🎨 Color:</span>
+                              {g.colors.map(col => {
+                                const sel = col.ids.filter(id => pickerSelected.has(id)).length
+                                const isAll = sel === col.ids.length
+                                const isPart = sel > 0 && sel < col.ids.length
+                                return (
+                                  <button
+                                    key={col.label}
+                                    type="button"
+                                    onClick={() => {
+                                      setPickerSelected(prev => {
+                                        const next = new Set(prev)
+                                        if (isAll) col.ids.forEach(id => next.delete(id))
+                                        else col.ids.forEach(id => next.add(id))
+                                        return next
+                                      })
+                                    }}
+                                    style={{
+                                      padding: '2.5px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      background: isAll ? '#2563eb' : (isPart ? 'rgba(37,99,235,0.14)' : 'var(--bg-surface)'),
+                                      color: isAll ? '#fff' : (isPart ? '#2563eb' : 'var(--text-primary)'),
+                                      border: `1px solid ${isAll || isPart ? '#2563eb' : 'var(--border)'}`,
+                                    }}
+                                  >
+                                    {isAll ? '✓ ' : ''}{col.label} ({sel > 0 ? `${sel}/` : ''}{col.ids.length})
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {g.sizes.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: 46 }}>📏 Size:</span>
+                              {g.sizes.map(sz => {
+                                const sel = sz.ids.filter(id => pickerSelected.has(id)).length
+                                const isAll = sel === sz.ids.length
+                                const isPart = sel > 0 && sel < sz.ids.length
+                                return (
+                                  <button
+                                    key={sz.label}
+                                    type="button"
+                                    onClick={() => {
+                                      setPickerSelected(prev => {
+                                        const next = new Set(prev)
+                                        if (isAll) sz.ids.forEach(id => next.delete(id))
+                                        else sz.ids.forEach(id => next.add(id))
+                                        return next
+                                      })
+                                    }}
+                                    style={{
+                                      padding: '2.5px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      background: isAll ? '#059669' : (isPart ? 'rgba(5,150,105,0.14)' : 'var(--bg-surface)'),
+                                      color: isAll ? '#fff' : (isPart ? '#059669' : 'var(--text-primary)'),
+                                      border: `1px solid ${isAll || isPart ? '#059669' : 'var(--border)'}`,
+                                    }}
+                                  >
+                                    {isAll ? '✓ ' : ''}{sz.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Indented Variant Sub-Rows Grouped Cleanly by Color or Size */}
+                      {!isCollapsed && (() => {
+                        let lastSubGroup = null
+                        return g.variants.map(v => {
+                          const checked = pickerSelected.has(v.id)
+                          const qty = Number(v.inventory_qty) || 0
+                          const costVal = Number(v.unit_cost) || Number(v.avg_cost) || 0
+                          const parts = parseVariantParts(v.variant_title)
+                          const subGroupLabel = pickerGroupBy === 'color' ? parts.color : parts.size
+                          const showDivider = Boolean(subGroupLabel) && subGroupLabel !== lastSubGroup && (pickerGroupBy === 'color' ? g.colors.length > 1 : g.sizes.length > 1)
+                          if (subGroupLabel) lastSubGroup = subGroupLabel
+
+                          const subGroupIds = showDivider
+                            ? (pickerGroupBy === 'color'
+                                ? (g.colors.find(c => c.label === subGroupLabel)?.ids || [])
+                                : (g.sizes.find(s => s.label === subGroupLabel)?.ids || []))
+                            : []
+                          const subAllChecked = subGroupIds.length > 0 && subGroupIds.every(id => pickerSelected.has(id))
+
+                          return (
+                            <React.Fragment key={v.id}>
+                              {showDivider && (
+                                <div
+                                  onClick={() => {
+                                    setPickerSelected(prev => {
+                                      const next = new Set(prev)
+                                      if (subAllChecked) subGroupIds.forEach(id => next.delete(id))
+                                      else subGroupIds.forEach(id => next.add(id))
+                                      return next
+                                    })
+                                  }}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                    padding: '5px 18px 5px 46px',
+                                    borderTop: '1px solid var(--border)',
+                                    background: 'rgba(100,116,139,0.08)',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={subAllChecked}
+                                      onChange={() => {}}
+                                      style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#2563eb' }}
+                                    />
+                                    <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)' }}>
+                                      {pickerGroupBy === 'color' ? `🎨 ${subGroupLabel}` : `📏 Size ${subGroupLabel}`}
+                                    </span>
+                                    <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>({subGroupIds.length})</span>
+                                  </div>
+                                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#2563eb' }}>
+                                    {subAllChecked ? 'Unselect all' : 'Select all'}
+                                  </span>
+                                </div>
                               )}
-                            </div>
-                            <div style={{ textAlign: 'right', fontSize: 12, color: costVal > 0 ? 'var(--text-secondary)' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
-                              {costVal > 0 ? `Rs ${costVal.toLocaleString()}` : 'Rs 0'}
-                            </div>
-                            <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: qty < 0 ? '#dc2626' : (qty === 0 ? 'var(--text-muted)' : '#059669') }}>
-                              {qty}
-                            </div>
-                          </div>
-                        )
-                      })}
+                              <div
+                                onClick={() => toggleVariantCheck(v.id)}
+                                style={{
+                                  display: 'grid', gridTemplateColumns: '1fr 90px 82px', alignItems: 'center',
+                                  padding: '7.5px 18px 7.5px 62px',
+                                  borderTop: '1px solid var(--border)',
+                                  background: checked ? 'rgba(37,99,235,0.06)' : 'var(--bg-elevated)',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleVariantCheck(v.id)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#2563eb' }}
+                                  />
+                                  <span style={{ fontSize: 13, fontWeight: checked ? 700 : 500, color: 'var(--text-primary)' }}>
+                                    {v.variant_title || 'Default'}
+                                  </span>
+                                  {v.sku && (
+                                    <span style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '1px 5px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                                      {v.sku}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: 12, color: costVal > 0 ? 'var(--text-secondary)' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                                  {costVal > 0 ? `Rs ${costVal.toLocaleString()}` : 'Rs 0'}
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: qty < 0 ? '#dc2626' : (qty === 0 ? 'var(--text-muted)' : '#059669') }}>
+                                  {qty}
+                                </div>
+                              </div>
+                            </React.Fragment>
+                          )
+                        })
+                      })()}
                     </div>
                   )
                 })
