@@ -1367,6 +1367,90 @@ module.exports = [
     } catch (e) {
       console.error('Migration #51 failed:', e.message);
     }
+  },
+
+  // 52. Primary-Inbox Email Remarketing tables (unsubscribes, drip campaigns, recipients) & per-store autopilot columns
+  (db) => {
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS email_unsubscribes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          email TEXT NOT NULL,
+          reason TEXT DEFAULT 'user_opt_out',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(store_id, email)
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_unsub_store_email ON email_unsubscribes(store_id, email);
+
+        CREATE TABLE IF NOT EXISTS remarketing_campaigns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          store_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          sender_name TEXT DEFAULT '',
+          sender_email TEXT DEFAULT '',
+          subject TEXT NOT NULL,
+          body_text TEXT NOT NULL,
+          cta_label TEXT DEFAULT '',
+          cta_url TEXT DEFAULT '',
+          filters_json TEXT DEFAULT '{}',
+          daily_limit INTEGER DEFAULT 150,
+          status TEXT DEFAULT 'running',
+          total_recipients INTEGER DEFAULT 0,
+          sent_count INTEGER DEFAULT 0,
+          failed_count INTEGER DEFAULT 0,
+          last_error TEXT DEFAULT '',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_rmk_campaigns_store_status ON remarketing_campaigns(store_id, status);
+
+        CREATE TABLE IF NOT EXISTS remarketing_recipients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          campaign_id INTEGER NOT NULL,
+          store_id INTEGER NOT NULL,
+          email TEXT NOT NULL,
+          customer_name TEXT DEFAULT '',
+          last_order_ref TEXT DEFAULT '',
+          last_product TEXT DEFAULT '',
+          status TEXT DEFAULT 'pending',
+          error_msg TEXT DEFAULT '',
+          sent_at DATETIME,
+          UNIQUE(campaign_id, email)
+        );
+        CREATE INDEX IF NOT EXISTS idx_rmk_recip_camp_status ON remarketing_recipients(campaign_id, status);
+        CREATE INDEX IF NOT EXISTS idx_rmk_recip_store_sent ON remarketing_recipients(store_id, sent_at);
+      `);
+
+      const settingsCols = db.prepare('PRAGMA table_info(store_email_settings)').all().map(c => c.name);
+      const addSettingCols = [
+        ['review_reward_enabled', 'INTEGER DEFAULT 0'],
+        ['review_reward_min_rating', 'INTEGER DEFAULT 4'],
+        ['review_reward_code', "TEXT DEFAULT ''"],
+        ['review_reward_message', "TEXT DEFAULT ''"],
+        ['remarketing_from_name', "TEXT DEFAULT ''"],
+        ['remarketing_from_email', "TEXT DEFAULT ''"],
+        ['post_delivery_enabled', 'INTEGER DEFAULT 0'],
+        ['post_delivery_days', 'INTEGER DEFAULT 10'],
+        ['post_delivery_code', "TEXT DEFAULT ''"],
+        ['post_delivery_subject', "TEXT DEFAULT ''"],
+        ['post_delivery_body', "TEXT DEFAULT ''"],
+      ];
+      for (const [col, def] of addSettingCols) {
+        if (!settingsCols.includes(col)) {
+          db.exec(`ALTER TABLE store_email_settings ADD COLUMN ${col} ${def}`);
+        }
+      }
+
+      const orderCols = db.prepare('PRAGMA table_info(orders)').all().map(c => c.name);
+      if (!orderCols.includes('post_delivery_email_sent')) {
+        db.exec('ALTER TABLE orders ADD COLUMN post_delivery_email_sent INTEGER DEFAULT 0');
+      }
+
+      console.log('✅ [Migration #52] Email Remarketing tables & autopilot columns verified.');
+    } catch (e) {
+      console.error('Migration #52 failed:', e.message);
+    }
   }
 ];
 

@@ -27,6 +27,11 @@ const {
   saveStoreTemplate,
   resetStoreTemplate,
 } = require('../services/reviewEmailService');
+const {
+  parseUnsubscribeToken,
+  addUnsubscribe,
+  sendReviewRewardEmail,
+} = require('../services/remarketingEmailService');
 
 function escHtml(str) {
   return String(str || '')
@@ -533,6 +538,7 @@ router.post('/submit-review', async (req, res) => {
     // Resolve store_id & authorized product handle(s) from the order (also auto-heals legacy 'general' tokens)
     let storeId = null;
     let finalProductHandle = parsed.productHandle || 'general';
+    let finalProductTitle = '';
     let orderHandles = [];
     if (parsed.orderId && /^\d+$/.test(String(parsed.orderId))) {
       const ord = db.prepare('SELECT id, store_id, line_items, product_titles FROM orders WHERE id = ?').get(Number(parsed.orderId));
@@ -547,6 +553,8 @@ router.post('/submit-review', async (req, res) => {
         } else if (orderHandles.length > 0 && !orderHandles.includes(finalProductHandle)) {
           finalProductHandle = orderHandles[0];
         }
+        const matchedItem = resolvedItems.find(i => i.handle === finalProductHandle) || resolvedItems[0];
+        if (matchedItem?.title) finalProductTitle = matchedItem.title;
       }
     }
 
@@ -574,6 +582,17 @@ router.post('/submit-review', async (req, res) => {
     }
 
     console.log(`⭐ [Reviews] New pending review from ${parsed.customerEmail} for ${finalProductHandle} (${ratingNum}★, store=${storeId})`);
+
+    // Flow #1 Autopilot: Instant Thank-You + Coupon Reward (non-blocking, strictly per-store isolated)
+    if (storeId) {
+      sendReviewRewardEmail({
+        storeId,
+        customerName: name.trim(),
+        customerEmail: parsed.customerEmail,
+        rating: ratingNum,
+        productTitle: finalProductTitle || finalProductHandle.replace(/-/g, ' '),
+      }).catch(e => console.error('[Review Reward Trigger] Error:', e.message));
+    }
 
     res.json({ success: true, message: 'Review submitted and pending approval', product_handle: finalProductHandle, remainingItems });
   } catch (err) {
@@ -624,10 +643,61 @@ router.post('/write-review', (req, res) => {
 
     console.log(`⭐ [Reviews] Direct pending review from ${email} for ${handle} (${ratingNum}★) storeId=${storeId}`);
 
+    if (storeId) {
+      sendReviewRewardEmail({
+        storeId,
+        customerName: name.trim(),
+        customerEmail: email.trim().toLowerCase(),
+        rating: ratingNum,
+        productTitle: handle.trim().replace(/-/g, ' '),
+      }).catch(e => console.error('[Direct Review Reward Trigger] Error:', e.message));
+    }
+
     res.json({ success: true, message: 'Review submitted and pending approval' });
   } catch (err) {
     console.error('[Write Direct Review] Error:', err.message);
     res.status(500).json({ success: false, error: 'Server error. Please try again.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PUBLIC: GET /api/public/email-unsubscribe?token=...
+// 1-Click Per-Store Unsubscribe Suppression (Primary-Inbox Compliance)
+// ─────────────────────────────────────────────────────────────────
+router.get('/email-unsubscribe', (req, res) => {
+  try {
+    const parsed = parseUnsubscribeToken(req.query.token);
+    if (!parsed) {
+      return res.status(400).send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Invalid Link</title></head>
+<body style="margin:0;padding:48px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;color:#111827;text-align:center;">
+  <div style="max-width:440px;margin:0 auto;border:1px solid #e5e7eb;border-radius:14px;padding:32px 24px;">
+    <h2 style="margin:0 0 8px;font-size:20px;">Invalid Unsubscribe Link</h2>
+    <p style="margin:0;color:#6b7280;font-size:14px;line-height:1.5;">This opt-out link is invalid or incomplete. You can reply &quot;stop&quot; directly to the email to unsubscribe.</p>
+  </div>
+</body></html>`);
+    }
+
+    addUnsubscribe(parsed.storeId, parsed.email, 'link');
+    const storeCfg = getStoreEmailConfig(parsed.storeId);
+    const brandName = storeCfg.fromName || storeCfg.storeName || 'Our Store';
+    const storeWebsite = storeCfg.websiteUrl || 'https://tracepk.com';
+
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Unsubscribed – ${escHtml(brandName)}</title></head>
+<body style="margin:0;padding:48px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#ffffff;color:#111827;text-align:center;">
+  <div style="max-width:440px;margin:0 auto;border:1px solid #e5e7eb;border-radius:14px;padding:34px 26px;">
+    <div style="width:44px;height:44px;border-radius:99px;background:#ecfdf5;color:#059669;display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;margin-bottom:14px;">✓</div>
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:700;">You're unsubscribed</h2>
+    <p style="margin:0 0 18px;color:#6b7280;font-size:14px;line-height:1.55;">
+      <strong style="color:#111827;">${escHtml(parsed.email)}</strong> has been removed from future remarketing emails from <strong>${escHtml(brandName)}</strong>.
+    </p>
+    <p style="margin:0 0 22px;color:#9ca3af;font-size:12px;">You will still receive essential order confirmations and delivery updates if you place a new order.</p>
+    <a href="${escHtml(storeWebsite)}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#111827;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;">Return to ${escHtml(brandName)}</a>
+  </div>
+</body></html>`);
+  } catch (err) {
+    res.status(500).send('Unable to process unsubscribe request.');
   }
 });
 

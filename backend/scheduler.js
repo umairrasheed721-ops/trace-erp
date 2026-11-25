@@ -510,6 +510,37 @@ module.exports = function schedulerInit() {
       }
     });
   }, { timezone: 'UTC' });
+
+  // 17. Every 15 minutes: Primary-Inbox Remarketing Auto-Drip Queue (max 12 staggered emails/run, 0-cost no-op when idle)
+  cron.schedule('*/15 * * * *', async () => {
+    await runMultiTenant('remarketing_drip_15m', async (tenantId) => {
+      try {
+        const { processRemarketingDripQueue } = require('./services/remarketingEmailService');
+        const res = await processRemarketingDripQueue(null, 12);
+        if (res.sent > 0 || res.failed > 0) {
+          console.log(`📨 [CRON] Remarketing Auto-Drip (Tenant: ${tenantId}): sent=${res.sent}, failed=${res.failed}`);
+        }
+      } catch (e) {
+        console.error(`[Remarketing Drip Cron Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
+  });
+
+  // 18. Every day at 11:00 AM PKT (6:00 AM UTC): Day +10 Post-Delivery Repeat Buyer Check-In Autopilot
+  cron.schedule('0 6 * * *', async () => {
+    console.log('🔁 [CRON] Day +10 Post-Delivery Repeat Buyer Autopilot starting...');
+    await runMultiTenant('post_delivery_repeat_daily', async (tenantId) => {
+      try {
+        const { runPostDeliveryAutopilot } = require('./services/remarketingEmailService');
+        const res = await runPostDeliveryAutopilot();
+        if (res.sent > 0) {
+          console.log(`🔁 [CRON] Post-Delivery Check-In (Tenant: ${tenantId}): sent=${res.sent}`);
+        }
+      } catch (e) {
+        console.error(`[Post-Delivery Autopilot Error] (Tenant: ${tenantId}):`, e.message);
+      }
+    });
+  }, { timezone: 'UTC' });
 };
 
 module.exports.sendReviewEmails = sendReviewEmails;

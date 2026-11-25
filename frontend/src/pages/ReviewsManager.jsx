@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { copyWithTooltip } from '../utils/orderUtils'
+import RemarketingPanel from '../components/Reviews/RemarketingPanel'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -603,10 +604,11 @@ export default function ReviewsManager() {
           border: '1px solid var(--border)'
         }}>
           {[
-            { id: 'moderation', label: 'Moderation', icon: <Icon.Star size={14} /> },
-            { id: 'campaigns',  label: 'Email Campaigns', icon: <Icon.Mail size={14} />, badge: campaignStats.pending > 0 ? campaignStats.pending : null },
-            { id: 'templates',  label: 'Template Studio', icon: <Icon.Code size={14} /> },
-            { id: 'setup',      label: 'Email Setup', icon: <Icon.Plug size={14} />, alertDot: provider && !provider.configured },
+            { id: 'moderation',  label: 'Moderation', icon: <Icon.Star size={14} /> },
+            { id: 'campaigns',   label: 'Email Campaigns', icon: <Icon.Mail size={14} />, badge: campaignStats.pending > 0 ? campaignStats.pending : null },
+            { id: 'remarketing', label: 'Remarketing', icon: <Icon.Send size={13.5} /> },
+            { id: 'templates',   label: 'Template Studio', icon: <Icon.Code size={14} /> },
+            { id: 'setup',       label: 'Email Setup', icon: <Icon.Plug size={14} />, alertDot: provider && !provider.configured },
           ].map(tab => {
             const active = activeTab === tab.id
             return (
@@ -1789,6 +1791,19 @@ export default function ReviewsManager() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {/* TAB 5: PRIMARY-INBOX EMAIL REMARKETING (PER-STORE ISOLATED)      */}
+      {/* ──────────────────────────────────────────────────────────────── */}
+      {activeTab === 'remarketing' && (
+        <RemarketingPanel
+          activeStoreId={activeStoreId}
+          token={token}
+          addToast={addToast}
+          provider={provider}
+          onOpenSetup={() => setActiveTab('setup')}
+        />
       )}
 
       {/* ─── Send Test Email Modal ─── */}
