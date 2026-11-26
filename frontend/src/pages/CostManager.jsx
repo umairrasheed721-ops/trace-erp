@@ -411,6 +411,9 @@ export default function CostManager() {
           name: c.parent_title,
           variants: [],
           totalQty: 0,
+          totalCommitted: 0,
+          totalOnHand: 0,
+          totalIncoming: 0,
           totalFifoQty: 0,
           inStockVariants: 0,
           outOfStockVariants: 0,
@@ -430,9 +433,15 @@ export default function CostManager() {
       g.variants.push(c)
 
       const qty = Number(c.inventory_qty) || 0
+      const committed = Number(c.committed_qty) || 0
+      const onHand = (c.on_hand_qty !== null && c.on_hand_qty !== undefined) ? Number(c.on_hand_qty) : (qty + committed)
+      const incoming = Number(c.incoming_qty) || 0
       const posQty = Math.max(0, qty)
       const fifoRem = Number(c.fifo_remaining_qty) || 0
       g.totalQty += qty
+      g.totalCommitted += committed
+      g.totalOnHand += onHand
+      g.totalIncoming += incoming
       g.totalFifoQty += fifoRem
       totals.fifoUnits += fifoRem
 
@@ -2233,13 +2242,32 @@ export default function CostManager() {
                         ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>}
                       </td>
 
-                      {/* Shopify-Style Inventory Stats */}
+                      {/* Shopify-Style Inventory Stats (Available / On Hand / Committed / Incoming) */}
                       <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: invColor }}>
                           <span style={{ width: 7, height: 7, borderRadius: '50%', background: invColor, flexShrink: 0 }} />
-                          <span>{p.totalQty} in stock</span>
+                          <span>{p.totalQty} avail</span>
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: '0.69rem', marginTop: 2.5 }}>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>On Hand: {p.totalOnHand}</span>
+                          {p.totalCommitted > 0 && (
+                            <span
+                              title="Unfulfilled Shopify orders reserving stock (On Hand − Committed = Available)"
+                              style={{ padding: '0.5px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.14)', color: '#b45309', fontWeight: 800 }}
+                            >
+                              Committed: {p.totalCommitted}
+                            </span>
+                          )}
+                          {p.totalIncoming > 0 && (
+                            <span
+                              title="Pending stock incoming from open POs / Shopify transfers"
+                              style={{ padding: '0.5px 5px', borderRadius: 4, background: 'rgba(37,99,235,0.11)', color: '#2563eb', fontWeight: 700 }}
+                            >
+                              +{p.totalIncoming} in
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1.5 }}>
                           for {p.totalVariants} variant{p.totalVariants !== 1 ? 's' : ''}
                           {p.outOfStockVariants > 0 && p.inStockVariants > 0 && (
                             <span style={{ color: '#ef4444', fontWeight: 600 }}> · {p.outOfStockVariants} OOS</span>
@@ -2436,17 +2464,39 @@ export default function CostManager() {
                               })()}
                             </td>
 
-                            {/* Shopify-Style Variant Inventory */}
+                            {/* Shopify-Style Variant Inventory (Available / On Hand / Committed / Incoming) */}
                             <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.76rem', fontWeight: 700, color: vInvColor }}>
-                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: vInvColor }} />
-                                <span>{vInvLabel}</span>
-                              </div>
-                              {v.fifo_remaining_qty > 0 && (
-                                <div style={{ fontSize: '0.66rem', color: '#6366f1', fontWeight: 600, marginTop: 1 }}>
-                                  PO FIFO: {v.fifo_remaining_qty} left
-                                </div>
-                              )}
+                              {(() => {
+                                const vComm = Number(v.committed_qty) || 0;
+                                const vOnHand = (v.on_hand_qty !== null && v.on_hand_qty !== undefined) ? Number(v.on_hand_qty) : (qty + vComm);
+                                const vInc = Number(v.incoming_qty) || 0;
+                                return (
+                                  <>
+                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.76rem', fontWeight: 700, color: vInvColor }}>
+                                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: vInvColor }} />
+                                      <span>{vInvLabel}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', fontSize: '0.67rem', marginTop: 2 }}>
+                                      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>On Hand: {vOnHand}</span>
+                                      {vComm > 0 && (
+                                        <span style={{ padding: '0.5px 4.5px', borderRadius: 4, background: 'rgba(245,158,11,0.14)', color: '#b45309', fontWeight: 800 }}>
+                                          Comm: {vComm}
+                                        </span>
+                                      )}
+                                      {vInc > 0 && (
+                                        <span style={{ padding: '0.5px 4.5px', borderRadius: 4, background: 'rgba(37,99,235,0.11)', color: '#2563eb', fontWeight: 700 }}>
+                                          +{vInc} in
+                                        </span>
+                                      )}
+                                    </div>
+                                    {v.fifo_remaining_qty > 0 && (
+                                      <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600, marginTop: 1 }}>
+                                        PO FIFO: {v.fifo_remaining_qty} left
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </td>
 
                             {/* Actions */}
@@ -2499,6 +2549,8 @@ export default function CostManager() {
                         const isAllSelected = groupIds.every(id => selectedVariants.has(id));
                         
                         const totalStock = groupVariants.reduce((acc, v) => acc + (Number(v.inventory_qty) || 0), 0);
+                        const groupCommitted = groupVariants.reduce((acc, v) => acc + (Number(v.committed_qty) || 0), 0);
+                        const groupOnHand = groupVariants.reduce((acc, v) => acc + ((v.on_hand_qty !== null && v.on_hand_qty !== undefined) ? Number(v.on_hand_qty) : ((Number(v.inventory_qty) || 0) + (Number(v.committed_qty) || 0))), 0);
                         const groupFifoQty = groupVariants.reduce((acc, v) => acc + (Number(v.fifo_remaining_qty) || 0), 0);
                         const shopifyCosts = groupVariants.map(v => v.shopify_cost || 0).filter(Boolean);
                         const shopifyMin = shopifyCosts.length ? Math.min(...shopifyCosts) : 0;
@@ -2569,9 +2621,12 @@ export default function CostManager() {
                               <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', fontWeight: 700, color: gInvColor }}>
                                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: gInvColor }} />
-                                  <span>{totalStock} in stock</span>
+                                  <span>{totalStock} avail</span>
                                 </div>
-                                {groupFifoQty > 0 && <div style={{ fontSize: '0.66rem', color: '#6366f1', fontWeight: 600 }}>PO FIFO: {groupFifoQty} left</div>}
+                                <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', fontWeight: 700, marginTop: 1.5 }}>
+                                  On Hand: {groupOnHand}{groupCommitted > 0 && <span style={{ color: '#b45309' }}> · Comm: {groupCommitted}</span>}
+                                </div>
+                                {groupFifoQty > 0 && <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600 }}>PO FIFO: {groupFifoQty} left</div>}
                               </td>
                               <td style={{ textAlign: 'right', padding: '10px 14px' }} onClick={e => e.stopPropagation()}>
                                 <button className="btn btn-icon" title="Bulk Set Group Packaging Cost" onClick={() => {

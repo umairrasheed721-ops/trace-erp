@@ -533,7 +533,8 @@ async function getShopifyInventoryCosts(store, onBatch) {
                 inventoryLevels(first: 10) {
                   edges {
                     node {
-                      quantities(names: ["available"]) {
+                      quantities(names: ["available", "committed", "on_hand", "incoming"]) {
+                        name
                         quantity
                       }
                     }
@@ -577,10 +578,22 @@ async function getShopifyInventoryCosts(store, onBatch) {
       const status = node.product?.status ? String(node.product.status).toLowerCase() : 'active';
 
       let qty = 0;
+      let committedQty = 0;
+      let onHandQty = 0;
+      let incomingQty = 0;
+      let sawOnHand = false;
       const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
       invEdges.forEach(invEdge => {
-        qty += invEdge.node?.quantities?.[0]?.quantity || 0;
+        const qList = invEdge.node?.quantities || [];
+        qList.forEach(qObj => {
+          const val = Number(qObj?.quantity) || 0;
+          if (qObj?.name === 'available') qty += val;
+          else if (qObj?.name === 'committed') committedQty += val;
+          else if (qObj?.name === 'on_hand') { onHandQty += val; sawOnHand = true; }
+          else if (qObj?.name === 'incoming') incomingQty += val;
+        });
       });
+      if (!sawOnHand) onHandQty = qty + committedQty;
       
       const key = variantId || `${parentName}@@@${variantName}`;
       if (!pageMap[key]) {
@@ -592,12 +605,18 @@ async function getShopifyInventoryCosts(store, onBatch) {
           shopify_cost: cost, 
           selling_price: sellingPrice,
           qty: qty,
+          committed_qty: committedQty,
+          on_hand_qty: onHandQty,
+          incoming_qty: incomingQty,
           image_url: node.image?.url || '',
           status: status,
           inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
         };
       } else {
         pageMap[key].qty += qty;
+        pageMap[key].committed_qty += committedQty;
+        pageMap[key].on_hand_qty += onHandQty;
+        pageMap[key].incoming_qty += incomingQty;
         if (!pageMap[key].image_url && node.image?.url) {
           pageMap[key].image_url = node.image.url;
         }
@@ -656,7 +675,8 @@ async function getShopifySingleProductCosts(store, productId) {
                   inventoryLevels(first: 10) {
                     edges {
                       node {
-                        quantities(names: ["available"]) {
+                        quantities(names: ["available", "committed", "on_hand", "incoming"]) {
+                          name
                           quantity
                         }
                       }
@@ -704,10 +724,22 @@ async function getShopifySingleProductCosts(store, productId) {
       const status = prod.status ? String(prod.status).toLowerCase() : 'active';
 
       let qty = 0;
+      let committedQty = 0;
+      let onHandQty = 0;
+      let incomingQty = 0;
+      let sawOnHand = false;
       const invEdges = node.inventoryItem?.inventoryLevels?.edges || [];
       invEdges.forEach(invEdge => {
-        qty += invEdge.node?.quantities?.[0]?.quantity || 0;
+        const qList = invEdge.node?.quantities || [];
+        qList.forEach(qObj => {
+          const val = Number(qObj?.quantity) || 0;
+          if (qObj?.name === 'available') qty += val;
+          else if (qObj?.name === 'committed') committedQty += val;
+          else if (qObj?.name === 'on_hand') { onHandQty += val; sawOnHand = true; }
+          else if (qObj?.name === 'incoming') incomingQty += val;
+        });
       });
+      if (!sawOnHand) onHandQty = qty + committedQty;
 
       results.push({
         shopify_variant_id: variantId,
@@ -717,6 +749,9 @@ async function getShopifySingleProductCosts(store, productId) {
         shopify_cost: cost,
         selling_price: sellingPrice,
         qty: qty,
+        committed_qty: committedQty,
+        on_hand_qty: onHandQty,
+        incoming_qty: incomingQty,
         image_url: node.image?.url || '',
         status: status,
         inventory_policy: node.inventoryPolicy ? String(node.inventoryPolicy).toLowerCase() : 'deny'
@@ -1022,11 +1057,14 @@ async function setShopifyVariantOnHandQuantity(store, shopifyVariantId, exactOnH
         const changes = gqlData.data.inventorySetQuantities.inventoryAdjustmentGroup?.changes || [];
         const availChange = changes.find(c => c.name === 'available');
         const onHandChange = changes.find(c => c.name === 'on_hand');
+        const finalOnHand = onHandChange?.quantityAfterChange ?? targetQty;
+        const finalAvail = availChange?.quantityAfterChange ?? null;
         return {
           ok: true,
           mode: 'on_hand',
-          onHand: onHandChange?.quantityAfterChange ?? targetQty,
-          available: availChange?.quantityAfterChange ?? null,
+          onHand: finalOnHand,
+          available: finalAvail,
+          committed: finalAvail !== null ? Math.max(0, finalOnHand - finalAvail) : null,
           locationId,
           inventoryItemId,
         };

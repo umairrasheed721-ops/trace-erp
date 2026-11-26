@@ -460,10 +460,10 @@ export default function PoLedgerManager() {
           supplier_id: '', // Avoid accidental Supplier Khata billing on already-paid opening stock
           receiveImmediately: true,
           shopifySyncMode: 'set_exact_on_hand',
-          items: prev.items.map(it => ({
-            ...it,
-            ordered_qty: Math.max(0, Number(it.inventory_qty) || 0),
-          })),
+          items: prev.items.map(it => {
+            const oh = it.on_hand_qty !== undefined && it.on_hand_qty !== null ? Number(it.on_hand_qty) : (Number(it.inventory_qty) || 0)
+            return { ...it, ordered_qty: Math.max(0, oh) }
+          }),
         }
       }
       return {
@@ -483,19 +483,21 @@ export default function PoLedgerManager() {
   const fillCurrentStockForAll = () => {
     setPoForm(prev => ({
       ...prev,
-      items: prev.items.map(it => ({
-        ...it,
-        ordered_qty: Math.max(0, Number(it.inventory_qty) || 0),
-      })),
+      items: prev.items.map(it => {
+        const oh = it.on_hand_qty !== undefined && it.on_hand_qty !== null ? Number(it.on_hand_qty) : (Number(it.inventory_qty) || 0)
+        return { ...it, ordered_qty: Math.max(0, oh) }
+      }),
     }))
-    addToast('Filled all rows with current Shopify stock — now edit only changed SKUs', 'info')
+    addToast('Filled all rows with current Shopify On-Hand stock — now edit only changed SKUs', 'info')
   }
 
   const makePoItemFromCatalog = (skuRow, defaultQty = null, isRecountMode = false) => {
     const curInv = Number(skuRow.inventory_qty) || 0
+    const curCommitted = Number(skuRow.committed_qty) || 0
+    const curOnHand = skuRow.on_hand_qty !== undefined && skuRow.on_hand_qty !== null ? Number(skuRow.on_hand_qty) : (curInv + curCommitted)
     const qty = defaultQty !== null
       ? defaultQty
-      : (isRecountMode ? Math.max(0, curInv) : (curInv < 0 ? Math.abs(curInv) : 10))
+      : (isRecountMode ? Math.max(0, curOnHand) : (curInv < 0 ? Math.abs(curInv) : 10))
     return {
       product_cost_id: skuRow.id,
       shopify_variant_id: skuRow.shopify_variant_id || '',
@@ -504,6 +506,8 @@ export default function PoLedgerManager() {
       variant_title: skuRow.variant_title || '',
       variant_image_url: skuRow.variant_image_url || '',
       inventory_qty: curInv,
+      committed_qty: curCommitted,
+      on_hand_qty: curOnHand,
       ordered_qty: qty,
       unit_cost: Number(skuRow.unit_cost) || Number(skuRow.avg_cost) || 0,
     }
@@ -1234,6 +1238,9 @@ export default function PoLedgerManager() {
           variants: [],
           linkedIds: [],
           totalQty: 0,
+          totalCommitted: 0,
+          totalOnHand: 0,
+          totalIncoming: 0,
           totalValue: 0,
           minCost: Infinity,
           maxCost: 0,
@@ -1250,7 +1257,13 @@ export default function PoLedgerManager() {
       g.variants.push(enriched)
       if (String(item.shopify_variant_id || '').trim()) g.linkedIds.push(item.id)
       const q = Number(item.inventory_qty) || 0
+      const comm = Number(item.committed_qty) || 0
+      const oh = item.on_hand_qty !== null && item.on_hand_qty !== undefined ? Number(item.on_hand_qty) : (q + comm)
+      const inc = Number(item.incoming_qty) || 0
       g.totalQty += q
+      g.totalCommitted += comm
+      g.totalOnHand += oh
+      g.totalIncoming += inc
       g.totalValue += Number(item.stock_value) || 0
       const c = Number(item.avg_cost) || 0
       if (c > 0) {
@@ -1324,7 +1337,9 @@ export default function PoLedgerManager() {
   const recountImpact = useMemo(() => {
     let changedSkus = 0, unchangedSkus = 0, netDelta = 0
     for (const it of poForm.items) {
-      const cur = Number(it.inventory_qty) || 0
+      const cur = it.on_hand_qty !== undefined && it.on_hand_qty !== null
+        ? Number(it.on_hand_qty)
+        : ((Number(it.inventory_qty) || 0) + (Number(it.committed_qty) || 0))
       const target = Math.max(0, parseInt(it.ordered_qty, 10) || 0)
       const diff = target - cur
       if (diff === 0) unchangedSkus++
@@ -2295,11 +2310,14 @@ export default function PoLedgerManager() {
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
                     <th style={{ padding: '9px 10px 9px 14px', width: 28 }} />
                     <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Product / Variant</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Qty</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active FIFO Cost</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Value</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Continue Selling</th>
-                    <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shared Pool</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Available</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Committed</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>On Hand</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Incoming</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active FIFO Cost</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Value</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Continue Selling</th>
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shared Pool</th>
                     <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -2307,7 +2325,7 @@ export default function PoLedgerManager() {
                   {invViewMode === 'grouped' ? (
                     groupedWarehouseInventory.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <td colSpan={11} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
                           No products match your search/filter.
                         </td>
                       </tr>
@@ -2371,7 +2389,7 @@ export default function PoLedgerManager() {
                                 </div>
                               </div>
                             </td>
-                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                               <span style={{
                                 fontWeight: 800, fontSize: 13,
                                 color: group.totalQty < 0 ? '#dc2626' : (group.totalQty === 0 ? '#b45309' : '#059669'),
@@ -2379,19 +2397,40 @@ export default function PoLedgerManager() {
                                 {group.totalQty}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: group.minCost > 0 ? 'var(--text-primary)' : '#dc2626' }}>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              {group.totalCommitted > 0 ? (
+                                <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(245,158,11,0.13)', color: '#b45309', border: '1px solid rgba(245,158,11,0.30)' }}>
+                                  {group.totalCommitted}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                              {group.totalOnHand}
+                            </td>
+                            <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              {group.totalIncoming > 0 ? (
+                                <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                                  +{group.totalIncoming}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: group.minCost > 0 ? 'var(--text-primary)' : '#dc2626' }}>
                               {costRangeLabel}
                               {group.openBatches > 0 && (
                                 <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{group.openBatches} FIFO batch{group.openBatches > 1 ? 'es' : ''}</div>
                               )}
                             </td>
-                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--text-primary)' }}>
                               {fmtRs(group.totalValue)}
                             </td>
-                            <td style={{ padding: '10px 12px', fontSize: 11.5, color: group.continueCount > 0 ? '#2563eb' : 'var(--text-muted)', fontWeight: 700 }}>
+                            <td style={{ padding: '10px 10px', fontSize: 11.5, color: group.continueCount > 0 ? '#2563eb' : 'var(--text-muted)', fontWeight: 700 }}>
                               {group.continueCount > 0 ? `${group.continueCount}/${group.variants.length} ON` : 'OFF'}
                             </td>
-                            <td style={{ padding: '10px 12px', fontSize: 11.5, color: group.poolKeys.size > 0 ? '#7c3aed' : 'var(--text-muted)', fontWeight: 600 }}>
+                            <td style={{ padding: '10px 10px', fontSize: 11.5, color: group.poolKeys.size > 0 ? '#7c3aed' : 'var(--text-muted)', fontWeight: 600 }}>
                               {group.poolKeys.size > 0 ? Array.from(group.poolKeys).slice(0, 2).join(', ') : '—'}
                             </td>
                             <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
@@ -2432,6 +2471,9 @@ export default function PoLedgerManager() {
                             const isBackorder = item.inventory_qty < 0
                             const hasVarId = Boolean(String(item.shopify_variant_id || '').trim())
                             const rowBusyKey = `pushOne-${item.id}`
+                            const comm = Number(item.committed_qty) || 0
+                            const onHand = item.on_hand_qty !== null && item.on_hand_qty !== undefined ? Number(item.on_hand_qty) : ((Number(item.inventory_qty) || 0) + comm)
+                            const inc = Number(item.incoming_qty) || 0
                             return (
                               <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
                                 <td style={{ padding: '8px 8px 8px 14px' }}>
@@ -2455,16 +2497,37 @@ export default function PoLedgerManager() {
                                     )}
                                   </div>
                                 </td>
-                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                                   <span style={{
                                     fontWeight: 800, fontSize: 12.5,
                                     color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
                                   }}>
                                     {item.inventory_qty}
                                   </span>
-                                  {isBackorder && <span style={{ marginLeft: 6, fontSize: 10, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
+                                  {isBackorder && <span style={{ marginLeft: 5, fontSize: 9.5, color: '#dc2626', fontWeight: 700 }}>BO</span>}
                                 </td>
-                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                  {comm > 0 ? (
+                                    <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                                      {comm}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                  {onHand}
+                                </td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                                  {inc > 0 ? (
+                                    <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                                      +{inc}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                                   {item.avg_cost > 0 ? (
                                     <div>
                                       <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
@@ -2476,10 +2539,10 @@ export default function PoLedgerManager() {
                                     <Pill label="Rs. 0 · Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
                                   )}
                                 </td>
-                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                                <td style={{ padding: '8px 10px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
                                   {fmtRs(item.stock_value)}
                                 </td>
-                                <td style={{ padding: '8px 12px' }}>
+                                <td style={{ padding: '8px 10px' }}>
                                   <button
                                     type="button"
                                     disabled={busyKey === `cs-${item.id}`}
@@ -2495,7 +2558,7 @@ export default function PoLedgerManager() {
                                     {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
                                   </button>
                                 </td>
-                                <td style={{ padding: '8px 12px' }}>
+                                <td style={{ padding: '8px 10px' }}>
                                   <button
                                     type="button"
                                     onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
@@ -2515,7 +2578,7 @@ export default function PoLedgerManager() {
                                       type="button"
                                       disabled={!hasVarId || busyKey === rowBusyKey}
                                       onClick={() => handlePushInventoryToShopify([item.id], `${group.parentTitle} (${item._displayVariant})`, rowBusyKey)}
-                                      title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, item.inventory_qty || 0)}` : 'No Shopify Variant ID linked'}
+                                      title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, onHand)}` : 'No Shopify Variant ID linked'}
                                       style={{
                                         padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
                                         cursor: hasVarId ? 'pointer' : 'not-allowed',
@@ -2551,6 +2614,9 @@ export default function PoLedgerManager() {
                       const isBackorder = item.inventory_qty < 0
                       const hasVarId = Boolean(String(item.shopify_variant_id || '').trim())
                       const rowBusyKey = `pushOne-${item.id}`
+                      const comm = Number(item.committed_qty) || 0
+                      const onHand = item.on_hand_qty !== null && item.on_hand_qty !== undefined ? Number(item.on_hand_qty) : ((Number(item.inventory_qty) || 0) + comm)
+                      const inc = Number(item.incoming_qty) || 0
                       return (
                         <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={{ padding: '10px 8px 10px 14px' }}>
@@ -2573,16 +2639,37 @@ export default function PoLedgerManager() {
                               {[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}
                             </div>
                           </td>
-                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                             <span style={{
                               fontWeight: 800, fontSize: 13,
                               color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
                             }}>
                               {item.inventory_qty}
                             </span>
-                            {isBackorder && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
+                            {isBackorder && <span style={{ marginLeft: 5, fontSize: 10, color: '#dc2626', fontWeight: 700 }}>BO</span>}
                           </td>
-                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {comm > 0 ? (
+                              <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                                {comm}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: 'var(--text-primary)' }}>
+                            {onHand}
+                          </td>
+                          <td style={{ padding: '10px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                            {inc > 0 ? (
+                              <span style={{ padding: '2px 7px', borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: 'rgba(37,99,235,0.11)', color: '#2563eb' }}>
+                                +{inc}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                             {item.avg_cost > 0 ? (
                               <div>
                                 <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
@@ -2594,10 +2681,10 @@ export default function PoLedgerManager() {
                               <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
                             )}
                           </td>
-                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                          <td style={{ padding: '10px 10px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
                             {fmtRs(item.stock_value)}
                           </td>
-                          <td style={{ padding: '10px 12px' }}>
+                          <td style={{ padding: '10px 10px' }}>
                             <button
                               type="button"
                               disabled={busyKey === `cs-${item.id}`}
@@ -2613,7 +2700,7 @@ export default function PoLedgerManager() {
                               {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
                             </button>
                           </td>
-                          <td style={{ padding: '10px 12px' }}>
+                          <td style={{ padding: '10px 10px' }}>
                             <button
                               type="button"
                               onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
@@ -2633,7 +2720,7 @@ export default function PoLedgerManager() {
                                 type="button"
                                 disabled={!hasVarId || busyKey === rowBusyKey}
                                 onClick={() => handlePushInventoryToShopify([item.id], `${item.parent_title}${item.variant_title ? ` (${item.variant_title})` : ''}`, rowBusyKey)}
-                                title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, item.inventory_qty || 0)}` : 'No Shopify Variant ID linked'}
+                                title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, onHand)}` : 'No Shopify Variant ID linked'}
                                 style={{
                                   padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
                                   cursor: hasVarId ? 'pointer' : 'not-allowed',
@@ -3191,6 +3278,8 @@ export default function PoLedgerManager() {
                             const qtyNum = parseInt(it.ordered_qty, 10) || 0
                             const costNum = parseFloat(it.unit_cost) || 0
                             const invNum = Number(it.inventory_qty) || 0
+                            const commNum = Number(it.committed_qty) || 0
+                            const onHandNum = it.on_hand_qty !== undefined && it.on_hand_qty !== null ? Number(it.on_hand_qty) : (invNum + commNum)
                             const consumedQty = isEditingReceived ? (Number(it.consumed_qty) || 0) : 0
                             const minAllowedQty = isEditingReceived
                               ? (editingPo.status === 'received' ? consumedQty : (Number(it.received_qty) || 0))
@@ -3209,7 +3298,7 @@ export default function PoLedgerManager() {
                                       fontSize: 10, fontWeight: 700,
                                       color: invNum < 0 ? '#dc2626' : (invNum === 0 ? '#b45309' : 'var(--text-muted)'),
                                     }}>
-                                      Avail: {invNum}
+                                      Avail: {invNum} · On Hand: {onHandNum}{commNum > 0 ? ` · Comm: ${commNum}` : ''}
                                     </span>
                                     {consumedQty > 0 && (
                                       <span
@@ -3233,7 +3322,7 @@ export default function PoLedgerManager() {
                                       onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: e.target.value } : x) }))}
                                       style={{
                                         ...inputStyle, width: 56, padding: '4px 5px', textAlign: 'center', fontWeight: 800,
-                                        borderColor: isRecount && qtyNum !== invNum ? (qtyNum < invNum ? '#ef4444' : '#10b981') : 'var(--border)',
+                                        borderColor: isRecount && qtyNum !== onHandNum ? (qtyNum < onHandNum ? '#ef4444' : '#10b981') : 'var(--border)',
                                       }}
                                     />
                                     <button
@@ -3249,15 +3338,15 @@ export default function PoLedgerManager() {
                                       if (editingPo.status !== 'received') return <span style={{ color: 'var(--text-muted)' }}>Rec: {it.received_qty || 0} / Ord: {qtyNum}</span>
                                       const d = qtyNum - (Number(it.received_qty) || 0)
                                       if (d === 0) return <span style={{ color: 'var(--text-muted)' }}>= No qty change</span>
-                                      if (d > 0) return <span style={{ color: '#059669' }}>Edit: +{d} ({invNum} → {invNum + d})</span>
-                                      return <span style={{ color: '#dc2626' }}>Edit: −{Math.abs(d)} ({invNum} → {invNum + d})</span>
+                                      if (d > 0) return <span style={{ color: '#059669' }}>Edit: +{d} ({onHandNum} → {onHandNum + d})</span>
+                                      return <span style={{ color: '#dc2626' }}>Edit: −{Math.abs(d)} ({onHandNum} → {onHandNum + d})</span>
                                     })() : isRecount ? (() => {
-                                      const diff = qtyNum - invNum
-                                      if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>= Same ({invNum})</span>
-                                      if (diff > 0) return <span style={{ color: '#059669' }}>{invNum} → {qtyNum} (+{diff})</span>
-                                      return <span style={{ color: '#dc2626' }}>{invNum} → {qtyNum} (−{Math.abs(diff)})</span>
+                                      const diff = qtyNum - onHandNum
+                                      if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>= Same On-Hand ({onHandNum})</span>
+                                      if (diff > 0) return <span style={{ color: '#059669' }}>OH {onHandNum} → {qtyNum} (+{diff})</span>
+                                      return <span style={{ color: '#dc2626' }}>OH {onHandNum} → {qtyNum} (−{Math.abs(diff)})</span>
                                     })() : (
-                                      <span style={{ color: '#059669' }}>{invNum} → {invNum + qtyNum} (+{qtyNum})</span>
+                                      <span style={{ color: '#059669' }}>OH {onHandNum} → {onHandNum + qtyNum} (+{qtyNum})</span>
                                     )}
                                   </div>
                                 </td>

@@ -671,8 +671,9 @@ router.get('/master-costs', (req, res) => {
     const sid = Number(store_id);
     const costs = db.prepare('SELECT * FROM product_master_costs WHERE store_id = ? ORDER BY parent_title ASC, variant_title ASC').all(sid);
 
-    // Single lightweight query to attach live FIFO PO batches per SKU (zero N+1)
+    // Single lightweight query to attach live FIFO PO batches + open PO Incoming qty per SKU (zero N+1)
     const batchMap = new Map();
+    const poIncomingMap = new Map();
     try {
       const openBatches = db.prepare(`
         SELECT i.product_cost_id, i.remaining_qty,
@@ -702,6 +703,17 @@ router.get('/master-costs', (req, res) => {
           is_baseline: Boolean(b.is_baseline),
         });
       }
+
+      const incomingRows = db.prepare(`
+        SELECT i.product_cost_id, SUM(MAX(0, COALESCE(i.ordered_qty, 0) - COALESCE(i.received_qty, 0))) AS pending_qty
+        FROM purchase_order_items i
+        JOIN purchase_orders po ON po.id = i.po_id
+        WHERE i.store_id = ? AND po.status IN ('ordered', 'partial') AND i.product_cost_id IS NOT NULL
+        GROUP BY i.product_cost_id
+      `).all(sid);
+      for (const r of incomingRows) {
+        if (r.product_cost_id) poIncomingMap.set(r.product_cost_id, Number(r.pending_qty) || 0);
+      }
     } catch (_) {
       // Safe fallback if purchase_orders tables not yet initialized
     }
@@ -710,8 +722,17 @@ router.get('/master-costs', (req, res) => {
       const batches = batchMap.get(c.id) || [];
       const active = batches[0] || null;
       const fifoRemainingQty = batches.reduce((s, b) => s + b.remaining_qty, 0);
+      const avail = Number(c.inventory_qty) || 0;
+      const committed = Number(c.committed_qty) || 0;
+      const onHand = (c.on_hand_qty !== null && c.on_hand_qty !== undefined) ? Number(c.on_hand_qty) : (avail + committed);
+      const shopifyIncoming = Number(c.incoming_qty) || 0;
+      const poIncoming = poIncomingMap.get(c.id) || 0;
       return {
         ...c,
+        committed_qty: committed,
+        on_hand_qty: onHand,
+        incoming_qty: Math.max(shopifyIncoming, poIncoming),
+        po_incoming_qty: poIncoming,
         active_po_id: active ? active.po_id : null,
         active_po_number: active ? active.po_number : null,
         active_po_is_baseline: active ? active.is_baseline : false,

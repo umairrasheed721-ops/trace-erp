@@ -288,5 +288,22 @@ module.exports = [
     } catch (e) {
       console.error('❌ [Finance Migration #13] Error:', e.message);
     }
+  },
+
+  // 14. Add Shopify-native Inventory State columns (committed_qty, on_hand_qty, incoming_qty) to product_master_costs
+  (db) => {
+    try {
+      const alters = [
+        'ALTER TABLE product_master_costs ADD COLUMN committed_qty INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE product_master_costs ADD COLUMN on_hand_qty INTEGER DEFAULT NULL',
+        'ALTER TABLE product_master_costs ADD COLUMN incoming_qty INTEGER NOT NULL DEFAULT 0',
+      ];
+      for (const sql of alters) {
+        try { db.exec(sql); } catch (_) {}
+      }
+      console.log('✅ [Finance Migration #14] Shopify inventory breakdown columns (committed_qty, on_hand_qty, incoming_qty) verified.');
+    } catch (e) {
+      console.error('❌ [Finance Migration #14] Error:', e.message);
+    }
   }
 ];

@@ -130,6 +130,9 @@ function ensurePoLedgerTables() {
     try { db.exec("ALTER TABLE product_master_costs ADD COLUMN shared_pool_key TEXT DEFAULT ''"); } catch (_) {}
     try { db.exec("ALTER TABLE manual_expenses ADD COLUMN account_id INTEGER"); } catch (_) {}
     try { db.exec('ALTER TABLE purchase_order_items ADD COLUMN remaining_qty INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    try { db.exec('ALTER TABLE product_master_costs ADD COLUMN committed_qty INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    try { db.exec('ALTER TABLE product_master_costs ADD COLUMN on_hand_qty INTEGER DEFAULT NULL'); } catch (_) {}
+    try { db.exec('ALTER TABLE product_master_costs ADD COLUMN incoming_qty INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     _tablesReady = true;
   } catch (e) {
     console.error('[poLedgerService] ensurePoLedgerTables error:', e.message);
@@ -399,14 +402,25 @@ async function pushExactOnHandToShopifyAndLinkedPools(storeId, productCostRow, e
     if (res.ok) {
       if (locationCache && res.locationId) locationCache.set(t.storeId, res.locationId);
       syncedStores++;
-      if (t.isPrimary && res.available !== null && res.available !== undefined) {
-        primaryAvailable = Number(res.available);
-        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(primaryAvailable, t.productCostId);
-      } else if (!t.isPrimary) {
+      if (t.isPrimary) {
+        const finalOnHand = res.onHand !== null && res.onHand !== undefined ? Number(res.onHand) : targetQty;
+        if (res.available !== null && res.available !== undefined) {
+          primaryAvailable = Number(res.available);
+          const derivedCommitted = res.committed !== null && res.committed !== undefined
+            ? Number(res.committed)
+            : Math.max(0, finalOnHand - primaryAvailable);
+          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, on_hand_qty = ?, committed_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(primaryAvailable, finalOnHand, derivedCommitted, t.productCostId);
+        } else {
+          db.prepare("UPDATE product_master_costs SET on_hand_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(finalOnHand, t.productCostId);
+        }
+      } else {
+        const finalOnHand = res.onHand !== null && res.onHand !== undefined ? Number(res.onHand) : targetQty;
         const nextLocal = res.available !== null && res.available !== undefined ? Number(res.available) : targetQty;
-        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(nextLocal, t.productCostId);
+        const derivedCommitted = Math.max(0, finalOnHand - nextLocal);
+        db.prepare("UPDATE product_master_costs SET inventory_qty = ?, on_hand_qty = ?, committed_qty = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(nextLocal, finalOnHand, derivedCommitted, t.productCostId);
       }
     } else {
       errors.push(`Store #${t.storeId}: ${res.error}`);
@@ -1026,12 +1040,15 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
           .run(newReceivedQty, addQty, item.id);
 
         if (pmc) {
-          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
-            .run(addQty, pmc.id);
+          const curCommitted = parseInt(pmc.committed_qty, 10) || 0;
+          const nextAvail = addQty - curCommitted;
+          db.prepare("UPDATE product_master_costs SET on_hand_qty = ?, inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(addQty, nextAvail, pmc.id);
           syncSkuFifoCost(sid, pmc.id, 'po_recount_fifo');
         }
         movementType = 'PO_RECOUNT_SET';
-        ledgerDelta = addQty - oldQty;
+        const oldOnHand = pmc ? (pmc.on_hand_qty !== null && pmc.on_hand_qty !== undefined ? parseInt(pmc.on_hand_qty, 10) : oldQty + (parseInt(pmc.committed_qty, 10) || 0)) : 0;
+        ledgerDelta = addQty - oldOnHand;
       } else {
         // STANDARD ADD (+DELTA) MODE: Incoming shipment adds on top of existing shelf stock
         const backorderAbsorbed = oldQty < 0 ? Math.min(addQty, Math.abs(oldQty)) : 0;
@@ -1042,8 +1059,9 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
 
         if (pmc) {
           const nextQty = oldQty + addQty;
-          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?")
-            .run(nextQty, pmc.id);
+          const curOnHand = pmc.on_hand_qty !== null && pmc.on_hand_qty !== undefined ? parseInt(pmc.on_hand_qty, 10) : (oldQty + (parseInt(pmc.committed_qty, 10) || 0));
+          db.prepare("UPDATE product_master_costs SET inventory_qty = ?, on_hand_qty = ?, updated_at = datetime('now') WHERE id = ?")
+            .run(nextQty, curOnHand + addQty, pmc.id);
           syncSkuFifoCost(sid, pmc.id, 'po_receive_fifo');
         }
       }
@@ -1395,8 +1413,8 @@ async function updatePurchaseOrder(storeId, poId, payload = {}, updatedBy = 'Adm
       if (rem.pmc) touchedPmcIds.add(rem.pmc.id);
       if (rem.qtyDelta !== 0) {
         if (rem.pmc) {
-          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
-            .run(rem.qtyDelta, rem.pmc.id);
+          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) + ?, updated_at = datetime('now') WHERE id = ?")
+            .run(rem.qtyDelta, rem.qtyDelta, rem.pmc.id);
         }
         const logInfo = db.prepare(`
           INSERT INTO inventory_ledger
@@ -1442,8 +1460,8 @@ async function updatePurchaseOrder(storeId, poId, payload = {}, updatedBy = 'Adm
 
       if (p.qtyDelta !== 0) {
         if (p.pmc) {
-          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
-            .run(p.qtyDelta, p.pmc.id);
+          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) + ?, updated_at = datetime('now') WHERE id = ?")
+            .run(p.qtyDelta, p.qtyDelta, p.pmc.id);
         }
         const logInfo = db.prepare(`
           INSERT INTO inventory_ledger
@@ -1563,8 +1581,8 @@ async function reversePurchaseOrder(storeId, poId, payload = {}, actor = 'Admin'
 
       db.prepare('UPDATE purchase_order_items SET received_qty = 0, remaining_qty = 0 WHERE id = ?').run(it.id);
       if (pmc) {
-        db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, updated_at = datetime('now') WHERE id = ?")
-          .run(revQty, pmc.id);
+        db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) - ?, updated_at = datetime('now') WHERE id = ?")
+          .run(revQty, revQty, pmc.id);
         syncSkuFifoCost(sid, pmc.id, 'po_reverse_fifo');
       }
       const logInfo = db.prepare(`
@@ -1653,6 +1671,15 @@ function getWarehouseStock(storeId, search = '') {
     SELECT p.id, p.store_id, p.shopify_variant_id, p.sku, p.parent_title, p.variant_title,
            COALESCE(p.variant_image_url, '') AS variant_image_url,
            COALESCE(p.inventory_qty, 0) AS inventory_qty,
+           COALESCE(p.committed_qty, 0) AS committed_qty,
+           COALESCE(p.on_hand_qty, COALESCE(p.inventory_qty, 0) + COALESCE(p.committed_qty, 0)) AS on_hand_qty,
+           COALESCE(p.incoming_qty, 0) AS shopify_incoming_qty,
+           COALESCE((
+             SELECT SUM(MAX(0, COALESCE(i.ordered_qty, 0) - COALESCE(i.received_qty, 0)))
+             FROM purchase_order_items i
+             JOIN purchase_orders po ON po.id = i.po_id
+             WHERE i.store_id = p.store_id AND i.product_cost_id = p.id AND po.status IN ('ordered', 'partial')
+           ), 0) AS po_incoming_qty,
            COALESCE(p.unit_cost, 0) AS unit_cost,
            COALESCE(p.packaging_cost, 0) AS packaging_cost,
            COALESCE(NULLIF(p.landed_cost, 0), p.unit_cost, 0) AS avg_cost,
@@ -1682,12 +1709,18 @@ function getWarehouseStock(storeId, search = '') {
   sql += ' ORDER BY (CASE WHEN p.inventory_qty < 0 THEN 0 ELSE 1 END) ASC, p.parent_title ASC, p.variant_title ASC LIMIT 2500';
 
   const rows = db.prepare(sql).all(...params);
-  return rows.map(r => ({
-    ...r,
-    stock_value: r.inventory_qty > 0
-      ? (r.open_batches > 0 ? Math.round(r.fifo_batch_value) : Math.round(r.inventory_qty * r.avg_cost))
-      : 0,
-  }));
+  return rows.map(r => {
+    const incoming = Math.max(Number(r.po_incoming_qty) || 0, Number(r.shopify_incoming_qty) || 0);
+    return {
+      ...r,
+      committed_qty: Number(r.committed_qty) || 0,
+      on_hand_qty: Number(r.on_hand_qty) || 0,
+      incoming_qty: incoming,
+      stock_value: r.inventory_qty > 0
+        ? (r.open_batches > 0 ? Math.round(r.fifo_batch_value) : Math.round(r.inventory_qty * r.avg_cost))
+        : 0,
+    };
+  });
 }
 
 async function recordManualStockAdjust(storeId, payload = {}, createdBy = 'Admin') {
@@ -1711,7 +1744,8 @@ async function recordManualStockAdjust(storeId, payload = {}, createdBy = 'Admin
   const newQty = (parseInt(pmc.inventory_qty, 10) || 0) + qtyDelta;
   let unitCost = parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0;
 
-  db.prepare("UPDATE product_master_costs SET inventory_qty = ?, updated_at = datetime('now') WHERE id = ?").run(newQty, pmc.id);
+  db.prepare("UPDATE product_master_costs SET inventory_qty = ?, on_hand_qty = COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) + ?, updated_at = datetime('now') WHERE id = ?")
+    .run(newQty, qtyDelta, pmc.id);
   if (qtyDelta < 0) {
     const consumed = consumeFifoBatches(sid, pmc.id, Math.abs(qtyDelta));
     if (consumed.avgUnitCost > 0) unitCost = consumed.avgUnitCost;
@@ -1793,7 +1827,11 @@ async function pushInventoryToShopify(storeId, payload = {}, createdBy = 'Admin'
       skippedNoVariant++;
       continue;
     }
-    const targetQty = Math.max(0, parseInt(pmc.inventory_qty, 10) || 0);
+    // Push exact ERP On-Hand (NOT Available) so Committed unfulfilled orders on Shopify stay 100% intact!
+    const effectiveOnHand = pmc.on_hand_qty !== null && pmc.on_hand_qty !== undefined
+      ? parseInt(pmc.on_hand_qty, 10)
+      : ((parseInt(pmc.inventory_qty, 10) || 0) + (parseInt(pmc.committed_qty, 10) || 0));
+    const targetQty = Math.max(0, effectiveOnHand || 0);
     const res = await pushExactOnHandToShopifyAndLinkedPools(sid, pmc, targetQty, locationCache);
     const ok = Boolean(res.ok || res.partialOk);
     if (ok) {
