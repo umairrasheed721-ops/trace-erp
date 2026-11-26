@@ -194,6 +194,10 @@ export default function PoLedgerManager() {
 
   // Filters
   const [invSearch, setInvSearch] = useState('')
+  const [invFilter, setInvFilter] = useState('all') // 'all' | 'in_stock' | 'out_of_stock' | 'backorder' | 'linked' | 'missing_id' | 'has_fifo'
+  const [invViewMode, setInvViewMode] = useState('grouped') // 'grouped' | 'flat'
+  const [expandedInvParents, setExpandedInvParents] = useState(() => new Set())
+  const [selectedInvIds, setSelectedInvIds] = useState(() => new Set())
   const [ledgerFilter, setLedgerFilter] = useState({ account_id: '', entry_type: 'all', includeVoid: false })
   const [showInvLog, setShowInvLog] = useState(false)
 
@@ -720,11 +724,12 @@ export default function PoLedgerManager() {
           body: JSON.stringify({
             store_id: activeStoreId,
             items: j.data.items.map(it => ({ itemId: it.id, receiveNowQty: Math.max(0, parseInt(it.ordered_qty, 10) || 0) })),
+            isRecount,
             shopifySyncMode: mode,
             pushToShopify: mode !== 'erp_only',
             closeShort: false,
-            notes: mode === 'set_exact_on_hand'
-              ? 'Recount PO received immediately (Set Exact On-Hand on Shopify)'
+            notes: isRecount
+              ? (mode === 'set_exact_on_hand' ? 'Recount PO received immediately (Set Exact On-Hand on Shopify)' : 'Recount PO saved (ERP Only — not pushed to Shopify)')
               : 'Received immediately on PO creation',
           }),
         })
@@ -953,6 +958,72 @@ export default function PoLedgerManager() {
     }
   }
 
+  const handlePushInventoryToShopify = async (ids, label = 'selected SKUs', busyTag = 'pushBulk') => {
+    const cleanIds = [...new Set((ids || []).map(Number).filter(Boolean))]
+    if (cleanIds.length === 0) {
+      addToast('No Shopify-linked SKU selected to push', 'warning')
+      return
+    }
+    if (!window.confirm(`Push exact ERP On-Hand stock to Shopify for ${label} (${cleanIds.length} SKU${cleanIds.length > 1 ? 's' : ''})?\n\nCommitted unfulfilled orders on Shopify stay protected.`)) {
+      return
+    }
+    setBusyKey(busyTag)
+    try {
+      const res = await fetch(`${API}/api/po-ledger/inventory/push-shopify`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          product_cost_ids: cleanIds,
+          ref_label: label,
+        }),
+      })
+      const j = await res.json()
+      if (j.success) {
+        addToast(j.message || `Pushed ${cleanIds.length} SKU(s) to Shopify`, 'success')
+        setSelectedInvIds(prev => {
+          const next = new Set(prev)
+          cleanIds.forEach(id => next.delete(id))
+          return next
+        })
+        await fetchInventory(invSearch)
+      } else {
+        addToast(j.error || j.message || 'Shopify push failed', 'error')
+      }
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const handlePushPoToShopify = async (po) => {
+    if (!po?.id) return
+    if (!window.confirm(`Push exact ERP On-Hand stock of all SKUs in ${po.po_number} to Shopify?\n\nCommitted unfulfilled orders stay protected.`)) {
+      return
+    }
+    setBusyKey(`pushPo-${po.id}`)
+    try {
+      const res = await fetch(`${API}/api/po-ledger/inventory/push-shopify`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          po_id: po.id,
+          ref_label: po.po_number,
+          notes: `Pushed exact On-Hand from ${po.po_number}`,
+        }),
+      })
+      const j = await res.json()
+      if (j.success) {
+        addToast(j.message || `${po.po_number} pushed to Shopify`, 'success')
+        await fetchInventory(invSearch)
+      } else {
+        addToast(j.error || j.message || 'Shopify push failed', 'error')
+      }
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   const handleToggleContinueSelling = async (item) => {
     const nextEnabled = String(item.inventory_policy || '').toLowerCase() !== 'continue'
     setBusyKey(`cs-${item.id}`)
@@ -1111,6 +1182,100 @@ export default function PoLedgerManager() {
     }
     return { backorders, lowStock, outOfStock }
   }, [poCatalogSource])
+
+  // Smart Warehouse Stock Filtering & Parent Grouping (handles both Shopify parent/variant rows AND legacy flat "Title - Size / Color" rows)
+  const filteredWarehouseInventory = useMemo(() => {
+    return (inventory || []).filter(item => {
+      const qty = Number(item.inventory_qty) || 0
+      const hasVarId = Boolean(String(item.shopify_variant_id || '').trim())
+      if (invFilter === 'in_stock') return qty > 0
+      if (invFilter === 'out_of_stock') return qty === 0
+      if (invFilter === 'backorder') return qty < 0
+      if (invFilter === 'linked') return hasVarId
+      if (invFilter === 'missing_id') return !hasVarId || !String(item.sku || '').trim()
+      if (invFilter === 'has_fifo') return (Number(item.open_batches) || 0) > 0
+      return true
+    })
+  }, [inventory, invFilter])
+
+  const groupedWarehouseInventory = useMemo(() => {
+    // Detect shared prefix on legacy rows where variant_title is empty and parent_title contains " - "
+    const prefixCounts = new Map()
+    for (const item of filteredWarehouseInventory) {
+      if (!String(item.variant_title || '').trim()) {
+        const pt = String(item.parent_title || '').trim()
+        const sepIdx = pt.lastIndexOf(' - ')
+        if (sepIdx > 2) {
+          const base = pt.slice(0, sepIdx).trim()
+          prefixCounts.set(base, (prefixCounts.get(base) || 0) + 1)
+        }
+      }
+    }
+
+    const map = new Map()
+    for (const item of filteredWarehouseInventory) {
+      let groupTitle = String(item.parent_title || 'Untitled Product').trim() || 'Untitled Product'
+      let displayVariant = String(item.variant_title || '').trim()
+      if (!displayVariant) {
+        const sepIdx = groupTitle.lastIndexOf(' - ')
+        if (sepIdx > 2) {
+          const base = groupTitle.slice(0, sepIdx).trim()
+          if ((prefixCounts.get(base) || 0) >= 2) {
+            displayVariant = groupTitle.slice(sepIdx + 3).trim()
+            groupTitle = base
+          }
+        }
+      }
+
+      if (!map.has(groupTitle)) {
+        map.set(groupTitle, {
+          parentTitle: groupTitle,
+          image: item.variant_image_url || '',
+          variants: [],
+          linkedIds: [],
+          totalQty: 0,
+          totalValue: 0,
+          minCost: Infinity,
+          maxCost: 0,
+          backorderCount: 0,
+          missingSkuCount: 0,
+          continueCount: 0,
+          poolKeys: new Set(),
+          openBatches: 0,
+        })
+      }
+      const g = map.get(groupTitle)
+      if (!g.image && item.variant_image_url) g.image = item.variant_image_url
+      const enriched = { ...item, _displayVariant: displayVariant || 'Default' }
+      g.variants.push(enriched)
+      if (String(item.shopify_variant_id || '').trim()) g.linkedIds.push(item.id)
+      const q = Number(item.inventory_qty) || 0
+      g.totalQty += q
+      g.totalValue += Number(item.stock_value) || 0
+      const c = Number(item.avg_cost) || 0
+      if (c > 0) {
+        if (c < g.minCost) g.minCost = c
+        if (c > g.maxCost) g.maxCost = c
+      }
+      if (q < 0) g.backorderCount++
+      if (!String(item.sku || '').trim() || !String(item.shopify_variant_id || '').trim()) g.missingSkuCount++
+      if (String(item.inventory_policy || '').toLowerCase() === 'continue') g.continueCount++
+      if (item.shared_pool_key) g.poolKeys.add(item.shared_pool_key)
+      g.openBatches += Number(item.open_batches) || 0
+    }
+
+    return Array.from(map.values())
+      .map(g => ({
+        ...g,
+        minCost: g.minCost === Infinity ? 0 : g.minCost,
+        variants: sortVariantsSmart(g.variants.map(v => ({ ...v, variant_title: v._displayVariant })), 'color'),
+      }))
+      .sort((a, b) => {
+        if ((a.backorderCount > 0) !== (b.backorderCount > 0)) return a.backorderCount > 0 ? -1 : 1
+        if ((a.totalQty > 0) !== (b.totalQty > 0)) return a.totalQty > 0 ? -1 : 1
+        return a.parentTitle.localeCompare(b.parentTitle)
+      })
+  }, [filteredWarehouseInventory])
 
   // Group selected PO items by parent_title for per-product quick-fill bars
   const groupedPoItems = useMemo(() => {
@@ -1510,6 +1675,20 @@ export default function PoLedgerManager() {
                                     {busyKey === `openEdit-${p.id}` ? '...' : 'Edit'}
                                   </button>
                                 )}
+                                {!p.is_baseline && p.total_received_qty > 0 && p.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    disabled={busyKey === `pushPo-${p.id}`}
+                                    onClick={() => handlePushPoToShopify(p)}
+                                    title="Push exact ERP On-Hand stock of this PO's SKUs to Shopify"
+                                    style={{
+                                      padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                      background: 'rgba(16,185,129,0.10)', color: '#047857', border: '1px solid rgba(16,185,129,0.34)',
+                                    }}
+                                  >
+                                    {busyKey === `pushPo-${p.id}` ? '...' : '🚀 Push'}
+                                  </button>
+                                )}
                                 {!p.is_baseline && p.total_received_qty === 0 && p.status !== 'cancelled' && (
                                   <button
                                     type="button"
@@ -1891,34 +2070,134 @@ export default function PoLedgerManager() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TAB 4: WAREHOUSE STOCK, CONTINUE SELLING & SHARED POOLS            */}
+      {/* TAB 4: WAREHOUSE STOCK, PARENT GROUPING & SHOPIFY INVENTORY PUSH   */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'inventory' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {activeTab === 'inventory' && (() => {
+        const isSearchingInv = Boolean(invSearch.trim())
+        const allGroupsExpanded = groupedWarehouseInventory.length > 0 && expandedInvParents.size >= groupedWarehouseInventory.length
+        const selectedCount = selectedInvIds.size
+        const toggleParentExpand = (parentTitle) => {
+          setExpandedInvParents(prev => {
+            const next = new Set(prev)
+            if (next.has(parentTitle)) next.delete(parentTitle)
+            else next.add(parentTitle)
+            return next
+          })
+        }
+        const toggleSelectGroup = (linkedIds) => {
+          if (!linkedIds.length) return
+          setSelectedInvIds(prev => {
+            const next = new Set(prev)
+            const allIn = linkedIds.every(id => next.has(id))
+            if (allIn) linkedIds.forEach(id => next.delete(id))
+            else linkedIds.forEach(id => next.add(id))
+            return next
+          })
+        }
+        const toggleSelectOne = (id) => {
+          setSelectedInvIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+          })
+        }
+
+        return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <GhostSkuGuide mode="inline" context="po" defaultOpen={false} />
           <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '11px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 13px',
           }}>
-            <input
-              type="text"
-              value={invSearch}
-              onChange={e => setInvSearch(e.target.value)}
-              placeholder="Search SKU, product title, or shared pool key..."
-              style={{ ...inputStyle, maxWidth: 340 }}
-            />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: '1 1 360px' }}>
+              <input
+                type="text"
+                value={invSearch}
+                onChange={e => setInvSearch(e.target.value)}
+                placeholder="Search SKU, product title, or shared pool key..."
+                style={{ ...inputStyle, maxWidth: 280, minWidth: 180 }}
+              />
+              <select
+                value={invFilter}
+                onChange={e => setInvFilter(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <option value="all">Filter: All ({inventory.length})</option>
+                <option value="in_stock">In Stock (&gt; 0)</option>
+                <option value="out_of_stock">Out of Stock (0)</option>
+                <option value="backorder">Backorder (&lt; 0)</option>
+                <option value="linked">Shopify Linked Only</option>
+                <option value="missing_id">Missing SKU / ID</option>
+                <option value="has_fifo">Active FIFO Batches</option>
+              </select>
+              <select
+                value={invViewMode}
+                onChange={e => setInvViewMode(e.target.value)}
+                style={{ ...inputStyle, width: 'auto', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                <option value="grouped">View: Parent Groups ({groupedWarehouseInventory.length})</option>
+                <option value="flat">View: Flat List ({filteredWarehouseInventory.length})</option>
+              </select>
+              {invViewMode === 'grouped' && groupedWarehouseInventory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (allGroupsExpanded) setExpandedInvParents(new Set())
+                    else setExpandedInvParents(new Set(groupedWarehouseInventory.map(g => g.parentTitle)))
+                  }}
+                  style={{
+                    padding: '7px 10px', borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
+                  }}
+                >
+                  {allGroupsExpanded ? '▴ Collapse All' : '▾ Expand All'}
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                disabled={busyKey === 'pushBulk' || selectedCount === 0}
+                onClick={() => handlePushInventoryToShopify(Array.from(selectedInvIds), 'Selected SKUs', 'pushBulk')}
+                title={selectedCount === 0 ? 'Check parent products or variants to push their exact ERP On-Hand qty to Shopify' : `Push ${selectedCount} selected SKU(s) exact ERP On-Hand qty to Shopify`}
+                style={{
+                  padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  cursor: selectedCount > 0 ? 'pointer' : 'not-allowed',
+                  background: selectedCount > 0 ? '#059669' : 'var(--bg-elevated)',
+                  color: selectedCount > 0 ? '#fff' : 'var(--text-muted)',
+                  border: selectedCount > 0 ? '1px solid #047857' : '1px solid var(--border)',
+                  opacity: busyKey === 'pushBulk' ? 0.65 : 1,
+                }}
+              >
+                {busyKey === 'pushBulk'
+                  ? '⏳ Pushing...'
+                  : `🚀 Push to Shopify${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
+              </button>
+              {selectedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedInvIds(new Set())}
+                  style={{
+                    padding: '6px 9px', borderRadius: 8, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                    background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                  }}
+                >
+                  Clear
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowInvLog(s => !s)}
                 style={{
-                  padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  padding: '7px 11px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   background: showInvLog ? 'rgba(37,99,235,0.10)' : 'var(--bg-elevated)',
                   color: showInvLog ? '#2563eb' : 'var(--text-primary)',
                   border: showInvLog ? '1px solid rgba(37,99,235,0.32)' : '1px solid var(--border)',
                 }}
               >
-                {showInvLog ? 'Hide Stock Movement Log' : `Stock Movement Log (${invLedger.length})`}
+                {showInvLog ? 'Hide Log' : `Movement Log (${invLedger.length})`}
               </button>
             </div>
           </div>
@@ -1948,7 +2227,7 @@ export default function PoLedgerManager() {
                         <td style={{ padding: '8px 12px', color: 'var(--text-primary)' }}>
                           {l.parent_title}{l.variant_title ? ` — ${l.variant_title}` : ''}
                         </td>
-                        <td style={{ padding: '8px 12px', fontWeight: 800, color: l.qty_delta > 0 ? '#059669' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 800, color: l.qty_delta > 0 ? '#059669' : (l.qty_delta < 0 ? '#dc2626' : 'var(--text-muted)'), fontVariantNumeric: 'tabular-nums' }}>
                           {l.qty_delta > 0 ? `+${l.qty_delta}` : l.qty_delta}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
@@ -1974,107 +2253,381 @@ export default function PoLedgerManager() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                    <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Product / Variant</th>
+                    <th style={{ padding: '9px 10px 9px 14px', width: 28 }} />
+                    <th style={{ padding: '9px 10px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Product / Variant</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Qty</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Active FIFO Cost</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stock Value</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Continue Selling</th>
                     <th style={{ padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Shared Pool</th>
-                    <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Action</th>
+                    <th style={{ padding: '9px 14px', fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {inventory.map(item => {
-                    const isContinue = String(item.inventory_policy || '').toLowerCase() === 'continue'
-                    const isBackorder = item.inventory_qty < 0
-                    return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '10px 14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.parent_title}</span>
-                            {!item.sku && (
-                              <Pill label={item.shopify_variant_id ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
-                            )}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                            {[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}
-                          </div>
-                        </td>
-                        <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
-                          <span style={{
-                            fontWeight: 800, fontSize: 13,
-                            color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
-                          }}>
-                            {item.inventory_qty}
-                          </span>
-                          {isBackorder && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                          {item.avg_cost > 0 ? (
-                            <div>
-                              <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
-                              {item.open_batches > 1 && (
-                                <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{item.open_batches} FIFO batches</div>
-                              )}
-                            </div>
-                          ) : (
-                            <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
-                          {fmtRs(item.stock_value)}
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <button
-                            type="button"
-                            disabled={busyKey === `cs-${item.id}`}
-                            onClick={() => handleToggleContinueSelling(item)}
-                            title="Toggle Shopify Continue Selling When Out of Stock"
-                            style={{
-                              padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                              background: isContinue ? 'rgba(37,99,235,0.12)' : 'var(--bg-elevated)',
-                              color: isContinue ? '#2563eb' : 'var(--text-muted)',
-                              border: `1px solid ${isContinue ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
-                            }}
-                          >
-                            {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
-                          </button>
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <button
-                            type="button"
-                            onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
-                            style={{
-                              padding: '3.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                              background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
-                              color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
-                              border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
-                            }}
-                          >
-                            {item.shared_pool_key || 'Isolated (Link)'}
-                          </button>
-                        </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                          <button
-                            type="button"
-                            onClick={() => setAdjustModal({ item, qty_delta: '', movement_type: 'MANUAL_ADJUST', notes: '', pushToShopify: true })}
-                            style={{
-                              padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
-                              background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
-                            }}
-                          >
-                            ± Adjust
-                          </button>
+                  {invViewMode === 'grouped' ? (
+                    groupedWarehouseInventory.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          No products match your search/filter.
                         </td>
                       </tr>
-                    )
-                  })}
+                    ) : groupedWarehouseInventory.map(group => {
+                      const isExpanded = isSearchingInv || expandedInvParents.has(group.parentTitle)
+                      const allLinkedSelected = group.linkedIds.length > 0 && group.linkedIds.every(id => selectedInvIds.has(id))
+                      const someLinkedSelected = group.linkedIds.some(id => selectedInvIds.has(id))
+                      const parentBusyKey = `pushParent-${group.parentTitle}`
+                      const costRangeLabel = group.minCost === 0
+                        ? 'Rs. 0'
+                        : (group.minCost === group.maxCost ? fmtRs(group.minCost) : `${fmtRs(group.minCost)} – ${fmtRs(group.maxCost)}`)
+
+                      return (
+                        <React.Fragment key={group.parentTitle}>
+                          {/* Collapsible Parent Header Row */}
+                          <tr
+                            onClick={() => toggleParentExpand(group.parentTitle)}
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: isExpanded ? 'rgba(37,99,235,0.035)' : 'var(--bg-surface)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <td style={{ padding: '10px 8px 10px 14px' }} onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                disabled={group.linkedIds.length === 0}
+                                checked={allLinkedSelected}
+                                ref={el => { if (el) el.indeterminate = !allLinkedSelected && someLinkedSelected }}
+                                onChange={() => toggleSelectGroup(group.linkedIds)}
+                                title={group.linkedIds.length > 0 ? `Select all ${group.linkedIds.length} Shopify-linked variants` : 'No Shopify Variant IDs in this product'}
+                                style={{ cursor: group.linkedIds.length > 0 ? 'pointer' : 'not-allowed' }}
+                              />
+                            </td>
+                            <td style={{ padding: '10px 10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                                <span style={{
+                                  width: 20, height: 20, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 11, fontWeight: 800, color: 'var(--text-secondary)', flexShrink: 0,
+                                }}>
+                                  {isExpanded ? '▾' : '▸'}
+                                </span>
+                                {group.image ? (
+                                  <img src={group.image} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover', border: '1px solid var(--border)', flexShrink: 0 }} />
+                                ) : (
+                                  <div style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>📦</div>
+                                )}
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{group.parentTitle}</span>
+                                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '1.5px 6px', borderRadius: 99, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                                      {group.variants.length} variant{group.variants.length > 1 ? 's' : ''}
+                                    </span>
+                                    {group.linkedIds.length === 0 && (
+                                      <Pill label="No Shopify ID" color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                                    )}
+                                    {group.backorderCount > 0 && (
+                                      <Pill label={`${group.backorderCount} Backorder`} color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                              <span style={{
+                                fontWeight: 800, fontSize: 13,
+                                color: group.totalQty < 0 ? '#dc2626' : (group.totalQty === 0 ? '#b45309' : '#059669'),
+                              }}>
+                                {group.totalQty}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: group.minCost > 0 ? 'var(--text-primary)' : '#dc2626' }}>
+                              {costRangeLabel}
+                              {group.openBatches > 0 && (
+                                <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{group.openBatches} FIFO batch{group.openBatches > 1 ? 'es' : ''}</div>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {fmtRs(group.totalValue)}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontSize: 11.5, color: group.continueCount > 0 ? '#2563eb' : 'var(--text-muted)', fontWeight: 700 }}>
+                              {group.continueCount > 0 ? `${group.continueCount}/${group.variants.length} ON` : 'OFF'}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontSize: 11.5, color: group.poolKeys.size > 0 ? '#7c3aed' : 'var(--text-muted)', fontWeight: 600 }}>
+                              {group.poolKeys.size > 0 ? Array.from(group.poolKeys).slice(0, 2).join(', ') : '—'}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  disabled={group.linkedIds.length === 0 || busyKey === parentBusyKey}
+                                  onClick={() => handlePushInventoryToShopify(group.linkedIds, group.parentTitle, parentBusyKey)}
+                                  title={group.linkedIds.length > 0 ? `Push exact ERP On-Hand stock of all ${group.linkedIds.length} linked variant(s) to Shopify` : 'No Shopify Variant ID linked'}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                                    cursor: group.linkedIds.length > 0 ? 'pointer' : 'not-allowed',
+                                    background: group.linkedIds.length > 0 ? 'rgba(16,185,129,0.11)' : 'var(--bg-elevated)',
+                                    color: group.linkedIds.length > 0 ? '#047857' : 'var(--text-muted)',
+                                    border: `1px solid ${group.linkedIds.length > 0 ? 'rgba(16,185,129,0.34)' : 'var(--border)'}`,
+                                    opacity: group.linkedIds.length > 0 ? 1 : 0.55,
+                                  }}
+                                >
+                                  {busyKey === parentBusyKey ? '⏳ Pushing...' : '🚀 Push Product'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleParentExpand(group.parentTitle)}
+                                  style={{
+                                    padding: '5px 8px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                                    background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
+                                  }}
+                                >
+                                  {isExpanded ? 'Hide' : 'Variants'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Expanded Variant Dropdown Sub-Rows */}
+                          {isExpanded && group.variants.map(item => {
+                            const isContinue = String(item.inventory_policy || '').toLowerCase() === 'continue'
+                            const isBackorder = item.inventory_qty < 0
+                            const hasVarId = Boolean(String(item.shopify_variant_id || '').trim())
+                            const rowBusyKey = `pushOne-${item.id}`
+                            return (
+                              <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+                                <td style={{ padding: '8px 8px 8px 14px' }}>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!hasVarId}
+                                    checked={selectedInvIds.has(item.id)}
+                                    onChange={() => toggleSelectOne(item.id)}
+                                    style={{ cursor: hasVarId ? 'pointer' : 'not-allowed' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '8px 10px 8px 36px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item._displayVariant}</span>
+                                    {item.sku ? (
+                                      <span style={{ fontSize: 10.5, fontFamily: 'monospace', padding: '1px 5px', borderRadius: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                                        {item.sku}
+                                      </span>
+                                    ) : (
+                                      <Pill label={hasVarId ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                                    )}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                                  <span style={{
+                                    fontWeight: 800, fontSize: 12.5,
+                                    color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
+                                  }}>
+                                    {item.inventory_qty}
+                                  </span>
+                                  {isBackorder && <span style={{ marginLeft: 6, fontSize: 10, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
+                                </td>
+                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                                  {item.avg_cost > 0 ? (
+                                    <div>
+                                      <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
+                                      {item.open_batches > 1 && (
+                                        <span style={{ marginLeft: 5, fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>({item.open_batches} FIFO)</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <Pill label="Rs. 0 · Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                                  {fmtRs(item.stock_value)}
+                                </td>
+                                <td style={{ padding: '8px 12px' }}>
+                                  <button
+                                    type="button"
+                                    disabled={busyKey === `cs-${item.id}`}
+                                    onClick={() => handleToggleContinueSelling(item)}
+                                    title="Toggle Shopify Continue Selling When Out of Stock"
+                                    style={{
+                                      padding: '3.5px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      background: isContinue ? 'rgba(37,99,235,0.12)' : 'var(--bg-surface)',
+                                      color: isContinue ? '#2563eb' : 'var(--text-muted)',
+                                      border: `1px solid ${isContinue ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
+                                    }}
+                                  >
+                                    {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
+                                  </button>
+                                </td>
+                                <td style={{ padding: '8px 12px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
+                                    style={{
+                                      padding: '3px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                      background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
+                                      color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
+                                      border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
+                                    }}
+                                  >
+                                    {item.shared_pool_key || 'Isolated (Link)'}
+                                  </button>
+                                </td>
+                                <td style={{ padding: '8px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'inline-flex', gap: 5 }}>
+                                    <button
+                                      type="button"
+                                      disabled={!hasVarId || busyKey === rowBusyKey}
+                                      onClick={() => handlePushInventoryToShopify([item.id], `${group.parentTitle} (${item._displayVariant})`, rowBusyKey)}
+                                      title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, item.inventory_qty || 0)}` : 'No Shopify Variant ID linked'}
+                                      style={{
+                                        padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                                        cursor: hasVarId ? 'pointer' : 'not-allowed',
+                                        background: hasVarId ? 'rgba(16,185,129,0.12)' : 'var(--bg-surface)',
+                                        color: hasVarId ? '#047857' : 'var(--text-muted)',
+                                        border: `1px solid ${hasVarId ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
+                                        opacity: hasVarId ? 1 : 0.5,
+                                      }}
+                                    >
+                                      {busyKey === rowBusyKey ? '...' : '🚀 Push'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setAdjustModal({ item, qty_delta: '', movement_type: 'MANUAL_ADJUST', notes: '', pushToShopify: true })}
+                                      style={{
+                                        padding: '4.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                        background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border)',
+                                      }}
+                                    >
+                                      ± Adjust
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </React.Fragment>
+                      )
+                    })
+                  ) : (
+                    filteredWarehouseInventory.map(item => {
+                      const isContinue = String(item.inventory_policy || '').toLowerCase() === 'continue'
+                      const isBackorder = item.inventory_qty < 0
+                      const hasVarId = Boolean(String(item.shopify_variant_id || '').trim())
+                      const rowBusyKey = `pushOne-${item.id}`
+                      return (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 8px 10px 14px' }}>
+                            <input
+                              type="checkbox"
+                              disabled={!hasVarId}
+                              checked={selectedInvIds.has(item.id)}
+                              onChange={() => toggleSelectOne(item.id)}
+                              style={{ cursor: hasVarId ? 'pointer' : 'not-allowed' }}
+                            />
+                          </td>
+                          <td style={{ padding: '10px 10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{item.parent_title}</span>
+                              {!item.sku && (
+                                <Pill label={hasVarId ? 'No SKU (Variant ID Only)' : 'Missing SKU & ID'} color="#b45309" bg="rgba(245,158,11,0.12)" border="rgba(245,158,11,0.30)" />
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                              {[item.variant_title, item.sku ? `SKU: ${item.sku}` : ''].filter(Boolean).join(' · ')}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums' }}>
+                            <span style={{
+                              fontWeight: 800, fontSize: 13,
+                              color: isBackorder ? '#dc2626' : (item.inventory_qty === 0 ? '#b45309' : '#059669'),
+                            }}>
+                              {item.inventory_qty}
+                            </span>
+                            {isBackorder && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#dc2626', fontWeight: 700 }}>BACKORDER</span>}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                            {item.avg_cost > 0 ? (
+                              <div>
+                                <span style={{ color: 'var(--text-primary)' }}>{fmtRs(item.avg_cost)}</span>
+                                {item.open_batches > 1 && (
+                                  <div style={{ fontSize: 10.5, color: '#2563eb', fontWeight: 700 }}>{item.open_batches} FIFO batches</div>
+                                )}
+                              </div>
+                            ) : (
+                              <Pill label="Rs. 0 · Cost Missing" color="#dc2626" bg="rgba(239,68,68,0.10)" border="rgba(239,68,68,0.28)" />
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                            {fmtRs(item.stock_value)}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <button
+                              type="button"
+                              disabled={busyKey === `cs-${item.id}`}
+                              onClick={() => handleToggleContinueSelling(item)}
+                              title="Toggle Shopify Continue Selling When Out of Stock"
+                              style={{
+                                padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                background: isContinue ? 'rgba(37,99,235,0.12)' : 'var(--bg-elevated)',
+                                color: isContinue ? '#2563eb' : 'var(--text-muted)',
+                                border: `1px solid ${isContinue ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
+                              }}
+                            >
+                              {busyKey === `cs-${item.id}` ? '...' : (isContinue ? 'ON (Pre-Order)' : 'OFF')}
+                            </button>
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <button
+                              type="button"
+                              onClick={() => setPoolModal({ item, shared_pool_key: item.shared_pool_key || '' })}
+                              style={{
+                                padding: '3.5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                background: item.shared_pool_key ? 'rgba(124,58,237,0.10)' : 'transparent',
+                                color: item.shared_pool_key ? '#7c3aed' : 'var(--text-muted)',
+                                border: `1px solid ${item.shared_pool_key ? 'rgba(124,58,237,0.30)' : 'var(--border)'}`,
+                              }}
+                            >
+                              {item.shared_pool_key || 'Isolated (Link)'}
+                            </button>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', gap: 5 }}>
+                              <button
+                                type="button"
+                                disabled={!hasVarId || busyKey === rowBusyKey}
+                                onClick={() => handlePushInventoryToShopify([item.id], `${item.parent_title}${item.variant_title ? ` (${item.variant_title})` : ''}`, rowBusyKey)}
+                                title={hasVarId ? `Set Shopify On-Hand = ${Math.max(0, item.inventory_qty || 0)}` : 'No Shopify Variant ID linked'}
+                                style={{
+                                  padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+                                  cursor: hasVarId ? 'pointer' : 'not-allowed',
+                                  background: hasVarId ? 'rgba(16,185,129,0.12)' : 'var(--bg-elevated)',
+                                  color: hasVarId ? '#047857' : 'var(--text-muted)',
+                                  border: `1px solid ${hasVarId ? 'rgba(16,185,129,0.35)' : 'var(--border)'}`,
+                                  opacity: hasVarId ? 1 : 0.5,
+                                }}
+                              >
+                                {busyKey === rowBusyKey ? '...' : '🚀 Push'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setAdjustModal({ item, qty_delta: '', movement_type: 'MANUAL_ADJUST', notes: '', pushToShopify: true })}
+                                style={{
+                                  padding: '5px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                  background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
+                                }}
+                              >
+                                ± Adjust
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* MODALS                                                             */}

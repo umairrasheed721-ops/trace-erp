@@ -195,6 +195,23 @@ router.post('/inventory/adjust', async (req, res) => {
   }
 });
 
+router.post('/inventory/push-shopify', async (req, res) => {
+  try {
+    const result = await svc.pushInventoryToShopify(resolveStoreId(req), req.body || {}, resolveActor(req));
+    const parts = [`Pushed ${result.pushed} SKU(s) to Shopify (Exact On-Hand)`];
+    if (result.skippedNoVariant > 0) parts.push(`${result.skippedNoVariant} skipped (no Shopify Variant ID)`);
+    if (result.failed > 0) parts.push(`${result.failed} failed`);
+    res.json({
+      success: result.pushed > 0 || (result.failed === 0 && result.skippedNoVariant > 0),
+      data: result,
+      message: parts.join(' · '),
+      error: result.pushed === 0 && result.failed > 0 ? result.errors.join(' | ') : undefined,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 router.put('/inventory/:productCostId/continue-selling', async (req, res) => {
   try {
     const result = await svc.toggleContinueSelling(resolveStoreId(req), req.params.productCostId, Boolean(req.body?.enabled));

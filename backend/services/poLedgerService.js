@@ -934,8 +934,10 @@ async function receivePurchaseOrder(storeId, poId, payload = {}, createdBy = 'Ad
   if (!['add_delta', 'set_exact_on_hand', 'erp_only'].includes(syncMode)) {
     syncMode = payload.pushToShopify ? 'add_delta' : 'erp_only';
   }
-  const isRecountSetExact = syncMode === 'set_exact_on_hand';
-  const pushToShopify = syncMode === 'add_delta' || isRecountSetExact;
+  // IMPORTANT: Separate recount behavior (ERP exact-set + close old FIFO batches) from Shopify push!
+  // When user creates a Physical Recount with Push-to-Shopify UNCHECKED ('erp_only'), ERP still sets exact shelf qty without pushing to Shopify.
+  const isRecountSetExact = syncMode === 'set_exact_on_hand' || Boolean(payload.isRecount);
+  const pushToShopify = syncMode === 'add_delta' || syncMode === 'set_exact_on_hand';
   const receiveNotes = (payload.notes || '').trim();
   const closeShort = Boolean(payload.closeShort);
   const receiveMap = new Map();
@@ -1701,6 +1703,93 @@ async function recordManualStockAdjust(storeId, payload = {}, createdBy = 'Admin
 }
 
 /**
+ * On-Demand Inventory Push to Shopify (Exact On-Hand):
+ * Pushes exact ERP stock quantities (inventory_qty >= 0) to Shopify using GraphQL On-Hand set
+ * (preserving pending Committed unfulfilled orders) + mirrors linked Shared Pool stores.
+ * Supports single SKU, parent product batch, selected SKU IDs, or all SKUs from a PO.
+ */
+async function pushInventoryToShopify(storeId, payload = {}, createdBy = 'Admin') {
+  ensurePoLedgerTables();
+  const sid = Number(storeId) || 1;
+  let targetIds = [];
+
+  if (payload.po_id) {
+    const po = getPurchaseOrder(sid, payload.po_id);
+    targetIds = [...new Set((po.items || []).map(i => Number(i.product_cost_id)).filter(Boolean))];
+  } else if (Array.isArray(payload.product_cost_ids)) {
+    targetIds = [...new Set(payload.product_cost_ids.map(Number).filter(Boolean))];
+  } else if (payload.product_cost_id) {
+    targetIds = [Number(payload.product_cost_id)].filter(Boolean);
+  }
+
+  if (targetIds.length === 0) {
+    throw new Error('Select at least one SKU to push to Shopify');
+  }
+  if (targetIds.length > 250) {
+    throw new Error('Maximum 250 SKUs can be pushed in one batch — select fewer products or filter by parent');
+  }
+
+  const placeholders = targetIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT * FROM product_master_costs
+    WHERE store_id = ? AND id IN (${placeholders})
+  `).all(sid, ...targetIds);
+
+  if (rows.length === 0) {
+    throw new Error('No matching SKUs found in this store');
+  }
+
+  const locationCache = new Map();
+  let pushed = 0;
+  let skippedNoVariant = 0;
+  let failed = 0;
+  const errors = [];
+  const notesText = (payload.notes || '').trim();
+  const refType = payload.po_id ? 'po' : 'manual';
+  const refId = payload.po_id ? String(payload.po_id) : '';
+  const refLabel = payload.ref_label || (payload.po_id ? `PO #${payload.po_id}` : 'Manual Shopify Push');
+
+  const insLog = db.prepare(`
+    INSERT INTO inventory_ledger
+      (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, shopify_error, notes, created_by)
+    VALUES (?, ?, ?, ?, ?, 'SHOPIFY_PUSH', 0, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const pmc of rows) {
+    const label = `${pmc.parent_title}${pmc.variant_title ? ` (${pmc.variant_title})` : ''}`;
+    if (!pmc.shopify_variant_id || !String(pmc.shopify_variant_id).trim()) {
+      skippedNoVariant++;
+      continue;
+    }
+    const targetQty = Math.max(0, parseInt(pmc.inventory_qty, 10) || 0);
+    const res = await pushExactOnHandToShopifyAndLinkedPools(sid, pmc, targetQty, locationCache);
+    const ok = Boolean(res.ok || res.partialOk);
+    if (ok) {
+      pushed++;
+    } else {
+      failed++;
+      errors.push(`${label}: ${res.error || 'Push failed'}`);
+    }
+    insLog.run(
+      sid, pmc.id, pmc.sku || '', pmc.parent_title, pmc.variant_title || '',
+      parseFloat(pmc.landed_cost) || parseFloat(pmc.unit_cost) || 0,
+      refType, refId, refLabel,
+      ok ? 1 : 0, ok ? (res.error || '') : (res.error || 'Push failed'),
+      notesText || `Pushed Exact On-Hand = ${targetQty} to Shopify`,
+      createdBy
+    );
+  }
+
+  return {
+    total: rows.length,
+    pushed,
+    skippedNoVariant,
+    failed,
+    errors: errors.slice(0, 10),
+  };
+}
+
+/**
  * Supplier Defective Batch Return:
  * Reduces On Hand (-qty), logs inventory_ledger SUPPLIER_RETURN, and posts Supplier Credit in ledger_entries.
  */
@@ -2373,6 +2462,7 @@ module.exports = {
   getBackorderDemands,
   getWarehouseStock,
   recordManualStockAdjust,
+  pushInventoryToShopify,
   recordSupplierReturn,
   toggleContinueSelling,
   linkSharedPool,
