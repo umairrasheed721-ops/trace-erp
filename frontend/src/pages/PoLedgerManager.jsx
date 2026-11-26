@@ -202,7 +202,8 @@ export default function PoLedgerManager() {
 
   // Modals
   const [newPoOpen, setNewPoOpen] = useState(false)
-  const [poForm, setPoForm] = useState({ poType: 'shipment', supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false, shopifySyncMode: 'add_delta' })
+  const [editingPo, setEditingPo] = useState(null) // null = creating new PO; object = editing existing PO
+  const [poForm, setPoForm] = useState({ poType: 'shipment', supplier_id: '', order_date: new Date().toISOString().slice(0, 10), landing_cost: '', notes: '', items: [], receiveImmediately: false, shopifySyncMode: 'add_delta', pushEditToShopify: true })
   const [skuPickerSearch, setSkuPickerSearch] = useState('')
   // Shopify-style Add Products picker & bulk quickie states
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -218,6 +219,7 @@ export default function PoLedgerManager() {
 
   const [receiveModal, setReceiveModal] = useState(null) // { po, qtys: {}, pushToShopify: true, closeShort: false, notes: '' }
   const [viewPoModal, setViewPoModal] = useState(null)
+  const [reverseModal, setReverseModal] = useState(null) // { po, pushToShopify: false, reason: '' }
 
   const [supplierModal, setSupplierModal] = useState(null)
   const [statementModal, setStatementModal] = useState(null)
@@ -340,6 +342,7 @@ export default function PoLedgerManager() {
         addToast('No negative-stock backorder SKUs right now', 'info')
         return
       }
+      setEditingPo(null)
       setPoForm({
         poType: 'shipment',
         supplier_id: suppliers[0]?.id ? String(suppliers[0].id) : '',
@@ -348,6 +351,7 @@ export default function PoLedgerManager() {
         notes: `Auto-generated from ${rows.length} Continue Selling backorder SKUs`,
         receiveImmediately: false,
         shopifySyncMode: 'add_delta',
+        pushEditToShopify: true,
         items: rows.map(r => ({
           product_cost_id: r.id,
           shopify_variant_id: r.shopify_variant_id || '',
@@ -367,6 +371,7 @@ export default function PoLedgerManager() {
   }
 
   const openBlankPo = () => {
+    setEditingPo(null)
     setPoForm({
       poType: 'shipment',
       supplier_id: suppliers[0]?.id ? String(suppliers[0].id) : '',
@@ -375,6 +380,7 @@ export default function PoLedgerManager() {
       notes: '',
       receiveImmediately: false,
       shopifySyncMode: 'add_delta',
+      pushEditToShopify: true,
       items: [],
     })
     setSkuPickerSearch('')
@@ -383,6 +389,61 @@ export default function PoLedgerManager() {
     setGroupQuickFill({})
     setNewPoOpen(true)
     if (fullCatalog.length === 0) fetchInventory('')
+  }
+
+  const openEditPo = async (poId) => {
+    setBusyKey(`openEdit-${poId}`)
+    try {
+      const res = await fetch(`${API}/api/po-ledger/pos/${poId}${qs}`, { headers })
+      const j = await res.json()
+      if (!j.success || !j.data) return addToast(j.error || 'Failed to load PO for editing', 'error')
+      const po = j.data
+      if (po.is_baseline) return addToast('Baseline PO cannot be edited', 'warning')
+      if (po.status === 'cancelled') return addToast('Cancelled PO cannot be edited', 'warning')
+
+      const catalog = fullCatalog.length > 0 ? fullCatalog : inventory
+      const byId = new Map(catalog.map(c => [c.id, c]))
+      setEditingPo(po)
+      setPoForm({
+        poType: 'shipment',
+        supplier_id: po.supplier_id ? String(po.supplier_id) : '',
+        order_date: po.order_date || new Date().toISOString().slice(0, 10),
+        landing_cost: po.landing_cost ? String(po.landing_cost) : '',
+        notes: po.notes || '',
+        receiveImmediately: false,
+        shopifySyncMode: 'add_delta',
+        pushEditToShopify: true,
+        items: (po.items || []).map(it => {
+          const cat = byId.get(it.product_cost_id)
+          const recQty = Number(it.received_qty) || 0
+          const remQty = Number(it.remaining_qty) || 0
+          return {
+            id: it.id,
+            product_cost_id: it.product_cost_id,
+            shopify_variant_id: it.shopify_variant_id || cat?.shopify_variant_id || '',
+            sku: it.sku || cat?.sku || '',
+            parent_title: it.parent_title,
+            variant_title: it.variant_title || '',
+            variant_image_url: cat?.variant_image_url || '',
+            inventory_qty: cat?.inventory_qty ?? it.current_stock ?? 0,
+            ordered_qty: it.ordered_qty ?? recQty,
+            received_qty: recQty,
+            remaining_qty: remQty,
+            consumed_qty: Math.max(0, recQty - remQty),
+            unit_cost: it.unit_cost || 0,
+          }
+        }),
+      })
+      setSkuPickerSearch('')
+      setBulkQtyInput('')
+      setBulkCostInput('')
+      setGroupQuickFill({})
+      setViewPoModal(null)
+      setNewPoOpen(true)
+      if (fullCatalog.length === 0) fetchInventory('')
+    } finally {
+      setBusyKey('')
+    }
   }
 
   const switchPoType = (nextType) => {
@@ -582,6 +643,49 @@ export default function PoLedgerManager() {
       addToast('Add at least one SKU to the Purchase Order', 'error')
       return
     }
+
+    // ── EDIT EXISTING PO MODE ──
+    if (editingPo) {
+      setBusyKey('createPo')
+      try {
+        const res = await fetch(`${API}/api/po-ledger/pos/${editingPo.id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            store_id: activeStoreId,
+            supplier_id: poForm.supplier_id ? Number(poForm.supplier_id) : null,
+            order_date: poForm.order_date,
+            landing_cost: parseFloat(poForm.landing_cost) || 0,
+            notes: poForm.notes,
+            pushToShopify: Boolean(poForm.pushEditToShopify),
+            allowZeroQty: editingPo.status === 'received',
+            items: poForm.items.map(it => ({
+              id: it.id || undefined,
+              product_cost_id: it.product_cost_id,
+              shopify_variant_id: it.shopify_variant_id,
+              sku: it.sku,
+              parent_title: it.parent_title,
+              variant_title: it.variant_title,
+              ordered_qty: parseInt(it.ordered_qty, 10) || 0,
+              unit_cost: parseFloat(it.unit_cost) || 0,
+            })),
+          }),
+        })
+        const j = await res.json()
+        if (!j.success) {
+          addToast(j.error || 'Failed to update PO', 'error')
+          return
+        }
+        addToast(j.message || `${editingPo.po_number} updated`, 'success')
+        setEditingPo(null)
+        setNewPoOpen(false)
+        await refreshAll()
+      } finally {
+        setBusyKey('')
+      }
+      return
+    }
+
     const isRecount = poForm.poType === 'recount'
     setBusyKey('createPo')
     try {
@@ -706,6 +810,45 @@ export default function PoLedgerManager() {
     const j = await res.json()
     if (j.success) { addToast(j.message, 'success'); await refreshAll() }
     else addToast(j.error || 'Cannot cancel PO', 'error')
+  }
+
+  const openReverseModal = async (poId) => {
+    setBusyKey(`openRev-${poId}`)
+    try {
+      const res = await fetch(`${API}/api/po-ledger/pos/${poId}${qs}`, { headers })
+      const j = await res.json()
+      if (!j.success || !j.data) return addToast(j.error || 'Failed to load PO', 'error')
+      setReverseModal({ po: j.data, pushToShopify: false, reason: '' })
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const handleConfirmReverse = async (e) => {
+    e.preventDefault()
+    if (!reverseModal?.po) return
+    setBusyKey('confirmReverse')
+    try {
+      const res = await fetch(`${API}/api/po-ledger/pos/${reverseModal.po.id}/reverse`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          store_id: activeStoreId,
+          pushToShopify: Boolean(reverseModal.pushToShopify),
+          reason: reverseModal.reason,
+        }),
+      })
+      const j = await res.json()
+      if (j.success) {
+        addToast(j.message, 'success')
+        setReverseModal(null)
+        await refreshAll()
+      } else {
+        addToast(j.error || 'Cannot reverse PO', 'error')
+      }
+    } finally {
+      setBusyKey('')
+    }
   }
 
   const handleSaveSupplier = async (e) => {
@@ -1344,28 +1487,55 @@ export default function PoLedgerManager() {
                                   Pay
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => openViewPo(p.id)}
-                                style={{
-                                  padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
-                                  background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
-                                }}
-                              >
-                                View
-                              </button>
-                              {!p.is_baseline && p.total_received_qty === 0 && p.status !== 'cancelled' && (
                                 <button
                                   type="button"
-                                  onClick={() => handleCancelPo(p)}
+                                  onClick={() => openViewPo(p.id)}
                                   style={{
                                     padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
-                                    background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.24)',
+                                    background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)',
                                   }}
                                 >
-                                  Cancel
+                                  View
                                 </button>
-                              )}
+                                {!p.is_baseline && p.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    disabled={busyKey === `openEdit-${p.id}`}
+                                    onClick={() => openEditPo(p.id)}
+                                    style={{
+                                      padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                      background: 'rgba(245,158,11,0.11)', color: '#b45309', border: '1px solid rgba(245,158,11,0.34)',
+                                    }}
+                                  >
+                                    {busyKey === `openEdit-${p.id}` ? '...' : 'Edit'}
+                                  </button>
+                                )}
+                                {!p.is_baseline && p.total_received_qty === 0 && p.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelPo(p)}
+                                    style={{
+                                      padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                                      background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.24)',
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                )}
+                                {!p.is_baseline && p.total_received_qty > 0 && p.status !== 'cancelled' && (Number(p.paid_amount) || 0) <= 0.01 && (
+                                  <button
+                                    type="button"
+                                    disabled={busyKey === `openRev-${p.id}`}
+                                    onClick={() => openReverseModal(p.id)}
+                                    title="Undo this received PO (reverses unconsumed stock & cancels bill)"
+                                    style={{
+                                      padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                                      background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.24)',
+                                    }}
+                                  >
+                                    Undo
+                                  </button>
+                                )}
                             </div>
                           </td>
                         </tr>
@@ -1912,18 +2082,75 @@ export default function PoLedgerManager() {
 
       {/* 1. Create Purchase Order Modal (Top Mode Switcher + Shopify-Style Variant Picker + Live Delta Preview) */}
       {newPoOpen && (() => {
-        const isRecount = poForm.poType === 'recount'
+        const isEditing = Boolean(editingPo)
+        const isEditingReceived = isEditing && editingPo.status !== 'ordered'
+        const isRecount = !isEditing && poForm.poType === 'recount'
+
+        // Compute live qty-change impact when editing an already received/partial PO
+        let editChangedLines = 0
+        let editNetDelta = 0
+        if (isEditingReceived) {
+          const currentIds = new Set()
+          for (const it of poForm.items) {
+            const q = parseInt(it.ordered_qty, 10) || 0
+            if (it.id) {
+              currentIds.add(Number(it.id))
+              const prevRec = Number(it.received_qty) || 0
+              const d = editingPo.status === 'received' ? (q - prevRec) : 0
+              if (d !== 0) { editChangedLines++; editNetDelta += d }
+            } else if (editingPo.status === 'received' && q > 0) {
+              editChangedLines++
+              editNetDelta += q
+            }
+          }
+          for (const orig of editingPo.items || []) {
+            if (!currentIds.has(Number(orig.id)) && (Number(orig.received_qty) || 0) > 0) {
+              editChangedLines++
+              editNetDelta -= Number(orig.received_qty) || 0
+            }
+          }
+        }
+
         return (
         <ModalShell
-          title={isRecount ? '🎯 Physical Stock Recount (Final Actual Qty)' : 'New Purchase Order'}
-          subtitle={isRecount
-            ? 'Rows pre-fill from current stock — edit only changed SKUs to set exact Shopify On-Hand & clean FIFO batch'
-            : 'Select supplier, browse products & variants like Shopify, and bulk-fill quantities or costs in seconds'}
-          onClose={() => { setPickerOpen(false); setNewPoOpen(false) }}
+          title={isEditing
+            ? `✏️ Edit ${editingPo.po_number}`
+            : (isRecount ? '🎯 Physical Stock Recount (Final Actual Qty)' : 'New Purchase Order')}
+          subtitle={isEditing
+            ? (isEditingReceived
+                ? 'Received PO Safe Edit — updates Supplier Khata, FIFO batch costs & logs exact stock deltas'
+                : 'Unreceived PO — edit supplier, date, freight, SKUs, quantities, or unit costs freely')
+            : (isRecount
+                ? 'Rows pre-fill from current stock — edit only changed SKUs to set exact Shopify On-Hand & clean FIFO batch'
+                : 'Select supplier, browse products & variants like Shopify, and bulk-fill quantities or costs in seconds')}
+          onClose={() => { setPickerOpen(false); setEditingPo(null); setNewPoOpen(false) }}
           maxWidth={980}
         >
           <form onSubmit={handleCreatePo} style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-            {/* TOP PO PURPOSE SWITCHER (Always visible at top — zero confusion!) */}
+            {/* TOP BANNER: Edit Mode Info OR New PO vs Physical Recount Switcher */}
+            {isEditing ? (
+              <div style={{
+                padding: '9px 13px', borderRadius: 10, fontSize: 12, lineHeight: 1.45,
+                background: isEditingReceived ? 'rgba(245,158,11,0.09)' : 'rgba(37,99,235,0.08)',
+                border: `1px solid ${isEditingReceived ? 'rgba(245,158,11,0.34)' : 'rgba(37,99,235,0.28)'}`,
+                color: 'var(--text-primary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+              }}>
+                <div>
+                  <strong style={{ color: isEditingReceived ? '#b45309' : '#2563eb' }}>
+                    {isEditingReceived ? `✏️ Editing ${editingPo.status.toUpperCase()} PO:` : '✏️ Editing Ordered PO:'}
+                  </strong>{' '}
+                  {isEditingReceived
+                    ? 'Supplier, Date, Freight & Unit Costs auto-update Khata & FIFO cost. Any Qty change logs an exact (+/−) delta in Warehouse Ledger.'
+                    : 'No stock received yet — you can freely change supplier, items, quantities & costs.'}
+                </div>
+                {isEditingReceived && (Number(editingPo.paid_amount) || 0) > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.12)', color: '#059669' }}>
+                    Paid so far: {fmtRs(editingPo.paid_amount)}
+                  </span>
+                )}
+              </div>
+            ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
               {[
                 {
@@ -1967,6 +2194,7 @@ export default function PoLedgerManager() {
                 )
               })}
             </div>
+            )}
 
             {/* Top Supplier / Date / Landing Cost Row */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.85fr 0.9fr', gap: 10 }}>
@@ -2240,13 +2468,15 @@ export default function PoLedgerManager() {
                   >
                     Rs 0 Only
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setPoForm(p => ({ ...p, items: [] }))}
-                    style={{ marginLeft: 4, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.10)', color: '#dc2626', border: 'none' }}
-                  >
-                    Clear All
-                  </button>
+                  {!isEditingReceived && (
+                    <button
+                      type="button"
+                      onClick={() => setPoForm(p => ({ ...p, items: [] }))}
+                      style={{ marginLeft: 4, padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'rgba(239,68,68,0.10)', color: '#dc2626', border: 'none' }}
+                    >
+                      Clear All
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -2348,14 +2578,16 @@ export default function PoLedgerManager() {
                                     </button>
                                   )}
 
-                                  <button
-                                    type="button"
-                                    title="Remove entire product group"
-                                    onClick={() => setPoForm(p => ({ ...p, items: p.items.filter(x => x.parent_title !== group.parent_title) }))}
-                                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800, fontSize: 12, padding: '2px 4px' }}
-                                  >
-                                    ✕
-                                  </button>
+                                  {!group.entries.some(e => (e.item.consumed_qty || 0) > 0) && (
+                                    <button
+                                      type="button"
+                                      title="Remove entire product group"
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.filter(x => x.parent_title !== group.parent_title) }))}
+                                      style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800, fontSize: 12, padding: '2px 4px' }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </td>
@@ -2366,8 +2598,12 @@ export default function PoLedgerManager() {
                             const qtyNum = parseInt(it.ordered_qty, 10) || 0
                             const costNum = parseFloat(it.unit_cost) || 0
                             const invNum = Number(it.inventory_qty) || 0
+                            const consumedQty = isEditingReceived ? (Number(it.consumed_qty) || 0) : 0
+                            const minAllowedQty = isEditingReceived
+                              ? (editingPo.status === 'received' ? consumedQty : (Number(it.received_qty) || 0))
+                              : (isRecount ? 0 : 1)
                             return (
-                              <tr key={it.product_cost_id || idx} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
+                              <tr key={it.id || it.product_cost_id || idx} style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
                                 <td style={{ padding: '7px 11px 7px 34px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                     <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{it.variant_title || 'Default'}</span>
@@ -2382,17 +2618,25 @@ export default function PoLedgerManager() {
                                     }}>
                                       Avail: {invNum}
                                     </span>
+                                    {consumedQty > 0 && (
+                                      <span
+                                        title={`${consumedQty} unit(s) from this PO batch were already consumed by dispatched orders`}
+                                        style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.12)', color: '#b45309' }}
+                                      >
+                                        🔒 {consumedQty} sold
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
                                 <td style={{ padding: '6px 8px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
                                     <button
                                       type="button"
-                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: Math.max(isRecount ? 0 : 1, (parseInt(x.ordered_qty, 10) || 0) - 1) } : x) }))}
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: Math.max(minAllowedQty, (parseInt(x.ordered_qty, 10) || 0) - 1) } : x) }))}
                                       style={{ width: 24, height: 28, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 800 }}
                                     >−</button>
                                     <input
-                                      type="number" min={isRecount ? '0' : '1'} value={it.ordered_qty}
+                                      type="number" min={minAllowedQty} value={it.ordered_qty}
                                       onChange={e => setPoForm(p => ({ ...p, items: p.items.map((x, i) => i === idx ? { ...x, ordered_qty: e.target.value } : x) }))}
                                       style={{
                                         ...inputStyle, width: 56, padding: '4px 5px', textAlign: 'center', fontWeight: 800,
@@ -2407,7 +2651,14 @@ export default function PoLedgerManager() {
                                   </div>
                                   {/* Live Before -> After Stock Preview Pill */}
                                   <div style={{ textAlign: 'center', marginTop: 3, fontSize: 10, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                                    {isRecount ? (() => {
+                                    {isEditingReceived ? (() => {
+                                      if (!it.id) return <span style={{ color: '#059669' }}>+ New ({editingPo.status === 'received' ? `+${qtyNum} stock` : 'pending'})</span>
+                                      if (editingPo.status !== 'received') return <span style={{ color: 'var(--text-muted)' }}>Rec: {it.received_qty || 0} / Ord: {qtyNum}</span>
+                                      const d = qtyNum - (Number(it.received_qty) || 0)
+                                      if (d === 0) return <span style={{ color: 'var(--text-muted)' }}>= No qty change</span>
+                                      if (d > 0) return <span style={{ color: '#059669' }}>Edit: +{d} ({invNum} → {invNum + d})</span>
+                                      return <span style={{ color: '#dc2626' }}>Edit: −{Math.abs(d)} ({invNum} → {invNum + d})</span>
+                                    })() : isRecount ? (() => {
                                       const diff = qtyNum - invNum
                                       if (diff === 0) return <span style={{ color: 'var(--text-muted)' }}>= Same ({invNum})</span>
                                       if (diff > 0) return <span style={{ color: '#059669' }}>{invNum} → {qtyNum} (+{diff})</span>
@@ -2433,13 +2684,17 @@ export default function PoLedgerManager() {
                                   {fmtRs(qtyNum * costNum)}
                                 </td>
                                 <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setPoForm(p => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
-                                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}
-                                  >
-                                    ✕
-                                  </button>
+                                  {consumedQty > 0 ? (
+                                    <span title="Cannot remove — units already consumed by dispatched orders" style={{ fontSize: 11, opacity: 0.45 }}>🔒</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPoForm(p => ({ ...p, items: p.items.filter((_, i) => i !== idx) }))}
+                                      style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             )
@@ -2476,7 +2731,24 @@ export default function PoLedgerManager() {
                   style={inputStyle}
                 />
               </div>
-              {isRecount ? (
+              {isEditing ? (
+                isEditingReceived ? (
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
+                    background: poForm.pushEditToShopify && editChangedLines > 0 ? 'rgba(245,158,11,0.12)' : 'var(--bg-elevated)',
+                    border: `1px solid ${poForm.pushEditToShopify && editChangedLines > 0 ? 'rgba(245,158,11,0.45)' : 'var(--border)'}`,
+                    color: poForm.pushEditToShopify && editChangedLines > 0 ? '#b45309' : 'var(--text-secondary)',
+                  }} title="Push any (+/−) quantity difference from this edit directly to Shopify">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(poForm.pushEditToShopify)}
+                      onChange={e => setPoForm(p => ({ ...p, pushEditToShopify: e.target.checked }))}
+                    />
+                    🔄 Sync Qty Delta (+/−) to Shopify
+                  </label>
+                ) : null
+              ) : isRecount ? (
                 <label style={{
                   display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                   padding: '8px 12px', borderRadius: 8, whiteSpace: 'nowrap',
@@ -2521,12 +2793,23 @@ export default function PoLedgerManager() {
               )}
             </div>
 
-            {/* Footer Totals, Live Recount Impact & Submit */}
+            {/* Footer Totals, Live Recount/Edit Impact & Submit */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12.5 }}>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
                   <strong>{poForm.items.length}</strong> variants · <strong>{poTotalUnits}</strong> units
                 </span>
+                {isEditingReceived && (
+                  <span style={{
+                    padding: '2.5px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 800,
+                    background: editChangedLines > 0 ? 'rgba(245,158,11,0.13)' : 'var(--bg-elevated)',
+                    color: editChangedLines > 0 ? '#b45309' : 'var(--text-muted)',
+                  }}>
+                    {editChangedLines > 0
+                      ? `✏️ ${editChangedLines} qty edit(s) (${editNetDelta >= 0 ? `+${editNetDelta}` : `−${Math.abs(editNetDelta)}`} pcs)`
+                      : 'Metadata / cost edit only (0 qty delta)'}
+                  </span>
+                )}
                 {isRecount && poForm.items.length > 0 && (
                   <span style={{
                     padding: '2.5px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 800,
@@ -2546,24 +2829,26 @@ export default function PoLedgerManager() {
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => { setPickerOpen(false); setNewPoOpen(false) }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                <button type="button" onClick={() => { setPickerOpen(false); setEditingPo(null); setNewPoOpen(false) }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
                 <button
                   type="submit"
                   disabled={busyKey === 'createPo' || poForm.items.length === 0}
                   style={{
                     padding: '8px 18px', borderRadius: 8, border: 'none',
-                    background: isRecount ? '#7c3aed' : (poForm.receiveImmediately ? '#059669' : '#2563eb'),
+                    background: isEditing ? '#d97706' : (isRecount ? '#7c3aed' : (poForm.receiveImmediately ? '#059669' : '#2563eb')),
                     color: '#fff', fontWeight: 700, cursor: poForm.items.length === 0 ? 'not-allowed' : 'pointer',
                     opacity: poForm.items.length === 0 ? 0.5 : 1,
                   }}
                 >
                   {busyKey === 'createPo'
-                    ? (isRecount ? 'Syncing Recount...' : (poForm.receiveImmediately ? 'Creating & Syncing...' : 'Creating...'))
-                    : (isRecount
-                        ? (poForm.shopifySyncMode === 'erp_only' ? '🎯 Save Recount (ERP Only)' : '🎯 Save Recount & Set Exact On-Hand')
-                        : (poForm.receiveImmediately
-                            ? (poForm.shopifySyncMode === 'erp_only' ? '⚡ Create & Receive (ERP Only)' : '⚡ Create & Add Stock to Shopify')
-                            : 'Create Purchase Order'))}
+                    ? (isEditing ? 'Saving Changes...' : (isRecount ? 'Syncing Recount...' : (poForm.receiveImmediately ? 'Creating & Syncing...' : 'Creating...')))
+                    : (isEditing
+                        ? `💾 Save ${editingPo.po_number} Changes`
+                        : (isRecount
+                            ? (poForm.shopifySyncMode === 'erp_only' ? '🎯 Save Recount (ERP Only)' : '🎯 Save Recount & Set Exact On-Hand')
+                            : (poForm.receiveImmediately
+                                ? (poForm.shopifySyncMode === 'erp_only' ? '⚡ Create & Receive (ERP Only)' : '⚡ Create & Add Stock to Shopify')
+                                : 'Create Purchase Order')))}
                 </button>
               </div>
             </div>
@@ -3204,11 +3489,88 @@ export default function PoLedgerManager() {
                 </tbody>
               </table>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 700 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 700, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
               <span>Landing Cost: {fmtRs(viewPoModal.landing_cost)}</span>
-              <span>Billed: {fmtRs(viewPoModal.billed_cost)} · Paid: {fmtRs(viewPoModal.paid_amount)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>Billed: {fmtRs(viewPoModal.billed_cost)} · Paid: {fmtRs(viewPoModal.paid_amount)}</span>
+                {!viewPoModal.is_baseline && viewPoModal.status !== 'cancelled' && (
+                  <button
+                    type="button"
+                    onClick={() => openEditPo(viewPoModal.id)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.36)',
+                    }}
+                  >
+                    ✏️ Edit PO
+                  </button>
+                )}
+              </div>
             </div>
           </div>
+        </ModalShell>
+      )}
+
+      {/* 3b. Undo / Reverse Received PO Confirmation Modal */}
+      {reverseModal && (
+        <ModalShell
+          title={`Undo & Cancel ${reverseModal.po.po_number}`}
+          subtitle={`${reverseModal.po.supplier_name || 'No Supplier'} · ${reverseModal.po.order_date}`}
+          onClose={() => setReverseModal(null)}
+          maxWidth={490}
+        >
+          <form onSubmit={handleConfirmReverse} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{
+              padding: '10px 12px', borderRadius: 9, fontSize: 12, lineHeight: 1.5,
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.28)', color: 'var(--text-primary)',
+            }}>
+              <strong style={{ color: '#dc2626' }}>⚠️ Reversing this Received PO will:</strong>
+              <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+                <li>Deduct <strong>{(reverseModal.po.items || []).reduce((s, i) => s + (Number(i.received_qty) || 0), 0)} received unit(s)</strong> back from Warehouse stock &amp; log <code>PO_REVERSE</code>.</li>
+                <li>Cancel billed amount <strong>{fmtRs(reverseModal.po.billed_cost)}</strong> from Supplier Khata.</li>
+                <li>Re-sync active FIFO SKU costs cleanly.</li>
+              </ul>
+            </div>
+
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+              padding: '9px 12px', borderRadius: 8,
+              background: reverseModal.pushToShopify ? 'rgba(239,68,68,0.09)' : 'var(--bg-elevated)',
+              border: `1px solid ${reverseModal.pushToShopify ? 'rgba(239,68,68,0.38)' : 'var(--border)'}`,
+              color: reverseModal.pushToShopify ? '#dc2626' : 'var(--text-primary)',
+            }}>
+              <input
+                type="checkbox"
+                checked={Boolean(reverseModal.pushToShopify)}
+                onChange={e => setReverseModal(prev => ({ ...prev, pushToShopify: e.target.checked }))}
+              />
+              Also subtract (−Qty) from Shopify inventory
+            </label>
+
+            <div>
+              <label style={labelStyle}>Reason (Optional)</label>
+              <input
+                type="text"
+                value={reverseModal.reason}
+                onChange={e => setReverseModal(prev => ({ ...prev, reason: e.target.value }))}
+                placeholder="e.g. Duplicate test PO or wrong batch entry"
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+              <button type="button" onClick={() => setReverseModal(null)} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>
+                Keep PO
+              </button>
+              <button
+                type="submit"
+                disabled={busyKey === 'confirmReverse'}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                {busyKey === 'confirmReverse' ? 'Reversing...' : 'Undo & Cancel PO'}
+              </button>
+            </div>
+          </form>
         </ModalShell>
       )}
 

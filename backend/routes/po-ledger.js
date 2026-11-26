@@ -104,6 +104,38 @@ router.post('/pos', (req, res) => {
   }
 });
 
+router.put('/pos/:id', async (req, res) => {
+  try {
+    const result = await svc.updatePurchaseOrder(resolveStoreId(req), req.params.id, req.body || {}, resolveActor(req));
+    const pushNote = req.body?.pushToShopify && result.adjustedLines > 0
+      ? ` · Shopify delta pushed: ${result.shopifyResults.pushed}${result.shopifyResults.failed ? ` (${result.shopifyResults.failed} failed)` : ''}`
+      : (result.adjustedLines > 0 ? ` · ${result.adjustedLines} line(s) adjusted in ERP` : '');
+    res.json({
+      success: true,
+      data: result,
+      message: `${result.po.po_number} updated${pushNote}`,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/pos/:id/reverse', async (req, res) => {
+  try {
+    const result = await svc.reversePurchaseOrder(resolveStoreId(req), req.params.id, req.body || {}, resolveActor(req));
+    const pushNote = req.body?.pushToShopify && result.reversedLines > 0
+      ? ` · Shopify reverted: ${result.shopifyResults.pushed}${result.shopifyResults.failed ? ` (${result.shopifyResults.failed} failed)` : ''}`
+      : '';
+    res.json({
+      success: true,
+      data: result,
+      message: `${result.po?.po_number || 'PO'} reversed & cancelled${pushNote}`,
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/pos/:id/receive', async (req, res) => {
   try {
     const result = await svc.receivePurchaseOrder(resolveStoreId(req), req.params.id, req.body || {}, resolveActor(req));

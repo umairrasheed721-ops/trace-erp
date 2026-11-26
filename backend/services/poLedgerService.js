@@ -1094,9 +1094,499 @@ function cancelPurchaseOrder(storeId, poId) {
   const po = getPurchaseOrder(sid, poId);
   if (po.is_baseline) throw new Error('Baseline PO cannot be cancelled');
   const receivedSum = po.items.reduce((s, i) => s + (i.received_qty || 0), 0);
-  if (receivedSum > 0) throw new Error('Cannot cancel a PO that already has received stock');
+  if (receivedSum > 0) throw new Error('Cannot cancel a PO that already has received stock — use Undo / Reverse instead');
   db.prepare("UPDATE purchase_orders SET status = 'cancelled', updated_at = datetime('now', '+5 hours') WHERE id = ? AND store_id = ?").run(po.id, sid);
   return { success: true };
+}
+
+/**
+ * Edit Purchase Order (Supports BOTH 'ordered' full edit AND 'received'/'partial' safe FIFO/Stock/Khata edit):
+ * - Ordered PO: Full replace of supplier, date, landing cost, notes, and SKU line items.
+ * - Received / Partial PO:
+ *   • Updates supplier (including migrating any active po_payment ledger entries), date, landing cost & notes
+ *   • Recalculates unit_cost, landed_unit_cost, billed_cost & syncs active FIFO SKU costs
+ *   • Safely adjusts received_qty/remaining_qty/inventory_qty by exact delta (blocks reducing below already-consumed FIFO units)
+ *   • Logs PO_EDIT audit entries in inventory_ledger & optionally pushes exact +/- qty deltas to Shopify
+ */
+async function updatePurchaseOrder(storeId, poId, payload = {}, updatedBy = 'Admin') {
+  ensurePoLedgerTables();
+  const sid = Number(storeId) || 1;
+  const po = getPurchaseOrder(sid, poId);
+  if (po.is_baseline) throw new Error('Baseline PO cannot be edited');
+  if (po.status === 'cancelled') throw new Error('Cancelled PO cannot be edited');
+
+  const allowZeroQty = Boolean(payload.allowZeroQty) || po.status === 'received';
+  const rawItems = Array.isArray(payload.items) ? payload.items : null;
+  if (rawItems && rawItems.length === 0) {
+    throw new Error('Purchase Order must have at least one SKU line');
+  }
+
+  const supplierId = payload.supplier_id !== undefined
+    ? (payload.supplier_id ? Number(payload.supplier_id) : null)
+    : po.supplier_id;
+  const orderDate = (payload.order_date || '').trim() || po.order_date;
+  const landingCost = payload.landing_cost !== undefined
+    ? Math.max(0, parseFloat(payload.landing_cost) || 0)
+    : (Number(po.landing_cost) || 0);
+  const notes = payload.notes !== undefined ? String(payload.notes || '').trim() : (po.notes || '');
+  const pushToShopify = Boolean(payload.pushToShopify);
+
+  const totalExistingReceived = (po.items || []).reduce((s, it) => s + (Number(it.received_qty) || 0), 0);
+  const isUnreceived = po.status === 'ordered' && totalExistingReceived === 0;
+
+  // Helper to resolve product_master_costs metadata
+  const resolvePmc = (raw, fallback) => {
+    const pid = raw.product_cost_id ? Number(raw.product_cost_id) : (fallback?.product_cost_id || null);
+    let pmc = null;
+    if (pid) {
+      pmc = db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(pid, sid);
+    }
+    const resolvedSku = pmc?.sku || (raw.sku || fallback?.sku || '').trim();
+    const resolvedVarId = pmc?.shopify_variant_id || (raw.shopify_variant_id || fallback?.shopify_variant_id || '').trim();
+    if (!resolvedSku && !resolvedVarId) {
+      throw new Error(`SKU or Shopify Variant ID is strictly required for "${pmc?.parent_title || raw.parent_title || fallback?.parent_title || 'item'}"`);
+    }
+    return {
+      pmc,
+      product_cost_id: pmc?.id || null,
+      shopify_variant_id: resolvedVarId,
+      sku: resolvedSku,
+      parent_title: pmc?.parent_title || (raw.parent_title || fallback?.parent_title || 'Custom Item').trim(),
+      variant_title: pmc?.variant_title || (raw.variant_title || fallback?.variant_title || '').trim(),
+    };
+  };
+
+  // ── CASE A: Unreceived ('ordered') PO → Full Clean Edit ────────────────────
+  if (isUnreceived) {
+    const srcItems = rawItems || po.items;
+    const validItems = srcItems.filter(i => {
+      const q = parseInt(i.ordered_qty, 10);
+      return Number.isFinite(q) && (allowZeroQty ? q >= 0 : q > 0);
+    });
+    if (validItems.length === 0) throw new Error('Add at least one SKU with quantity > 0');
+
+    const totalUnits = validItems.reduce((s, i) => s + (parseInt(i.ordered_qty, 10) || 0), 0);
+    const landingPerUnit = totalUnits > 0 ? landingCost / totalUnits : 0;
+
+    let subtotal = 0;
+    const enriched = validItems.map(raw => {
+      const qty = Math.max(0, parseInt(raw.ordered_qty, 10) || 0);
+      const unitCost = Math.max(0, parseFloat(raw.unit_cost) || 0);
+      const landedUnitCost = Math.round((unitCost + landingPerUnit) * 100) / 100;
+      const lineTotal = Math.round(qty * unitCost * 100) / 100;
+      subtotal += lineTotal;
+      const meta = resolvePmc(raw, null);
+      return { ...meta, ordered_qty: qty, unit_cost: unitCost, landed_unit_cost: landedUnitCost, line_total: lineTotal };
+    });
+
+    subtotal = Math.round(subtotal * 100) / 100;
+    const totalCost = Math.round((subtotal + landingCost) * 100) / 100;
+
+    db.exec('BEGIN');
+    try {
+      db.prepare('DELETE FROM purchase_order_items WHERE po_id = ? AND store_id = ?').run(po.id, sid);
+      const insItem = db.prepare(`
+        INSERT INTO purchase_order_items
+          (po_id, store_id, product_cost_id, shopify_variant_id, sku, parent_title, variant_title, ordered_qty, received_qty, remaining_qty, unit_cost, landed_unit_cost, line_total)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+      `);
+      for (const it of enriched) {
+        insItem.run(
+          po.id, sid, it.product_cost_id, it.shopify_variant_id, it.sku,
+          it.parent_title, it.variant_title, it.ordered_qty, it.unit_cost, it.landed_unit_cost, it.line_total
+        );
+      }
+      db.prepare(`
+        UPDATE purchase_orders
+        SET supplier_id = ?, order_date = ?, subtotal_cost = ?, landing_cost = ?, total_cost = ?, notes = ?, updated_at = datetime('now', '+5 hours')
+        WHERE id = ? AND store_id = ?
+      `).run(supplierId, orderDate, subtotal, landingCost, totalCost, notes, po.id, sid);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+
+    return {
+      po: getPurchaseOrder(sid, po.id),
+      adjustedLines: 0,
+      shopifyResults: { pushed: 0, failed: 0, errors: [] },
+    };
+  }
+
+  // ── CASE B: Received / Partial PO → Safe FIFO, Stock & Khata Edit ─────────
+  const existingById = new Map((po.items || []).map(it => [Number(it.id), it]));
+  const existingByPmc = new Map();
+  for (const it of po.items || []) {
+    if (it.product_cost_id && !existingByPmc.has(Number(it.product_cost_id))) {
+      existingByPmc.set(Number(it.product_cost_id), it);
+    }
+  }
+
+  const srcItems = rawItems || po.items.map(it => ({
+    id: it.id,
+    product_cost_id: it.product_cost_id,
+    shopify_variant_id: it.shopify_variant_id,
+    sku: it.sku,
+    parent_title: it.parent_title,
+    variant_title: it.variant_title,
+    ordered_qty: it.ordered_qty,
+    received_qty: it.received_qty,
+    unit_cost: it.unit_cost,
+  }));
+
+  const isFullyReceived = po.status === 'received';
+  const keptExistingIds = new Set();
+  const planned = [];
+
+  for (const raw of srcItems) {
+    let existing = raw.id ? existingById.get(Number(raw.id)) : null;
+    if (!existing && raw.product_cost_id) {
+      const candidate = existingByPmc.get(Number(raw.product_cost_id));
+      if (candidate && !keptExistingIds.has(Number(candidate.id))) existing = candidate;
+    }
+
+    const unitCost = Math.max(0, parseFloat(raw.unit_cost) || 0);
+    const meta = resolvePmc(raw, existing);
+
+    if (existing) {
+      keptExistingIds.add(Number(existing.id));
+      const oldReceived = Number(existing.received_qty) || 0;
+      const oldRemaining = Number(existing.remaining_qty) || 0;
+      const consumedQty = Math.max(0, oldReceived - oldRemaining);
+
+      let newOrdered = Math.max(0, parseInt(raw.ordered_qty, 10) || 0);
+      let newReceived = oldReceived;
+      if (isFullyReceived) {
+        // On a received PO, editing the line Qty directly updates ordered & received together
+        newReceived = newOrdered;
+      } else if (raw.received_qty !== undefined && raw.received_qty !== null && raw.received_qty !== '') {
+        newReceived = Math.max(0, parseInt(raw.received_qty, 10) || 0);
+        if (newOrdered < newReceived) newOrdered = newReceived;
+      } else if (newOrdered < oldReceived) {
+        newOrdered = oldReceived;
+      }
+
+      if (newReceived < consumedQty) {
+        throw new Error(
+          `Cannot reduce "${meta.parent_title}${meta.variant_title ? ` (${meta.variant_title})` : ''}" below ${consumedQty} unit(s) already consumed by dispatched orders.`
+        );
+      }
+
+      const qtyDelta = newReceived - oldReceived;
+      const newRemaining = Math.max(0, oldRemaining + qtyDelta);
+      planned.push({
+        kind: 'update',
+        existingId: existing.id,
+        ...meta,
+        ordered_qty: newOrdered,
+        received_qty: newReceived,
+        remaining_qty: newRemaining,
+        qtyDelta,
+        unit_cost: unitCost,
+      });
+    } else {
+      const newOrdered = Math.max(0, parseInt(raw.ordered_qty, 10) || 0);
+      if (newOrdered <= 0 && !allowZeroQty) continue;
+      // Newly added line on an already-received PO is immediately received; on a partial PO it stays pending receipt
+      const newReceived = isFullyReceived ? newOrdered : 0;
+      planned.push({
+        kind: 'insert',
+        existingId: null,
+        ...meta,
+        ordered_qty: newOrdered,
+        received_qty: newReceived,
+        remaining_qty: newReceived,
+        qtyDelta: newReceived,
+        unit_cost: unitCost,
+      });
+    }
+  }
+
+  if (planned.length === 0) {
+    throw new Error('Purchase Order must keep at least one SKU line');
+  }
+
+  // Check removed lines for FIFO consumption guard
+  const removedLines = [];
+  for (const ex of po.items || []) {
+    if (keptExistingIds.has(Number(ex.id))) continue;
+    const oldReceived = Number(ex.received_qty) || 0;
+    const oldRemaining = Number(ex.remaining_qty) || 0;
+    const consumedQty = Math.max(0, oldReceived - oldRemaining);
+    if (consumedQty > 0) {
+      throw new Error(
+        `Cannot remove "${ex.parent_title}${ex.variant_title ? ` (${ex.variant_title})` : ''}" — ${consumedQty} unit(s) already consumed by dispatched orders.`
+      );
+    }
+    const pmc = ex.product_cost_id
+      ? db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(ex.product_cost_id, sid)
+      : null;
+    removedLines.push({ existing: ex, pmc, qtyDelta: -oldReceived });
+  }
+
+  // Recompute landed cost distribution across total ordered units
+  const totalOrderedUnits = planned.reduce((s, p) => s + p.ordered_qty, 0);
+  const landingPerUnit = totalOrderedUnits > 0 ? landingCost / totalOrderedUnits : 0;
+
+  let subtotal = 0;
+  let billedCost = 0;
+  let totalReceivedUnits = 0;
+  for (const p of planned) {
+    p.landed_unit_cost = Math.round((p.unit_cost + landingPerUnit) * 100) / 100;
+    p.line_total = Math.round(p.ordered_qty * p.unit_cost * 100) / 100;
+    subtotal += p.line_total;
+    billedCost += p.received_qty * p.landed_unit_cost;
+    totalReceivedUnits += p.received_qty;
+  }
+  subtotal = Math.round(subtotal * 100) / 100;
+  billedCost = Math.round(billedCost * 100) / 100;
+  const totalCost = Math.round((subtotal + landingCost) * 100) / 100;
+
+  let nextStatus = po.status;
+  if (totalReceivedUnits >= totalOrderedUnits && totalOrderedUnits > 0) {
+    nextStatus = 'received';
+  } else if (totalReceivedUnits > 0) {
+    nextStatus = 'partial';
+  }
+
+  const stockWork = [];
+  const touchedPmcIds = new Set();
+
+  db.exec('BEGIN');
+  try {
+    // 1. Delete removed lines & reverse their stock delta
+    for (const rem of removedLines) {
+      db.prepare('DELETE FROM purchase_order_items WHERE id = ? AND po_id = ?').run(rem.existing.id, po.id);
+      if (rem.pmc) touchedPmcIds.add(rem.pmc.id);
+      if (rem.qtyDelta !== 0) {
+        if (rem.pmc) {
+          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
+            .run(rem.qtyDelta, rem.pmc.id);
+        }
+        const logInfo = db.prepare(`
+          INSERT INTO inventory_ledger
+            (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, 'PO_EDIT', ?, ?, 'po', ?, ?, 0, ?, ?)
+        `).run(
+          sid, rem.pmc?.id || null, rem.existing.sku || '', rem.existing.parent_title, rem.existing.variant_title || '',
+          rem.qtyDelta, rem.existing.landed_unit_cost || rem.existing.unit_cost || 0,
+          String(po.id), po.po_number, `Removed line during PO edit (${po.po_number})`, updatedBy
+        );
+        stockWork.push({
+          invLedgerId: Number(logInfo.lastInsertRowid),
+          pmc: rem.pmc,
+          qtyDelta: rem.qtyDelta,
+          title: `${rem.existing.parent_title}${rem.existing.variant_title ? ` (${rem.existing.variant_title})` : ''}`,
+        });
+      }
+    }
+
+    // 2. Apply updates & inserts
+    const updItem = db.prepare(`
+      UPDATE purchase_order_items
+      SET ordered_qty = ?, received_qty = ?, remaining_qty = ?, unit_cost = ?, landed_unit_cost = ?, line_total = ?
+      WHERE id = ? AND po_id = ?
+    `);
+    const insItem = db.prepare(`
+      INSERT INTO purchase_order_items
+        (po_id, store_id, product_cost_id, shopify_variant_id, sku, parent_title, variant_title, ordered_qty, received_qty, remaining_qty, unit_cost, landed_unit_cost, line_total)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const p of planned) {
+      if (p.kind === 'update') {
+        updItem.run(p.ordered_qty, p.received_qty, p.remaining_qty, p.unit_cost, p.landed_unit_cost, p.line_total, p.existingId, po.id);
+      } else {
+        insItem.run(
+          po.id, sid, p.product_cost_id, p.shopify_variant_id, p.sku,
+          p.parent_title, p.variant_title, p.ordered_qty, p.received_qty, p.remaining_qty,
+          p.unit_cost, p.landed_unit_cost, p.line_total
+        );
+      }
+      if (p.pmc) touchedPmcIds.add(p.pmc.id);
+
+      if (p.qtyDelta !== 0) {
+        if (p.pmc) {
+          db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) + ?, updated_at = datetime('now') WHERE id = ?")
+            .run(p.qtyDelta, p.pmc.id);
+        }
+        const logInfo = db.prepare(`
+          INSERT INTO inventory_ledger
+            (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, 'PO_EDIT', ?, ?, 'po', ?, ?, 0, ?, ?)
+        `).run(
+          sid, p.pmc?.id || null, p.sku || '', p.parent_title, p.variant_title || '',
+          p.qtyDelta, p.landed_unit_cost, String(po.id), po.po_number,
+          `${p.kind === 'insert' ? 'Added line' : 'Qty adjusted'} during PO edit (${p.qtyDelta > 0 ? '+' : ''}${p.qtyDelta})`,
+          updatedBy
+        );
+        stockWork.push({
+          invLedgerId: Number(logInfo.lastInsertRowid),
+          pmc: p.pmc,
+          qtyDelta: p.qtyDelta,
+          title: `${p.parent_title}${p.variant_title ? ` (${p.variant_title})` : ''}`,
+        });
+      }
+    }
+
+    // 3. Update PO header & migrate active PO payment ledger supplier if supplier changed
+    db.prepare(`
+      UPDATE purchase_orders
+      SET supplier_id = ?, status = ?, order_date = ?, subtotal_cost = ?, landing_cost = ?, total_cost = ?, billed_cost = ?, notes = ?, updated_at = datetime('now', '+5 hours')
+      WHERE id = ? AND store_id = ?
+    `).run(supplierId, nextStatus, orderDate, subtotal, landingCost, totalCost, billedCost, notes, po.id, sid);
+
+    if (supplierId !== po.supplier_id) {
+      db.prepare(`
+        UPDATE ledger_entries
+        SET supplier_id = ?
+        WHERE store_id = ? AND po_id = ? AND entry_type = 'po_payment' AND is_void = 0
+      `).run(supplierId, sid, po.id);
+    }
+
+    // 4. Sync active FIFO SKU cost on all touched SKUs
+    for (const pmcId of touchedPmcIds) {
+      syncSkuFifoCost(sid, pmcId, 'po_edit_fifo');
+    }
+
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  // Post-commit: Optional Shopify Delta Push for changed lines
+  const shopifyResults = { pushed: 0, failed: 0, errors: [] };
+  if (pushToShopify && stockWork.length > 0) {
+    for (const work of stockWork) {
+      if (!work.pmc || !work.qtyDelta) continue;
+      const res = await pushDeltaToShopifyAndLinkedPools(sid, work.pmc, work.qtyDelta);
+      if (res.ok || res.partialOk) {
+        shopifyResults.pushed++;
+        db.prepare('UPDATE inventory_ledger SET shopify_pushed = 1, shopify_error = ? WHERE id = ?')
+          .run(res.error || '', work.invLedgerId);
+      } else {
+        shopifyResults.failed++;
+        shopifyResults.errors.push(`${work.title}: ${res.error}`);
+        db.prepare('UPDATE inventory_ledger SET shopify_pushed = 0, shopify_error = ? WHERE id = ?')
+          .run(res.error || 'Push failed', work.invLedgerId);
+      }
+    }
+  }
+
+  return {
+    po: getPurchaseOrder(sid, po.id),
+    adjustedLines: stockWork.length,
+    shopifyResults,
+  };
+}
+
+/**
+ * Safely Reverse / Undo a Received or Partial PO (Unpaid & Unconsumed Only):
+ * - Reverts received_qty & remaining_qty to 0
+ * - Deducts stock back out of warehouse & logs PO_REVERSE in inventory_ledger
+ * - Re-syncs active FIFO SKU costs & sets PO status='cancelled', billed_cost=0
+ * - Optionally pushes negative delta back to Shopify
+ */
+async function reversePurchaseOrder(storeId, poId, payload = {}, actor = 'Admin') {
+  ensurePoLedgerTables();
+  const sid = Number(storeId) || 1;
+  const po = getPurchaseOrder(sid, poId);
+  if (po.is_baseline) throw new Error('Baseline PO cannot be reversed');
+  if (po.status === 'cancelled') throw new Error('PO is already cancelled');
+
+  const paidAmount = Number(po.paid_amount) || 0;
+  if (paidAmount > 0.01) {
+    throw new Error(`Cannot undo ${po.po_number} because Rs. ${Math.round(paidAmount).toLocaleString()} is already paid. Void the payment in Ledger first.`);
+  }
+
+  const receivedLines = (po.items || []).filter(it => (Number(it.received_qty) || 0) > 0);
+  if (receivedLines.length === 0) {
+    return cancelPurchaseOrder(sid, poId);
+  }
+
+  for (const it of receivedLines) {
+    const consumed = Math.max(0, (Number(it.received_qty) || 0) - (Number(it.remaining_qty) || 0));
+    if (consumed > 0) {
+      throw new Error(
+        `Cannot undo ${po.po_number}: ${consumed} unit(s) of "${it.parent_title}${it.variant_title ? ` (${it.variant_title})` : ''}" were already consumed by dispatched orders. Use Edit PO instead.`
+      );
+    }
+  }
+
+  const pushToShopify = Boolean(payload.pushToShopify);
+  const reason = (payload.reason || '').trim();
+  const reverseWork = [];
+
+  db.exec('BEGIN');
+  try {
+    for (const it of receivedLines) {
+      const revQty = Number(it.received_qty) || 0;
+      const pmc = it.product_cost_id
+        ? db.prepare('SELECT * FROM product_master_costs WHERE id = ? AND store_id = ?').get(it.product_cost_id, sid)
+        : null;
+
+      db.prepare('UPDATE purchase_order_items SET received_qty = 0, remaining_qty = 0 WHERE id = ?').run(it.id);
+      if (pmc) {
+        db.prepare("UPDATE product_master_costs SET inventory_qty = COALESCE(inventory_qty, 0) - ?, updated_at = datetime('now') WHERE id = ?")
+          .run(revQty, pmc.id);
+        syncSkuFifoCost(sid, pmc.id, 'po_reverse_fifo');
+      }
+      const logInfo = db.prepare(`
+        INSERT INTO inventory_ledger
+          (store_id, product_cost_id, sku, parent_title, variant_title, movement_type, qty_delta, unit_cost, ref_type, ref_id, ref_label, shopify_pushed, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, 'PO_REVERSE', ?, ?, 'po', ?, ?, 0, ?, ?)
+      `).run(
+        sid, pmc?.id || null, it.sku || '', it.parent_title, it.variant_title || '',
+        -revQty, it.landed_unit_cost || it.unit_cost || 0,
+        String(po.id), po.po_number,
+        reason || `Reversed & cancelled ${po.po_number}`,
+        actor
+      );
+      reverseWork.push({
+        invLedgerId: Number(logInfo.lastInsertRowid),
+        pmc,
+        qtyDelta: -revQty,
+        title: `${it.parent_title}${it.variant_title ? ` (${it.variant_title})` : ''}`,
+      });
+    }
+
+    const updatedNotes = [po.notes, `[Reversed by ${actor}${reason ? `: ${reason}` : ''}]`].filter(Boolean).join(' | ');
+    db.prepare(`
+      UPDATE purchase_orders
+      SET status = 'cancelled', billed_cost = 0, notes = ?, updated_at = datetime('now', '+5 hours')
+      WHERE id = ? AND store_id = ?
+    `).run(updatedNotes, po.id, sid);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+
+  const shopifyResults = { pushed: 0, failed: 0, errors: [] };
+  if (pushToShopify && reverseWork.length > 0) {
+    for (const work of reverseWork) {
+      if (!work.pmc || !work.qtyDelta) continue;
+      const res = await pushDeltaToShopifyAndLinkedPools(sid, work.pmc, work.qtyDelta);
+      if (res.ok || res.partialOk) {
+        shopifyResults.pushed++;
+        db.prepare('UPDATE inventory_ledger SET shopify_pushed = 1, shopify_error = ? WHERE id = ?')
+          .run(res.error || '', work.invLedgerId);
+      } else {
+        shopifyResults.failed++;
+        shopifyResults.errors.push(`${work.title}: ${res.error}`);
+        db.prepare('UPDATE inventory_ledger SET shopify_pushed = 0, shopify_error = ? WHERE id = ?')
+          .run(res.error || 'Push failed', work.invLedgerId);
+      }
+    }
+  }
+
+  return {
+    po: getPurchaseOrder(sid, po.id),
+    reversedLines: reverseWork.length,
+    shopifyResults,
+  };
 }
 
 function getBackorderDemands(storeId) {
@@ -1876,8 +2366,10 @@ module.exports = {
   getPurchaseOrder,
   createBaselinePo,
   createPurchaseOrder,
+  updatePurchaseOrder,
   receivePurchaseOrder,
   cancelPurchaseOrder,
+  reversePurchaseOrder,
   getBackorderDemands,
   getWarehouseStock,
   recordManualStockAdjust,
