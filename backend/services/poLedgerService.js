@@ -708,7 +708,26 @@ function listPurchaseOrders(storeId) {
       s.name AS supplier_name,
       COALESCE((SELECT SUM(ordered_qty) FROM purchase_order_items WHERE po_id = po.id), 0) AS total_ordered_qty,
       COALESCE((SELECT SUM(received_qty) FROM purchase_order_items WHERE po_id = po.id), 0) AS total_received_qty,
-      COALESCE((SELECT COUNT(*) FROM purchase_order_items WHERE po_id = po.id), 0) AS line_count
+      COALESCE((SELECT COUNT(*) FROM purchase_order_items WHERE po_id = po.id), 0) AS line_count,
+      (
+        SELECT MAX(il.created_at)
+        FROM inventory_ledger il
+        WHERE il.store_id = po.store_id AND il.ref_type = 'po' AND il.ref_id = CAST(po.id AS TEXT)
+          AND il.shopify_pushed = 1
+      ) AS last_shopify_push_at,
+      COALESCE((
+        SELECT COUNT(*)
+        FROM inventory_ledger il
+        WHERE il.store_id = po.store_id AND il.ref_type = 'po' AND il.ref_id = CAST(po.id AS TEXT)
+          AND il.shopify_pushed = 0
+          AND il.movement_type IN ('PO_RECEIVE', 'PO_RECOUNT_SET', 'PO_EDIT')
+          AND il.id > COALESCE((
+            SELECT MAX(il2.id)
+            FROM inventory_ledger il2
+            WHERE il2.store_id = po.store_id AND il2.ref_type = 'po' AND il2.ref_id = CAST(po.id AS TEXT)
+              AND il2.shopify_pushed = 1 AND il2.movement_type = 'SHOPIFY_PUSH'
+          ), 0)
+      ), 0) AS unpushed_qty_events
     FROM purchase_orders po
     LEFT JOIN suppliers s ON s.id = po.supplier_id
     WHERE po.store_id = ?
@@ -716,10 +735,23 @@ function listPurchaseOrders(storeId) {
     LIMIT 100
   `).all(sid);
 
-  return pos.map(p => ({
-    ...p,
-    remaining_payable: Math.max(0, Math.round(((Number(p.billed_cost) || 0) - (Number(p.paid_amount) || 0)) * 100) / 100),
-  }));
+  return pos.map(p => {
+    let shopifySyncStatus = 'none';
+    if (!p.is_baseline && p.status !== 'cancelled' && (Number(p.total_received_qty) || 0) > 0) {
+      if (p.last_shopify_push_at && (Number(p.unpushed_qty_events) || 0) === 0) {
+        shopifySyncStatus = 'synced';
+      } else if (p.last_shopify_push_at && (Number(p.unpushed_qty_events) || 0) > 0) {
+        shopifySyncStatus = 'needs_resync';
+      } else {
+        shopifySyncStatus = 'not_pushed';
+      }
+    }
+    return {
+      ...p,
+      shopify_sync_status: shopifySyncStatus,
+      remaining_payable: Math.max(0, Math.round(((Number(p.billed_cost) || 0) - (Number(p.paid_amount) || 0)) * 100) / 100),
+    };
+  });
 }
 
 function getPurchaseOrder(storeId, poId) {

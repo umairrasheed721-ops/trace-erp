@@ -1015,7 +1015,7 @@ export default function PoLedgerManager() {
       const j = await res.json()
       if (j.success) {
         addToast(j.message || `${po.po_number} pushed to Shopify`, 'success')
-        await fetchInventory(invSearch)
+        await refreshAll()
       } else {
         addToast(j.error || j.message || 'Shopify push failed', 'error')
       }
@@ -1590,7 +1590,42 @@ export default function PoLedgerManager() {
                           </td>
                           <td style={{ padding: '11px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.order_date}</td>
                           <td style={{ padding: '11px 12px' }}>
-                            <Pill label={p.is_baseline ? 'Baseline' : st.label} color={st.color} bg={st.bg} border={st.border} />
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                              <Pill label={p.is_baseline ? 'Baseline' : st.label} color={st.color} bg={st.bg} border={st.border} />
+                              {p.shopify_sync_status === 'synced' && (
+                                <span
+                                  title={`Synced to Shopify${p.last_shopify_push_at ? ` · ${String(p.last_shopify_push_at).slice(0, 16)}` : ''}`}
+                                  style={{
+                                    fontSize: 10, fontWeight: 800, padding: '1.5px 6px', borderRadius: 99,
+                                    background: 'rgba(16,185,129,0.10)', color: '#047857', border: '1px solid rgba(16,185,129,0.28)',
+                                  }}
+                                >
+                                  ✓ Synced
+                                </span>
+                              )}
+                              {p.shopify_sync_status === 'needs_resync' && (
+                                <span
+                                  title="PO was edited after last Shopify push — click Push to sync latest qty"
+                                  style={{
+                                    fontSize: 10, fontWeight: 800, padding: '1.5px 6px', borderRadius: 99,
+                                    background: 'rgba(245,158,11,0.12)', color: '#b45309', border: '1px solid rgba(245,158,11,0.34)',
+                                  }}
+                                >
+                                  ↻ Re-Push Needed
+                                </span>
+                              )}
+                              {p.shopify_sync_status === 'not_pushed' && (
+                                <span
+                                  title="Saved in ERP Only — click Push whenever ready to sync to Shopify"
+                                  style={{
+                                    fontSize: 10, fontWeight: 700, padding: '1.5px 6px', borderRadius: 99,
+                                    background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)',
+                                  }}
+                                >
+                                  ERP Only
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td style={{ padding: '11px 12px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)', fontWeight: 700 }}>
                             {p.total_received_qty} / {p.total_ordered_qty}
@@ -1680,13 +1715,18 @@ export default function PoLedgerManager() {
                                     type="button"
                                     disabled={busyKey === `pushPo-${p.id}`}
                                     onClick={() => handlePushPoToShopify(p)}
-                                    title="Push exact ERP On-Hand stock of this PO's SKUs to Shopify"
-                                    style={{
+                                    title={p.shopify_sync_status === 'synced'
+                                      ? `Already synced to Shopify (${String(p.last_shopify_push_at || '').slice(0, 16)}) — click to re-push exact On-Hand`
+                                      : 'Push exact ERP On-Hand stock of this PO\'s SKUs to Shopify'}
+                                    style={p.shopify_sync_status === 'synced' ? {
                                       padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
-                                      background: 'rgba(16,185,129,0.10)', color: '#047857', border: '1px solid rgba(16,185,129,0.34)',
+                                      background: 'var(--bg-elevated)', color: '#047857', border: '1px solid rgba(16,185,129,0.30)',
+                                    } : {
+                                      padding: '5px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer',
+                                      background: 'rgba(16,185,129,0.12)', color: '#047857', border: '1px solid rgba(16,185,129,0.38)',
                                     }}
                                   >
-                                    {busyKey === `pushPo-${p.id}` ? '...' : '🚀 Push'}
+                                    {busyKey === `pushPo-${p.id}` ? '...' : (p.shopify_sync_status === 'synced' ? '✓ Re-Push' : '🚀 Push')}
                                   </button>
                                 )}
                                 {!p.is_baseline && p.total_received_qty === 0 && p.status !== 'cancelled' && (
