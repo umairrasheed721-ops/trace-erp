@@ -1,27 +1,51 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { useApp } from './AppContext'
+import { parsePastedSheet } from '../utils/financeParser'
 
 const FinanceContext = createContext(null)
+
+const EMPTY_SUMMARY = {
+  processedCount: 0,
+  ghostCount: 0,
+  auditCount: 0,
+  duplicateCount: 0,
+  varianceCount: 0,
+  errorCount: 0,
+  totalCod: 0,
+  totalCharges: 0,
+  totalNetPayout: 0,
+}
 
 export function FinanceProvider({ children }) {
   const { activeStoreId, addToast } = useApp()
 
   const [pasteData, setPasteData] = useState('')
+  const [uploadFilename, setUploadFilename] = useState('')
   const [masterKey, setMasterKey] = useState('Match by Tracking Number')
   const [syncToShopify, setSyncToShopify] = useState(true)
+  const [allowDuplicates, setAllowDuplicates] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isDryRunResult, setIsDryRunResult] = useState(false)
   const [currentTaskId, setCurrentTaskId] = useState(null)
   const [results, setResults] = useState([])
   const [summary, setSummary] = useState(null)
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
-  
-  // Custom Sync Progress States for Persistence
+
+  // Store Financial Health Overview KPIs
+  const [overview, setOverview] = useState(null)
+  const [loadingOverview, setLoadingOverview] = useState(false)
+
+  // Selected Upload History Session Drilldown
+  const [sessionDetail, setSessionDetail] = useState(null)
+  const [loadingSessionDetail, setLoadingSessionDetail] = useState(false)
+
+  // Custom Sync Progress States
   const [syncTotal, setSyncTotal] = useState(0)
   const [syncProcessed, setSyncProcessed] = useState(0)
+  const abortRef = useRef(false)
 
-  // Clear sync state from localStorage on mount/refresh because the frontend-driven
-  // loop is terminated when the page is reloaded.
+  // Clear stale task keys on reload
   useEffect(() => {
     localStorage.removeItem('ActiveSyncTaskID')
     localStorage.removeItem('sync_is_processing')
@@ -30,25 +54,6 @@ export function FinanceProvider({ children }) {
     localStorage.removeItem('sync_results')
     localStorage.removeItem('sync_summary')
   }, [])
-
-  // Persist sync state to localStorage when active
-  useEffect(() => {
-    if (currentTaskId) {
-      localStorage.setItem('ActiveSyncTaskID', currentTaskId)
-      localStorage.setItem('sync_is_processing', String(isProcessing))
-      localStorage.setItem('sync_processed', String(syncProcessed))
-      localStorage.setItem('sync_total', String(syncTotal))
-      localStorage.setItem('sync_results', JSON.stringify(results))
-      localStorage.setItem('sync_summary', JSON.stringify(summary))
-    } else {
-      localStorage.removeItem('ActiveSyncTaskID')
-      localStorage.removeItem('sync_is_processing')
-      localStorage.removeItem('sync_processed')
-      localStorage.removeItem('sync_total')
-      localStorage.removeItem('sync_results')
-      localStorage.removeItem('sync_summary')
-    }
-  }, [currentTaskId, isProcessing, syncProcessed, syncTotal, results, summary])
 
   // Legacy Repair State
   const [couriers, setCouriers] = useState([])
@@ -65,17 +70,50 @@ export function FinanceProvider({ children }) {
   const [isScanning, setIsScanning] = useState(false)
   const [isHealing, setIsHealing] = useState(false)
 
+  const notify = (msg, type = 'info') => {
+    if (addToast) addToast(msg, type)
+  }
+
+  const fetchOverview = async () => {
+    if (!activeStoreId) return
+    setLoadingOverview(true)
+    try {
+      const res = await fetch(`/api/finance/overview?store_id=${activeStoreId}`)
+      const data = await res.json()
+      if (res.ok && data.success) setOverview(data)
+    } catch (e) {
+      console.error('Failed to fetch finance overview', e)
+    } finally {
+      setLoadingOverview(false)
+    }
+  }
+
   const fetchHistory = async () => {
     if (!activeStoreId) return
     setLoadingHistory(true)
     try {
       const res = await fetch(`/api/finance/reconciliation-history?store_id=${activeStoreId}`)
       const data = await res.json()
-      setHistory(data)
+      setHistory(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error('Failed to fetch history', e)
     } finally {
       setLoadingHistory(false)
+    }
+  }
+
+  const fetchSessionDetail = async (sessionId) => {
+    if (!sessionId) { setSessionDetail(null); return }
+    setLoadingSessionDetail(true)
+    try {
+      const res = await fetch(`/api/finance/reconciliation-session/${sessionId}`)
+      const data = await res.json()
+      if (res.ok && data.success) setSessionDetail(data)
+      else notify(data.error || 'Failed to load session details', 'error')
+    } catch (e) {
+      notify('Network error loading session details', 'error')
+    } finally {
+      setLoadingSessionDetail(false)
     }
   }
 
@@ -84,23 +122,14 @@ export function FinanceProvider({ children }) {
     setCourierSyncing(true)
     try {
       const res = await fetch(`/api/finance/couriers?store_id=${activeStoreId}`)
-      if (!res.ok) {
-        throw new Error('Courier sync failed')
-      }
+      if (!res.ok) throw new Error('Courier sync failed')
       const data = await res.json()
-      if (data && data.success && Array.isArray(data.data)) {
-        setCouriers(data.data)
-      } else if (Array.isArray(data)) {
-        setCouriers(data)
-      } else {
-        setCouriers([])
-      }
+      if (data && data.success && Array.isArray(data.data)) setCouriers(data.data)
+      else if (Array.isArray(data)) setCouriers(data)
+      else setCouriers([])
     } catch (e) {
       console.error('Failed to fetch couriers', e)
       setCouriers([])
-      if (addToast) {
-        addToast('Courier sync failed', 'error')
-      }
     } finally {
       setCourierSyncing(false)
     }
@@ -108,41 +137,24 @@ export function FinanceProvider({ children }) {
 
   useEffect(() => {
     if (activeStoreId) {
+      fetchOverview()
       fetchHistory()
       fetchCouriers()
+      setSessionDetail(null)
     }
   }, [activeStoreId])
 
-  const handleProcess = async () => {
-    if (!activeStoreId) return alert('No active store selected')
-    const lines = pasteData.split('\n').filter(l => l.trim())
-    if (lines.length === 0) return alert('No data pasted')
-
-    const parsedRows = []
-    for (let i = 0; i < lines.length; i++) {
-      const parts = lines[i].split('\t')
-      if (parts.length < 5) continue
-      
-      const orderIdStr = String(parts[0] || '').toLowerCase()
-      if (orderIdStr.includes('order id') || orderIdStr.includes('tracking')) continue
-
-      parsedRows.push({
-        orderId: parts[0] ? parts[0].trim() : '',
-        trackingNumber: parts[1] ? parts[1].trim() : '',
-        type: parts[2] ? parts[2].trim().charAt(0).toUpperCase() : '', // 'D' or 'R'
-        codAmount: parseFloat(parts[3]) || 0,
-        charges: parseFloat(parts[4]) || 0,
-        ref: parts[5] ? parts[5].trim() : '',
-        date: parts[6] ? parts[6].trim() : ''
-      })
+  const executeRowsBatch = async (parsedRows, { dryRun = false, customFilename = null } = {}) => {
+    if (!activeStoreId) { notify('No active store selected', 'error'); return }
+    if (!parsedRows || parsedRows.length === 0) {
+      notify('Could not parse any valid rows. Check 7 columns: Order ID, Tracking, Type (D/R), COD, Charges, CPR, Date.', 'error')
+      return
     }
 
-    if (parsedRows.length === 0) {
-      return alert('Could not parse any valid rows. Please ensure you paste columns: Order ID, Tracking, Type (D/R), COD Amount, Charges, Ref, Date.')
-    }
-
-    const taskId = `task-finance-${Date.now()}`
+    abortRef.current = false
+    const taskId = `${dryRun ? 'dryrun' : 'recon'}-${Date.now()}`
     setIsProcessing(true)
+    setIsDryRunResult(dryRun)
     setCurrentTaskId(taskId)
     setSummary(null)
     setResults([])
@@ -150,62 +162,84 @@ export function FinanceProvider({ children }) {
     setSyncProcessed(0)
 
     try {
-      const CHUNK_SIZE = 10
+      const CHUNK_SIZE = dryRun ? 50 : 10
       const chunks = []
       for (let i = 0; i < parsedRows.length; i += CHUNK_SIZE) {
         chunks.push(parsedRows.slice(i, i + CHUNK_SIZE))
       }
 
       let allResults = []
-      let finalSummary = { processedCount: 0, ghostCount: 0, auditCount: 0 }
+      const finalSummary = { ...EMPTY_SUMMARY }
       let sessionId = null
+      let wasAborted = false
+
+      const labelName = customFilename || uploadFilename || `Pasted Batch (${new Date().toLocaleTimeString()})`
 
       for (let i = 0; i < chunks.length; i++) {
+        if (abortRef.current) {
+          wasAborted = true
+          break
+        }
+
         const payload = {
           store_id: activeStoreId,
           rows: chunks[i],
           masterKey,
-          syncToShopify,
-          filename: `Pasted Batch (${new Date().toLocaleTimeString()})`,
+          syncToShopify: dryRun ? false : syncToShopify,
+          dryRun,
+          allowDuplicates,
+          filename: labelName,
           total_rows: parsedRows.length
         }
-        if (sessionId) {
-          payload.session_id = sessionId
-        }
+        if (sessionId) payload.session_id = sessionId
 
-        const res = await fetch(`/api/finance/bulk-update`, {
+        const res = await fetch('/api/finance/bulk-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         })
-        
+
         let data
         try {
           data = await res.json()
-        } catch (e) {
-          throw new Error(`Batch ${i+1}/${chunks.length} failed: Invalid response (Status: ${res.status}).`)
+        } catch {
+          throw new Error(`Batch ${i + 1}/${chunks.length} failed (HTTP ${res.status})`)
         }
 
         if (data.success) {
-          sessionId = data.sessionId
+          sessionId = data.sessionId || sessionId
           allResults = [...allResults, ...data.results]
-          finalSummary.processedCount += data.summary.processedCount
-          finalSummary.ghostCount += data.summary.ghostCount
-          finalSummary.auditCount += data.summary.auditCount
-          
+          finalSummary.processedCount += data.summary.processedCount || 0
+          finalSummary.ghostCount += data.summary.ghostCount || 0
+          finalSummary.auditCount += data.summary.auditCount || 0
+          finalSummary.duplicateCount += data.summary.duplicateCount || 0
+          finalSummary.varianceCount += data.summary.varianceCount || 0
+          finalSummary.errorCount += data.summary.errorCount || 0
+          finalSummary.totalCod = Math.round((finalSummary.totalCod + (data.summary.totalCod || 0)) * 100) / 100
+          finalSummary.totalCharges = Math.round((finalSummary.totalCharges + (data.summary.totalCharges || 0)) * 100) / 100
+          finalSummary.totalNetPayout = Math.round((finalSummary.totalNetPayout + (data.summary.totalNetPayout || 0)) * 100) / 100
+
           setResults([...allResults])
           setSummary({ ...finalSummary })
           setSyncProcessed(allResults.length)
         } else {
-          throw new Error(`Batch ${i+1}/${chunks.length} Error: ${data.error || 'Unknown'}`)
+          throw new Error(`Batch ${i + 1}/${chunks.length} Error: ${data.error || 'Unknown'}`)
         }
       }
 
-      setPasteData('')
-      fetchHistory()
-      if (addToast) addToast('Payment processing completed!', 'success')
+      if (wasAborted) {
+        notify(`🛑 Batch aborted at ${allResults.length}/${parsedRows.length} rows`, 'info')
+      } else if (dryRun) {
+        notify(`🔍 Dry-Run complete! ${finalSummary.processedCount} ready · ${finalSummary.duplicateCount} duplicates · ${finalSummary.ghostCount} ghosts · ${finalSummary.varianceCount} variances`, 'info')
+      } else {
+        setPasteData('')
+        setUploadFilename('')
+        fetchHistory()
+        fetchOverview()
+        notify(`✅ Reconciliation complete! ${finalSummary.processedCount} processed, Net Rs. ${finalSummary.totalNetPayout.toLocaleString()}`, 'success')
+      }
     } catch (e) {
-      alert('Processing Error: ' + e.message)
+      notify(`❌ Processing Error: ${e.message}`, 'error')
     } finally {
       setIsProcessing(false)
       setCurrentTaskId(null)
@@ -214,33 +248,30 @@ export function FinanceProvider({ children }) {
     }
   }
 
-  const handleUndo = async (sessionId) => {
-    if (!window.confirm('🚨 Are you sure? This will revert all ERP changes for this upload and attempt to CLEAN UP any notes added to Shopify.')) return
-    
-    setIsProcessing(true)
-    try {
-      const res = await fetch(`/api/finance/reconciliation-undo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId })
-      })
-      const data = await res.json()
-      if (data.success) {
-        alert(`✅ Undo Successful! Reverted ${data.count} orders.`)
-        fetchHistory()
-      } else {
-        alert('❌ Undo Failed: ' + data.error)
-      }
-    } catch (e) { 
-      alert('Network Error: ' + e.message) 
-    } finally { 
-      setIsProcessing(false) 
-    }
+  const handleProcess = async () => {
+    const parsed = parsePastedSheet(pasteData)
+    await executeRowsBatch(parsed.rows, { dryRun: false })
   }
 
-  const handleCreateGhost = async (row) => {
+  const handleDryRun = async () => {
+    const parsed = parsePastedSheet(pasteData)
+    await executeRowsBatch(parsed.rows, { dryRun: true })
+  }
+
+  const handleAbort = () => {
+    abortRef.current = true
+    notify('Stopping after current chunk...', 'info')
+  }
+
+  const handleRetryFailed = async () => {
+    const failedRows = results.filter(r => String(r.status || '').includes('❌'))
+    if (failedRows.length === 0) return notify('No failed rows to retry', 'info')
+    await executeRowsBatch(failedRows, { dryRun: false, customFilename: `Retry Failed (${failedRows.length} rows)` })
+  }
+
+  const handleCreateGhost = async (row, silent = false) => {
     try {
-      const res = await fetch(`/api/finance/create-ghost-order`, {
+      const res = await fetch('/api/finance/create-ghost-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,19 +280,119 @@ export function FinanceProvider({ children }) {
           order_id_ref: row.orderId,
           amount: row.codAmount,
           courier_fee: row.charges,
-          date: row.date
+          date: row.date,
+          type: row.type,
+          ref: row.ref,
         })
       })
       const data = await res.json()
       if (data.success) {
-        alert('✅ Ghost Buster: Order created in ERP!')
-        setResults(prev => prev.map(r => r.trackingNumber === row.trackingNumber ? { ...r, status: '✅ Done (Ghost Recovered)' } : r))
+        setResults(prev => prev.map(r =>
+          (r.trackingNumber === row.trackingNumber && r.orderId === row.orderId)
+            ? { ...r, status: '✅ Done (Ghost Recovered)', recommendation: 'Created in ERP' }
+            : r
+        ))
+        if (!silent) {
+          notify(`✅ Ghost order ${row.orderId || row.trackingNumber} recovered in ERP!`, 'success')
+          fetchOverview()
+        }
+        return true
       } else {
-        alert('Error: ' + data.error)
+        if (!silent) notify(data.error || 'Failed to recover ghost order', 'error')
+        return false
       }
-    } catch (e) { 
-      alert('Network Error: ' + e.message) 
+    } catch (e) {
+      if (!silent) notify('Network error: ' + e.message, 'error')
+      return false
     }
+  }
+
+  const handleBulkFixGhosts = async () => {
+    const ghosts = results.filter(r => String(r.status || '').includes('GHOST'))
+    if (ghosts.length === 0) return notify('No ghost orders to recover', 'info')
+    setIsProcessing(true)
+    let ok = 0
+    for (const g of ghosts) {
+      const done = await handleCreateGhost(g, true)
+      if (done) ok++
+    }
+    setIsProcessing(false)
+    fetchOverview()
+    notify(`👻 Recovered ${ok}/${ghosts.length} ghost orders into ERP!`, ok === ghosts.length ? 'success' : 'info')
+  }
+
+  const handleUndo = async (sessionId, skipConfirm = false) => {
+    if (!skipConfirm && !window.confirm('Revert all ERP changes for this upload and clean up Shopify notes?')) return
+    setIsProcessing(true)
+    try {
+      const res = await fetch('/api/finance/reconciliation-undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        notify(`✅ Undo Successful! Reverted ${data.count} orders.`, 'success')
+        if (sessionDetail?.session?.id === sessionId) setSessionDetail(null)
+        fetchHistory()
+        fetchOverview()
+      } else {
+        notify(`❌ Undo Failed: ${data.error}`, 'error')
+      }
+    } catch (e) {
+      notify('Network Error: ' + e.message, 'error')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleRemoveHistory = async (sessionId, skipConfirm = false) => {
+    if (!skipConfirm && !window.confirm('Remove this session from Upload History? Financial ledger entries remain intact.')) return
+    try {
+      const res = await fetch('/api/finance/reconciliation-clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        notify('🗑️ Session entry cleared from history', 'info')
+        if (sessionDetail?.session?.id === sessionId) setSessionDetail(null)
+        fetchHistory()
+      } else {
+        notify('Clear failed: ' + data.error, 'error')
+      }
+    } catch (e) {
+      notify('Network Error: ' + e.message, 'error')
+    }
+  }
+
+  const handleResyncSessionNotes = async (sessionId) => {
+    setIsProcessing(true)
+    try {
+      const res = await fetch('/api/finance/resync-session-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId })
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        notify(`✅ Shopify notes synced: ${data.synced} added, ${data.skipped} already synced${data.failed ? `, ${data.failed} failed` : ''}`, 'success')
+        fetchSessionDetail(sessionId)
+      } else {
+        notify(data.error || 'Failed to sync Shopify notes', 'error')
+      }
+    } catch (e) {
+      notify('Network error syncing notes: ' + e.message, 'error')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const clearResults = () => {
+    setResults([])
+    setSummary(null)
+    setIsDryRunResult(false)
   }
 
   const handleRepair = async () => {
@@ -276,14 +407,15 @@ export function FinanceProvider({ children }) {
       })
       const data = await res.json()
       if (data.success) {
-        const repairData = data.data !== undefined ? data.data : data;
+        const repairData = data.data !== undefined ? data.data : data
         setRepairResult(repairData)
-        if (addToast) addToast(`Repair complete! Healed ${repairData.count || 0} orders.`, 'success')
+        fetchOverview()
+        notify(`✅ Repair complete! Healed ${repairData.count || 0} orders.`, 'success')
       } else {
-        if (addToast) addToast(data.message || data.error || 'Repair failed', 'error')
+        notify(data.message || data.error || 'Repair failed', 'error')
       }
     } catch (e) {
-      if (addToast) addToast('Repair failed: ' + e.message, 'error')
+      notify('Repair failed: ' + e.message, 'error')
     } finally {
       setIsRepairing(false)
     }
@@ -297,14 +429,15 @@ export function FinanceProvider({ children }) {
       const data = await res.json()
       if (Array.isArray(data)) {
         setGhostProducts(data)
-        if (data.length === 0 && addToast) addToast('No products with missing costs found!', 'info')
+        if (data.length === 0) notify('✅ No products with missing costs found!', 'success')
+        else notify(`Found ${data.length} product(s) with missing costs`, 'info')
       } else {
         setGhostProducts([])
-        if (addToast) addToast(data.error || 'Failed to scan products', 'error')
+        notify(data.error || 'Failed to scan products', 'error')
       }
     } catch (e) {
       console.error('Failed to fetch missing products', e)
-      if (addToast) addToast('Failed to fetch product list', 'error')
+      notify('Failed to fetch product list', 'error')
       setGhostProducts([])
     } finally {
       setIsScanning(false)
@@ -322,49 +455,33 @@ export function FinanceProvider({ children }) {
       })
       const data = await res.json()
       if (data.success) {
-        if (addToast) addToast(`Successfully healed ${data.count} orders!`, 'success')
+        notify(`✅ Successfully healed ${data.count} orders!`, 'success')
         setGhostProducts([])
         setProductCosts({})
       } else {
-        if (addToast) addToast(data.error || 'Healing failed', 'error')
+        notify(data.error || 'Healing failed', 'error')
       }
     } catch (e) {
-      if (addToast) addToast('Healing error: ' + e.message, 'error')
+      notify('Healing error: ' + e.message, 'error')
     } finally {
       setIsHealing(false)
-    }
-  }
-
-  const handleRemoveHistory = async (sessionId) => {
-    if (!window.confirm('Are you sure you want to remove this session log? This will only remove the entry from this history list; all financial updates in the ledger remain completely intact.')) return
-    
-    try {
-      const res = await fetch(`/api/finance/reconciliation-clear`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId })
-      })
-      const data = await res.json()
-      if (data.success) {
-        fetchHistory()
-      } else {
-        alert('Clear failed: ' + data.error)
-      }
-    } catch (e) {
-      alert('Network Error: ' + e.message)
     }
   }
 
   return (
     <FinanceContext.Provider value={{
       pasteData, setPasteData,
+      uploadFilename, setUploadFilename,
       masterKey, setMasterKey,
       syncToShopify, setSyncToShopify,
-      isProcessing, currentTaskId,
+      allowDuplicates, setAllowDuplicates,
+      isProcessing, isDryRunResult, currentTaskId,
       results, setResults,
       summary, setSummary,
       history, setHistory,
       loadingHistory, fetchHistory,
+      overview, loadingOverview, fetchOverview,
+      sessionDetail, loadingSessionDetail, fetchSessionDetail, handleResyncSessionNotes,
       couriers, selectedCourier, setSelectedCourier,
       daysOld, setDaysOld,
       isRepairing, isCourierSyncing, repairResult, setRepairResult,
@@ -372,7 +489,8 @@ export function FinanceProvider({ children }) {
       ghostProducts, setGhostProducts,
       productCosts, setProductCosts,
       isScanning, isHealing,
-      handleProcess, handleUndo, handleCreateGhost,
+      handleProcess, handleDryRun, handleAbort, handleRetryFailed,
+      handleUndo, handleCreateGhost, handleBulkFixGhosts, clearResults,
       handleRepair, fetchMissingProducts, applyBulkCosts,
       syncTotal, setSyncTotal,
       syncProcessed, setSyncProcessed,

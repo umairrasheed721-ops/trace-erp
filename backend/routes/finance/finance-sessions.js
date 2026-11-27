@@ -12,10 +12,38 @@ const {
 const asyncHandler = require('../../middleware/async');
 const FinanceService = require('../../services/FinanceService');
 
+const PAYMENT_VARIANCE_TOLERANCE = 0.9; // Rule 22: Rs 0.9 tolerance for COD shortfall/surplus
+const SHOPIFY_CAPTURE_TOLERANCE = 10.0; // Rs 10 capture rounding allowance
+
+function parseAmount(val) {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (val === null || val === undefined) return 0;
+  const cleaned = String(val)
+    .replace(/rs\.?|pkr/gi, '')
+    .replace(/,/g, '')
+    .replace(/\s+/g, '')
+    .replace(/^\((.*)\)$/, '-$1')
+    .trim();
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function formatDate(dStr) {
   if (!dStr) return '';
-  const d = new Date(dStr);
-  return isNaN(d) ? dStr : d.toISOString().split('T')[0];
+  const raw = String(dStr).trim();
+  // Support Pakistani DD/MM/YYYY or DD-MM-YYYY explicitly to prevent month/day inversion
+  const pkMatch = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (pkMatch) {
+    const day = Number(pkMatch[1]);
+    const month = Number(pkMatch[2]);
+    let year = Number(pkMatch[3]);
+    if (year < 100) year += 2000;
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+  const d = new Date(raw);
+  return isNaN(d) ? raw : d.toISOString().split('T')[0];
 }
 
 function getOrderMatchingCandidates(rawId) {
@@ -126,8 +154,63 @@ router.get('/ghost-product-orders', (req, res) => {
 });
 
 // POST /api/finance/bulk-update
+// GET /api/finance/overview?store_id=1 — Lightweight Store Financial Health KPIs
+router.get('/overview', (req, res) => {
+  const storeId = Number(req.query.store_id) || 1;
+  try {
+    const unpaid = db.prepare(`
+      SELECT COUNT(*) as cnt, COALESCE(SUM(price), 0) as total
+      FROM orders
+      WHERE store_id = ?
+        AND LOWER(delivery_status) = 'delivered'
+        AND (payment_status IS NULL OR LOWER(payment_status) != 'paid' OR COALESCE(paid_amount, 0) <= 0)
+    `).get(storeId);
+
+    const variance = db.prepare(`
+      SELECT COUNT(*) as cnt, COALESCE(SUM(price - COALESCE(paid_amount, 0)), 0) as net_diff
+      FROM orders
+      WHERE store_id = ?
+        AND LOWER(delivery_status) = 'delivered'
+        AND COALESCE(paid_amount, 0) > 0
+        AND ABS(COALESCE(price, 0) - COALESCE(paid_amount, 0)) > ?
+    `).get(storeId, PAYMENT_VARIANCE_TOLERANCE);
+
+    const recent30d = db.prepare(`
+      SELECT COUNT(*) as cnt,
+             COALESCE(SUM(COALESCE(paid_amount, 0)), 0) as cod_total,
+             COALESCE(SUM(COALESCE(courier_fee, 0)), 0) as fee_total
+      FROM orders
+      WHERE store_id = ?
+        AND payment_date >= date('now', '-30 days')
+        AND (COALESCE(paid_amount, 0) > 0 OR COALESCE(courier_fee, 0) > 0)
+    `).get(storeId);
+
+    const sessions = db.prepare(`
+      SELECT COUNT(*) as cnt, MAX(created_at) as last_at
+      FROM recon_sessions
+      WHERE store_id = ?
+    `).get(storeId);
+
+    res.json({
+      success: true,
+      unpaid_delivered_count: unpaid?.cnt || 0,
+      unpaid_delivered_value: Math.round((unpaid?.total || 0) * 100) / 100,
+      variance_count: variance?.cnt || 0,
+      variance_net_diff: Math.round((variance?.net_diff || 0) * 100) / 100,
+      reconciled_30d_orders: recent30d?.cnt || 0,
+      reconciled_30d_cod: Math.round((recent30d?.cod_total || 0) * 100) / 100,
+      reconciled_30d_fees: Math.round((recent30d?.fee_total || 0) * 100) / 100,
+      total_sessions: sessions?.cnt || 0,
+      last_reconciled_at: sessions?.last_at || null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/finance/bulk-update — Supports dryRun preview, Rule 25 duplicate protection, Rule 22 variance check & tracking mismatch audit
 router.post('/bulk-update', async (req, res) => {
-  const { store_id, rows, masterKey, syncToShopify, session_id } = req.body;
+  const { store_id, rows, masterKey, syncToShopify, session_id, dryRun = false, allowDuplicates = false } = req.body;
   if (!store_id || !rows || !Array.isArray(rows)) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
@@ -140,10 +223,18 @@ router.post('/bulk-update', async (req, res) => {
     let ghostCount = 0;
     let auditCount = 0;
     let processedCount = 0;
+    let duplicateCount = 0;
+    let varianceCount = 0;
+    let errorCount = 0;
+    let totalCod = 0;
+    let totalCharges = 0;
+    let totalNetPayout = 0;
 
-    let sessionId = session_id;
-    if (!sessionId) {
-      const sessionResult = db.prepare('INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify) VALUES (?, ?, ?, ?)').run(store_id, req.body.filename || 'Manual Upload', req.body.total_rows || rows.length, syncToShopify ? 1 : 0);
+    let sessionId = session_id || null;
+    if (!dryRun && !sessionId) {
+      const sessionResult = db.prepare(
+        'INSERT INTO recon_sessions (store_id, filename, row_count, sync_to_shopify, processed_count, ghost_count, audit_count) VALUES (?, ?, ?, ?, 0, 0, 0)'
+      ).run(store_id, req.body.filename || 'Manual Upload', req.body.total_rows || rows.length, syncToShopify ? 1 : 0);
       sessionId = sessionResult.lastInsertRowid;
     }
 
@@ -156,7 +247,7 @@ router.post('/bulk-update', async (req, res) => {
       let order = null;
       if (masterKey === "Match by Tracking Number") {
         if (inputTrack) {
-          order = db.prepare('SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, \' \', \'\')) = ?').get(store_id, inputTrack);
+          order = db.prepare("SELECT * FROM orders WHERE store_id = ? AND LOWER(REPLACE(tracking_number, ' ', '')) = ?").get(store_id, inputTrack);
         }
         if (!order && rawOrderVal) {
           const candidates = getOrderMatchingCandidates(rawOrderVal);
@@ -184,13 +275,20 @@ router.post('/bulk-update', async (req, res) => {
       }
 
       if (!order) {
-        results.push({ ...row, status: '🛑 GHOST: Not in Database', recommendation: 'Manual Search Required', netPayout: 0 });
+        results.push({
+          ...row,
+          codAmount: parseAmount(row.codAmount),
+          charges: parseAmount(row.charges),
+          status: '🛑 GHOST: Not in Database',
+          recommendation: 'Order not found in ERP — click Fix Ghost Order or check Store selector',
+          netPayout: 0,
+        });
         ghostCount++;
         continue;
       }
 
       if (!ordersToProcess[order.id]) {
-        ordersToProcess[order.id] = { order, rows: [], notes: [] };
+        ordersToProcess[order.id] = { order, rows: [] };
       }
       ordersToProcess[order.id].rows.push(row);
     }
@@ -198,17 +296,57 @@ router.post('/bulk-update', async (req, res) => {
     for (const orderIdKey in ordersToProcess) {
       const { order, rows: orderRows } = ordersToProcess[orderIdKey];
       const combinedNotes = [];
-      
+
       for (const row of orderRows) {
-        const type = String(row.type || '').toUpperCase().trim();
-        const amount = parseFloat(row.codAmount) || 0;
-        const charges = parseFloat(row.charges) || 0;
+        const type = String(row.type || '').toUpperCase().trim().charAt(0);
+        const amount = parseAmount(row.codAmount);
+        const charges = parseAmount(row.charges);
         const ref = String(row.ref || '').trim();
         const dateStr = formatDate(row.date);
 
+        // Tracking mismatch audit check
+        const inputTrackNorm = String(row.trackingNumber || '').toLowerCase().replace(/\s+/g, '');
+        const dbTrackNorm = String(order.tracking_number || '').toLowerCase().replace(/\s+/g, '');
+        const trackingMismatch = Boolean(inputTrackNorm && dbTrackNorm && inputTrackNorm !== dbTrackNorm);
+        if (trackingMismatch) auditCount++;
+
+        // Rule 25: Strict Duplicate Prevention Check (cpr_reference OR order_id + payment_date)
+        if (!allowDuplicates) {
+          let dupReason = null;
+          if (ref) {
+            const existingLog = db.prepare(
+              'SELECT id, session_id FROM recon_logs WHERE order_id = ? AND cpr_reference = ? LIMIT 1'
+            ).get(order.id, ref);
+            if (existingLog || (order.payment_ref && String(order.payment_ref).trim() === ref)) {
+              dupReason = `Already reconciled under Ref "${ref}"`;
+            }
+          } else if (dateStr && type === 'D' && order.payment_date === dateStr && (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted')) {
+            dupReason = `Already marked Paid on ${dateStr}`;
+          }
+
+          if (dupReason) {
+            duplicateCount++;
+            results.push({
+              ...row,
+              dbOrderId: order.id,
+              orderRef: order.ref_number || order.shopify_order_id,
+              dbTracking: order.tracking_number || '',
+              trackingMismatch,
+              codAmount: amount,
+              charges,
+              courierName: order.courier,
+              orderPrice: order.price || 0,
+              isDuplicate: true,
+              status: '🔁 Duplicate (Skipped)',
+              recommendation: `${dupReason} — skipped to prevent double entry`,
+              netPayout: 0,
+            });
+            continue;
+          }
+        }
+
         const chargesTrick = order.courier_fee || 0;
-        // Sheet fee (charges) parsed from courier payouts already includes shipping + GST + WHT (2% + 2%)
-        const taxAddOn = 0; 
+        const taxAddOn = 0;
         const finalCharges = charges > 0 ? charges : chargesTrick;
 
         // 📊 Taxes Breakdown Engine (Freight + 15% GST + 4% WHT)
@@ -216,6 +354,12 @@ router.post('/bulk-update', async (req, res) => {
         const freightAndGst = charges > whtBreakdown ? charges - whtBreakdown : 0;
         const freightBreakdown = Math.round((freightAndGst / 1.15) * 100) / 100;
         const gstBreakdown = Math.round((freightAndGst - freightBreakdown) * 100) / 100;
+
+        // Rule 22: COD Variance Check (ABS(price - paid_amount) > 0.9 PKR)
+        const orderPrice = Number(order.price) || 0;
+        const variance = type === 'D' ? Math.round((amount - orderPrice) * 100) / 100 : 0;
+        const hasVariance = type === 'D' && orderPrice > 0 && Math.abs(variance) > PAYMENT_VARIANCE_TOLERANCE;
+        if (hasVariance) varianceCount++;
 
         const logData = {
           session_id: sessionId,
@@ -230,16 +374,50 @@ router.post('/bulk-update', async (req, res) => {
         };
 
         if (type === 'D') {
+          if (dryRun) {
+            const netPayout = Math.round((amount - charges) * 100) / 100;
+            totalCod += amount;
+            totalCharges += charges;
+            totalNetPayout += netPayout;
+            processedCount++;
+            results.push({
+              ...row,
+              dbOrderId: order.id,
+              orderRef: order.ref_number || order.shopify_order_id,
+              dbTracking: order.tracking_number || '',
+              trackingMismatch,
+              codAmount: amount,
+              charges,
+              orderPrice,
+              variance,
+              hasVariance,
+              status: hasVariance ? '⚠️ Preview (Variance)' : '🔍 Preview Ready',
+              recommendation: hasVariance
+                ? `COD ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()} (Order Rs. ${orderPrice.toLocaleString()} vs Sheet Rs. ${amount.toLocaleString()})`
+                : 'Ready to mark Delivered & Paid',
+              netPayout,
+              courierName: order.courier,
+              balance: Math.max(0, orderPrice - (order.paid_amount || 0)),
+              chargesTrick,
+              taxAddOn,
+              finalCharges,
+              freightBreakdown,
+              gstBreakdown,
+              whtBreakdown,
+            });
+            continue;
+          }
+
           try {
             let balance = 0;
-            let alreadyPaidInERP = (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted');
-            
+            const alreadyPaidInERP = (order.payment_status === 'Paid' || order.payment_status === 'Payment Posted');
+
             if (syncToShopify) {
               const financials = await getShopifyFinancials(store, order.shopify_order_id);
               balance = Math.round((financials.total_price - financials.total_received) * 100) / 100;
             }
 
-            const isWithinTolerance = syncToShopify && !alreadyPaidInERP && Math.abs(balance - amount) <= 10.0 && amount > 0;
+            const isWithinTolerance = syncToShopify && !alreadyPaidInERP && Math.abs(balance - amount) <= SHOPIFY_CAPTURE_TOLERANCE && amount > 0;
             const shouldCapture = syncToShopify && !alreadyPaidInERP && (amount <= balance || isWithinTolerance) && amount > 0;
 
             if (shouldCapture) {
@@ -248,7 +426,6 @@ router.post('/bulk-update', async (req, res) => {
             }
 
             if (syncToShopify) {
-              // 🛍️ Auto-Mark Order as Delivered on Shopify Admin
               try {
                 const targetOrdId = order.shopify_order_id || order.ref_number || order.id;
                 await markShopifyOrderDelivered(store, targetOrdId);
@@ -256,10 +433,9 @@ router.post('/bulk-update', async (req, res) => {
                 console.warn(`[finance-sessions] Mark as delivered failed for ${order.shopify_order_id || order.ref_number}:`, mErr.message);
               }
 
-              const feeNote = charges > 0 ? ` | Charges: ${charges}` : '';
-              const netAmt = charges > 0 ? Math.round((amount - charges) * 100) / 100 : amount;
-              const netNote = charges > 0 ? ` | Net: ${netAmt}` : '';
-              combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount}${feeNote}${netNote}`);
+              // Rule 23 Standard Delivered Shopify Note Format
+              const netAmt = Math.round((amount - charges) * 100) / 100;
+              combinedNotes.push(` | 💰 COD Rec: ${dateStr} | Ref: ${ref} | Amt: ${amount} | Charges: ${charges} | Net: ${netAmt}`);
             }
 
             let finalCourierFee = charges;
@@ -278,26 +454,80 @@ router.post('/bulk-update', async (req, res) => {
                   cost_locked = 1 
               WHERE id = ?
             `).run(finalCourierFee, ref, amount, dateStr, order.id);
-              
-            const rec = !syncToShopify ? "✅ ERP Recorded" : (shouldCapture ? "✅ Full Sync" : "✅ ERP Updated (Shopify Skipped)");
-            results.push({ ...row, status: '✅ Done', recommendation: rec, netPayout: amount - charges, courierName: order.courier, balance, chargesTrick, taxAddOn, finalCharges, freightBreakdown, gstBreakdown, whtBreakdown });
+
+            const netPayout = Math.round((amount - charges) * 100) / 100;
+            totalCod += amount;
+            totalCharges += charges;
+            totalNetPayout += netPayout;
+
+            let rec = !syncToShopify ? '✅ ERP Recorded' : (shouldCapture ? '✅ Full Sync' : '✅ ERP Updated (Shopify Skipped)');
+            if (hasVariance) {
+              rec += ` · ${variance < 0 ? 'Shortfall' : 'Surplus'} Rs. ${Math.abs(variance).toLocaleString()}`;
+            }
+
+            results.push({
+              ...row,
+              dbOrderId: order.id,
+              orderRef: order.ref_number || order.shopify_order_id,
+              dbTracking: order.tracking_number || '',
+              trackingMismatch,
+              codAmount: amount,
+              charges,
+              orderPrice,
+              variance,
+              hasVariance,
+              status: hasVariance ? '⚠️ Done (Variance)' : '✅ Done',
+              recommendation: rec,
+              netPayout,
+              courierName: order.courier,
+              balance,
+              chargesTrick,
+              taxAddOn,
+              finalCharges,
+              freightBreakdown,
+              gstBreakdown,
+              whtBreakdown,
+            });
             processedCount++;
 
             db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date, cpr_reference) VALUES (?,?,?,?,?,?,?,?,?)`)
               .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date, ref || null);
-            
           } catch (e) {
-            results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
+            errorCount++;
+            results.push({ ...row, dbOrderId: order.id, orderRef: order.ref_number || order.shopify_order_id, codAmount: amount, charges, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
           }
         } else if (type === 'R') {
+          if (dryRun) {
+            const netPayout = Math.round((-charges) * 100) / 100;
+            totalCharges += charges;
+            totalNetPayout += netPayout;
+            processedCount++;
+            results.push({
+              ...row,
+              dbOrderId: order.id,
+              orderRef: order.ref_number || order.shopify_order_id,
+              dbTracking: order.tracking_number || '',
+              trackingMismatch,
+              codAmount: amount,
+              charges,
+              orderPrice,
+              status: '🔍 Preview Ready',
+              recommendation: 'Ready to record Return Fee',
+              netPayout,
+              courierName: order.courier,
+              chargesTrick,
+              taxAddOn,
+              finalCharges,
+            });
+            continue;
+          }
+
           try {
             const isAlreadyDelivered = ['delivered', 'return received'].includes((order.delivery_status || '').toLowerCase());
             if (syncToShopify && !isAlreadyDelivered) {
-              // Only add "Return Charged" note if the order is genuinely in a return state,
-              // NOT if it is already "Delivered" (same tracking re-used in courier billing sheet)
-              combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Fee: ${charges}`);
+              // Rule 23 Standard Return Shopify Note Format
+              combinedNotes.push(` | ↩️ Return Charged: ${dateStr} | Ref: ${ref} | Charges: ${charges}`);
             }
-            // If already Delivered, we silently record the courier fee only (no status change, no misleading Shopify note)
 
             let finalCourierFee = charges;
             if (order.courier_fee > 0 && (order.courier === 'TCS' || order.courier === 'Leopards' || order.courier === 'LCS' || String(order.courier).toLowerCase().includes('insta'))) {
@@ -309,24 +539,48 @@ router.post('/bulk-update', async (req, res) => {
               SET delivery_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN delivery_status ELSE 'Returned' END,
                   courier_fee = ?,
                   payment_status = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN payment_status ELSE 'Returned' END,
-                  paid_amount = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN paid_amount ELSE 0 END
+                  paid_amount = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN paid_amount ELSE 0 END,
+                  payment_ref = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN payment_ref ELSE COALESCE(NULLIF(?, ''), payment_ref) END,
+                  payment_date = CASE WHEN LOWER(delivery_status) IN ('return received', 'delivered', 'cancelled') THEN payment_date ELSE COALESCE(NULLIF(?, ''), payment_date) END
               WHERE id = ?
-            `).run(finalCourierFee, order.id);
-            
-            results.push({ ...row, status: '✅ Done', recommendation: 'Return Fee Recorded', netPayout: -charges, courierName: order.courier, chargesTrick, taxAddOn, finalCharges });
+            `).run(finalCourierFee, ref, dateStr, order.id);
+
+            const netPayout = Math.round((-charges) * 100) / 100;
+            totalCharges += charges;
+            totalNetPayout += netPayout;
+
+            results.push({
+              ...row,
+              dbOrderId: order.id,
+              orderRef: order.ref_number || order.shopify_order_id,
+              dbTracking: order.tracking_number || '',
+              trackingMismatch,
+              codAmount: amount,
+              charges,
+              orderPrice,
+              status: '✅ Done',
+              recommendation: isAlreadyDelivered ? 'Return Fee Recorded (Kept Delivered Status)' : 'Return Fee & Ref Recorded',
+              netPayout,
+              courierName: order.courier,
+              chargesTrick,
+              taxAddOn,
+              finalCharges,
+            });
             processedCount++;
 
             db.prepare(`INSERT INTO recon_logs (session_id, order_id, old_delivery_status, old_payment_status, old_courier_fee, old_paid_amount, old_payment_ref, old_payment_date, cpr_reference) VALUES (?,?,?,?,?,?,?,?,?)`)
               .run(sessionId, order.id, logData.old_delivery_status, logData.old_payment_status, logData.old_courier_fee, logData.old_paid_amount, logData.old_payment_ref, logData.old_payment_date, ref || null);
           } catch (e) {
-            results.push({ ...row, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
+            errorCount++;
+            results.push({ ...row, dbOrderId: order.id, orderRef: order.ref_number || order.shopify_order_id, codAmount: amount, charges, status: '❌ API Error', recommendation: e.message, netPayout: 0 });
           }
         } else {
-          results.push({ ...row, status: '⚠️ Invalid Type', recommendation: "Use 'D' or 'R'" });
+          errorCount++;
+          results.push({ ...row, dbOrderId: order.id, orderRef: order.ref_number || order.shopify_order_id, codAmount: amount, charges, status: '⚠️ Invalid Type', recommendation: "Use 'D' (Delivered) or 'R' (Returned)", netPayout: 0 });
         }
       }
 
-      if (syncToShopify && combinedNotes.length > 0) {
+      if (!dryRun && syncToShopify && combinedNotes.length > 0) {
         try {
           const addedNote = await appendShopifyNote(store, order.shopify_order_id, combinedNotes.join('\n'));
           if (addedNote) {
@@ -338,28 +592,160 @@ router.post('/bulk-update', async (req, res) => {
       }
     }
 
-    res.json({ success: true, sessionId, results, summary: { processedCount, ghostCount, auditCount } });
+    // Update running session totals across chunks
+    if (!dryRun && sessionId) {
+      db.prepare(`
+        UPDATE recon_sessions
+        SET processed_count = COALESCE(processed_count, 0) + ?,
+            ghost_count = COALESCE(ghost_count, 0) + ?,
+            audit_count = COALESCE(audit_count, 0) + ?
+        WHERE id = ?
+      `).run(processedCount, ghostCount, auditCount, sessionId);
+    }
+
+    res.json({
+      success: true,
+      dryRun: !!dryRun,
+      sessionId,
+      results,
+      summary: {
+        processedCount,
+        ghostCount,
+        auditCount,
+        duplicateCount,
+        varianceCount,
+        errorCount,
+        totalCod: Math.round(totalCod * 100) / 100,
+        totalCharges: Math.round(totalCharges * 100) / 100,
+        totalNetPayout: Math.round(totalNetPayout * 100) / 100,
+      }
+    });
   } catch (err) {
     console.error('Finance Bulk Update Error:', err);
     res.status(500).json({ error: 'Internal Server Error: ' + err.message });
   }
 });
 
-// GET /api/finance/reconciliation-history?store_id=1
+// GET /api/finance/reconciliation-history?store_id=1 (enriched with financial totals per session)
 router.get('/reconciliation-history', (req, res) => {
   const { store_id } = req.query;
   if (!store_id) return res.status(400).json({ error: 'store_id required' });
-  const history = db.prepare(`
-    SELECT rs.*, 
-      (SELECT GROUP_CONCAT(DISTINCT cpr_reference) 
-       FROM recon_logs 
-       WHERE session_id = rs.id AND cpr_reference IS NOT NULL AND cpr_reference != '') as cpr_references
-    FROM recon_sessions rs
-    WHERE rs.store_id = ? 
-    ORDER BY rs.created_at DESC 
-    LIMIT 50
-  `).all(Number(store_id));
-  res.json(history);
+  try {
+    const history = db.prepare(`
+      SELECT rs.*,
+        (SELECT GROUP_CONCAT(DISTINCT cpr_reference)
+         FROM recon_logs
+         WHERE session_id = rs.id AND cpr_reference IS NOT NULL AND cpr_reference != '') as cpr_references,
+        (SELECT COUNT(*) FROM recon_logs WHERE session_id = rs.id) as log_count,
+        (SELECT COALESCE(SUM(COALESCE(o.paid_amount, 0)), 0)
+         FROM recon_logs rl JOIN orders o ON o.id = rl.order_id
+         WHERE rl.session_id = rs.id) as total_cod,
+        (SELECT COALESCE(SUM(COALESCE(o.courier_fee, 0)), 0)
+         FROM recon_logs rl JOIN orders o ON o.id = rl.order_id
+         WHERE rl.session_id = rs.id) as total_fees
+      FROM recon_sessions rs
+      WHERE rs.store_id = ?
+      ORDER BY rs.created_at DESC
+      LIMIT 60
+    `).all(Number(store_id));
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/finance/reconciliation-session/:sessionId — Full Order Drilldown for Upload History
+router.get('/reconciliation-session/:sessionId', (req, res) => {
+  try {
+    const session = db.prepare('SELECT * FROM recon_sessions WHERE id = ?').get(Number(req.params.sessionId));
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    const items = db.prepare(`
+      SELECT rl.id as log_id, rl.order_id, rl.cpr_reference, rl.shopify_note_added,
+             rl.old_delivery_status, rl.old_payment_status, rl.old_paid_amount, rl.old_courier_fee,
+             o.ref_number, o.shopify_order_id, o.tracking_number, o.customer_name, o.courier,
+             o.price, o.paid_amount, o.courier_fee, o.delivery_status, o.payment_status,
+             o.payment_ref, o.payment_date
+      FROM recon_logs rl
+      LEFT JOIN orders o ON o.id = rl.order_id
+      WHERE rl.session_id = ?
+      ORDER BY rl.id DESC
+    `).all(Number(req.params.sessionId));
+
+    let totalCod = 0, totalFees = 0, deliveredCount = 0, returnedCount = 0;
+    for (const it of items) {
+      const paid = Number(it.paid_amount) || 0;
+      const fee = Number(it.courier_fee) || 0;
+      totalCod += paid;
+      totalFees += fee;
+      if ((it.delivery_status || '').toLowerCase() === 'delivered') deliveredCount++;
+      else if ((it.delivery_status || '').toLowerCase().includes('return')) returnedCount++;
+    }
+
+    res.json({
+      success: true,
+      session,
+      items,
+      totals: {
+        count: items.length,
+        deliveredCount,
+        returnedCount,
+        totalCod: Math.round(totalCod * 100) / 100,
+        totalFees: Math.round(totalFees * 100) / 100,
+        netPayout: Math.round((totalCod - totalFees) * 100) / 100,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/finance/resync-session-notes — Re-append missing Rule 23 Shopify notes for a past session
+router.post('/resync-session-notes', async (req, res) => {
+  const { session_id } = req.body || {};
+  if (!session_id) return res.status(400).json({ success: false, error: 'session_id required' });
+  try {
+    const session = db.prepare('SELECT * FROM recon_sessions WHERE id = ?').get(Number(session_id));
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+    const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(session.store_id);
+    if (!store || !store.access_token || store.access_token === 'PENDING') {
+      return res.status(400).json({ success: false, error: 'Store missing valid Shopify token' });
+    }
+
+    const logs = db.prepare(`
+      SELECT rl.id as log_id, rl.order_id, rl.cpr_reference, rl.shopify_note_added,
+             o.shopify_order_id, o.delivery_status, o.paid_amount, o.courier_fee, o.payment_ref, o.payment_date
+      FROM recon_logs rl
+      JOIN orders o ON o.id = rl.order_id
+      WHERE rl.session_id = ?
+    `).all(Number(session_id));
+
+    let synced = 0, skipped = 0, failed = 0;
+    for (const row of logs) {
+      if (row.shopify_note_added || !row.shopify_order_id) { skipped++; continue; }
+      const isRet = (row.delivery_status || '').toLowerCase().includes('return');
+      const amt = Number(row.paid_amount) || 0;
+      const fee = Number(row.courier_fee) || 0;
+      const ref = row.cpr_reference || row.payment_ref || '';
+      const dt = row.payment_date || new Date().toISOString().split('T')[0];
+      const noteLine = isRet
+        ? ` | ↩️ Return Charged: ${dt} | Ref: ${ref} | Charges: ${fee}`
+        : ` | 💰 COD Rec: ${dt} | Ref: ${ref} | Amt: ${amt} | Charges: ${fee} | Net: ${Math.round((amt - fee) * 100) / 100}`;
+      try {
+        const added = await appendShopifyNote(store, row.shopify_order_id, noteLine);
+        if (added) {
+          db.prepare('UPDATE recon_logs SET shopify_note_added = ? WHERE id = ?').run(added, row.log_id);
+          synced++;
+        } else skipped++;
+      } catch (_) {
+        failed++;
+      }
+    }
+
+    res.json({ success: true, synced, skipped, failed });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // POST /api/finance/reconciliation-undo
@@ -414,36 +800,48 @@ router.post('/reconciliation-clear', (req, res) => {
 
 // POST /api/finance/create-ghost-order
 router.post('/create-ghost-order', async (req, res) => {
-  const { store_id, tracking_number, order_id_ref, amount, courier_fee, date } = req.body;
-  if (!store_id || !tracking_number) return res.status(400).json({ error: 'store_id and tracking_number required' });
+  const { store_id, tracking_number, order_id_ref, amount, courier_fee, date, type, ref } = req.body;
+  if (!store_id || (!tracking_number && !order_id_ref)) {
+    return res.status(400).json({ error: 'store_id and tracking_number (or order_id_ref) required' });
+  }
 
   try {
-    const existing = db.prepare('SELECT id FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, tracking_number);
-    if (existing) return res.json({ success: true, message: 'Already exists' });
+    const cleanTrack = String(tracking_number || '').trim();
+    const cleanRef = String(order_id_ref || '').trim();
+    if (cleanTrack) {
+      const existing = db.prepare('SELECT id FROM orders WHERE store_id = ? AND tracking_number = ?').get(store_id, cleanTrack);
+      if (existing) return res.json({ success: true, message: 'Already exists', order_id: existing.id });
+    }
 
-    db.prepare(`
+    const isReturn = String(type || 'D').toUpperCase().startsWith('R');
+    const cleanAmount = parseAmount(amount);
+    const cleanFee = parseAmount(courier_fee);
+    const cleanDate = formatDate(date) || new Date().toISOString().split('T')[0];
+
+    const result = db.prepare(`
       INSERT INTO orders (
-        store_id, shopify_order_id, ref_number, customer_name, order_date, 
-        price, tracking_number, delivery_status, payment_status, 
-        courier_fee, paid_amount, payment_date, order_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        store_id, shopify_order_id, ref_number, customer_name, order_date,
+        price, tracking_number, delivery_status, payment_status,
+        courier_fee, paid_amount, payment_ref, payment_date, order_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      store_id, 
-      order_id_ref || ('GHOST-' + Date.now()), 
-      order_id_ref || 'GHOST',
+      store_id,
+      cleanRef || ('GHOST-' + Date.now() + '-' + Math.floor(Math.random() * 1000)),
+      cleanRef || 'GHOST',
       'GHOST CUSTOMER',
-      date || new Date().toISOString().split('T')[0],
-      amount,
-      tracking_number,
-      'Delivered',
-      'Paid',
-      courier_fee || 0,
-      amount,
-      date || new Date().toISOString().split('T')[0],
+      cleanDate,
+      cleanAmount,
+      cleanTrack,
+      isReturn ? 'Returned' : 'Delivered',
+      isReturn ? 'Returned' : 'Paid',
+      cleanFee,
+      isReturn ? 0 : cleanAmount,
+      String(ref || '').trim() || null,
+      cleanDate,
       'Manual / Ghost'
     );
 
-    res.json({ success: true });
+    res.json({ success: true, order_id: result.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
