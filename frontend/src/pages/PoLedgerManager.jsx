@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import GhostSkuGuide from '../components/GhostSkuGuide'
+import CommittedOrdersModal from '../components/CommittedOrdersModal'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -234,6 +235,7 @@ export default function PoLedgerManager() {
 
   const [adjustModal, setAdjustModal] = useState(null) // { item, qty_delta, movement_type, notes, pushToShopify }
   const [poolModal, setPoolModal] = useState(null)     // { item, shared_pool_key }
+  const [committedModal, setCommittedModal] = useState({ open: false, loading: false, data: null })
   const [guideOpen, setGuideOpen] = useState(false)
 
   const headers = useMemo(() => ({
@@ -1047,6 +1049,28 @@ export default function PoLedgerManager() {
       addToast('Shopify sync request failed', 'error')
     } finally {
       setBusyKey('')
+    }
+  }
+
+  const openCommittedOrdersModal = async (productCostIds, titleLabel = '') => {
+    const cleanIds = [...new Set((productCostIds || []).map(Number).filter(Boolean))]
+    if (cleanIds.length === 0) return
+    setCommittedModal({ open: true, loading: true, data: { title: titleLabel, orders: [] } })
+    try {
+      const params = new URLSearchParams()
+      if (activeStoreId) params.set('store_id', activeStoreId)
+      params.set('product_cost_ids', cleanIds.join(','))
+      const res = await fetch(`${API}/api/po-ledger/inventory/committed-orders?${params}`, { headers })
+      const j = await res.json()
+      if (j.success) {
+        setCommittedModal({ open: true, loading: false, data: { ...j.data, title: titleLabel || j.data?.title } })
+      } else {
+        addToast(j.error || 'Failed to load committed orders', 'error')
+        setCommittedModal({ open: false, loading: false, data: null })
+      }
+    } catch (_) {
+      addToast('Failed to fetch committed orders', 'error')
+      setCommittedModal({ open: false, loading: false, data: null })
     }
   }
 
@@ -2443,11 +2467,19 @@ export default function PoLedgerManager() {
                                 {group.totalQty}
                               </span>
                             </td>
-                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                               {group.totalCommitted > 0 ? (
-                                <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309', border: '1px solid rgba(245,158,11,0.30)' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => openCommittedOrdersModal(group.variants.map(v => v.id), group.parentTitle)}
+                                  title={`Click to view orders holding ${group.totalCommitted} committed unit(s) of ${group.parentTitle}`}
+                                  style={{
+                                    padding: '2px 7px', borderRadius: 99, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                                    background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.42)',
+                                  }}
+                                >
                                   {group.totalCommitted}
-                                </span>
+                                </button>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                               )}
@@ -2564,9 +2596,17 @@ export default function PoLedgerManager() {
                                 </td>
                                 <td style={{ padding: '7.5px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                                   {comm > 0 ? (
-                                    <span style={{ padding: '1.5px 5.5px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => openCommittedOrdersModal([item.id], `${group.parentTitle} — ${item._displayVariant}`)}
+                                      title={`Click to view orders holding ${comm} committed unit(s)`}
+                                      style={{
+                                        padding: '2px 6.5px', borderRadius: 99, fontSize: 10.5, fontWeight: 800, cursor: 'pointer',
+                                        background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.42)',
+                                      }}
+                                    >
                                       {comm}
-                                    </span>
+                                    </button>
                                   ) : (
                                     <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>0</span>
                                   )}
@@ -2704,9 +2744,17 @@ export default function PoLedgerManager() {
                           </td>
                           <td style={{ padding: '9px 7px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                             {comm > 0 ? (
-                              <span style={{ padding: '1.5px 6px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: 'rgba(245,158,11,0.14)', color: '#b45309' }}>
+                              <button
+                                type="button"
+                                onClick={() => openCommittedOrdersModal([item.id], `${item.parent_title}${item.variant_title ? ` — ${item.variant_title}` : ''}`)}
+                                title={`Click to view orders holding ${comm} committed unit(s)`}
+                                style={{
+                                  padding: '2px 7px', borderRadius: 99, fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                                  background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.42)',
+                                }}
+                              >
                                 {comm}
-                              </span>
+                              </button>
                             ) : (
                               <span style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>0</span>
                             )}
@@ -4630,6 +4678,14 @@ export default function PoLedgerManager() {
       )}
       {/* 11. Ghost & Strict SKU Quick Guide Modal */}
       {guideOpen && <GhostSkuGuide mode="modal" context="po" onClose={() => setGuideOpen(false)} />}
+
+      {/* 12. Committed Orders Drilldown Modal (Single Order & View All in Command Center) */}
+      <CommittedOrdersModal
+        open={committedModal.open}
+        loading={committedModal.loading}
+        data={committedModal.data}
+        onClose={() => setCommittedModal({ open: false, loading: false, data: null })}
+      />
     </div>
   )
 }

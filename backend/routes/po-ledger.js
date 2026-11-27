@@ -182,6 +182,19 @@ router.get('/inventory/ledger', (req, res) => {
   }
 });
 
+router.get('/inventory/committed-orders', (req, res) => {
+  try {
+    const data = svc.getCommittedOrdersForSkus(resolveStoreId(req), {
+      product_cost_id: req.query.product_cost_id,
+      product_cost_ids: req.query.product_cost_ids,
+      parent_title: req.query.parent_title,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/inventory/adjust', async (req, res) => {
   try {
     const result = await svc.recordManualStockAdjust(resolveStoreId(req), req.body || {}, resolveActor(req));

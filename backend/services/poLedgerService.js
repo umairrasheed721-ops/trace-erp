@@ -1862,6 +1862,164 @@ async function pushInventoryToShopify(storeId, payload = {}, createdBy = 'Admin'
 }
 
 /**
+ * Returns exact open/unfulfilled ERP orders currently holding Committed stock
+ * for one SKU (variant click) or multiple SKUs (parent product click).
+ */
+function getCommittedOrdersForSkus(storeId, options = {}) {
+  ensurePoLedgerTables();
+  const sid = Number(storeId) || 1;
+  const rawIds = Array.isArray(options.product_cost_ids)
+    ? options.product_cost_ids
+    : String(options.product_cost_ids || options.product_cost_id || '').split(',');
+  const ids = [...new Set(rawIds.map(x => Number(String(x).trim())).filter(n => Number.isFinite(n) && n > 0))];
+  const parentTitleFilter = String(options.parent_title || '').trim();
+
+  let targetRows = [];
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    targetRows = db.prepare(`
+      SELECT id, shopify_variant_id, sku, parent_title, variant_title,
+             COALESCE(inventory_qty, 0) AS inventory_qty,
+             COALESCE(committed_qty, 0) AS committed_qty,
+             COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) AS on_hand_qty
+      FROM product_master_costs
+      WHERE store_id = ? AND id IN (${placeholders})
+    `).all(sid, ...ids);
+  } else if (parentTitleFilter) {
+    targetRows = db.prepare(`
+      SELECT id, shopify_variant_id, sku, parent_title, variant_title,
+             COALESCE(inventory_qty, 0) AS inventory_qty,
+             COALESCE(committed_qty, 0) AS committed_qty,
+             COALESCE(on_hand_qty, COALESCE(inventory_qty, 0) + COALESCE(committed_qty, 0)) AS on_hand_qty
+      FROM product_master_costs
+      WHERE store_id = ? AND LOWER(TRIM(parent_title)) = LOWER(TRIM(?))
+    `).all(sid, parentTitleFilter);
+  }
+
+  if (targetRows.length === 0) {
+    return {
+      title: parentTitleFilter || 'SKU',
+      expectedCommitted: 0,
+      matchedUnits: 0,
+      orderCount: 0,
+      orders: [],
+    };
+  }
+
+  const varIdMap = new Map();
+  const skuMap = new Map();
+  const titleMap = new Map();
+  let expectedCommitted = 0;
+
+  for (const r of targetRows) {
+    expectedCommitted += Number(r.committed_qty) || 0;
+    const rawVid = String(r.shopify_variant_id || '').trim();
+    const numVid = rawVid.includes('/') ? rawVid.split('/').pop() : rawVid;
+    if (numVid) varIdMap.set(numVid, r);
+    const normSku = String(r.sku || '').trim().toLowerCase();
+    if (normSku) skuMap.set(normSku, r);
+    const pKey = String(r.parent_title || '').trim().toLowerCase();
+    const vKey = String(r.variant_title || '').trim().toLowerCase();
+    if (pKey) titleMap.set(`${pKey}|||${vKey}`, r);
+  }
+
+  // Scan open/unfulfilled non-cancelled orders for this store
+  const openOrders = db.prepare(`
+    SELECT id, ref_number, shopify_order_id, customer_name, phone, city,
+           COALESCE(total_price, price, 0) AS order_price,
+           order_date, delivery_status, fulfillment_status, financial_status,
+           courier, tracking_number, line_items
+    FROM orders
+    WHERE store_id = ?
+      AND LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'delivered', 'returned', 'return received')
+      AND LOWER(COALESCE(fulfillment_status, '')) NOT IN ('fulfilled', 'restocked')
+      AND COALESCE(line_items, '') != ''
+    ORDER BY order_date DESC, id DESC
+    LIMIT 3000
+  `).all(sid);
+
+  const matchedOrders = [];
+  let matchedUnits = 0;
+
+  for (const ord of openOrders) {
+    let items = [];
+    try {
+      items = JSON.parse(ord.line_items);
+    } catch (_) {
+      continue;
+    }
+    if (!Array.isArray(items) || items.length === 0) continue;
+
+    let orderCommittedForTarget = 0;
+    const matchedVariants = [];
+
+    for (const li of items) {
+      if (!li) continue;
+      // Use fulfillable_quantity when Shopify provides it (exact unfulfilled count on partial orders!)
+      const rawQty = li.fulfillable_quantity !== undefined && li.fulfillable_quantity !== null
+        ? Number(li.fulfillable_quantity)
+        : (li.current_quantity !== undefined && li.current_quantity !== null
+            ? Number(li.current_quantity)
+            : Number(li.quantity || 0));
+      if (!Number.isFinite(rawQty) || rawQty <= 0) continue;
+
+      const liVidRaw = String(li.variant_id || li.shopify_variant_id || '').trim();
+      const liVid = liVidRaw.includes('/') ? liVidRaw.split('/').pop() : liVidRaw;
+      const liSku = String(li.sku || '').trim().toLowerCase();
+      const liTitle = String(li.title || li.name || '').trim().toLowerCase();
+      const liVarTitle = (li.variant_title === 'Default Title' ? '' : String(li.variant_title || '')).trim().toLowerCase();
+
+      const hit = (liVid && varIdMap.get(liVid))
+        || (liSku && skuMap.get(liSku))
+        || titleMap.get(`${liTitle}|||${liVarTitle}`);
+
+      if (hit) {
+        orderCommittedForTarget += rawQty;
+        const vLabel = hit.variant_title || li.variant_title || 'Default';
+        matchedVariants.push({
+          sku: hit.sku || li.sku || '',
+          variant_title: vLabel === 'Default Title' ? 'Default' : vLabel,
+          qty: rawQty,
+        });
+      }
+    }
+
+    if (orderCommittedForTarget > 0) {
+      matchedUnits += orderCommittedForTarget;
+      matchedOrders.push({
+        id: ord.id,
+        ref_number: ord.ref_number || (ord.shopify_order_id ? `#${ord.shopify_order_id}` : `#${ord.id}`),
+        shopify_order_id: ord.shopify_order_id || '',
+        customer_name: ord.customer_name || 'Customer',
+        phone: ord.phone || '',
+        city: ord.city || '',
+        order_date: ord.order_date || '',
+        price: Math.round(Number(ord.order_price) || 0),
+        delivery_status: ord.delivery_status || 'Pending',
+        fulfillment_status: ord.fulfillment_status || 'unfulfilled',
+        financial_status: ord.financial_status || '',
+        courier: ord.courier || '',
+        tracking_number: ord.tracking_number || '',
+        committed_qty: orderCommittedForTarget,
+        matched_variants: matchedVariants,
+      });
+    }
+  }
+
+  const labelTitle = targetRows.length === 1
+    ? `${targetRows[0].parent_title}${targetRows[0].variant_title ? ` — ${targetRows[0].variant_title}` : ''}`
+    : `${targetRows[0].parent_title} (${targetRows.length} variants)`;
+
+  return {
+    title: labelTitle,
+    expectedCommitted,
+    matchedUnits,
+    orderCount: matchedOrders.length,
+    orders: matchedOrders,
+  };
+}
+
+/**
  * Supplier Defective Batch Return:
  * Reduces On Hand (-qty), logs inventory_ledger SUPPLIER_RETURN, and posts Supplier Credit in ledger_entries.
  */
@@ -2550,6 +2708,7 @@ module.exports = {
   getWarehouseStock,
   recordManualStockAdjust,
   pushInventoryToShopify,
+  getCommittedOrdersForSkus,
   recordSupplierReturn,
   toggleContinueSelling,
   linkSharedPool,

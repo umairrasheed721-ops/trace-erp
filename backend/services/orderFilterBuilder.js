@@ -80,8 +80,9 @@ function getOrderFilters(req) {
     let cleanKw = rawSearch.replace(/\b(phone|city|email|ref|status|note|tag|tags|courier):\s+/gi, '$1:');
 
     // 2. Normalize phone numbers: if the entire query is digits & phone punctuation (e.g. "+92 333 5149718", "0333 514 9718", "0333-514-9718")
+    // Skip phone normalization when comma-separated (bulk order ID search like "1041, 1042")
     const allDigits = cleanKw.replace(/\D/g, '');
-    const isPurePhoneOrNumeric = /^[\d\s+\-().]+$/.test(cleanKw) && allDigits.length >= 7;
+    const isPurePhoneOrNumeric = !cleanKw.includes(',') && /^[\d\s+\-().]+$/.test(cleanKw) && allDigits.length >= 7;
 
     if (isPurePhoneOrNumeric) {
       // Standardize 10+ digit phone numbers to standard 11-digit "03xxxxxxxxx" representation so spaces don't shatter tokens
@@ -102,12 +103,12 @@ function getOrderFilters(req) {
     const kw = cleanKw.toLowerCase().replace(/^#/, '');
     if (!kw) return { where: whereClauses.join(' AND '), queryParams };
     
-    // Detect Bulk ID Search (Multiple space/newline separated IDs)
-    const spaceTokens = kw.split(/[\s,\n\t]+/).filter(Boolean);
-    const isBulkIDSearch = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{4,}$/.test(t) && /\d/.test(t));
+    // Detect Bulk ID Search (Multiple space/comma/newline separated IDs like "#1041, #1042")
+    const spaceTokens = kw.split(/[\s,\n\t]+/).map(t => t.replace(/^#/, '').trim()).filter(Boolean);
+    const isBulkIDSearch = spaceTokens.length > 1 && spaceTokens.every(t => /^[a-z0-9#-]{3,}$/.test(t) && /\d/.test(t));
 
     if (isBulkIDSearch) {
-      const orClauses = spaceTokens.map(() => '(LOWER(o.tracking_number) = ? OR LOWER(o.ref_number) = ? OR LOWER(o.shopify_order_id) = ?)').join(' OR ');
+      const orClauses = spaceTokens.map(() => "(LOWER(o.tracking_number) = ? OR LTRIM(LOWER(o.ref_number), '#') = ? OR LOWER(o.shopify_order_id) = ?)").join(' OR ');
       whereClauses.push(`(${orClauses})`);
       spaceTokens.forEach(t => queryParams.push(t, t, t));
     } else {

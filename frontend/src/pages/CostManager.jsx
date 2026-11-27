@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import LinkSkuModal from '../components/LinkSkuModal'
 import GhostSkuGuide from '../components/GhostSkuGuide'
+import CommittedOrdersModal from '../components/CommittedOrdersModal'
 
 const isGhostMatch = (ghost, searchQuery) => {
   if (!searchQuery || !searchQuery.trim()) return true;
@@ -122,6 +123,33 @@ export default function CostManager() {
   const [selectedVariants, setSelectedVariants] = useState(new Set())
   const [bulkProcessing, setBulkProcessing] = useState(false)
   const [expandedParents, setExpandedParents] = useState(new Set())
+  const [committedModal, setCommittedModal] = useState({ open: false, loading: false, data: null })
+  const openCommittedModal = useCallback(async (productCostIds, titleLabel = '') => {
+    const cleanIds = [...new Set((productCostIds || []).map(Number).filter(Boolean))]
+    if (cleanIds.length === 0) return
+    setCommittedModal({ open: true, loading: true, data: { title: titleLabel, orders: [] } })
+    try {
+      const params = new URLSearchParams()
+      if (activeStoreId) params.set('store_id', activeStoreId)
+      params.set('product_cost_ids', cleanIds.join(','))
+      const res = await fetch(`/api/po-ledger/inventory/committed-orders?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(activeStoreId ? { 'x-active-store-id': String(activeStoreId) } : {}),
+        },
+      })
+      const j = await res.json()
+      if (j.success) {
+        setCommittedModal({ open: true, loading: false, data: { ...j.data, title: titleLabel || j.data?.title } })
+      } else {
+        addToast(j.error || 'Failed to load committed orders', 'error')
+        setCommittedModal({ open: false, loading: false, data: null })
+      }
+    } catch (_) {
+      addToast('Failed to fetch committed orders', 'error')
+      setCommittedModal({ open: false, loading: false, data: null })
+    }
+  }, [activeStoreId, token, addToast])
   const [lastSelectedParentIndex, setLastSelectedParentIndex] = useState(null)
   const [lastSelectedGhostIndex, setLastSelectedGhostIndex] = useState(null)
   
@@ -2251,12 +2279,14 @@ export default function CostManager() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: '0.69rem', marginTop: 2.5 }}>
                           <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>On Hand: {p.totalOnHand}</span>
                           {p.totalCommitted > 0 && (
-                            <span
-                              title="Unfulfilled Shopify orders reserving stock (On Hand − Committed = Available)"
-                              style={{ padding: '0.5px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.14)', color: '#b45309', fontWeight: 800 }}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openCommittedModal(p.variants.map(v => v.id), p.name); }}
+                              title="Click to view committed orders in Command Center"
+                              style={{ padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.40)', fontWeight: 800, fontSize: '0.68rem', cursor: 'pointer' }}
                             >
                               Committed: {p.totalCommitted}
-                            </span>
+                            </button>
                           )}
                           {p.totalIncoming > 0 && (
                             <span
@@ -2479,9 +2509,14 @@ export default function CostManager() {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', fontSize: '0.67rem', marginTop: 2 }}>
                                       <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>On Hand: {vOnHand}</span>
                                       {vComm > 0 && (
-                                        <span style={{ padding: '0.5px 4.5px', borderRadius: 4, background: 'rgba(245,158,11,0.14)', color: '#b45309', fontWeight: 800 }}>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => { e.stopPropagation(); openCommittedModal([v.id], `${v.parent_title} — ${v.variant_title || 'Default'}`); }}
+                                          title="Click to view committed orders in Command Center"
+                                          style={{ padding: '1px 5.5px', borderRadius: 4, background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.40)', fontWeight: 800, fontSize: '0.66rem', cursor: 'pointer' }}
+                                        >
                                           Comm: {vComm}
-                                        </span>
+                                        </button>
                                       )}
                                       {vInc > 0 && (
                                         <span style={{ padding: '0.5px 4.5px', borderRadius: 4, background: 'rgba(37,99,235,0.11)', color: '#2563eb', fontWeight: 700 }}>
@@ -2623,8 +2658,18 @@ export default function CostManager() {
                                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: gInvColor }} />
                                   <span>{totalStock} avail</span>
                                 </div>
-                                <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', fontWeight: 700, marginTop: 1.5 }}>
-                                  On Hand: {groupOnHand}{groupCommitted > 0 && <span style={{ color: '#b45309' }}> · Comm: {groupCommitted}</span>}
+                                <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', fontWeight: 700, marginTop: 1.5, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                  <span>On Hand: {groupOnHand}</span>
+                                  {groupCommitted > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); openCommittedModal(groupIds, `${p.name} — ${groupName}`); }}
+                                      title="Click to view committed orders in Command Center"
+                                      style={{ padding: '0.5px 5px', borderRadius: 4, background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.40)', fontWeight: 800, fontSize: '0.65rem', cursor: 'pointer' }}
+                                    >
+                                      Comm: {groupCommitted}
+                                    </button>
+                                  )}
                                 </div>
                                 {groupFifoQty > 0 && <div style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600 }}>PO FIFO: {groupFifoQty} left</div>}
                               </td>
@@ -3832,6 +3877,14 @@ export default function CostManager() {
           }}
         />
       )}
+
+      {/* ── Committed Orders Drilldown Modal ── */}
+      <CommittedOrdersModal
+        open={committedModal.open}
+        loading={committedModal.loading}
+        data={committedModal.data}
+        onClose={() => setCommittedModal({ open: false, loading: false, data: null })}
+      />
 
       <style>{`
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
