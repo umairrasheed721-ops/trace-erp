@@ -37,16 +37,41 @@ const REQUIRED_SCOPE_GROUPS = [
     why: 'Auto-fulfill orders with courier tracking number on booking and mark delivered.',
   },
   {
-    group: 'Customers',
+    group: 'Customers & Theme Multi-Store Sync',
     color: '#b45309',
     bg: 'rgba(245,158,11,0.10)',
     border: 'rgba(245,158,11,0.30)',
-    scopes: ['read_customers'],
-    why: 'Customer order history, repeat-buyer tracking, and address verification.',
+    scopes: ['read_customers', 'read_themes', 'write_themes'],
+    why: 'Customer history + allows Antigravity to push theme updates & pull settings_data.json automatically on this store.',
   },
 ]
 
-const OPTIONAL_SCOPES = ['read_themes', 'write_themes', 'read_checkouts']
+const OPTIONAL_SCOPES = ['read_checkouts']
+
+const THEME_ZIP_PATH = '/Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip'
+
+const THEME_UPLOAD_ERRORS = [
+  {
+    error: 'Homepage returns 404 (while /collections/all works) OR "Setting video value does not point to an applicable shopify-hosted video resource"',
+    cause: 'templates/index.json, sections/*.json, or settings_data.json still references another store\'s video/3D file (shopify://files/videos/... or shopify://shop_videos/...).',
+    fix: 'Always upload the sanitized master ZIP (uses backend/utils/themeJsonSanitizer.js to blank store-hosted video/model refs). After publishing, re-upload this store\'s own hero videos in Shopify Theme Customizer.',
+  },
+  {
+    error: 'External App Block Error (shopify://apps/...)',
+    cause: 'A template JSON or settings_data.json includes app blocks from apps installed on Trace but NOT installed on the new store.',
+    fix: 'Strip any "type": "apps" sections and "shopify://apps/..." blocks from templates/*.json and config/settings_data.json before zipping.',
+  },
+  {
+    error: 'Missing Custom Metafield Reference (product.metafields.custom.*)',
+    cause: 'JSON templates reference dynamic custom metafields not yet defined in the new store\'s Shopify Settings → Custom data.',
+    fix: 'Remove hardcoded custom metafield bindings from ZIP templates OR create required metafield definitions on the new store after upload.',
+  },
+  {
+    error: 'Invalid ZIP / Missing layout/theme.liquid',
+    cause: 'Outer folder (shopify_theme/) was zipped instead of the inner files.',
+    fix: 'Run zip from INSIDE the theme folder so assets/, config/, layout/, locales/, sections/, snippets/, templates/ sit directly at ZIP root.',
+  },
+]
 
 const ALL_REQUIRED_SCOPES_CSV = REQUIRED_SCOPE_GROUPS.flatMap(g => g.scopes).join(',')
 const ALL_WITH_OPTIONAL_SCOPES_CSV = [...REQUIRED_SCOPE_GROUPS.flatMap(g => g.scopes), ...OPTIONAL_SCOPES].join(',')
@@ -77,6 +102,8 @@ const DEFAULT_CHECKLIST = {
   s8_baseline: false,
   s9_accounts: false,
   s10_couriers: false,
+  s11_theme_zip: false,
+  s12_antigravity_link: false,
 }
 
 function CopyBox({ label, value, hint, onCopy, mono = true }) {
@@ -127,9 +154,11 @@ export default function SetupGuide() {
   const { stores, activeStoreId, token, addToast } = useApp()
   const navigate = useNavigate()
 
-  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'actions' | 'playbook' | 'reference'
+  const [activeTab, setActiveTab] = useState('onboarding') // 'onboarding' | 'theme' | 'actions' | 'playbook' | 'reference'
   const [busyKey, setBusyKey] = useState('')
   const [diagnoseResult, setDiagnoseResult] = useState(null)
+  const [newThemeStoreName, setNewThemeStoreName] = useState('')
+  const [newThemeStoreDomain, setNewThemeStoreDomain] = useState('')
   const [checklist, setChecklist] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(CHECKLIST_STORAGE_KEY) || '{}')
@@ -191,6 +220,19 @@ export default function SetupGuide() {
   const completedSteps = Object.values(checklist).filter(Boolean).length
   const totalSteps = Object.keys(DEFAULT_CHECKLIST).length
   const progressPct = Math.round((completedSteps / totalSteps) * 100)
+
+  const activeThemeStores = useMemo(() => {
+    return (stores || []).filter(s => s?.shop_domain && !String(s.shop_domain).includes('1i7tnb-bb'))
+  }, [stores])
+
+  const antigravityConnectPrompt = useMemo(() => {
+    const sName = newThemeStoreName.trim() || '<New Store Name>'
+    const sDom = newThemeStoreDomain.trim() || '<your-store.myshopify.com>'
+    return `Maine naya store "${sName}" (${sDom}) TRACE ERP me connect aur clean Theme ZIP upload kar diya hai.
+1. Verify karo ke ye store /api/public/get-all-stores me aa raha hai aur read_themes/write_themes token active hai.
+2. https://${sDom}/ par HTTP 200 check karo (agar 404 ho to templates/index.json sanitize karke push karo).
+3. Is naye store ko .agents/AGENTS.md (Rules 6, 30, 33) ki active multi-store theme confirmation list me add kar do taake future theme updates is par bhi sath push hon.`
+  }, [newThemeStoreName, newThemeStoreDomain])
 
   const shopifyTomlSnippet = useMemo(() => (
 `# Shopify Dev Dashboard — shopify.app.toml quick snippet
@@ -375,6 +417,7 @@ redirect_urls = [
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
         {[
           { id: 'onboarding', label: `🚀 Attach New Store (${completedSteps}/${totalSteps})` },
+          { id: 'theme', label: '🎨 Theme ZIP & Antigravity Sync' },
           { id: 'actions', label: '⚡ 1-Click Primary Actions' },
           { id: 'playbook', label: '📘 How to Use ERP (Daily SOP)' },
           { id: 'reference', label: '🔗 Webhooks & Copy Vault' },
@@ -530,9 +573,9 @@ redirect_urls = [
               </div>
 
               <CopyBox
-                label="Optional Full Scopes (Includes Theme / CRO Funnel + Abandoned Checkouts)"
+                label="Optional Extra Scope (Abandoned Checkouts Recovery)"
                 value={ALL_WITH_OPTIONAL_SCOPES_CSV}
-                hint="Use only if you also plan to deploy Shopify Theme updates or Abandoned Checkout recovery on this store"
+                hint="Required scopes above ALREADY include read_themes & write_themes for Antigravity multi-store theme sync!"
                 onCopy={copyText}
               />
 
@@ -679,6 +722,9 @@ redirect_urls = [
                 Suppliers &amp; Bank/Cash Opening Balances set in PO &amp; Ledger
               </label>
               <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => setActiveTab('theme')} style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(124,58,237,0.35)', background: 'rgba(124,58,237,0.10)', color: '#7c3aed', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
+                  🎨 Next: Theme ZIP &amp; Antigravity Sync →
+                </button>
                 <button type="button" onClick={() => navigate('/costing')} style={{ padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>
                   🛡️ Check Costing Health
                 </button>
@@ -686,6 +732,212 @@ redirect_urls = [
                   📒 Open PO &amp; Ledger
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* TAB 2: THEME ZIP UPLOAD & ANTIGRAVITY MULTI-STORE SYNC             */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'theme' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Active Multi-Store Theme Fleet Card */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  🎨 Connected Multi-Store Theme Fleet (Auto-Discovered by Antigravity)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Every store connected in TRACE ERP with <code>read_themes,write_themes</code> scopes is automatically read by Antigravity — zero manual <code>shpat_</code> tokens needed!
+                </div>
+              </div>
+              <span style={{
+                fontSize: 11, fontWeight: 800, padding: '4px 10px', borderRadius: 99,
+                background: 'rgba(239,68,68,0.10)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.28)',
+              }}>
+                🧊 Frozen Store Excluded: 1i7tnb-bb.myshopify.com
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 9 }}>
+              {activeThemeStores.map((s, i) => (
+                <div key={s.id || s.shop_domain} style={{
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px',
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <span style={{ fontWeight: 800, fontSize: 12.5, color: 'var(--text-primary)' }}>
+                      {i + 1}. {s.store_name || s.shop_domain}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 800, padding: '1.5px 6px', borderRadius: 99, background: 'rgba(16,185,129,0.12)', color: '#047857' }}>
+                      ● Auto-Linked
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-muted)' }}>{s.shop_domain}</div>
+                </div>
+              ))}
+              <div style={{
+                background: 'rgba(124,58,237,0.06)', border: '1px dashed rgba(124,58,237,0.40)', borderRadius: 10, padding: '10px 12px',
+                display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3,
+              }}>
+                <div style={{ fontWeight: 800, fontSize: 12.5, color: '#7c3aed' }}>📦 Master Clean ZIP</div>
+                <div style={{ fontSize: 10.5, fontFamily: 'monospace', color: 'var(--text-muted)', wordBreak: 'break-all' }}>{THEME_ZIP_PATH}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Step-by-Step Error-Free Theme ZIP Upload Flow */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Step A — Upload Clean Theme ZIP on New Store (Zero 404 / Video Errors!)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Follow this exact sequence so Shopify never rejects <code>templates/index.json</code> on a brand-new store:
+                </div>
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, cursor: 'pointer', color: checklist.s11_theme_zip ? '#059669' : 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={checklist.s11_theme_zip} onChange={() => toggleCheck('s11_theme_zip')} />
+                Theme ZIP Uploaded &amp; Homepage HTTP 200
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10, marginBottom: 12 }}>
+              {[
+                {
+                  num: '1',
+                  title: 'Use Master Sanitized ZIP',
+                  body: 'Always upload /Users/umairrasheed/Desktop/antigravity/trace-dynamic-theme.zip — never zip a live store export directly (it carries old store video/app refs).',
+                },
+                {
+                  num: '2',
+                  title: 'Upload & Publish in Shopify',
+                  body: 'Shopify Admin → Online Store → Themes → Add theme → Upload zip file → select trace-dynamic-theme.zip → Publish.',
+                },
+                {
+                  num: '3',
+                  title: 'Mandatory Homepage Check',
+                  body: 'Open storefront homepage (/) AND /collections/all. Homepage MUST load (HTTP 200). If / gives 404, index.json had an invalid video ref.',
+                },
+                {
+                  num: '4',
+                  title: 'Configure Store Customizer',
+                  body: 'In Shopify Theme Customizer, set this store\'s own logo, hero videos/banners, bank/wallet details & CRO settings (never hardcoded in Liquid).',
+                },
+              ].map(s => (
+                <div key={s.num} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 12px' }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: '#2563eb', marginBottom: 4 }}>
+                    {s.num}. {s.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.45 }}>{s.body}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 10 }}>
+              <CopyBox
+                label="Master Clean ZIP Path (Mac)"
+                value={THEME_ZIP_PATH}
+                hint="Upload this file in Shopify Admin → Online Store → Themes → Upload zip file"
+                onCopy={copyText}
+              />
+              <CopyBox
+                label="Mandatory Post-Upload Homepage HTTP 200 Check"
+                value={`curl -s -o /dev/null -w "%{http_code}\\n" https://${newThemeStoreDomain.trim() || 'your-new-store.com'}/`}
+                hint="Must print 200. If 404 while /collections/all is 200, templates/index.json was rejected by Shopify."
+                onCopy={copyText}
+              />
+            </div>
+          </div>
+
+          {/* Step B: Link New Store to Antigravity Multi-Store Theme Sync */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  Step B — Link New Store to Antigravity Multi-Store Theme Updates
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Once the store is connected in TRACE ERP (with <code>read_themes,write_themes</code>), fill the new store name &amp; domain below and paste the generated prompt directly into Antigravity chat!
+                </div>
+              </div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, cursor: 'pointer', color: checklist.s12_antigravity_link ? '#059669' : 'var(--text-secondary)' }}>
+                <input type="checkbox" checked={checklist.s12_antigravity_link} onChange={() => toggleCheck('s12_antigravity_link')} />
+                Linked in Antigravity Fleet
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                  New Store Name
+                </label>
+                <input
+                  type="text"
+                  value={newThemeStoreName}
+                  onChange={e => setNewThemeStoreName(e.target.value)}
+                  placeholder="e.g. Urban Fit PK"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: 12.5, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                  New Store Shopify Domain
+                </label>
+                <input
+                  type="text"
+                  value={newThemeStoreDomain}
+                  onChange={e => setNewThemeStoreDomain(e.target.value)}
+                  placeholder="e.g. abc123-xy.myshopify.com"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-primary)', fontSize: 12.5, fontFamily: 'monospace', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <CopyBox
+              label="🤖 Ready-to-Paste Antigravity Onboarding Prompt (Links Store for All Future Theme Pushes)"
+              value={antigravityConnectPrompt}
+              hint="Paste this message into Antigravity chat — it verifies OAuth token, homepage 200 status, and adds the store to multi-store theme confirmation rules."
+              onCopy={copyText}
+              mono={false}
+            />
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginTop: 10 }}>
+              <CopyBox
+                label="Pull Store Settings First (Prevents Overwriting Customizer)"
+                value="node scratch/pull_theme_settings.js"
+                hint="Rule 6: Always preserve each store's online config/settings_data.json before theme pushes."
+                onCopy={copyText}
+              />
+              <CopyBox
+                label="Push Edited Theme Files to ALL Active Connected Stores"
+                value="node scratch/push_theme_to_all_stores.js snippets/trace-cro-funnel.liquid"
+                hint="Dynamically fetches all active stores from TRACE ERP API (auto-retries sanitized JSON on new stores)."
+                onCopy={copyText}
+              />
+            </div>
+          </div>
+
+          {/* Why New-Store Theme Uploads Fail — Exact Error Fixes */}
+          <div style={cardStyle}>
+            <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 10 }}>
+              🛠️ Why Theme ZIP Fails on New Stores — Exact Error Fixes
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+              {THEME_UPLOAD_ERRORS.map(err => (
+                <div key={err.error} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 13px', fontSize: 12 }}>
+                  <div style={{ fontWeight: 800, color: '#dc2626', marginBottom: 5 }}>❌ {err.error}</div>
+                  <div style={{ color: 'var(--text-muted)', marginBottom: 5, lineHeight: 1.45 }}>
+                    <strong>Cause:</strong> {err.cause}
+                  </div>
+                  <div style={{ color: '#047857', lineHeight: 1.45 }}>
+                    <strong>Fix:</strong> {err.fix}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

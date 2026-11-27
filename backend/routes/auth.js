@@ -21,6 +21,8 @@ const TRACEPK_SCOPES = [
   'write_merchant_managed_fulfillment_orders',
   'read_assigned_fulfillment_orders',
   'write_assigned_fulfillment_orders',
+  'read_themes',
+  'write_themes',
 ].join(',');
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET missing');
