@@ -5,7 +5,7 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : requir
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const TRACEPK_SCOPES = [
+const REQUIRED_SCOPES = [
   'read_orders',
   'write_orders',
   'read_all_orders',
@@ -23,7 +23,8 @@ const TRACEPK_SCOPES = [
   'write_assigned_fulfillment_orders',
   'read_themes',
   'write_themes',
-].join(',');
+];
+const TRACEPK_SCOPES = REQUIRED_SCOPES.join(',');
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET missing');
   process.exit(1);
@@ -217,40 +218,70 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// GET /api/auth/url - Generate Shopify OAuth URL for a given store
+// POST /api/auth/url - Generate Shopify OAuth URL for a given store
 router.post('/url', (req, res) => {
-  const { shop_domain, client_id, client_secret, postex_token, instaworld_key, instaworld_key_backup, store_name, sync_start_date } = req.body;
+  const {
+    shop_domain, client_id, client_secret,
+    postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3,
+    leopards_token, tcs_token, google_maps_key, gas_proxy_url,
+    store_name, sync_start_date
+  } = req.body;
 
   if (!shop_domain || !client_id || !client_secret) {
     return res.status(400).json({ error: 'Missing shop_domain, client_id, or client_secret' });
   }
 
-  const cleanDomain = shop_domain.replace('https://', '').replace('http://', '').replace(/\/$/, '').trim();
+  const cleanDomain = shop_domain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim().toLowerCase();
   const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null;
   // Prioritize Railway domain if available, otherwise use APP_URL or fallback to localhost
   const appUrl = railwayDomain || process.env.APP_URL || 'http://localhost:3001';
   const redirectUri = `${appUrl}/api/auth/callback`;
 
-  // Temporarily store setup data in DB with a placeholder token
+  // Temporarily store setup data in DB with a placeholder token (preserve existing courier keys if omitted on re-auth)
   const existing = db.prepare('SELECT id FROM stores WHERE shop_domain = ?').get(cleanDomain);
   if (!existing) {
     db.prepare(`
-      INSERT INTO stores (shop_domain, store_name, access_token, shopify_client_id, shopify_client_secret, postex_token, instaworld_key, instaworld_key_backup, sync_start_date)
-      VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
-    `).run(cleanDomain, store_name || cleanDomain, client_id, client_secret, postex_token || '', instaworld_key || '', instaworld_key_backup || '', sync_start_date || '');
+      INSERT INTO stores (
+        shop_domain, store_name, access_token, shopify_client_id, shopify_client_secret,
+        postex_token, instaworld_key, instaworld_key_backup, instaworld_key_3,
+        leopards_token, tcs_token, google_maps_key, gas_proxy_url, sync_start_date
+      )
+      VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      cleanDomain, store_name || cleanDomain, client_id.trim(), client_secret.trim(),
+      postex_token || '', instaworld_key || '', instaworld_key_backup || '', instaworld_key_3 || '',
+      leopards_token || '', tcs_token || '', google_maps_key || '', gas_proxy_url || '', sync_start_date || ''
+    );
   } else {
     db.prepare(`
-      UPDATE stores SET shopify_client_id=?, shopify_client_secret=?, postex_token=?, instaworld_key=?, instaworld_key_backup=?, store_name=?, sync_start_date=?
-      WHERE shop_domain=?
-    `).run(client_id, client_secret, postex_token || '', instaworld_key || '', instaworld_key_backup || '', store_name || cleanDomain, sync_start_date || '', cleanDomain);
+      UPDATE stores SET
+        shopify_client_id = ?,
+        shopify_client_secret = ?,
+        store_name = COALESCE(NULLIF(?, ''), store_name),
+        postex_token = COALESCE(NULLIF(?, ''), postex_token),
+        instaworld_key = COALESCE(NULLIF(?, ''), instaworld_key),
+        instaworld_key_backup = COALESCE(NULLIF(?, ''), instaworld_key_backup),
+        instaworld_key_3 = COALESCE(NULLIF(?, ''), instaworld_key_3),
+        leopards_token = COALESCE(NULLIF(?, ''), leopards_token),
+        tcs_token = COALESCE(NULLIF(?, ''), tcs_token),
+        google_maps_key = COALESCE(NULLIF(?, ''), google_maps_key),
+        gas_proxy_url = COALESCE(NULLIF(?, ''), gas_proxy_url),
+        sync_start_date = COALESCE(NULLIF(?, ''), sync_start_date)
+      WHERE shop_domain = ?
+    `).run(
+      client_id.trim(), client_secret.trim(),
+      store_name || '', postex_token || '', instaworld_key || '', instaworld_key_backup || '',
+      instaworld_key_3 || '', leopards_token || '', tcs_token || '', google_maps_key || '',
+      gas_proxy_url || '', sync_start_date || '', cleanDomain
+    );
   }
 
   global._tempSecrets = global._tempSecrets || {};
-  global._tempSecrets[cleanDomain] = client_secret;
+  global._tempSecrets[cleanDomain] = client_secret.trim();
 
-  const authUrl = `https://${cleanDomain}/admin/oauth/authorize?client_id=${client_id}&scope=${TRACEPK_SCOPES}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  const authUrl = `https://${cleanDomain}/admin/oauth/authorize?client_id=${encodeURIComponent(client_id.trim())}&scope=${TRACEPK_SCOPES}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
-  res.json({ auth_url: authUrl });
+  res.json({ auth_url: authUrl, redirect_uri: redirectUri, scopes: REQUIRED_SCOPES });
 });
 
 // GET /api/auth/callback - Shopify redirects here after install
@@ -310,5 +341,7 @@ router.get('/callback', async (req, res) => {
 
 module.exports = {
   router,
-  authenticateToken
+  authenticateToken,
+  REQUIRED_SCOPES,
+  TRACEPK_SCOPES,
 };
