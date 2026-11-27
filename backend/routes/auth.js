@@ -5,7 +5,23 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : requir
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const TRACEPK_SCOPES = 'read_orders,write_orders,read_locations,read_inventory,read_customers,read_products,read_all_orders';
+const TRACEPK_SCOPES = [
+  'read_orders',
+  'write_orders',
+  'read_all_orders',
+  'read_products',
+  'write_products',
+  'read_inventory',
+  'write_inventory',
+  'read_locations',
+  'read_customers',
+  'read_fulfillments',
+  'write_fulfillments',
+  'read_merchant_managed_fulfillment_orders',
+  'write_merchant_managed_fulfillment_orders',
+  'read_assigned_fulfillment_orders',
+  'write_assigned_fulfillment_orders',
+].join(',');
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET missing');
   process.exit(1);

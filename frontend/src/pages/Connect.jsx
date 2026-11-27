@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function Connect() {
   const { stores, setStores, addToast, setActiveStoreId } = useApp()
+  const navigate = useNavigate()
   const [form, setForm] = useState({
     store_name: '', shop_domain: '', client_id: '', client_secret: '',
     postex_token: '', instaworld_key: '', instaworld_key_backup: '', instaworld_key_3: '',
@@ -158,20 +160,34 @@ export default function Connect() {
             </div>
           </div>
         </div>
-        <button
-          onClick={() => refreshStores()}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '8px 16px', borderRadius: 10,
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--brand)'; e.currentTarget.style.color = 'var(--brand)' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-        >
-          🔄 Refresh Stores
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => navigate('/setup-guide')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 10,
+              background: 'rgba(37,99,235,0.10)', border: '1px solid rgba(37,99,235,0.32)',
+              color: '#1d4ed8', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+            }}
+          >
+            📖 Setup Guide &amp; Scopes
+          </button>
+          <button
+            onClick={() => refreshStores()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 16px', borderRadius: 10,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--brand)'; e.currentTarget.style.color = 'var(--brand)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+          >
+            🔄 Refresh Stores
+          </button>
+        </div>
       </div>
 
       {/* ─── Add New Store Form ─── */}

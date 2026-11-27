@@ -15,6 +15,7 @@ export const NAV_ITEMS = [
   { id: '/intelligence', label: 'Courier Intelligence', icon: '🚚', to: '/intelligence', adminOnly: true },
   { id: '/advice', label: 'Shipper Advice', icon: '🧠', to: '/advice' },
   { id: '/connect', label: 'Connect Store', icon: '🔌', to: '/connect', adminOnly: true },
+  { id: '/setup-guide', label: 'Setup & Guide', icon: '📖', to: '/setup-guide' },
   { id: '/users', label: 'User Management', icon: '👥', to: '/users', adminOnly: true },
   { id: '/profile', label: 'My Profile', icon: '👤', to: '/profile' }
 ];

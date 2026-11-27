@@ -61,6 +61,7 @@ const ReviewsManager = lazyWithRetry(() => import('./pages/ReviewsManager'), 'Re
 const AbandonedCheckouts = lazyWithRetry(() => import('./pages/AbandonedCheckouts'), 'AbandonedCheckouts')
 const ExpenseManager = lazyWithRetry(() => import('./pages/ExpenseManager'), 'ExpenseManager')
 const PoLedgerManager = lazyWithRetry(() => import('./pages/PoLedgerManager'), 'PoLedgerManager')
+const SetupGuide = lazyWithRetry(() => import('./pages/SetupGuide'), 'SetupGuide')
 
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
 
@@ -351,6 +352,7 @@ function AppContent() {
                   <Route path="/abandoned" element={<AbandonedCheckouts />} />
                   <Route path="/expenses" element={<ExpenseManager />} />
                   <Route path="/po-ledger" element={<PoLedgerManager />} />
+                  <Route path="/setup-guide" element={<SetupGuide />} />
                 </Routes>
               </ErrorBoundary>
             </Suspense>
