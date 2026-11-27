@@ -2471,7 +2471,10 @@ export default function PoLedgerManager() {
                               {group.totalCommitted > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => openCommittedOrdersModal(group.variants.map(v => v.id), group.parentTitle)}
+                                  onClick={() => {
+                                    const commIds = group.variants.filter(v => (Number(v.committed_qty) || 0) > 0).map(v => v.id)
+                                    openCommittedOrdersModal(commIds.length ? commIds : group.variants.map(v => v.id), group.parentTitle)
+                                  }}
                                   title={`Click to view orders holding ${group.totalCommitted} committed unit(s) of ${group.parentTitle}`}
                                   style={{
                                     padding: '2px 7px', borderRadius: 99, fontSize: 11, fontWeight: 800, cursor: 'pointer',

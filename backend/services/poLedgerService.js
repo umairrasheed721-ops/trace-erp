@@ -1906,12 +1906,17 @@ function getCommittedOrdersForSkus(storeId, options = {}) {
     };
   }
 
+  // When querying a parent product (multiple variants), restrict to variants that actually have committed_qty > 0
+  // so 0-committed variants with legacy stale fulfillment_status don't pollute the popup.
+  const committedOnlyRows = targetRows.filter(r => (Number(r.committed_qty) || 0) > 0);
+  const effectiveTargetRows = targetRows.length > 1 && committedOnlyRows.length > 0 ? committedOnlyRows : targetRows;
+
   const varIdMap = new Map();
   const skuMap = new Map();
   const titleMap = new Map();
   let expectedCommitted = 0;
 
-  for (const r of targetRows) {
+  for (const r of effectiveTargetRows) {
     expectedCommitted += Number(r.committed_qty) || 0;
     const rawVid = String(r.shopify_variant_id || '').trim();
     const numVid = rawVid.includes('/') ? rawVid.split('/').pop() : rawVid;
@@ -1926,7 +1931,7 @@ function getCommittedOrdersForSkus(storeId, options = {}) {
   // Scan open/unfulfilled non-cancelled orders for this store
   const openOrders = db.prepare(`
     SELECT id, ref_number, shopify_order_id, customer_name, phone, city,
-           COALESCE(total_price, price, 0) AS order_price,
+           COALESCE(NULLIF(price, 0), NULLIF(total_price, 0), 0) AS order_price,
            order_date, delivery_status, fulfillment_status, financial_status,
            courier, tracking_number, line_items
     FROM orders
@@ -1934,7 +1939,7 @@ function getCommittedOrdersForSkus(storeId, options = {}) {
       AND LOWER(COALESCE(delivery_status, '')) NOT IN ('cancelled', 'delivered', 'returned', 'return received')
       AND LOWER(COALESCE(fulfillment_status, '')) NOT IN ('fulfilled', 'restocked')
       AND COALESCE(line_items, '') != ''
-    ORDER BY order_date DESC, id DESC
+    ORDER BY (CASE WHEN LOWER(COALESCE(delivery_status, '')) IN ('pending', 'booked') THEN 0 ELSE 1 END) ASC, order_date DESC, id DESC
     LIMIT 3000
   `).all(sid);
 

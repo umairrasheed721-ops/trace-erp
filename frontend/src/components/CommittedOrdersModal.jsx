@@ -97,13 +97,20 @@ export default function CommittedOrdersModal({ open, loading, data, onClose }) {
         </div>
 
         {/* Body */}
-        <div style={{ padding: '14px 18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{
+          padding: '14px 18px',
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+          flex: '1 1 auto',
+          minHeight: 0,
+        }}>
           {loading ? (
             <div style={{ padding: '36px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
               ⏳ Fetching committed orders...
             </div>
           ) : (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {expectedCommitted > matchedUnits && (
                 <div style={{
                   padding: '8px 12px', borderRadius: 9, fontSize: 11.5, lineHeight: 1.45,
@@ -121,9 +128,9 @@ export default function CommittedOrdersModal({ open, loading, data, onClose }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                    <thead>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                       <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
                         <th style={{ padding: '8px 12px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Order #</th>
                         <th style={{ padding: '8px 10px', fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Customer</th>
@@ -221,7 +228,7 @@ export default function CommittedOrdersModal({ open, loading, data, onClose }) {
                   </table>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
 

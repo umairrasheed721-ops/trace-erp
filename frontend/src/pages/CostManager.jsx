@@ -2281,7 +2281,11 @@ export default function CostManager() {
                           {p.totalCommitted > 0 && (
                             <button
                               type="button"
-                              onClick={(e) => { e.stopPropagation(); openCommittedModal(p.variants.map(v => v.id), p.name); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const commIds = p.variants.filter(v => (Number(v.committed_qty) || 0) > 0).map(v => v.id);
+                                openCommittedModal(commIds.length ? commIds : p.variants.map(v => v.id), p.name);
+                              }}
                               title="Click to view committed orders in Command Center"
                               style={{ padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.16)', color: '#b45309', border: '1px solid rgba(245,158,11,0.40)', fontWeight: 800, fontSize: '0.68rem', cursor: 'pointer' }}
                             >
